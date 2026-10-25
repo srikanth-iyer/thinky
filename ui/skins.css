@@ -1,0 +1,216 @@
+/* Skins. Every look is ONLY a set of token values on [data-skin="…"]; app.css reads the
+   tokens and never names a skin. Tokens inherit, so a preview card with its own data-skin
+   shows that look inside the page.
+   Add a skin: copy a block, change values, add an entry to SKINS in app.js.
+   The first five come from the first mockups (Calm, Night, Paper, Sticker, Sticker night). */
+
+:root, [data-skin] {
+  /* colours */
+  --bg: #F4F6F3; --surface: #FFFFFF; --surface-2: #F7F8F6;
+  --ink: #1A2130; --ink-soft: #535D6E; --ink-faint: #8A93A2;
+  --line: #DFE3E0; --line-soft: #ECEFEC;
+  --accent: #0B7B66; --accent-ink: #FFFFFF; --accent-tint: #E0F2EC;
+  --link: #4A3CB0; --link-line: color-mix(in srgb, var(--link) 35%, transparent);
+  --tag-bg: #EEEBFB; --tag-ink: #3A2D8F; --tag-border: 1px solid transparent; --tag-shadow: none; --tag-radius: 999px;
+  --tag-before: ""; --tag-after: ""; --hash: inline; --tag-decoration: none;
+  --mark-bg: #FBEFC0; --danger: #B3412A; --danger-tint: #FBE6E0;
+  --edit-bg: #F2F7F4; --guide: #DCE1DC; --bullet: #7C8696;
+  /* page */
+  --page-image: none; --page-image-size: auto; --side-bg: transparent;
+  /* sheets (journal days, page bodies, cards) */
+  --sheet-bg: var(--surface); --sheet-image: none; --sheet-image-size: auto;
+  --sheet-border: 1.5px solid #C9CFD8; --sheet-radius: 16px;
+  --sheet-shadow: 0 1px 0 rgba(26,33,48,.10), 3px 4px 0 rgba(26,33,48,.10), 0 10px 22px -12px rgba(26,33,48,.30);
+  --sheet-outline: none; --sheet-outline-offset: 0px; --sheet-pad-x: 24px;
+  --sheet-band: none; --sheet-band-h: 0px; --today-bg: var(--sheet-bg);
+  --ruled: none;
+  /* type */
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-title: "Newsreader", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-label: var(--font-body);
+  --body-size: 15.5px; --lh: 1.6; --line-box: 1.6em; --props-lh: 1.5; --bc-pad-y: 3px;
+  --title-weight: 500; --title-style: normal; --title-transform: none; --title-tracking: -0.015em;
+  --title-ornament: "";
+  --weekday-font: var(--font-title); --weekday-style: italic; --weekday-transform: none;
+  --weekday-before: ""; --weekday-after: "";
+  /* bullets */
+  --bullet-w: 7px; --bullet-h: 7px; --bullet-radius: 50%; --bullet-rotate: 0deg;
+  /* controls (raised, like the Board's buttons) */
+  --btn-bg: linear-gradient(var(--surface), var(--surface-2)); --btn-border: 1px solid var(--line); --btn-radius: 10px;
+  --btn-shadow: 0 1px 0 rgba(26,33,48,.07), 0 1px 3px rgba(26,33,48,.12), inset 0 1px 0 rgba(255,255,255,.7);
+  --btn-press: inset 0 2px 3px rgba(0,0,0,.2); --btn-press-move: 0px, 1px;
+  --check-radius: 4px; --check-border: 1.6px solid var(--ink-faint); --check-on-bg: var(--accent); --check-tick: #fff;
+  color-scheme: light;
+}
+
+/* Calm — the Board's original: light, teal, lifted cards with firm edges */
+[data-skin="calm"] { }
+
+/* Night — the Board's dark look: labels sit IN the surface (inset wells), cards and buttons sit ON it */
+[data-skin="night"] {
+  color-scheme: dark;
+  --bg: #1B1E24; --surface: #2A2F38; --surface-2: #242830;
+  --ink: #E6E9EE; --ink-soft: #B9BFC9; --ink-faint: #8E95A0;
+  --line: #454C58; --line-soft: #3A404B;
+  --accent: #86C4B3; --accent-ink: #12141A; --accent-tint: #2F403D;
+  --link: #B3ACE0; --tag-ink: #CFCAF0; --tag-bg: rgba(0,0,0,.22); --tag-border: 1px solid rgba(0,0,0,.35);
+  --tag-shadow: inset 0 2px 3px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.05);
+  --mark-bg: #433C2C; --danger: #EBA394; --danger-tint: #48343A;
+  --edit-bg: #262B33; --guide: #3A404B; --bullet: #8E95A0;
+  --sheet-border: 1.5px solid #4A515E;
+  --sheet-shadow: 0 1px 0 rgba(0,0,0,.55), 3px 4px 0 rgba(0,0,0,.38), 0 12px 24px -12px rgba(0,0,0,.75);
+  --btn-shadow: 0 1px 0 rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+  --btn-press: inset 0 2px 4px rgba(0,0,0,.55);
+  --check-tick: #12141A;
+}
+
+/* Paper — the Board's papery look: grain, sheets lying on a desk, serif writing on ruled lines
+   with a red margin, typewriter labels, highlighter marks, a red-pen tick */
+[data-skin="paper"] {
+  --bg: #F4F2EC; --surface: #FFFEFA; --surface-2: #F8F6F0;
+  --ink: #2A251E; --ink-soft: #5E564A; --ink-faint: #8F8676;
+  --line: #DCD7CC; --line-soft: #EAE6DD;
+  --accent: #B23A26; --accent-tint: #F3DED4;
+  --link: #2D5B8A; --link-line: rgba(45,91,138,.35);
+  --tag-bg: transparent; --tag-ink: var(--ink-soft); --tag-border: 0; --tag-radius: 0;
+  --tag-decoration: underline dotted var(--ink-faint);
+  --mark-bg: linear-gradient(transparent 12%, rgba(250,215,80,.55) 12%, rgba(250,215,80,.55) 88%, transparent 88%);
+  --edit-bg: rgba(250,215,80,.12); --guide: transparent; --bullet: #8F8676;
+  --page-image: url(skins/grain.svg);
+  --sheet-image: linear-gradient(90deg, transparent 13px, rgba(200,70,60,.45) 13px, rgba(200,70,60,.45) 14px, transparent 14px), url(skins/grain.svg);
+  --sheet-border: 1px solid var(--line-soft); --sheet-radius: 2px; --sheet-pad-x: 30px;
+  --sheet-shadow: 0 1px 1px rgba(70,50,20,.10), 0 2px 6px -1px rgba(70,50,20,.10), 0 10px 18px -12px rgba(70,50,20,.22);
+  --ruled: repeating-linear-gradient(transparent 0 27px, rgba(80,120,170,.22) 27px 28px);
+  --font-body: "Newsreader", Georgia, serif; --font-label: var(--font-mono);
+  --body-size: 17px; --lh: 28px; --line-box: 28px; --props-lh: 28px; --bc-pad-y: 0px;
+  --weekday-font: var(--font-mono); --weekday-style: normal;
+  --bullet-w: 5px; --bullet-h: 5px;
+  --btn-bg: transparent; --btn-border: 1px solid var(--ink-soft); --btn-radius: 3px; --btn-shadow: none;
+  --check-radius: 2px; --check-border: 1.5px solid var(--ink-soft); --check-on-bg: transparent; --check-tick: #B23A26;
+}
+
+/* Sticker — the Board's own look: cream, bold outlines, hard offset shadows, purple, chunky type;
+   today's sheet is the Board's yellow */
+[data-skin="sticker"] {
+  --bg: #FDF6E6; --surface: #FFFDF7; --surface-2: #FFF8E8;
+  --ink: #1D1A33; --ink-soft: #4A4566; --ink-faint: #7C7799;
+  --line: #1D1A33; --line-soft: #E4DCC8;
+  --accent: #6C4CF0; --accent-tint: #ECE6FF;
+  --link: #5A3BE0; --link-line: rgba(90,59,224,.45);
+  --tag-bg: #FBEFB3; --tag-ink: #1D1A33; --tag-border: 1.5px solid #1D1A33;
+  --mark-bg: #FBEFB3; --danger: #C8372D; --danger-tint: #FFD6D0;
+  --edit-bg: #FFF4D6; --guide: #E4DCC8; --bullet: #1D1A33;
+  --sheet-border: 2.5px solid #1D1A33; --sheet-radius: 14px; --sheet-shadow: 4px 4px 0 #1D1A33;
+  --today-bg: #FBEFB3;
+  --font-title: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
+  --title-weight: 800; --title-tracking: -0.02em;
+  --weekday-font: var(--font-title); --weekday-style: normal;
+  --bullet-w: 8px; --bullet-h: 8px;
+  --btn-bg: var(--surface); --btn-border: 2px solid #1D1A33; --btn-shadow: 2px 2px 0 #1D1A33;
+  --btn-press: none; --btn-press-move: 2px, 2px;
+  --check-border: 2px solid #1D1A33;
+}
+
+/* Sticker night — the sticker look, dimmed for evenings */
+[data-skin="stickernight"] {
+  color-scheme: dark;
+  --bg: #2B2838; --surface: #383349; --surface-2: #322E42;
+  --ink: #F2ECDF; --ink-soft: #D6CFC1; --ink-faint: #B0A99B;
+  --line: #8C86A3; --line-soft: #4A4560;
+  --accent: #BDB0F5; --accent-ink: #17141F; --accent-tint: #463F63;
+  --link: #CFC4FF; --link-line: rgba(207,196,255,.4);
+  --tag-bg: #4D4532; --tag-ink: #F2ECDF; --tag-border: 1.5px solid #A49EBC;
+  --mark-bg: #4D4532; --danger: #F0A898; --danger-tint: #553A40;
+  --edit-bg: #403A55; --guide: #4A4560; --bullet: #D6CFC1;
+  --sheet-border: 2.5px solid #6E6880; --sheet-radius: 14px; --sheet-shadow: 4px 4px 0 #17141F;
+  --today-bg: #4D4532;
+  --font-title: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
+  --title-weight: 800; --title-tracking: -0.02em;
+  --weekday-font: var(--font-title); --weekday-style: normal;
+  --bullet-w: 8px; --bullet-h: 8px;
+  --btn-bg: var(--surface); --btn-border: 2px solid #A49EBC; --btn-shadow: 2px 2px 0 #17141F;
+  --btn-press: none; --btn-press-move: 2px, 2px;
+  --check-border: 2px solid #A49EBC; --check-tick: #17141F;
+}
+
+/* Screenplay — a script page: Courier-style type on white, scene-heading titles
+   ("INT. SUNDAY — DAY"), tags as (parentheticals), dashes for bullets */
+[data-skin="screenplay"] {
+  --bg: #E6E7EA; --surface: #FFFFFF; --surface-2: #F4F4F5;
+  --ink: #141414; --ink-soft: #3D3D3D; --ink-faint: #8A8A8A;
+  --line: #CFCFD2; --line-soft: #E4E4E6;
+  --accent: #1F3A93; --accent-tint: #E5EAF7;
+  --link: #141414; --link-line: #141414;
+  --tag-bg: transparent; --tag-ink: var(--ink-soft); --tag-border: 0; --tag-radius: 0;
+  --tag-before: "("; --tag-after: ")"; --hash: none;
+  --mark-bg: #FFF2A8; --edit-bg: #F7F7F2; --guide: #ECECEE; --bullet: #141414;
+  --sheet-border: 1px solid #D6D6D8; --sheet-radius: 0px; --sheet-pad-x: clamp(20px, 6vw, 56px);
+  --sheet-shadow: 0 1px 2px rgba(0,0,0,.08), 0 10px 26px -14px rgba(0,0,0,.28);
+  --font-body: var(--font-mono); --font-title: var(--font-mono); --font-label: var(--font-mono);
+  --body-size: 15px; --lh: 1.65; --line-box: 1.65em;
+  --title-weight: 600; --title-transform: uppercase; --title-tracking: 0.02em;
+  --weekday-font: var(--font-mono); --weekday-style: normal; --weekday-transform: uppercase;
+  --weekday-before: "INT. "; --weekday-after: " — DAY";
+  --bullet-w: 9px; --bullet-h: 2px; --bullet-radius: 0;
+  --btn-bg: var(--surface); --btn-radius: 2px; --btn-shadow: 0 1px 0 rgba(0,0,0,.06);
+  --check-radius: 0;
+}
+
+/* Grimoire — a book of folk tales by candlelight: midnight blue, gold leaf, serif,
+   diamond bullets, a double gilt rule round each page, a fleuron before each day */
+[data-skin="grimoire"] {
+  color-scheme: dark;
+  --bg: #10142A; --surface: #181E3A; --surface-2: #1F2648;
+  --ink: #EEE6D2; --ink-soft: #C7BEA6; --ink-faint: #8F876F;
+  --line: #343C68; --line-soft: #272E55;
+  --accent: #D9B35B; --accent-ink: #1A1404; --accent-tint: #3A3320;
+  --link: #E6C77A; --link-line: rgba(230,199,122,.45);
+  --tag-bg: rgba(217,179,91,.12); --tag-ink: #E6C77A; --tag-border: 1px solid rgba(217,179,91,.35);
+  --mark-bg: rgba(217,179,91,.28); --danger: #EBA394; --danger-tint: #4A2A2E;
+  --edit-bg: #1D2446; --guide: rgba(217,179,91,.16); --bullet: #D9B35B;
+  --page-image: url(skins/stars.svg); --side-bg: rgba(16,20,42,.86);
+  --sheet-border: 1px solid rgba(217,179,91,.42); --sheet-radius: 6px;
+  --sheet-outline: 1px solid rgba(217,179,91,.16); --sheet-outline-offset: 4px;
+  --sheet-shadow: 0 22px 44px -26px rgba(0,0,0,.85);
+  --font-body: "Newsreader", Georgia, serif; --body-size: 17px;
+  --title-style: italic; --title-weight: 450; --title-ornament: "❦ ";
+  --bullet-w: 6px; --bullet-h: 6px; --bullet-radius: 1px; --bullet-rotate: 45deg;
+  --btn-bg: linear-gradient(var(--surface-2), var(--surface)); --btn-border: 1px solid rgba(217,179,91,.35);
+  --btn-shadow: 0 1px 0 rgba(0,0,0,.5), inset 0 1px 0 rgba(255,236,190,.06);
+  --check-border: 1.6px solid rgba(217,179,91,.6); --check-tick: #1A1404;
+}
+
+/* Automaton — a lab notebook: cool white, square cells for bullets and labels,
+   a strip of rule 30 printed across the top of every sheet */
+[data-skin="automaton"] {
+  --bg: #EEF0F4; --surface: #FFFFFF; --surface-2: #F5F6F9;
+  --ink: #14182B; --ink-soft: #4A5068; --ink-faint: #8C92A6;
+  --line: #CDD3DE; --line-soft: #E2E6EE;
+  --accent: #3047D9; --accent-tint: #E4E8FD;
+  --link: #3047D9; --link-line: rgba(48,71,217,.35);
+  --tag-bg: #E4E8FD; --tag-ink: #2436A8; --tag-radius: 2px;
+  --mark-bg: #D9F3E6; --edit-bg: #F1F4FE; --guide: #E2E6EE; --bullet: #3047D9;
+  --sheet-border: 1px solid #CDD3DE; --sheet-radius: 2px; --sheet-shadow: 0 1px 0 rgba(20,24,43,.06);
+  --sheet-band: url(skins/rule30.svg); --sheet-band-h: 28px;
+  --font-title: var(--font-mono); --title-weight: 600; --title-tracking: -0.02em;
+  --weekday-font: var(--font-mono); --weekday-style: normal; --font-label: var(--font-mono);
+  --bullet-w: 7px; --bullet-h: 7px; --bullet-radius: 0;
+  --btn-radius: 3px; --check-radius: 0;
+}
+
+/* Azulejo — glazed tiles: cobalt on white, a tiled wall behind the pages, a tile border on each */
+[data-skin="azulejo"] {
+  --bg: #F3F6FB; --surface: #FFFFFF; --surface-2: #F4F7FC;
+  --ink: #10203F; --ink-soft: #3E4F70; --ink-faint: #8391AD;
+  --line: #C9D5EA; --line-soft: #E1E8F4;
+  --accent: #1D4FA3; --accent-tint: #E2EAF8;
+  --link: #1D4FA3; --link-line: rgba(29,79,163,.35);
+  --tag-bg: #E2EAF8; --tag-ink: #173F86;
+  --mark-bg: #FCE9A6; --edit-bg: #F2F6FD; --guide: #E1E8F4; --bullet: #1D4FA3;
+  --page-image: url(skins/azulejo-wall.svg); --page-image-size: 48px 48px; --side-bg: rgba(243,246,251,.93);
+  --sheet-border: 1px solid #C9D5EA; --sheet-radius: 4px;
+  --sheet-band: url(skins/azulejo.svg); --sheet-band-h: 24px;
+  --sheet-shadow: 0 2px 0 rgba(29,79,163,.10), 0 14px 28px -18px rgba(16,32,63,.35);
+  --check-border: 1.6px solid #8391AD;
+}

@@ -1,0 +1,9 @@
+[package]
+name = "devserver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+outline_core = { path = "../core" }
+tiny_http = "0.12"
+serde_json = "1"

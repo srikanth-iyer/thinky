@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-skin="calm">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Lean Outliner</title>
+  <link rel="icon" href="data:,">
+  <script>
+    // Apply the saved look before anything paints.
+    try { document.documentElement.dataset.skin = JSON.parse(localStorage.getItem('skin')) || 'calm'; } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="fonts.css">
+  <link rel="stylesheet" href="skins.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="side" aria-label="Navigation"></aside>
+    <div>
+      <header id="topbar"></header>
+      <main id="main"><div class="view"><p class="note">Opening your notes…</p></div></main>
+    </div>
+  </div>
+  <div id="toolbar" hidden></div>
+  <div id="search" hidden>
+    <div class="search-box" role="dialog" aria-label="Search">
+      <input type="search" placeholder="Search pages and notes" aria-label="Search">
+      <ul class="results" role="listbox"></ul>
+    </div>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

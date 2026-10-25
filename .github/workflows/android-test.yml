@@ -1,0 +1,63 @@
+# Runs the Android app on an emulator and drives it: file-access prompt, opening a sample
+# vault, editing, the share-to-journal pop-up. Triggered by "[android-test]" in a commit
+# message (or by hand). Screenshots + log are force-pushed to the android-test-results branch.
+name: android-test
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  emulator:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[android-test]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: 'x86_64-linux-android' }
+      - uses: Swatinem/rust-cache@v2
+        with: { key: android-test }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+      - run: npx tauri android init --ci
+      - run: python3 scripts/android_overlay.py
+      # debug build: same code, plus WebView debugging so the test can drive the page
+      - run: npx tauri android build --debug --apk --target x86_64 --ci
+      - name: Collect APK
+        run: mkdir -p apk && find src-tauri/gen/android -name "*.apk" -exec cp {} apk/ \; && ls -la apk
+      - name: Free disk space for the emulator (it needs ~7 GB)
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /opt/hostedtoolcache/CodeQL /usr/share/swift "$ANDROID_HOME/ndk"
+          df -h / | tail -1
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/android_test.sh
+      - name: Publish results
+        if: always()
+        run: |
+          mkdir -p android-test && cd android-test
+          git init -q -b android-test-results
+          git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Android test results for ${{ github.sha }}" || exit 0
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" android-test-results
