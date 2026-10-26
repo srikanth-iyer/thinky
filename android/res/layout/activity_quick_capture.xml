@@ -1,44 +1,125 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- "Add a note" pop-up (QuickCaptureActivity): a rounded card near the bottom of the screen, in the
+     colours of the app's look (set in code, so they follow the look the app last used). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:minWidth="320dp"
-    android:orientation="vertical"
-    android:padding="20dp">
-    <TextView
-        android:id="@+id/qc_title"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Add to today"
-        android:textSize="18sp"
-        android:fontFamily="serif" />
-    <EditText
-        android:id="@+id/qc_input"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:gravity="top|start"
-        android:hint="Type or paste a note"
-        android:inputType="textMultiLine|textCapSentences"
-        android:minLines="3"
-        android:maxLines="10" />
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingBottom="12dp">
     <LinearLayout
+        android:id="@+id/qc_card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:gravity="end"
-        android:orientation="horizontal">
-        <Button
-            android:id="@+id/qc_paste"
-            style="?android:attr/borderlessButtonStyle"
-            android:layout_width="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:elevation="6dp"
+        android:orientation="vertical"
+        android:padding="20dp">
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Paste" />
-        <Button
-            android:id="@+id/qc_add"
-            android:layout_width="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <TextView
+                android:id="@+id/qc_badge"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="+"
+                android:textSize="22sp"
+                android:importantForAccessibility="no" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/qc_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="Add a note"
+                    android:textSize="17sp" />
+                <TextView
+                    android:id="@+id/qc_where"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </LinearLayout>
+        <ImageView
+            android:id="@+id/qc_image"
+            android:layout_width="match_parent"
+            android:layout_height="180dp"
+            android:layout_marginTop="16dp"
+            android:contentDescription="The shared picture"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
+        <TextView
+            android:id="@+id/qc_caption"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="Add" />
+            android:layout_marginTop="8dp"
+            android:ellipsize="middle"
+            android:maxLines="1"
+            android:textSize="13sp"
+            android:visibility="gone" />
+        <EditText
+            android:id="@+id/qc_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="top|start"
+            android:hint="Type or paste a note…"
+            android:inputType="textMultiLine|textCapSentences"
+            android:maxLines="8"
+            android:minLines="3"
+            android:paddingStart="14dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="14dp"
+            android:paddingBottom="12dp"
+            android:textSize="16sp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <Button
+                android:id="@+id/qc_paste"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:fontFamily="sans-serif-medium"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:stateListAnimator="@null"
+                android:text="Paste"
+                android:textAllCaps="false"
+                android:textSize="15sp" />
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+            <Button
+                android:id="@+id/qc_add"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:fontFamily="sans-serif-medium"
+                android:minWidth="104dp"
+                android:minHeight="0dp"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:stateListAnimator="@null"
+                android:text="Add"
+                android:textAllCaps="false"
+                android:textSize="15sp" />
+        </LinearLayout>
     </LinearLayout>
-</LinearLayout>
+</FrameLayout>

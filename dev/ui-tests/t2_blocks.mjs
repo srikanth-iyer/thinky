@@ -1,0 +1,130 @@
+// Selecting blocks, moving them, zooming in, pasting outlines, pictures.
+import { open, read, write, check, failures, sleep, go, editBlock, VAULT } from './lib.mjs';
+import fs from 'node:fs';
+const { browser, page, errors } = await open();
+
+console.log('select several blocks');
+await go(page, '#/page/Sourdough%20Bread');
+await editBlock(page, 'Mix, fold, rest, shape');
+await page.keyboard.press('Escape');
+await sleep(150);
+check(await page.locator('.blk.sel').count() >= 1, 'Esc selects the block');
+await page.keyboard.press('Shift+ArrowDown');
+await sleep(150);
+const sel = await page.locator('.blk.sel').count();
+check(sel >= 2, 'Shift+Down extends the selection', sel);
+await page.keyboard.press('Escape');
+// move the "Reading list" block up above "Mix, fold" with his Logseq keys (Ctrl+Shift+Up)
+await editBlock(page, 'Reading list');
+await page.keyboard.press('Control+Shift+ArrowUp');
+await sleep(1200);
+let f = read('pages/Sourdough Bread.md');
+check(f.indexOf('- # Reading list') < f.indexOf('- Mix, fold'), 'Ctrl+Shift+Up moves the block (with its children)', f);
+check(f.indexOf('[[Hartley]]') < f.indexOf('- Mix, fold'), 'children moved too');
+await page.keyboard.press('Control+z');
+await sleep(1200);
+f = read('pages/Sourdough Bread.md');
+check(f.indexOf('- # Reading list') > f.indexOf('- Mix, fold'), 'undo puts it back', f);
+await page.keyboard.press('Escape');
+await page.keyboard.press('Escape');
+
+console.log('select two blocks, indent them, delete them, undo');
+await go(page, '#/page/Templates');
+await editBlock(page, 'Attendees');
+await page.keyboard.press('Escape');
+await page.keyboard.press('Shift+ArrowDown');
+await page.keyboard.press('Shift+Tab');
+await sleep(1200);
+f = read('pages/Templates.md');
+check(f.includes('- Attendees::\n- Notes from') || f.includes('- Attendees::\n- Notes'), 'Shift+Tab outdents both selected blocks', f);
+await page.keyboard.press('Delete');
+await sleep(1200);
+f = read('pages/Templates.md');
+check(!f.includes('Attendees') && !f.includes('Notes from'), 'Delete removes the selected blocks', f);
+await page.keyboard.press('Control+z');
+await sleep(1200);
+f = read('pages/Templates.md');
+check(f.includes('Attendees') && f.includes('Notes from'), 'undo brings them back', f);
+await page.keyboard.press('Escape');
+
+console.log('zoom into a block');
+await go(page, '#/page/Sourdough%20Bread');
+await page.locator('.blk', { hasText: 'Mix, fold' }).first().locator('> .bul').click();
+await sleep(600);
+check(location => true, '');
+check(await page.evaluate(() => location.hash.startsWith('#/zoom/')), 'bullet click opens the block on its own', await page.evaluate(() => location.hash));
+check(await page.locator('.crumbs:not([hidden]) a', { hasText: 'Sourdough Bread' }).count() === 1, 'breadcrumb back to the page');
+const shown = await page.locator('.outline .blk:not([hidden]) > .bc').allTextContents();
+check(!shown.some((t) => t.includes('Reading list')), 'other blocks are hidden', shown.join('|'));
+await editBlock(page, 'Mix, fold, rest, shape');
+await page.keyboard.press('End');
+await page.keyboard.press('Enter');
+await page.keyboard.type('new child in zoom');
+await sleep(1200);
+f = read('pages/Sourdough Bread.md');
+check(f.includes('- Mix, fold, rest, shape\n\t- new child in zoom\n'), 'Enter at the end of the zoomed block adds a child', f);
+await page.keyboard.press('Escape');
+await page.keyboard.press('Escape');
+await page.locator('.crumbs a', { hasText: 'Sourdough Bread' }).click();
+await sleep(500);
+check(await page.evaluate(() => location.hash) === '#/page/Sourdough%20Bread', 'breadcrumb goes back to the page');
+await page.keyboard.press('Alt+ArrowLeft');
+await sleep(500);
+check(await page.evaluate(() => location.hash.startsWith('#/zoom/')), 'Alt+Left goes back');
+await page.keyboard.press('Alt+ArrowRight');
+await sleep(500);
+
+console.log('paste an outline');
+await go(page, '#/page/Orphan%20page');
+await editBlock(page, 'nobody links here');
+await page.evaluate(() => {
+  const ta = document.querySelector('textarea.ed');
+  const dt = new DataTransfer();
+  dt.setData('text/plain', 'Meeting notes from Friday:\n- point one\n  more about one\n\t- sub point\n- point two');
+  ta.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+});
+await sleep(1300);
+f = read('pages/Orphan page.md');
+check(f === '- nobody links here\n- Meeting notes from Friday:\n- point one\n  more about one\n\t- sub point\n- point two\n', 'leading text kept, outline pasted after the block', JSON.stringify(f));
+await page.keyboard.press('Escape');
+await page.keyboard.press('Escape');
+
+console.log('pictures');
+await go(page, '#/page/Pictures');
+await sleep(300);
+const nat = await page.locator('.bc img.img').evaluate((img) => img.naturalWidth);
+check(nat === 160, 'picture from assets shows', nat);
+await editBlock(page, 'A picture');
+const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.keyboard.type(' /image').then(() => sleep(250)).then(() => page.keyboard.press('Enter'))]);
+await chooser.setFiles(VAULT + '/assets/dot.png');
+await sleep(1500);
+f = read('pages/Pictures.md');
+const m = f.match(/!\[dot\]\(\.\.\/assets\/(dot_\d+\.png)\)/);
+check(!!m && fs.existsSync(VAULT + '/assets/' + m[1]), 'picked image copied into assets and linked', f);
+
+console.log('thread lines: click folds everything under the block, click again unfolds');
+write('pages/Thread.md', '- top\n\t- a\n\t\t- a1\n\t\t\t- a2\n\t- b\n\t\t- b1\n- other\n');
+await go(page, '#/page/Thread');
+await sleep(400);
+// the line of "top" runs past a, a1, a2, b and b1; a1's row has no fold arrow over it
+const rowA1 = page.locator('.blk', { has: page.locator(':scope > .bc', { hasText: /^a1$/ }) }).first();
+const boxA = await rowA1.boundingBox();
+await page.mouse.move(boxA.x + 9.5, boxA.y + boxA.height / 2);
+await sleep(150);
+check(await page.locator('.thread-hl').count() === 1, 'the thread line lights up under the pointer');
+await page.mouse.click(boxA.x + 9.5, boxA.y + boxA.height / 2);
+await sleep(900);
+let tf = read('pages/Thread.md');
+check((tf.match(/collapsed:: true/g) || []).length === 3 && !/- top\n\s*collapsed/.test(tf), 'everything under "top" folded, "top" itself stays open', tf);
+check(!(await page.locator('.bc', { hasText: /^a1$/ }).isVisible()) && await page.locator('.bc', { hasText: /^b$/ }).isVisible(), 'children stay visible, deeper blocks hide');
+// a1 is hidden now: click the same line beside "b"'s child row instead... b1 is hidden too, so use the empty strip left of "b" at the line
+const rowB = page.locator('.blk', { has: page.locator(':scope > .bc', { hasText: /^b$/ }) }).first();
+const boxB = await rowB.boundingBox();
+await page.mouse.click(boxB.x + 6, boxB.y + boxB.height / 2);
+await sleep(900);
+tf = read('pages/Thread.md');
+check(!tf.includes('collapsed:: true') && await page.locator('.bc', { hasText: /^a2$/ }).isVisible(), 'clicking again unfolds it all', tf);
+
+console.log(errors.length ? 'script errors:\n' + errors.join('\n') : 'no script errors');
+await browser.close();
+process.exit(failures() ? 1 : 0);

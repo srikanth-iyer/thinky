@@ -96,3 +96,20 @@ fn every_command_survives_a_messy_vault() {
     assert_eq!(report["roundtrip_failures"].as_array().unwrap().len(), 0, "{report}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn config_reader_never_panics() {
+    const EDN: &[&str] = &[
+        "{", "}", "[", "]", "(", ")", "#{", "#_", "#\"", "\"", "\\", ":k", ":journals-directory", " ", "\n", ";", "é", "📚",
+        "\"Diary\"", "#}", "#é}", ":property/separated-by-commas", "true", "nil", "-1", "#inst", ",", "\\u", "\\u12", ":favorites",
+    ];
+    let mut r = Rng(7);
+    for _ in 0..5000 {
+        let n = (r.next() % 24) as usize;
+        let s: String = (0..n).map(|_| r.pick(EDN)).collect();
+        let _ = Config::from_edn(&s);
+        if let Some(out) = edn::set_path(&s, &["favorites"], "[\"x\"]") {
+            assert!(edn::parse(&out).is_some(), "{s:?} -> {out:?}");
+        }
+    }
+}

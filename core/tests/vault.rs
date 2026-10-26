@@ -8,7 +8,7 @@ fn sample() -> Vault {
     );
     v.upsert(
         "journals/2026_10_25.md",
-        "- Read about [[sourdough bread]] today #reading\n- Meeting with [[Rosa]]\n\tstatus:: done\n\tproject:: [[Pickles in brine]]\n- `[[not a link]]` and #notatag inside code? no: `#x`\n- ```python\n- [[fake]] inside fence\n- ```\n- url https://x.com/#anchor is not a tag\n",
+        "- Read about [[sourdough bread]] today #reading\n- Meeting with [[Rosa]]\n\tstatus:: done\n\tproject:: [[Pickles in brine]]\n- `[[not a link]]` and #notatag inside code? no: `#x`\n- ```python\n  [[fake]] inside fence\n  ```\n- url https://x.com/#anchor is not a tag\n",
     );
     v.upsert("journals/2026_10_24.md", "- Talked about [[SB]] recipes\n");
     v.upsert("pages/Pickles in brine.md", "- [[Sourdough Bread]] under brine\n- self link [[Pickles in brine]]\n");
@@ -43,8 +43,11 @@ fn user_style_config() {
  :journal/page-title-format "MMMM do, yyyy"
  :journal/file-name-format "MMMM do, yyyy"
  :property/separated-by-commas #{:cooks :Topics}
+ :scheduled/future-days 14
 }"#;
     let c = Config::from_edn(edn);
+    assert_eq!(c.future_days, 14);
+    assert_eq!(Config::default().future_days, 7);
     assert_eq!(c.pages_dir, "pages");
     assert_eq!(c.journals_dir, "Diary");
     assert_eq!(c.comma_props, vec!["cooks", "topics"]);
@@ -78,7 +81,7 @@ fn self_links_excluded_and_block_props_link() {
     let g = v.linked_refs("Pickles in brine");
     assert_eq!(g.len(), 1);
     assert_eq!(g[0].page, "Oct 25th, 2026");
-    assert_eq!(g[0].hits[0].text, "Meeting with [[Rosa]]");
+    assert_eq!(g[0].hits[0].text, "Meeting with [[Rosa]]\nstatus:: done\nproject:: [[Pickles in brine]]");
     assert_eq!(g[0].hits[0].props[0], ("status".into(), "done".into()));
 }
 

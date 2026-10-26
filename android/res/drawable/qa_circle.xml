@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- a circle in the default accent colour (as the widget picker shows it); the widget tints it with the look's accent colour -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#FF0B7B66" />
+</shape>

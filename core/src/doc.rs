@@ -128,8 +128,11 @@ pub fn split_doc(content: &str) -> Doc {
     };
     while i < lines.len() {
         let line = lines[i];
-        let b = if in_fence { None } else { bullet(line) };
+        // inside a code block only a bullet at the code block's own level (or outside it)
+        // ends it, so an unclosed ``` can't swallow the rest of the page
+        let b = bullet(line).filter(|(d, _)| !in_fence || *d <= cur_depth);
         if let Some((d, _)) = b {
+            in_fence = false;
             push(&mut cur, cur_depth, &mut blocks);
             if d > 0 && line.starts_with(' ') {
                 indent = "  ".into();
@@ -146,25 +149,47 @@ pub fn split_doc(content: &str) -> Doc {
     Doc { preamble, blocks, indent, crlf }
 }
 
+/// 0-based file line where each block starts, as `split_doc` read them.
+pub fn block_lines(doc: &Doc) -> Vec<usize> {
+    let mut at = doc.preamble.split_inclusive('\n').count();
+    doc.blocks
+        .iter()
+        .map(|b| {
+            let line = at;
+            at += match &b.raw {
+                Some(r) => r.split_inclusive('\n').count(),
+                None => b.text.split('\n').count(),
+            };
+            line
+        })
+        .collect()
+}
+
 /// Lines in a `---` … `---` block at the very top that looks like YAML front matter.
 pub fn front_matter_len(lines: &[&str]) -> Option<usize> {
     if strip_eol(lines.first()?).trim_end() != "---" {
         return None;
     }
+    let mut keys = 0;
     for (j, l) in lines.iter().enumerate().skip(1).take(300) {
         let t = strip_eol(l);
         if t.trim_end() == "---" || t.trim_end() == "..." {
-            return Some(j + 1);
+            return (keys > 0).then_some(j + 1);
         }
-        let yaml_like = t.trim().is_empty()
-            || t.starts_with('#')
-            || t.starts_with(' ')
-            || t.starts_with('\t')
-            || t.starts_with("- ")
-            || yaml_key(t).is_some();
-        if !yaml_like {
+        if t.trim().is_empty() || t.starts_with('#') {
+            continue;
+        }
+        if t.starts_with(' ') || t.starts_with('\t') || t.starts_with("- ") {
+            // list items and nested lines only after a `key:` line (else these are bullets)
+            if keys == 0 {
+                return None;
+            }
+            continue;
+        }
+        if yaml_key(t).is_none() {
             return None;
         }
+        keys += 1;
     }
     None
 }
@@ -191,14 +216,13 @@ fn block_text(lines: &[&str]) -> String {
     let lead = &first[..first_ws];
     let (_, body) = bullet(lines[0]).unwrap_or((0, first));
     let mut out = body.to_string();
-    let cont_prefix = format!("{lead}  ");
     for l in &lines[1..] {
         let l = strip_eol(l);
         out.push('\n');
-        if let Some(r) = l.strip_prefix(cont_prefix.as_str()) {
-            out.push_str(r);
-        } else if let Some(r) = l.strip_prefix(lead) {
-            out.push_str(r.trim_start_matches([' ', '\t']));
+        if let Some(r) = l.strip_prefix(lead) {
+            // one indent step (two spaces, a tab or a space): deeper indentation is content,
+            // e.g. code inside the block
+            out.push_str(r.strip_prefix("  ").or_else(|| r.strip_prefix('\t')).or_else(|| r.strip_prefix(' ')).unwrap_or(r));
         } else {
             out.push_str(l.trim_start());
         }

@@ -7,11 +7,13 @@ pub struct Block {
     /// 0-based line number of the bullet line in the file.
     pub line: usize,
     pub depth: usize,
-    /// Block text without its property lines (continuation lines joined with '\n').
+    /// The block's editable text, exactly as the editor sees it (property lines included).
     pub text: String,
     pub props: Vec<(String, String)>,
     /// Referenced page names, display form, deduplicated case-insensitively.
     pub refs: Vec<String>,
+    /// To-do details when the block starts with a marker (TODO, DONE, …).
+    pub task: Option<crate::task::Task>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -40,9 +42,10 @@ pub fn parse_page(content: &str, comma_props: &[String]) -> ParsedPage {
             page.props.push(kv);
         }
     }
-    let mut line_no = doc.preamble.split_inclusive('\n').count();
-    for db in &doc.blocks {
-        let mut b = Block { line: line_no, depth: db.depth, text: String::new(), props: vec![], refs: vec![] };
+    let lines = crate::doc::block_lines(&doc);
+    let mut props_only_first = false;
+    for (n, db) in doc.blocks.iter().enumerate() {
+        let mut b = Block { line: lines[n], depth: db.depth, text: db.text.clone(), props: vec![], refs: vec![], task: None };
         let mut in_fence = false;
         let mut kept: Vec<&str> = vec![];
         for l in db.text.split('\n') {
@@ -59,19 +62,18 @@ pub fn parse_page(content: &str, comma_props: &[String]) -> ParsedPage {
             }
             kept.push(l);
         }
-        b.text = kept.join("\n");
-        finish_block(&mut page, b, comma_props);
-        line_no += db.raw.as_deref().map_or(1, |r| r.split_inclusive('\n').count());
+        let content = kept.join("\n");
+        if n == 0 {
+            props_only_first = db.depth == 0 && content.trim().is_empty() && !b.props.is_empty();
+        }
+        b.task = crate::task::parse(&b.text);
+        finish_block(&mut page, b, content.trim(), comma_props);
     }
 
     // Logseq also writes page properties as the first block when it holds only properties.
-    if page.props.is_empty() {
-        if let Some(first) = page.blocks.first() {
-            if first.depth == 0 && first.text.trim().is_empty() && !first.props.is_empty() {
-                let first = page.blocks.remove(0);
-                page.props = first.props;
-            }
-        }
+    if page.props.is_empty() && props_only_first {
+        let first = page.blocks.remove(0);
+        page.props = first.props;
     }
 
     for (n, (k, v)) in page.props.clone().into_iter().enumerate() {
@@ -149,10 +151,10 @@ fn yaml_props(lines: &[&str]) -> Vec<(String, String)> {
     out
 }
 
-fn finish_block(page: &mut ParsedPage, mut b: Block, comma_props: &[String]) {
-    b.text = b.text.trim().to_string();
+/// `content`: the block's text without its property lines (where its links are read from).
+fn finish_block(page: &mut ParsedPage, mut b: Block, content: &str, comma_props: &[String]) {
     let mut refs = vec![];
-    text_refs(&b.text, &mut refs);
+    text_refs(content, &mut refs);
     for (k, v) in &b.props {
         if k == "tags" || k == "alias" {
             refs.extend(split_list(v));
@@ -202,6 +204,35 @@ pub fn split_list(v: &str) -> Vec<String> {
         }
     }
     push_item(&mut out, &cur);
+    out
+}
+
+/// Items of a comma-separated value as written (links kept as links), for suggestions.
+pub fn split_items(v: &str) -> Vec<String> {
+    let mut out = vec![];
+    let mut depth = 0i32;
+    let mut start = 0;
+    let b = v.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'[' && b.get(i + 1) == Some(&b'[') {
+            depth += 1;
+            i += 2;
+            continue;
+        }
+        if b[i] == b']' && b.get(i + 1) == Some(&b']') {
+            depth -= 1;
+            i += 2;
+            continue;
+        }
+        if b[i] == b',' && depth <= 0 {
+            out.push(v[start..i].trim().to_string());
+            start = i + 1;
+        }
+        i += 1;
+    }
+    out.push(v[start..].trim().to_string());
+    out.retain(|x| !x.is_empty());
     out
 }
 

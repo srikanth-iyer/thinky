@@ -3,6 +3,7 @@
 use crate::config::Config;
 use crate::date::Date;
 use crate::parse::{dedup_ci, parse_page, ParsedPage};
+use crate::task::Task;
 use crate::key;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -45,6 +46,36 @@ pub struct RefGroup {
     pub page: String,
     pub journal: Option<Date>,
     pub hits: Vec<RefHit>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TaskHit {
+    pub page: String,
+    pub journal: Option<Date>,
+    pub line: usize,
+    pub depth: usize,
+    /// The block's editable text (marker, dates and properties included).
+    pub text: String,
+    #[serde(flatten)]
+    pub task: Task,
+}
+
+/// One entry of the All pages list.
+#[derive(Debug, Clone, Serialize)]
+pub struct PageEntry {
+    pub name: String,
+    pub journal: Option<Date>,
+    /// Has a file (false: only linked or tagged so far).
+    pub exists: bool,
+    /// How many blocks/pages link to it.
+    pub refs: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TemplateInfo {
+    pub name: String,
+    pub page: String,
+    pub line: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -148,9 +179,12 @@ impl Vault {
     }
 
     /// Add or replace one file. Cheap enough to call on every save.
+    /// Add or replace one file. Cheap enough to call on every save.
+    /// A file that already owns its page name keeps it (another file with the same name
+    /// never takes over just because this one was re-read).
     pub fn upsert(&mut self, rel_path: &str, content: &str) {
         let rel = rel_path.replace('\\', "/");
-        self.remove(&rel);
+        let old_key = self.take(&rel);
         let parsed = parse_page(content, &self.config.comma_props);
         let (mut name, journal) = self.title_from_path(&rel);
         if journal.is_none() {
@@ -161,41 +195,61 @@ impl Vault {
         let k = key(&name);
         if self.pages.get(&k).is_some_and(|p| p.path != rel) {
             self.shadowed.insert(rel, (k, content.to_string()));
-            return;
-        }
-        // page-level references
-        let mut page_refs: Vec<String> = parsed.tags.clone();
-        page_refs.extend(parsed.prop_refs.iter().cloned());
-        dedup_ci(&mut page_refs);
-        for r in page_refs {
-            self.add_ref(&r, &k, PAGE_LEVEL);
-        }
-        for (i, b) in parsed.blocks.iter().enumerate() {
-            for r in &b.refs {
-                self.add_ref(r, &k, i);
+        } else {
+            // page-level references
+            let mut page_refs: Vec<String> = parsed.tags.clone();
+            page_refs.extend(parsed.prop_refs.iter().cloned());
+            dedup_ci(&mut page_refs);
+            for r in page_refs {
+                self.add_ref(&r, &k, PAGE_LEVEL);
             }
+            for (i, b) in parsed.blocks.iter().enumerate() {
+                for r in &b.refs {
+                    self.add_ref(r, &k, i);
+                }
+            }
+            for a in &parsed.aliases {
+                self.alias.insert(key(a), k.clone());
+            }
+            self.display.insert(k.clone(), name.clone());
+            self.by_path.insert(rel.clone(), k.clone());
+            self.pages.insert(k, Page { name, path: rel, journal, parsed });
         }
-        for a in &parsed.aliases {
-            self.alias.insert(key(a), k.clone());
+        // the name this file had before may be free now
+        if let Some(ok) = old_key {
+            self.promote(&ok);
         }
-        self.display.insert(k.clone(), name.clone());
-        self.by_path.insert(rel.clone(), k.clone());
-        self.pages.insert(k, Page { name, path: rel, journal, parsed });
     }
 
+    /// The file is gone: forget it, and let a file waiting for its name take over.
     pub fn remove(&mut self, rel_path: &str) {
         let rel = rel_path.replace('\\', "/");
-        if self.shadowed.remove(&rel).is_some() {
+        if let Some(k) = self.take(&rel) {
+            self.promote(&k);
+        }
+    }
+
+    /// Unindex a file without promoting anyone. Returns the name key it owned.
+    fn take(&mut self, rel: &str) -> Option<String> {
+        if self.shadowed.remove(rel).is_some() {
+            return None;
+        }
+        let k = self.by_path.remove(rel)?;
+        let p = self.pages.remove(&k)?;
+        self.unindex(&k, &p);
+        Some(k)
+    }
+
+    /// If no file owns `k`, the first waiting file (by path) takes the name.
+    fn promote(&mut self, k: &str) {
+        if self.pages.contains_key(k) {
             return;
         }
-        let Some(k) = self.by_path.remove(&rel) else { return };
-        let Some(p) = self.pages.remove(&k) else { return };
-        self.unindex(&k, &p);
-        // a file that was waiting for this name takes over
-        let next = self.shadowed.iter().filter(|(_, (sk, _))| *sk == k).map(|(r, _)| r.clone()).min();
+        let next = self.shadowed.iter().filter(|(_, (sk, _))| sk == k).map(|(r, _)| r.clone()).min();
         if let Some(r) = next {
-            let (_, content) = self.shadowed.remove(&r).unwrap();
-            self.upsert(&r, &content);
+            if let Some((_, content)) = self.shadowed.remove(&r) {
+                self.upsert(&r, &content);
+            }
         }
     }
 
@@ -205,14 +259,25 @@ impl Vault {
             targets.extend(b.refs.iter().cloned());
         }
         for t in targets {
-            if let Some(v) = self.incoming.get_mut(&key(&t)) {
+            let tk = key(&t);
+            if let Some(v) = self.incoming.get_mut(&tk) {
                 v.retain(|(src, _)| src != k);
+                if v.is_empty() {
+                    // nobody links to this name any more: forget it unless it has a file
+                    self.incoming.remove(&tk);
+                    if !self.pages.contains_key(&tk) {
+                        self.display.remove(&tk);
+                    }
+                }
             }
         }
         for a in &p.parsed.aliases {
             if self.alias.get(&key(a)).is_some_and(|x| x == k) {
                 self.alias.remove(&key(a));
             }
+        }
+        if !self.incoming.contains_key(k) {
+            self.display.remove(k);
         }
     }
 
@@ -415,18 +480,242 @@ impl Vault {
         out
     }
 
-    /// Every known page name (files + names only referenced), with journal dates.
-    pub fn all_pages(&self) -> Vec<(String, Option<Date>, bool)> {
-        let mut v: Vec<(String, Option<Date>, bool)> = self
+    /// Every known page name (files + names only referenced), with journal dates and how
+    /// many places link to it (aliases included).
+    pub fn all_pages(&self) -> Vec<PageEntry> {
+        let count = |k: &str| -> usize {
+            let mut srcs: Vec<(&str, usize)> = vec![];
+            for n in self.names_of(k) {
+                if let Some(v) = self.incoming.get(&n) {
+                    srcs.extend(v.iter().filter(|(s, _)| s != k).map(|(s, i)| (s.as_str(), *i)));
+                }
+            }
+            srcs.sort();
+            srcs.dedup();
+            srcs.len()
+        };
+        let mut v: Vec<PageEntry> = self
             .display
             .iter()
             .filter(|(k, _)| !self.alias.contains_key(*k) || self.pages.contains_key(*k))
+            .filter(|(k, _)| self.pages.contains_key(*k) || self.incoming.get(*k).is_some_and(|v| !v.is_empty()))
             .map(|(k, d)| match self.pages.get(k) {
-                Some(p) => (p.name.clone(), p.journal, true),
-                None => (d.clone(), self.config.journal_from_title(d), false),
+                Some(p) => PageEntry { name: p.name.clone(), journal: p.journal, exists: true, refs: count(k) },
+                None => PageEntry { name: d.clone(), journal: self.config.journal_from_title(d), exists: false, refs: count(k) },
             })
             .collect();
-        v.sort_by_key(|x| x.0.to_lowercase());
+        v.sort_by_key(|x| x.name.to_lowercase());
+        v
+    }
+
+    /// Dates of every journal page that has a file.
+    pub fn journal_dates(&self) -> Vec<Date> {
+        let mut v: Vec<Date> = self.pages.values().filter_map(|p| p.journal).collect();
+        v.sort();
+        v
+    }
+
+    /// Every to-do in the vault (open ones only unless `done`).
+    pub fn tasks(&self, done: bool) -> Vec<TaskHit> {
+        let mut out = vec![];
+        for p in self.pages.values() {
+            for b in &p.parsed.blocks {
+                if let Some(t) = &b.task {
+                    if done || t.is_open() {
+                        out.push(TaskHit {
+                            page: p.name.clone(),
+                            journal: p.journal,
+                            line: b.line,
+                            depth: b.depth,
+                            text: b.text.clone(),
+                            task: t.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        out.sort_by(|a, b| b.journal.cmp(&a.journal).then(a.page.to_lowercase().cmp(&b.page.to_lowercase())).then(a.line.cmp(&b.line)));
+        out
+    }
+
+    /// Lowercased names a page goes by (its name and aliases), for finding plain mentions.
+    pub fn mention_names(&self, name: &str) -> Vec<String> {
+        let k = self.resolve(name);
+        let mut v: Vec<String> = self.names_of(&k);
+        if let Some(p) = self.pages.get(&k) {
+            v.push(key(&p.name));
+        }
+        v.retain(|n| !n.is_empty());
+        v.sort_by(|a, b| b.len().cmp(&a.len()).then(a.cmp(b)));
+        v.dedup();
+        v
+    }
+
+    /// Unlinked references: blocks in other pages that mention this page's name (or an alias)
+    /// as plain text, without linking it. At most `limit` blocks; the flag says if there were more.
+    pub fn unlinked_refs(&self, name: &str, limit: usize) -> (Vec<RefGroup>, bool) {
+        let k = self.resolve(name);
+        let names = self.mention_names(name);
+        let linked: Vec<String> = self.names_of(&k);
+        let mut groups: Vec<RefGroup> = vec![];
+        let mut total = 0;
+        let mut more = false;
+        for (pk, p) in &self.pages {
+            if *pk == k {
+                continue;
+            }
+            let mut hits = vec![];
+            for b in &p.parsed.blocks {
+                if b.refs.iter().any(|r| linked.contains(&self.resolve(r)) || linked.contains(&key(r))) {
+                    continue; // already links to the page
+                }
+                let lower = b.text.to_lowercase();
+                if crate::text::has_mention(&b.text, &lower, &names) {
+                    if total >= limit {
+                        more = true;
+                        break;
+                    }
+                    total += 1;
+                    hits.push(RefHit { line: Some(b.line), depth: b.depth, text: b.text.clone(), props: b.props.clone() });
+                }
+            }
+            if !hits.is_empty() {
+                groups.push(RefGroup { page: p.name.clone(), journal: p.journal, hits });
+            }
+        }
+        groups.sort_by(|a, b| match (a.journal, b.journal) {
+            (Some(x), Some(y)) => y.cmp(&x),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => a.page.to_lowercase().cmp(&b.page.to_lowercase()),
+        });
+        (groups, more)
+    }
+
+    /// For each page name: is there at least one unlinked reference to it (a plain mention in
+    /// another page)? One pass over all notes for the lot, and a page stops being looked for once
+    /// found, so the journals list can ask for a few days at once and show "Unlinked references"
+    /// only for days that have some.
+    pub fn has_unlinked(&self, names: &[String]) -> Vec<bool> {
+        let targets: Vec<(String, Vec<String>, Vec<String>)> = names
+            .iter()
+            .map(|n| {
+                let k = self.resolve(n);
+                let linked = self.names_of(&k);
+                (k, self.mention_names(n), linked)
+            })
+            .collect();
+        let mut found = vec![false; names.len()];
+        let mut left = found.len();
+        if left == 0 {
+            return found;
+        }
+        'pages: for (pk, p) in &self.pages {
+            for b in &p.parsed.blocks {
+                let lower = b.text.to_lowercase(); // once per note, for all the names
+                for (i, (k, mention, linked)) in targets.iter().enumerate() {
+                    if found[i] || pk == k || !mention.iter().any(|m| lower.contains(m.as_str())) {
+                        continue;
+                    }
+                    if b.refs.iter().any(|r| linked.contains(&self.resolve(r)) || linked.contains(&key(r))) {
+                        continue; // already links to the page
+                    }
+                    if crate::text::has_mention(&b.text, &lower, mention) {
+                        found[i] = true;
+                        left -= 1;
+                        if left == 0 {
+                            break 'pages;
+                        }
+                    }
+                }
+            }
+        }
+        found
+    }
+
+    /// Pages (keys) whose files link to this page by its own name (not via an alias).
+    pub fn linking_pages(&self, name: &str) -> Vec<String> {
+        let k = self.resolve(name);
+        let mut v: Vec<String> = self.incoming.get(&k).map(|v| v.iter().map(|(s, _)| s.clone()).collect()).unwrap_or_default();
+        v.sort();
+        v.dedup();
+        v
+    }
+
+    /// File of a page key, if it has one.
+    pub fn path_of_key(&self, k: &str) -> Option<String> {
+        self.pages.get(k).map(|p| p.path.clone())
+    }
+
+    /// Blocks with a `template::` property.
+    pub fn templates(&self) -> Vec<TemplateInfo> {
+        let mut v: Vec<TemplateInfo> = vec![];
+        for p in self.pages.values() {
+            for b in &p.parsed.blocks {
+                if let Some((_, name)) = b.props.iter().find(|(k, _)| k == "template") {
+                    if !name.trim().is_empty() {
+                        v.push(TemplateInfo { name: name.trim().to_string(), page: p.name.clone(), line: b.line });
+                    }
+                }
+            }
+        }
+        v.sort_by_key(|t| t.name.to_lowercase());
+        v
+    }
+
+    /// A template's blocks as (depth relative to the template, text). The template block
+    /// itself is included (without its template properties) unless
+    /// `template-including-parent:: false`.
+    pub fn template_blocks(&self, name: &str) -> Option<Vec<(usize, String)>> {
+        let want = key(name);
+        for p in self.pages.values() {
+            let blocks = &p.parsed.blocks;
+            for (i, b) in blocks.iter().enumerate() {
+                if !b.props.iter().any(|(k, v)| k == "template" && key(v) == want) {
+                    continue;
+                }
+                let parent = !b.props.iter().any(|(k, v)| k == "template-including-parent" && v.trim() == "false");
+                let mut out = vec![];
+                let base = if parent { b.depth } else { b.depth + 1 };
+                if parent {
+                    let text: Vec<&str> = b
+                        .text
+                        .split('\n')
+                        .filter(|l| {
+                            let t = l.trim();
+                            !(t.starts_with("template::") || t.starts_with("template-including-parent::"))
+                        })
+                        .collect();
+                    out.push((0, text.join("\n")));
+                }
+                for c in &blocks[i + 1..] {
+                    if c.depth <= b.depth {
+                        break;
+                    }
+                    out.push((c.depth - base, c.text.clone()));
+                }
+                return Some(out);
+            }
+        }
+        None
+    }
+
+    /// Distinct values used for a property (comma lists split), most used first.
+    pub fn prop_values(&self, prop: &str) -> Vec<(String, usize)> {
+        let pk = prop.to_lowercase();
+        let mut m: HashMap<String, (String, usize)> = HashMap::new();
+        for p in self.pages.values() {
+            for (k, v) in p.parsed.props.iter().chain(p.parsed.blocks.iter().flat_map(|b| b.props.iter())) {
+                if *k != pk {
+                    continue;
+                }
+                for item in crate::parse::split_items(v) {
+                    m.entry(item.to_lowercase()).or_insert_with(|| (item.clone(), 0)).1 += 1;
+                }
+            }
+        }
+        let mut v: Vec<(String, usize)> = m.into_values().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.to_lowercase().cmp(&b.0.to_lowercase())));
         v
     }
 
@@ -458,8 +747,35 @@ impl Vault {
 }
 
 /// File name for a new page, following Logseq's triple-lowbar format.
+/// Same rules as Logseq's `:triple-lowbar` format (frontend.util.fs/tri-lb-file-name-sanity):
+/// `/` becomes `___`, characters files can't hold are percent-encoded (`Why?` → `Why%3F`),
+/// so the name reads back exactly from the file name.
 pub fn file_stem_for(name: &str) -> String {
-    name.replace('/', "___").chars().map(|c| if "<>:\"\\|?*".contains(c) { '_' } else { c }).collect()
+    let mut s = name.strip_prefix('/').unwrap_or(name);
+    s = s.strip_suffix('/').unwrap_or(s);
+    // a "%" that looks like an escape is escaped itself
+    let b = s.as_bytes();
+    let mut t = String::with_capacity(s.len() + 8);
+    for (i, c) in s.char_indices() {
+        if c == '%' && b.get(i + 1).is_some_and(u8::is_ascii_hexdigit) && b.get(i + 2).is_some_and(u8::is_ascii_hexdigit) {
+            t.push_str("%25");
+        } else if ":*?\"<>|#\\".contains(c) {
+            t.push_str(&format!("%{:02X}", c as u32));
+        } else {
+            t.push(c);
+        }
+    }
+    if let Some(rest) = t.strip_prefix('.') {
+        t = format!("%2E{rest}");
+    }
+    const RESERVED: [&str; 22] = [
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2",
+        "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+    if RESERVED.contains(&t.as_str()) || t.ends_with('.') {
+        t.push('/');
+    }
+    t.replace("___", "%5F%5F%5F").replace("_/", "%5F/").replace("/_", "/%5F").replace('/', "___")
 }
 
 fn snippet(text: &str, ql: &str) -> String {

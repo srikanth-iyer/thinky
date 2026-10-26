@@ -2,8 +2,11 @@
 members = ["core", "dev", "src-tauri"]
 resolver = "2"
 
+# Optimised for size (Tauri's recommendation): the program is ~22% smaller (about 2 MB) and
+# measured only a few ms slower on a 1,500-note vault (cargo run --release -p outline_core --example bench:
+# opening 85 ms vs 81 ms, JSON for a long page 4.3 ms vs 3.9 ms).
 [profile.release]
-opt-level = 3
+opt-level = "s"
 lto = true
 codegen-units = 1
 strip = true

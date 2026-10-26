@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- a plus sign; tinted white or dark to read on the circle -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M12,4.5V19.5M4.5,12H19.5" android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.6" android:strokeLineCap="round" />
+</vector>

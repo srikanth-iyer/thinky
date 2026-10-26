@@ -1,0 +1,24 @@
+{
+  "note": "Reference sizes (bytes) and speeds (ms) for the automatic check in .github/workflows/build.yml. Update when a growth is intended (and agreed).",
+  "sizes": {
+    "LeanOutliner-setup.exe": 2340000,
+    "LeanOutliner-portable.exe": 9060000,
+    "LeanOutliner.apk": 7600000
+  },
+  "size_warn_ratio": 1.1,
+  "bench": {
+    "open_cold_ms": 160,
+    "open_warm_ms": 160,
+    "pages_ms": 10,
+    "linked_ms": 1,
+    "page_ms": 3,
+    "search_ms": 2,
+    "unlinked_ms": 25,
+    "todos_ms": 8,
+    "day_unlinked_ms": 25,
+    "save_ms": 2,
+    "rescan_ms": 10,
+    "json_ms": 8
+  },
+  "bench_warn_ratio": 2.0
+}

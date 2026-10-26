@@ -5,10 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>Lean Outliner</title>
   <link rel="icon" href="data:,">
-  <script>
-    // Apply the saved look before anything paints.
-    try { document.documentElement.dataset.skin = JSON.parse(localStorage.getItem('skin')) || 'calm'; } catch (e) {}
-  </script>
+  <script src="boot.js"></script>
   <link rel="stylesheet" href="fonts.css">
   <link rel="stylesheet" href="skins.css">
   <link rel="stylesheet" href="app.css">
@@ -16,7 +13,8 @@
 <body>
   <div id="app">
     <aside id="side" aria-label="Navigation"></aside>
-    <div>
+    <div id="col">
+      <nav id="histbar" aria-label="Back and forward"></nav>
       <header id="topbar"></header>
       <main id="main"><div class="view"><p class="note">Opening your notes…</p></div></main>
     </div>

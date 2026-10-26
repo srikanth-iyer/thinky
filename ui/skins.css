@@ -2,7 +2,7 @@
    tokens and never names a skin. Tokens inherit, so a preview card with its own data-skin
    shows that look inside the page.
    Add a skin: copy a block, change values, add an entry to SKINS in app.js.
-   The first five come from the first mockups (Calm, Night, Paper, Sticker, Sticker night). */
+   Calm, Night, Paper, Sticker and Sticker night come from the first mockups. */
 
 :root, [data-skin] {
   /* colours */
@@ -23,6 +23,8 @@
   --sheet-shadow: 0 1px 0 rgba(26,33,48,.10), 3px 4px 0 rgba(26,33,48,.10), 0 10px 22px -12px rgba(26,33,48,.30);
   --sheet-outline: none; --sheet-outline-offset: 0px; --sheet-pad-x: 24px;
   --sheet-band: none; --sheet-band-h: 0px; --today-bg: var(--sheet-bg);
+  --sheet-divider: var(--sheet-border); --sheet-gap: 26px;
+  --sheet-pad-top: 22px; --sheet-pad-bottom: 18px; /* inside a sheet, above and below what it holds */
   --ruled: none;
   /* type */
   --font-body: "IBM Plex Sans", system-ui, sans-serif;
@@ -30,6 +32,7 @@
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-label: var(--font-body);
   --body-size: 15.5px; --lh: 1.6; --line-box: 1.6em; --props-lh: 1.5; --bc-pad-y: 3px;
+  --h-grow: 1; /* headings in notes make their line taller (0 when --lh is a fixed height) */
   --title-weight: 500; --title-style: normal; --title-transform: none; --title-tracking: -0.015em;
   --title-ornament: "";
   --weekday-font: var(--font-title); --weekday-style: italic; --weekday-transform: none;
@@ -83,7 +86,7 @@
   --sheet-shadow: 0 1px 1px rgba(70,50,20,.10), 0 2px 6px -1px rgba(70,50,20,.10), 0 10px 18px -12px rgba(70,50,20,.22);
   --ruled: repeating-linear-gradient(transparent 0 27px, rgba(80,120,170,.22) 27px 28px);
   --font-body: "Newsreader", Georgia, serif; --font-label: var(--font-mono);
-  --body-size: 17px; --lh: 28px; --line-box: 28px; --props-lh: 28px; --bc-pad-y: 0px;
+  --body-size: 17px; --lh: 28px; --line-box: 28px; --props-lh: 28px; --bc-pad-y: 0px; --h-grow: 0;
   --weekday-font: var(--font-mono); --weekday-style: normal;
   --bullet-w: 5px; --bullet-h: 5px;
   --btn-bg: transparent; --btn-border: 1px solid var(--ink-soft); --btn-radius: 3px; --btn-shadow: none;
@@ -134,69 +137,93 @@
   --check-border: 2px solid #A49EBC; --check-tick: #17141F;
 }
 
-/* Screenplay — a script page: Courier-style type on white, scene-heading titles
-   ("INT. SUNDAY — DAY"), tags as (parentheticals), dashes for bullets */
-[data-skin="screenplay"] {
-  --bg: #E6E7EA; --surface: #FFFFFF; --surface-2: #F4F4F5;
-  --ink: #141414; --ink-soft: #3D3D3D; --ink-faint: #8A8A8A;
-  --line: #CFCFD2; --line-soft: #E4E4E6;
-  --accent: #1F3A93; --accent-tint: #E5EAF7;
-  --link: #141414; --link-line: #141414;
-  --tag-bg: transparent; --tag-ink: var(--ink-soft); --tag-border: 0; --tag-radius: 0;
-  --tag-before: "("; --tag-after: ")"; --hash: none;
-  --mark-bg: #FFF2A8; --edit-bg: #F7F7F2; --guide: #ECECEE; --bullet: #141414;
-  --sheet-border: 1px solid #D6D6D8; --sheet-radius: 0px; --sheet-pad-x: clamp(20px, 6vw, 56px);
-  --sheet-shadow: 0 1px 2px rgba(0,0,0,.08), 0 10px 26px -14px rgba(0,0,0,.28);
-  --font-body: var(--font-mono); --font-title: var(--font-mono); --font-label: var(--font-mono);
-  --body-size: 15px; --lh: 1.65; --line-box: 1.65em;
-  --title-weight: 600; --title-transform: uppercase; --title-tracking: 0.02em;
-  --weekday-font: var(--font-mono); --weekday-style: normal; --weekday-transform: uppercase;
-  --weekday-before: "INT. "; --weekday-after: " — DAY";
-  --bullet-w: 9px; --bullet-h: 2px; --bullet-radius: 0;
-  --btn-bg: var(--surface); --btn-radius: 2px; --btn-shadow: 0 1px 0 rgba(0,0,0,.06);
-  --check-radius: 0;
-}
-
-/* Grimoire — a book of folk tales by candlelight: midnight blue, gold leaf, serif,
-   diamond bullets, a double gilt rule round each page, a fleuron before each day */
+/* Grimoire — a quiet library at night: deep ink blue, warm parchment text, gold only where it
+   matters (bullets, links, ticks), a readable book serif, no clutter */
 [data-skin="grimoire"] {
   color-scheme: dark;
-  --bg: #10142A; --surface: #181E3A; --surface-2: #1F2648;
-  --ink: #EEE6D2; --ink-soft: #C7BEA6; --ink-faint: #8F876F;
-  --line: #343C68; --line-soft: #272E55;
-  --accent: #D9B35B; --accent-ink: #1A1404; --accent-tint: #3A3320;
-  --link: #E6C77A; --link-line: rgba(230,199,122,.45);
-  --tag-bg: rgba(217,179,91,.12); --tag-ink: #E6C77A; --tag-border: 1px solid rgba(217,179,91,.35);
-  --mark-bg: rgba(217,179,91,.28); --danger: #EBA394; --danger-tint: #4A2A2E;
-  --edit-bg: #1D2446; --guide: rgba(217,179,91,.16); --bullet: #D9B35B;
-  --page-image: url(skins/stars.svg); --side-bg: rgba(16,20,42,.86);
-  --sheet-border: 1px solid rgba(217,179,91,.42); --sheet-radius: 6px;
-  --sheet-outline: 1px solid rgba(217,179,91,.16); --sheet-outline-offset: 4px;
-  --sheet-shadow: 0 22px 44px -26px rgba(0,0,0,.85);
-  --font-body: "Newsreader", Georgia, serif; --body-size: 17px;
-  --title-style: italic; --title-weight: 450; --title-ornament: "❦ ";
-  --bullet-w: 6px; --bullet-h: 6px; --bullet-radius: 1px; --bullet-rotate: 45deg;
-  --btn-bg: linear-gradient(var(--surface-2), var(--surface)); --btn-border: 1px solid rgba(217,179,91,.35);
-  --btn-shadow: 0 1px 0 rgba(0,0,0,.5), inset 0 1px 0 rgba(255,236,190,.06);
-  --check-border: 1.6px solid rgba(217,179,91,.6); --check-tick: #1A1404;
+  --bg: #121726; --surface: #1A2033; --surface-2: #20273D;
+  --ink: #ECE6D8; --ink-soft: #C3BCAA; --ink-faint: #8E8878;
+  --line: #303852; --line-soft: #262D45;
+  --accent: #E0B861; --accent-ink: #1A1404; --accent-tint: #3A3322;
+  --link: #E9CB82; --link-line: rgba(233,203,130,.35);
+  --tag-bg: transparent; --tag-ink: #D9B76A; --tag-border: 1px solid rgba(224,184,97,.35);
+  --mark-bg: rgba(224,184,97,.24); --danger: #EBA394; --danger-tint: #4A2A2E;
+  --edit-bg: #1F2640; --guide: rgba(224,184,97,.12); --bullet: #E0B861;
+  --page-image: radial-gradient(120% 70% at 50% 0%, #1B2240 0%, transparent 70%); --side-bg: #10141F;
+  --sheet-border: 1px solid #2C3450; --sheet-radius: 12px;
+  --sheet-shadow: 0 18px 40px -26px rgba(0,0,0,.85);
+  --font-body: "Newsreader", Georgia, serif; --body-size: 17.5px; --lh: 1.65;
+  --title-weight: 500;
+  --bullet-w: 5px; --bullet-h: 5px; --bullet-radius: 1px; --bullet-rotate: 45deg;
+  --btn-bg: var(--surface-2); --btn-border: 1px solid #39425F;
+  --btn-shadow: 0 1px 0 rgba(0,0,0,.45);
+  --check-border: 1.6px solid rgba(224,184,97,.55); --check-tick: #1A1404;
 }
 
-/* Automaton — a lab notebook: cool white, square cells for bullets and labels,
-   a strip of rule 30 printed across the top of every sheet */
+/* Automaton — tidy lab notes: white sheets on faint graph paper, a fine rule 30 band across the
+   top of each page, clean sans text with small typewriter labels */
 [data-skin="automaton"] {
-  --bg: #EEF0F4; --surface: #FFFFFF; --surface-2: #F5F6F9;
-  --ink: #14182B; --ink-soft: #4A5068; --ink-faint: #8C92A6;
-  --line: #CDD3DE; --line-soft: #E2E6EE;
-  --accent: #3047D9; --accent-tint: #E4E8FD;
-  --link: #3047D9; --link-line: rgba(48,71,217,.35);
-  --tag-bg: #E4E8FD; --tag-ink: #2436A8; --tag-radius: 2px;
-  --mark-bg: #D9F3E6; --edit-bg: #F1F4FE; --guide: #E2E6EE; --bullet: #3047D9;
-  --sheet-border: 1px solid #CDD3DE; --sheet-radius: 2px; --sheet-shadow: 0 1px 0 rgba(20,24,43,.06);
-  --sheet-band: url(skins/rule30.svg); --sheet-band-h: 28px;
-  --font-title: var(--font-mono); --title-weight: 600; --title-tracking: -0.02em;
-  --weekday-font: var(--font-mono); --weekday-style: normal; --font-label: var(--font-mono);
-  --bullet-w: 7px; --bullet-h: 7px; --bullet-radius: 0;
-  --btn-radius: 3px; --check-radius: 0;
+  --bg: #F7F8FA; --surface: #FFFFFF; --surface-2: #F3F6FC;
+  --ink: #172033; --ink-soft: #4A5570; --ink-faint: #8A93AA;
+  --line: #D8DEEA; --line-soft: #E8ECF3;
+  --accent: #2F6FED; --accent-tint: #E6EEFE;
+  --link: #2F6FED; --link-line: rgba(47,111,237,.3);
+  --tag-bg: #EEF3FE; --tag-ink: #2556C4; --tag-radius: 4px;
+  --mark-bg: #DDF5E8; --edit-bg: #F5F8FE; --guide: #E8ECF3; --bullet: #2F6FED;
+  --page-image: linear-gradient(rgba(47,111,237,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(47,111,237,.055) 1px, transparent 1px);
+  --page-image-size: 22px 22px; --side-bg: rgba(247,248,250,.94);
+  --sheet-border: 1px solid #D8DEEA; --sheet-radius: 8px;
+  --sheet-shadow: 0 1px 2px rgba(23,32,51,.06), 0 10px 22px -16px rgba(23,32,51,.28);
+  --sheet-band: url(skins/rule30.svg); --sheet-band-h: 19px;
+  --title-weight: 600; --title-tracking: -0.02em;
+  --font-title: "IBM Plex Sans", system-ui, sans-serif;
+  --weekday-font: var(--font-mono); --weekday-style: normal; --weekday-transform: uppercase; --font-label: var(--font-mono);
+  --bullet-w: 6px; --bullet-h: 6px; --bullet-radius: 1.5px;
+  --btn-radius: 6px; --check-radius: 3px;
+}
+
+/* Plain — flat and white: no cards, no shadows, no textures; a hairline between days */
+[data-skin="plain"] {
+  --bg: #FFFFFF; --surface: #FFFFFF; --surface-2: #F6F6F6;
+  --ink: #1A1A1A; --ink-soft: #555555; --ink-faint: #9A9A9A;
+  --line: #E4E4E4; --line-soft: #F0F0F0;
+  --accent: #1A1A1A; --accent-ink: #FFFFFF; --accent-tint: #F1F1F1;
+  --link: #1A1A1A; --link-line: #C9C9C9;
+  --tag-bg: transparent; --tag-ink: #6B6B6B; --tag-border: 0; --tag-radius: 0;
+  --mark-bg: #FFF2B3; --danger: #B3261E; --danger-tint: #FCE8E6;
+  --edit-bg: #FAFAFA; --guide: #EFEFEF; --bullet: #B5B5B5;
+  --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
+  /* no cards: the same space above and below the hairline between days */
+  --sheet-divider: 1px solid #EDEDED; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-title: var(--font-body); --title-weight: 650; --title-tracking: -0.02em;
+  --weekday-font: var(--font-body); --weekday-style: normal;
+  --bullet-w: 5px; --bullet-h: 5px;
+  --btn-bg: #FFFFFF; --btn-border: 1px solid #DDDDDD; --btn-radius: 8px; --btn-shadow: none;
+  --btn-press: none; --btn-press-move: 0px, 0px;
+  --check-radius: 3px; --check-border: 1.5px solid #A8A8A8; --check-on-bg: #1A1A1A;
+}
+
+/* Plain night — Plain for evenings: the same flat, quiet page, in soft white on near-black */
+[data-skin="plainnight"] {
+  color-scheme: dark;
+  --bg: #141414; --surface: #141414; --surface-2: #1E1E1E;
+  --ink: #E6E6E6; --ink-soft: #ABABAB; --ink-faint: #767676;
+  --line: #303030; --line-soft: #242424;
+  --accent: #E6E6E6; --accent-ink: #141414; --accent-tint: #262626;
+  --link: #E6E6E6; --link-line: #5A5A5A;
+  --tag-bg: transparent; --tag-ink: #9C9C9C; --tag-border: 0; --tag-radius: 0;
+  --mark-bg: #4A4120; --danger: #F2B8B5; --danger-tint: #3A2523;
+  --edit-bg: #1A1A1A; --guide: #2A2A2A; --bullet: #6A6A6A;
+  --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
+  --sheet-divider: 1px solid #262626; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-title: var(--font-body); --title-weight: 650; --title-tracking: -0.02em;
+  --weekday-font: var(--font-body); --weekday-style: normal;
+  --bullet-w: 5px; --bullet-h: 5px;
+  --btn-bg: #1C1C1C; --btn-border: 1px solid #333333; --btn-radius: 8px; --btn-shadow: none;
+  --btn-press: none; --btn-press-move: 0px, 0px;
+  --check-radius: 3px; --check-border: 1.5px solid #6A6A6A; --check-on-bg: #E6E6E6; --check-tick: #141414;
 }
 
 /* Azulejo — glazed tiles: cobalt on white, a tiled wall behind the pages, a tile border on each */

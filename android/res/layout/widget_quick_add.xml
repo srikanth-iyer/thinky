@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One-tap "+" widget (QuickAddWidget): a round button in the look's colour -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/qa_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:contentDescription="Add a note">
+    <ImageView
+        android:id="@+id/qa_circle"
+        android:layout_width="54dp"
+        android:layout_height="54dp"
+        android:layout_gravity="center"
+        android:src="@drawable/qa_circle"
+        android:importantForAccessibility="no" />
+    <ImageView
+        android:id="@+id/qa_plus"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_gravity="center"
+        android:src="@drawable/qa_plus"
+        android:importantForAccessibility="no" />
+</FrameLayout>

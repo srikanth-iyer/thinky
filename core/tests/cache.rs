@@ -1,5 +1,6 @@
 //! The index cache: a second start reuses unchanged files and notices changed ones.
 use outline_core::app::{set_cache_dir, App};
+use outline_core::content_hash;
 
 #[test]
 fn cache_reuses_and_refreshes() {
@@ -14,8 +15,9 @@ fn cache_reuses_and_refreshes() {
 
     let app = App::open(&vault).unwrap();
     assert_eq!(app.vault.linked_refs("B").len(), 1);
-    let cached: Vec<_> = std::fs::read_dir(base.join("cache")).unwrap().flatten().collect();
-    assert_eq!(cached.len(), 1, "one cache file per vault");
+    // this vault's own cache file (other tests in this binary share the cache folder)
+    let mine = base.join("cache").join(format!("vault-{}.json", content_hash(&vault.display().to_string())));
+    assert!(mine.exists(), "the vault's cache file is written");
     drop(app);
 
     // change A outside the app (different size, so the stamp differs even on coarse clocks)
@@ -27,9 +29,7 @@ fn cache_reuses_and_refreshes() {
     assert_eq!(app.vault.page_count(), 1);
 
     // a corrupt cache is ignored, not fatal
-    for f in std::fs::read_dir(base.join("cache")).unwrap().flatten() {
-        std::fs::write(f.path(), b"{not json").unwrap();
-    }
+    std::fs::write(&mine, b"{not json").unwrap();
     let app = App::open(&vault).unwrap();
     assert_eq!(app.vault.linked_refs("C").len(), 1);
     let _ = std::fs::remove_dir_all(&base);

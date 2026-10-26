@@ -1,0 +1,117 @@
+// Editing: properties stay out of the way, undo/redo, slash menu, to-do cycle, dates, templates.
+import { open, read, check, failures, sleep, go, editBlock } from './lib.mjs';
+const { browser, page, errors } = await open();
+const ed = () => page.locator('textarea.ed');
+
+console.log('properties stay with their block');
+await go(page, '#/page/Notes%20on%20Pell');
+await editBlock(page, 'A block with an id');
+check(await ed().inputValue() === 'A block with an id', 'id:: line is hidden while editing', await ed().inputValue());
+await page.keyboard.type(' (edited)');
+await sleep(1200);
+let f = read('pages/Notes on Pell.md');
+check(f.includes('- A block with an id (edited)\n  id:: 6528aaaa-bbbb-4ccc-8ddd-eeeeffff6666\n'), 'typing at the end goes before the id line', f);
+// merge the next block up: its text goes before the properties
+await page.keyboard.press('ArrowDown');
+await page.keyboard.press('Home');
+await page.keyboard.press('Backspace');
+await sleep(1200);
+f = read('pages/Notes on Pell.md');
+check(f.includes('- A block with an id (edited)third block\n  id:: 6528'), 'merged text lands before the id line', f);
+// split in the middle: id stays on the first half
+await page.keyboard.press('Enter');
+await sleep(1200);
+f = read('pages/Notes on Pell.md');
+check(f.includes('- A block with an id (edited)\n  id:: 6528aaaa-bbbb-4ccc-8ddd-eeeeffff6666\n- third block'), 'Enter keeps the id with the first half', f);
+
+console.log('undo / redo');
+await page.keyboard.type('xyz');
+await sleep(300);
+await page.keyboard.press('Control+z');
+await sleep(150);
+check(!(await ed().inputValue()).includes('xyz'), 'Ctrl+Z undoes typing', await ed().inputValue());
+await page.keyboard.press('Control+z');
+await sleep(300);
+check(await page.locator('.blk > .bc', { hasText: 'third block' }).count() === 0 || (await ed().inputValue()).includes('third block'), 'second Ctrl+Z undoes the split');
+await page.keyboard.press('Control+Shift+z');
+await sleep(300);
+await page.keyboard.press('Escape');
+await page.keyboard.press('Escape');
+await sleep(1200);
+
+console.log('slash menu and to-dos');
+await go(page, '#/page/Dumplings%20recipe');
+await editBlock(page, 'cooked in bamboo steamers');
+await page.keyboard.type(' /tod');
+await sleep(250);
+check(await page.locator('#ac:not([hidden]) li').first().textContent().then((t) => t.startsWith('TODO')), 'slash menu offers TODO');
+await page.keyboard.press('Enter');
+await sleep(200);
+check((await ed().inputValue()) === 'TODO cooked in bamboo steamers ', 'TODO set and the /tod text removed', await ed().inputValue());
+await page.keyboard.press('Control+Enter');
+await sleep(150);
+check((await ed().inputValue()).startsWith('DOING '), 'Ctrl+Enter → DOING');
+await page.keyboard.press('Control+Enter');
+await sleep(400);
+check((await ed().inputValue()).startsWith('DONE '), 'Ctrl+Enter → DONE');
+await page.keyboard.press('Control+Enter');
+await sleep(150);
+check((await ed().inputValue()) === 'cooked in bamboo steamers ', 'Ctrl+Enter → no marker', await ed().inputValue());
+
+console.log('scheduled date from the / menu');
+await page.keyboard.press('Control+Enter');
+await page.keyboard.type(' /sched');
+await sleep(250);
+await page.keyboard.press('Enter');
+await page.waitForSelector('.datepick');
+await page.locator('.datepick .quick button', { hasText: 'Tomorrow' }).click();
+await sleep(1300);
+f = read('pages/Dumplings recipe.md');
+const t = new Date(); t.setDate(t.getDate() + 1);
+const iso = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+check(/TODO cooked in bamboo steamers +\n\t  SCHEDULED: </.test(f) && f.includes(iso), 'SCHEDULED line written', f);
+await page.keyboard.press('Escape');
+await page.keyboard.press('Escape');
+await sleep(300);
+check(await page.locator('.date-chip', { hasText: 'Tomorrow' }).count() === 1, 'date chip shows "Tomorrow"');
+
+console.log('property suggestions');
+await editBlock(page, 'Step-by-step fermentation menu');
+await page.keyboard.press('Shift+Enter');
+await page.keyboard.type('::sta');
+await sleep(400);
+const keys = await page.locator('#ac:not([hidden]) li').allTextContents();
+check(keys.some((k) => k === 'status'), 'property keys suggested after ::', keys.join('|'));
+await page.keyboard.press('Enter');
+await sleep(400);
+check((await ed().inputValue()).endsWith('status:: '), 'key inserted as "status:: "', await ed().inputValue());
+const vals = await page.locator('#ac:not([hidden]) li').allTextContents();
+check(vals.includes('active') && vals.includes('done'), 'existing values suggested', vals.join('|'));
+await page.keyboard.press('Enter');
+await sleep(150);
+check((await ed().inputValue()).endsWith('status:: active'), 'value chosen', await ed().inputValue());
+await page.keyboard.press('Escape');
+await page.keyboard.press('Escape');
+await sleep(1200);
+check(read('pages/Dumplings recipe.md').startsWith('- Step-by-step fermentation menu\n  status:: active\n'), 'property saved under the block', read('pages/Dumplings recipe.md'));
+
+console.log('templates');
+await go(page, '#/page/Maths');
+await editBlock(page, 'money');
+await page.keyboard.press('End');
+await page.keyboard.press('Enter');
+await page.keyboard.type('/templ');
+await sleep(250);
+await page.keyboard.press('Enter');
+await sleep(400);
+check(await page.locator('#ac:not([hidden]) li', { hasText: 'Meeting' }).count() === 1, 'template list shows Meeting');
+await page.keyboard.press('Enter');
+await sleep(1500);
+f = read('pages/Maths.md');
+check(/- meeting\n\t- Attendees::\n\t- Notes from \[\[October \d+\w\w, 20\d\d\]\]\n/.test(f), 'template blocks inserted with today filled in', f);
+await page.keyboard.press('Escape');
+await page.keyboard.press('Escape');
+
+console.log(errors.length ? 'script errors:\n' + errors.join('\n') : 'no script errors');
+await browser.close();
+process.exit(failures() ? 1 : 0);

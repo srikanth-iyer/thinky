@@ -62,6 +62,16 @@ COMPONENTS = """
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/journal_widget_info" />
         </receiver>
         <service android:name=".JournalWidgetService" android:permission="android.permission.BIND_REMOTEVIEWS" android:exported="false" />
+        <!-- no EmojiCompat start-up: it ties the app to Google Play services' font provider, and
+             Android closes the app whenever that restarts (system fonts show emoji anyway) -->
+        <provider android:name="androidx.startup.InitializationProvider" android:authorities="${applicationId}.androidx-startup"
+            android:exported="false" tools:node="merge">
+            <meta-data android:name="androidx.emoji2.text.EmojiCompatInitializer" tools:node="remove" />
+        </provider>
+        <receiver android:name=".QuickAddWidget" android:exported="false" android:label="Add a note">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/quick_add_widget_info" />
+        </receiver>
         <activity android:name=".QuickCaptureActivity" android:exported="true" android:label="Add to journal"
             android:theme="@style/Theme.AppCompat.DayNight.Dialog" android:excludeFromRecents="true" android:taskAffinity=""
             android:windowSoftInputMode="stateVisible|adjustResize">
@@ -69,6 +79,7 @@ COMPONENTS = """
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+                <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
 """

@@ -9,15 +9,32 @@ name: build
 
 on:
   push:
-    branches: [main]
-    paths-ignore: ['**.md', '.github/workflows/android-test.yml', 'scripts/android_test.sh', 'scripts/make_test_vault.py', 'scripts/ui_tap.py', 'scripts/android_cdp.mjs']
+    # wip/* branches build (to check Windows and Android compile) but don't publish
+    branches: [main, 'wip/**']
+    paths-ignore: ['**.md', 'ci/baseline.json', 'dev/**', '.github/workflows/android-test.yml', 'scripts/android_test.sh', 'scripts/make_test_vault.py', 'scripts/ui_tap.py', 'scripts/android_cdp.mjs']
   workflow_dispatch:
 
 concurrency:
-  group: build
+  group: build-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  # The build number: one more than the newest release ("Build N"), so releases go up by one each
+  # time (the workflow's own run number also counts every wip build). It is also the app's version
+  # (0.1.N, scripts/ci_version.py), which the app's update check compares with the newest release.
+  number:
+    runs-on: ubuntu-latest
+    outputs:
+      n: ${{ steps.n.outputs.n }}
+    steps:
+      - id: n
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '[.[].tag_name | select(test("^build-[0-9]+$")) | ltrimstr("build-") | tonumber] | max // 0')
+          echo "::notice title=Release number::newest release build-$last, this build $((last + 1))"
+          echo "n=$((last + 1))" >> "$GITHUB_OUTPUT"
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -25,9 +42,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p outline_core
+      - name: Speed check
+        run: |
+          cargo run --release -p outline_core --example bench | tee bench.txt
+          python3 scripts/ci_report.py bench bench.txt >> "$GITHUB_STEP_SUMMARY"
 
   windows:
-    needs: test
+    needs: [test, number]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +58,7 @@ jobs:
         with: { node-version: 22 }
       - run: npm ci
       - run: python scripts/ci_version.py
+        env: { BUILD_NUMBER: '${{ needs.number.outputs.n }}' }
       - run: npx tauri build --bundles nsis
       - name: Collect
         shell: bash
@@ -48,7 +70,7 @@ jobs:
         with: { name: windows, path: out/* }
 
   android:
-    needs: test
+    needs: [test, number]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -63,6 +85,7 @@ jobs:
         with: { node-version: 22 }
       - run: npm ci
       - run: python3 scripts/ci_version.py
+        env: { BUILD_NUMBER: '${{ needs.number.outputs.n }}' }
       - name: Use the runner's Android NDK
         run: echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
       - run: npx tauri android init --ci
@@ -77,7 +100,8 @@ jobs:
           echo "unsigned: $APK"
           BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
           "$BT/zipalign" -p -f 4 "$APK" aligned.apk
-          if [ -n "$KEY_PASS" ]; then
+          # the real key is only ever created on main (so there is exactly one)
+          if [ -n "$KEY_PASS" ] && { [ -f android/release.keystore ] || [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
             export PASS="$KEY_PASS"
             KS=android/release.keystore
             if [ ! -f "$KS" ]; then
@@ -105,20 +129,46 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: android, path: LeanOutliner.apk }
 
+  # Size check on every build (wip branches too); releases only from main.
   release:
-    needs: [windows, android]
+    needs: [number, windows, android]
     if: ${{ always() && (needs.windows.result == 'success' || needs.android.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
+        with: { sparse-checkout: "scripts\nci" }
       - uses: actions/download-artifact@v4
         with: { path: dist, merge-multiple: true }
+      - name: Size check
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          python3 scripts/ci_report.py sizes dist | tee sizes.md >> "$GITHUB_STEP_SUMMARY"
+          # release notes: the change description, without the commit's sign-off lines and test tags
+          printf '%s\n' "$MSG" | grep -v -E '^(Co-Authored-By|Claude-Session|Signed-off-by):' | sed -e 's/ *\[android-test\]//g' > notes.md
+          printf '\n' >> notes.md
+          cat sizes.md >> notes.md
       - uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
         with:
-          tag_name: build-${{ github.run_number }}
-          name: Build ${{ github.run_number }}
+          tag_name: build-${{ needs.number.outputs.n }}
+          name: Build ${{ needs.number.outputs.n }}
           target_commitish: ${{ github.sha }}
-          body: ${{ github.event.head_commit.message }}
+          body_path: notes.md
+          files: dist/*
+          make_latest: true
+      # the public downloads page (only the app files; the code stays private)
+      - uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main' && env.RELEASES_TOKEN != ''
+        with:
+          repository: srikanth-iyer/lean-outliner-releases
+          token: ${{ secrets.RELEASES_TOKEN }}
+          tag_name: build-${{ needs.number.outputs.n }}
+          name: Build ${{ needs.number.outputs.n }}
+          body_path: notes.md
           files: dist/*
           make_latest: true

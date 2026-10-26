@@ -3,17 +3,38 @@ const T = window.__TAURI__;
 
 export async function call(cmd, args = {}) {
   if (T) return T.core.invoke('call', { cmd, args });
-  const r = await fetch('/api/' + cmd, { method: 'POST', body: JSON.stringify(args) });
+  const r = await fetch('/api/' + cmd, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 }
 
 export const isApp = !!T;
+export const isAndroid = !!window.LeanAndroid;
+
+/** Listen to an app event (file changes, window closing). No-op under the dev server. */
+export function listen(event, fn) {
+  T?.event?.listen?.(event, fn);
+}
 
 export function today() {
   const d = new Date();
   return [d.getFullYear(), d.getMonth() + 1, d.getDate()];
+}
+
+/** "14:05" */
+export function nowTime() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Address of a file in the notes folder (e.g. "../assets/x.png") for showing it. */
+export function assetUrl(rel) {
+  const p = rel.replace(/^(\.\.\/)+/, '').replace(/^\.\//, '').replace(/^\/+/, '');
+  let decoded = p;
+  try { decoded = decodeURIComponent(p); } catch { /* keep as written */ }
+  if (T?.core?.convertFileSrc) return T.core.convertFileSrc(decoded, 'vault');
+  return '/vault/' + decoded.split('/').map(encodeURIComponent).join('/');
 }
 
 export const store = {

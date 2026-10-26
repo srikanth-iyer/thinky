@@ -105,7 +105,9 @@ fn parse_agrees_with_split() {
     let s = "tags:: x\nPara with [[A]]\n\nSecond para [[B]]\n* star bullet [[C]]\n\tkey:: [[D]]\n- dash";
     let p = parse_page(s, &[]);
     let texts: Vec<&str> = p.blocks.iter().map(|b| b.text.as_str()).collect();
-    assert_eq!(texts, vec!["Para with [[A]]", "Second para [[B]]", "star bullet [[C]]", "dash"]);
+    // block text is the editable text, property lines included
+    assert_eq!(texts, vec!["Para with [[A]]", "Second para [[B]]", "star bullet [[C]]\nkey:: [[D]]", "dash"]);
+    assert_eq!(p.blocks[2].refs, vec!["C".to_string(), "D".to_string()]);
     assert_eq!(p.blocks.iter().map(|b| b.line).collect::<Vec<_>>(), vec![1, 3, 4, 6]);
     assert_eq!(p.blocks[2].props, vec![("key".to_string(), "[[D]]".to_string())]);
     assert_eq!(p.tags, vec!["x"]);
@@ -127,4 +129,64 @@ fn yaml_front_matter_is_page_properties() {
     let d = split_doc(hr);
     assert_eq!(d.preamble, "");
     assert_eq!(join_doc(&d), hr);
+}
+
+#[test]
+fn unclosed_code_fence_ends_at_the_next_bullet() {
+    // typing ``` and pausing must not swallow the rest of the page
+    let s = "- first ```\n- second\n\t- child\n\t\t- grandchild\n- third\n";
+    let d = split_doc(s);
+    assert_eq!(d.blocks.iter().map(|b| b.depth).collect::<Vec<_>>(), vec![0, 0, 1, 2, 0]);
+    assert_eq!(join_doc(&d), s);
+    // a real code block inside a bullet keeps list-looking lines as code
+    let s = "- code:\n  ```\n  - not a bullet\n  ```\n- next\n";
+    let d = split_doc(s);
+    assert_eq!(d.blocks.len(), 2);
+    assert_eq!(d.blocks[0].text, "code:\n```\n- not a bullet\n```");
+}
+
+#[test]
+fn deeper_indentation_inside_a_block_is_kept() {
+    // Obsidian-style tab-indented code under a bullet
+    let s = "* setup script\n\t```python\n\tdef f():\n\t\treturn 1\n\t```\n";
+    let mut d = split_doc(s);
+    assert_eq!(d.blocks[0].text, "setup script\n```python\ndef f():\n\treturn 1\n```");
+    d.blocks[0].text = d.blocks[0].text.replace("setup", "Setup");
+    let out = join_doc(&d);
+    assert_eq!(out, "- Setup script\n  ```python\n  def f():\n  \treturn 1\n  ```\n");
+    assert_eq!(split_doc(&out).blocks[0].text, d.blocks[0].text);
+}
+
+#[test]
+fn bullets_between_rules_are_not_front_matter() {
+    let s = "---\n- a\n- b\n---\nafter\n";
+    let d = split_doc(s);
+    assert_eq!(d.preamble, "");
+    assert_eq!(join_doc(&d), s);
+    let s = "---\naliases:\n- x\n- y\n---\n- body\n";
+    assert_eq!(split_doc(s).preamble, "---\naliases:\n- x\n- y\n---\n");
+}
+
+#[test]
+fn logseq_file_names() {
+    for (name, stem) in [
+        ("a/b", "a___b"),
+        ("Why?", "Why%3F"),
+        ("a:b", "a%3Ab"),
+        ("hydration__/x", "hydration_%5F___x"),
+        ("CON", "CON___"),
+        (".hidden", "%2Ehidden"),
+        ("100% sure", "100% sure"),
+        ("%2F", "%252F"),
+        ("#tag page", "%23tag page"),
+        ("a___b", "a%5F%5F%5Fb"),
+        ("Héla Barton", "Héla Barton"),
+    ] {
+        assert_eq!(file_stem_for(name), stem, "{name}");
+        // and it reads back as the same name
+        let v = Vault::new();
+        if name != "CON" {
+            assert_eq!(v.title_from_path(&format!("pages/{stem}.md")).0, name, "{name}");
+        }
+    }
 }

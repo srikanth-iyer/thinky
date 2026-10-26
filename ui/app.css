@@ -19,18 +19,44 @@ a { color: var(--link); }
 code, pre { font-family: var(--font-mono); }
 
 /* ---------- shell ---------- */
-#app { display: grid; grid-template-columns: 252px minmax(0, 1fr); min-height: 100%; }
+/* Wide windows: the sidebar and the top strip stay put and only the page under the strip scrolls,
+   so the scroll bar starts below the strip like in other Windows apps and the close button sits
+   in the window's corner. Narrow windows and phones scroll the whole page (see "narrow screens"). */
+#app { display: grid; grid-template-columns: 252px minmax(0, 1fr); height: 100%; }
 #side {
-  position: sticky; top: 0; height: 100vh; overflow-y: auto;
-  padding: 18px 14px 24px; border-right: 1px solid var(--line-soft); background: var(--side-bg);
-  display: flex; flex-direction: column; gap: 18px;
+  /* Recent shows only what fits (App.fitRecent), so normally there is no scroll bar; one appears only
+     when even the rest can't fit (a very short window, a phone on its side) */
+  height: 100vh; overflow-y: auto;
+  padding: 0 14px 14px; border-right: 1px solid var(--line-soft); background: var(--side-bg);
+  display: flex; flex-direction: column; gap: 12px;
   font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 14.5px; line-height: 1.45;
 }
-#main { padding: 30px 28px 140px; min-width: 0; }
+#col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+#main { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 28px 140px; min-width: 0; zoom: var(--text-scale, 1); scroll-padding: 8px 0 60px; }
+#main:focus { outline: none; } /* it takes the focus after moving to another page, so the keyboard scrolls it */
+/* back and forward at the top (laptop) */
+#histbar { flex: none; display: flex; gap: 2px; padding: 8px 14px 2px; }
+#histbar button { border: 0; background: none; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; cursor: pointer; color: var(--ink-soft); }
+#histbar button:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+#histbar button:disabled { opacity: .3; cursor: default; }
+#histbar svg { width: 20px; height: 20px; }
+body.side-hidden #histbar { padding-left: 62px; }
+#histbar .drag { flex: 1; align-self: stretch; }
+/* window buttons, flush with the window's top-right corner (Windows: the app draws its own title bar) */
+.winctl { display: flex; align-self: stretch; }
+#histbar .winctl { margin: -8px -14px -2px 0; }
+#topbar .winctl { margin: -6px -8px -6px 0; }
+#histbar .winctl button, #topbar .winctl button { width: 46px; height: auto; min-height: 40px; border: 0; border-radius: 0; background: none; display: grid; place-items: center; cursor: default; color: var(--ink-soft); }
+#histbar .winctl button:hover, #topbar .winctl button:hover { background: var(--surface-2); color: var(--ink); }
+#histbar .winctl button.close:hover, #topbar .winctl button.close:hover { background: #C42B1C; color: #fff; }
+.winctl svg { width: 16px !important; height: 16px !important; }
+.brand > svg, .brand > span { pointer-events: none; } /* so the logo and name drag the window too */
 .view { max-width: 760px; margin: 0 auto; }
 #topbar { display: none; }
 
-.brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; color: var(--ink-soft); padding: 0 6px; }
+/* reaches the sidebar's top and side edges, so the whole strip above the search box moves the window */
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; color: var(--ink-soft); margin: 0 -14px; padding: 16px 14px 0 20px; }
+.brand .hide-side { margin-left: auto; }
 .brand svg { width: 22px; height: 22px; flex: none; }
 
 .searchbtn {
@@ -41,22 +67,48 @@ code, pre { font-family: var(--font-mono); }
 .searchbtn kbd { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); }
 
 .nav { display: flex; flex-direction: column; gap: 1px; }
-.nav a, .side-list a { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 8px; color: var(--ink-soft); text-decoration: none; }
+.nav a, .side-list a { display: flex; align-items: center; gap: 9px; padding: 4px 8px; border-radius: 8px; color: var(--ink-soft); text-decoration: none; }
 .nav a:hover, .side-list a:hover { background: var(--surface-2); color: var(--ink); }
 .nav a[aria-current="page"] { background: var(--accent-tint); color: var(--ink); font-weight: 500; }
 .nav svg { width: 17px; height: 17px; flex: none; opacity: .8; }
 .side-h { font-size: 12.5px; color: var(--ink-faint); padding: 0 8px; margin: 0 0 4px; font-weight: 500; }
+/* Favourites / Recent headings fold their list away */
+.side-h.side-fold { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; border-radius: 6px; }
+.side-h.side-fold:hover { color: var(--ink-soft); }
+.side-h.side-fold::after { content: ""; border-left: 4.5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; transform: rotate(90deg); transition: transform .12s; opacity: .8; }
+.side-h.side-fold[aria-expanded="false"]::after { transform: none; }
+.side-sec.folded .side-list { display: none; }
+.side-sec { display: flex; flex-direction: column; min-height: 0; }
+.side-sec > .side-h { flex: none; }
+.side-sec[data-sec="recent"] { flex: 1 1 0; min-height: 1.6em; } /* never smaller than its heading */
+.side-sec.folded { flex: 0 0 auto; }
+#recent { min-height: 0; overflow: hidden; }
+#favs { flex: none; max-height: 45%; display: flex; flex-direction: column; } /* leaves Recent some room */
+#favs .side-list { overflow-y: auto; min-height: 0; } /* only with very many favourites */
 .side-list { display: flex; flex-direction: column; }
-.side-list a { font-size: 14px; padding: 4px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.side-list a { font-size: 14px; padding: 4px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; flex: none; }
 .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
 
-.skins { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 6px; }
-.skins button {
-  width: 22px; height: 22px; border-radius: 50%; cursor: pointer; padding: 0;
-  border: 2px solid var(--line); background: var(--sw-bg);
-  box-shadow: inset 0 0 0 4px var(--sw-bg), inset 0 0 0 11px var(--sw-dot);
-}
-.skins button[aria-pressed="true"] { border-color: var(--accent); }
+/* the Look button (sidebar) and its list; each row's sample carries data-skin, so it is
+   painted with that look's own tokens */
+.nav .nav-btn { display: flex; align-items: center; gap: 9px; padding: 4px 8px; border-radius: 8px; color: var(--ink-soft); background: none; border: 0; font: inherit; text-align: left; cursor: pointer; width: 100%; }
+.nav .nav-btn:hover, .nav .nav-btn[aria-expanded="true"] { background: var(--surface-2); color: var(--ink); }
+.nav-btn svg { width: 17px; height: 17px; flex: none; opacity: .8; }
+.look-cur { margin-left: auto; font-size: 12.5px; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pop.looks { width: min(330px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; padding: 5px; }
+.looks ul { list-style: none; margin: 0; padding: 0; }
+.looks [data-look] { display: flex; align-items: center; gap: 11px; width: 100%; padding: 6px 8px 6px 6px; border: 0; border-radius: 9px; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.looks [data-look]:hover, .looks [data-look]:focus-visible { background: var(--surface-2); outline: none; }
+.looks [data-look][aria-pressed="true"] { background: var(--accent-tint); }
+.look-sw { flex: none; width: 58px; height: 38px; border-radius: 8px; display: grid; place-items: center; overflow: hidden;
+  background-color: var(--bg); background-image: var(--page-image); background-size: var(--page-image-size); box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+.look-sw > span { display: flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 5px; background: var(--sheet-bg); box-shadow: 0 0 0 1px var(--line); }
+.look-sw i { width: 6px; height: 6px; border-radius: var(--bullet-radius); background: var(--accent); transform: rotate(var(--bullet-rotate)); }
+.look-sw b { font-family: var(--font-title); font-weight: var(--title-weight); font-style: var(--title-style); color: var(--ink); font-size: 15px; line-height: 1.2; }
+.look-txt { display: flex; flex-direction: column; min-width: 0; font-size: 14px; }
+.look-txt b { font-weight: 500; }
+.look-txt small { font-size: 12.5px; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.look-more { display: block; font-size: 12.5px; color: var(--ink-faint); padding: 7px 8px 4px; border-top: 1px solid var(--line-soft); margin-top: 4px; }
 
 /* ---------- headings ---------- */
 .page-title {
@@ -71,6 +123,16 @@ code, pre { font-family: var(--font-mono); }
 .weekday::before { content: var(--weekday-before); }
 .weekday::after { content: var(--weekday-after); }
 .page-head { margin-bottom: 14px; }
+/* page properties sit right under the title ("+ properties" on a page without any) */
+.page-head .page-props { margin: 4px 0 0; }
+/* journal days: a small calendar icon before the date; the weekday above lines up with the date */
+.day-head { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+.day-head > :not(.day-ic) { grid-column: 2; }
+.day-head > .day-ic { grid-row: 2; }
+.day-head > .page-title, .day-head > .title-row { grid-row: 2; }
+.day-ic { --ic: clamp(19px, 3.2vw, 26px); display: grid; place-items: center; width: var(--ic); margin-right: 10px; color: var(--ink-faint); translate: 0 calc(var(--ic) * -.1); }
+.day-ic svg { width: var(--ic); height: var(--ic); stroke-width: 1.6; }
+.sheet .day-ic { --ic: clamp(17px, 2.75vw, 21px); margin-right: 9px; }
 
 /* ---------- sheets (journal day / page body / cards) ---------- */
 .sheet, .card {
@@ -81,21 +143,34 @@ code, pre { font-family: var(--font-mono); }
   border: var(--sheet-border); border-radius: var(--sheet-radius); box-shadow: var(--sheet-shadow);
   outline: var(--sheet-outline); outline-offset: var(--sheet-outline-offset);
 }
-.sheet { padding: calc(var(--sheet-band-h) + 22px) var(--sheet-pad-x) 18px; margin-bottom: 26px; }
+.sheet { padding: calc(var(--sheet-band-h) + var(--sheet-pad-top)) var(--sheet-pad-x) var(--sheet-pad-bottom); margin-bottom: var(--sheet-gap); border-bottom: var(--sheet-divider); }
 .sheet.today { background-color: var(--today-bg); }
 .sheet .page-title { font-size: clamp(26px, 4.4vw, 34px); }
 .sheet .page-title::before { content: var(--title-ornament); color: var(--accent); font-style: normal; }
 .sheet .page-title a { color: inherit; text-decoration: none; }
 
 /* ---------- outline ---------- */
-.outline { position: relative; margin-left: -4px; background-image: var(--ruled); }
-.blk { position: relative; padding-left: calc(var(--d, 0) * 24px + 24px); }
+/* Each level steps in by --ind (narrower on phones). A pale line (--guide) runs straight down from a
+   note's dot, under its open children, and nothing else is drawn on it: the fold arrow sits left of
+   the dot, clear of the line above it, on a laptop (on hover), and at the right end of the note's
+   first line on phones and in narrow windows, so the lines and dots on the left stay clear. */
+.outline { position: relative; margin-left: -4px; background-image: var(--ruled); --ind: 24px; --txt: 24px; }
+/* --bul-h: height of the note's first line, where the dot and the arrow are centred. A heading makes
+   it taller: the editor sets --hf (how much bigger the heading is, e.g. .3 for ##); --h-grow is 0
+   in looks whose lines have a fixed height */
+.blk { position: relative; padding-left: calc(var(--d, 0) * var(--ind) + var(--txt)); --bul-h: calc(var(--line-box) * (1 + var(--hf, 0) * var(--h-grow))); }
+/* the lines of the notes above this one, through its row */
 .blk::before {
-  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--d, 0) * 24px); pointer-events: none;
-  background: repeating-linear-gradient(90deg, transparent 0 9px, var(--guide) 9px 10px, transparent 10px 24px);
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--d, 0) * var(--ind)); pointer-events: none;
+  background: repeating-linear-gradient(90deg, transparent 0 9px, var(--guide) 9px 10px, transparent 10px var(--ind));
+}
+/* and its own line, from just below its dot down to its children (when they're showing) */
+.blk.has-kids:not(.collapsed)::after {
+  content: ""; position: absolute; left: calc(var(--d, 0) * var(--ind) + 9px); width: 1px; bottom: 0; pointer-events: none;
+  top: calc(var(--bc-pad-y) + var(--bul-h) / 2 + var(--bullet-h) / 2 + 4px); background: var(--guide);
 }
 .bul {
-  position: absolute; left: calc(var(--d, 0) * 24px + 2px); top: var(--bc-pad-y); width: 15px; height: var(--line-box);
+  position: absolute; left: calc(var(--d, 0) * var(--ind) + 2px); top: var(--bc-pad-y); width: 15px; height: var(--bul-h);
   display: grid; place-items: center; cursor: pointer; border: 0; background: none; padding: 0;
 }
 .bul::after {
@@ -103,6 +178,32 @@ code, pre { font-family: var(--font-mono); }
   background: var(--bullet); transform: rotate(var(--bullet-rotate));
 }
 .blk.has-kids.collapsed > .bul::after { box-shadow: 0 0 0 4px color-mix(in srgb, var(--bullet) 28%, transparent); }
+/* fold arrow: left of the dot, halfway between it and the line above (laptop: on hover) */
+.fold {
+  position: absolute; left: calc(var(--d, 0) * var(--ind) - 11px); top: var(--bc-pad-y); width: 14px; height: var(--bul-h);
+  border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink-faint); opacity: 0; display: grid; place-items: center;
+}
+.fold::before { content: ""; width: 0; height: 0; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 6px solid currentColor; transition: transform .12s ease; }
+.blk.collapsed > .fold::before { transform: rotate(-90deg); }
+.blk.collapsed > .fold { opacity: .75; }
+@media (hover: hover) {
+  .blk:hover > .fold { opacity: .75; }
+  .fold:hover { opacity: 1 !important; color: var(--ink); }
+}
+/* phones and narrow windows: at the right end of the note's first line, easy to reach with a thumb;
+   the text of notes with children stops short of it */
+@media (max-width: 860px), (pointer: coarse) {
+  .fold { left: auto; right: -10px; width: 40px; }
+  .blk.has-kids > .bc, .blk.has-kids > .ed { padding-right: 18px; }
+}
+@media (pointer: coarse) { .fold { opacity: .4; } }
+/* Logseq-style thread lines: the one under the pointer lights up; clicking it folds or unfolds all under its block */
+.thread-hl { position: absolute; width: 2px; border-radius: 1px; background: var(--ink-faint); pointer-events: none; }
+.outline.on-thread { cursor: pointer; }
+.blk.sel > .bc, .blk.sel > .ed { background: var(--accent-tint); box-shadow: inset 2px 0 0 var(--accent); }
+.crumbs { font-size: 13.5px; color: var(--ink-faint); margin: 0 0 8px; line-height: 1.5; overflow-wrap: anywhere; }
+.crumbs a { color: var(--ink-soft); text-decoration: none; }
+.crumbs a:hover { color: var(--link); }
 .bc, .ed {
   display: block; width: 100%; min-height: var(--line-box); padding: var(--bc-pad-y) 6px; margin: 0 0 0 -6px;
   font: inherit; line-height: var(--lh); color: inherit; overflow-wrap: anywhere; border-radius: 6px;
@@ -139,6 +240,41 @@ a.tag .hash { display: var(--hash); }
 .todo:checked { background: var(--check-on-bg); border-color: var(--accent); }
 .todo:checked::after { content: ""; width: 8px; height: 4px; border-left: 2px solid var(--check-tick); border-bottom: 2px solid var(--check-tick); transform: rotate(-45deg) translate(1px, -1px); }
 .mk { font-family: var(--font-label); font-size: 11px; font-weight: 600; color: var(--accent); margin-right: 6px; letter-spacing: .02em; }
+.prio { font-family: var(--font-label); font-size: 10.5px; font-weight: 700; border-radius: 4px; padding: 0 5px; margin-right: 6px; vertical-align: 1px; background: var(--surface-2); color: var(--ink-soft); border: 1px solid var(--line); }
+.prio.pA { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.dates { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 1px; }
+.date-chip { font-family: var(--font-label); font-size: 12px; line-height: 1.6; padding: 0 7px; border-radius: 6px; background: var(--surface-2); color: var(--ink-soft); border: 1px solid var(--line-soft); cursor: pointer; white-space: nowrap; }
+.date-chip.due { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.date-chip.overdue { color: var(--danger); background: var(--danger-tint); border-color: transparent; }
+.bc .img { display: block; max-width: 100%; height: auto; border-radius: 8px; margin: 6px 0; cursor: zoom-in; }
+.bc .file, .bc .ext-off { color: var(--ink-soft); }
+/* formulas */
+.math { font-family: "Newsreader", Georgia, serif; font-size: 1.04em; white-space: nowrap; }
+.math.display { display: block; text-align: center; margin: 6px 0; white-space: normal; font-size: 1.12em; }
+.math i { font-style: italic; }
+.math sup, .math sub { font-size: .72em; line-height: 0; }
+.m-ss { display: inline-flex; flex-direction: column; vertical-align: middle; font-size: .72em; line-height: 1.1; margin-left: 1px; }
+.m-ss sup, .m-ss sub { font-size: 1em; line-height: 1.1; vertical-align: baseline; }
+.m-frac { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; margin: 0 2px; font-size: .92em; }
+.m-frac > span:first-child { border-bottom: 1px solid currentColor; padding: 0 3px 1px; }
+.m-frac > span:last-child { padding: 1px 3px 0; }
+.m-binom > span:first-child { border-bottom: 0; }
+.m-over { border-top: 1px solid currentColor; padding-top: 1px; }
+.m-under { border-bottom: 1px solid currentColor; }
+.m-op, .m-text { font-style: normal; }
+.m-op { margin: 0 2px; }
+.m-big { font-size: 1.35em; vertical-align: -0.15em; margin: 0 1px; }
+.m-acc { display: inline-block; }
+.m-unknown { color: var(--ink-faint); font-family: var(--font-mono); font-size: .85em; }
+.m-mat { display: inline-grid; grid-template-columns: repeat(var(--cols), auto); gap: 2px 12px; vertical-align: middle; padding: 2px 8px; margin: 2px 4px; text-align: center; border: 0 solid currentColor; }
+.m-mat.m-left { text-align: left; }
+.m-b { border-left: 1.5px solid; border-right: 1.5px solid;
+  background: linear-gradient(currentColor, currentColor) left top / 5px 1.5px no-repeat, linear-gradient(currentColor, currentColor) left bottom / 5px 1.5px no-repeat,
+    linear-gradient(currentColor, currentColor) right top / 5px 1.5px no-repeat, linear-gradient(currentColor, currentColor) right bottom / 5px 1.5px no-repeat; }
+.m-p { border-left: 1.5px solid; border-right: 1.5px solid; border-radius: 10px; }
+.m-v { border-left: 1.5px solid; border-right: 1.5px solid; }
+.m-vv { border-left: 3px double; border-right: 3px double; }
+.m-cb, .m-cases { border-left: 1.5px solid; border-radius: 8px 0 0 8px; }
 
 .props { display: flex; flex-wrap: wrap; gap: 0 12px; font-size: 13px; line-height: var(--props-lh); margin: 1px 0 3px; }
 .prop .pk { font-family: var(--font-label); color: var(--ink-faint); margin-right: 5px; cursor: pointer; }
@@ -146,20 +282,41 @@ a.tag .hash { display: var(--hash); }
 .prop .pv { color: var(--ink-soft); }
 .page-props { margin: 0 0 6px; cursor: text; }
 .page-props .props { font-size: 13.5px; }
+/* "+ properties" on a page without any: shows only when the pointer is over it (faint on touch screens) */
+.add-props { border: 0; background: none; padding: 0 0 2px; margin: 0; font: 500 12.5px "IBM Plex Sans", system-ui, sans-serif; color: var(--ink-faint); cursor: pointer; }
+.add-props:hover { color: var(--ink-soft); }
+@media (hover: hover) {
+  .add-props { opacity: 0; transition: opacity .15s; }
+  .page-props:hover .add-props, .add-props:focus-visible { opacity: 1; }
+}
+@media (hover: none) { .add-props { opacity: .6; } }
 .preamble-ed { width: 100%; font-family: var(--font-mono); font-size: 13px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--edit-bg); color: var(--ink); resize: vertical; min-height: 60px; margin-top: 8px; }
 
 /* ---------- references ---------- */
 .sec { margin-top: 34px; }
-.sec-h { display: flex; align-items: baseline; gap: 10px; margin: 0 0 12px; font-size: 15px; font-weight: 600; font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.4; }
+.sec-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 0 0 12px; font-size: 15px; font-weight: 600; font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.4; }
 .sec-h .n { font-weight: 400; color: var(--ink-faint); font-size: 13.5px; }
 .refgrp { border-left: 3px solid var(--accent-tint); padding: 2px 0 2px 14px; margin: 0 0 18px; }
 .refgrp h3 { font-size: 15px; margin: 0 0 4px; font-weight: 500; font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.4; }
 .refgrp h3 a { color: var(--ink); text-decoration: none; }
 .refgrp h3 a:hover { color: var(--link); }
-.refhit { padding: 2px 0 2px calc(var(--d, 0) * 14px); cursor: pointer; border-radius: 6px; }
+.refhit { padding: 2px 0 2px calc(var(--d, 0) * 14px); cursor: pointer; border-radius: 6px; display: flex; gap: 8px; align-items: flex-start; }
+.refhit .bc { flex: 1; min-width: 0; }
+.refhit .linkit { flex: none; margin-top: 2px; }
+.refgrp { content-visibility: auto; contain-intrinsic-size: auto 80px; }
 .refhit:hover { background: var(--surface-2); }
 .refhit .bc { cursor: pointer; }
 .tagged { display: flex; flex-wrap: wrap; gap: 6px; }
+/* under a day in the Journals list: references to it (smaller headings), and today's due to-dos */
+.day-refs .sec, .day-sched .sched { margin-top: 18px; }
+.day-refs .sec-h { font-size: 14px; margin-bottom: 8px; }
+.day-refs .refgrp { margin-bottom: 12px; }
+.sched { border: 1px solid var(--line-soft); background: var(--surface-2); border-radius: 12px; padding: 10px 14px 6px; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+.sched-h { display: flex; align-items: baseline; gap: 8px; margin: 0 0 2px; font-size: 14px; font-weight: 600; line-height: 1.4; }
+.sched-grp h4 { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 2px; font-size: 13px; font-weight: 600; color: var(--ink-soft); line-height: 1.4; }
+.sched .n { font-weight: 400; font-size: 13px; color: var(--ink-faint); }
+.sched .todo-item { padding: 5px 2px; border-bottom-color: var(--line-soft); font-family: var(--font-body); }
+.sched .sched-list .todo-item:last-child { border-bottom: 0; }
 
 /* ---------- lists (all pages, tags, properties) ---------- */
 .filter { width: 100%; font: inherit; font-size: 15px; line-height: 1.4; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); margin: 6px 0 14px; }
@@ -169,6 +326,26 @@ a.tag .hash { display: var(--hash); }
 .rows a:hover { background: var(--surface-2); }
 .rows .meta { margin-left: auto; color: var(--ink-faint); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rows .ghost { color: var(--ink-faint); }
+.rows li.chosen a { background: var(--accent-tint); }
+.rows input[type="checkbox"] { margin: 0 2px 0 0; }
+.tree-rows li a, .tree li { padding-left: calc(var(--d, 0) * 18px + 4px); }
+.tree { list-style: none; margin: 0; padding: 0; columns: 2 240px; }
+.tree li { padding-top: 2px; padding-bottom: 2px; }
+.list-tools { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.list-tools .filter { margin: 6px 0 0; }
+.toggles { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+.toggles select { font: inherit; font-size: 13.5px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 3px 6px; }
+.chip { font: inherit; font-size: 13.5px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); border-radius: 999px; padding: 3px 11px; cursor: pointer; }
+.chip[aria-pressed="true"], .chip[role="tab"][aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+/* a row of filter buttons: always one line; scrolls sideways (fading at the edge) only if it can't fit */
+/* (room around the buttons, so a keyboard focus ring isn't cut off by the sideways scrolling) */
+.chips { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-width: none; padding: 4px; margin: -3px -4px; }
+.chips::-webkit-scrollbar { display: none; }
+.set-tabs { margin: 6px 0 18px; } /* Settings: one tab per kind of setting (settings.js) */
+.chips .chip { flex: none; white-space: nowrap; }
+.chips .chip-end { margin-left: auto; } /* a switch rather than a filter: at the far end when there's room */
+.chips.fade-end { mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); }
+.btn-row .sort { font: inherit; font-size: 13.5px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 4px 6px; }
 .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--ink-soft); }
 
 /* ---------- buttons: raised; pressed ones sink ---------- */
@@ -180,7 +357,26 @@ a.tag .hash { display: var(--hash); }
 .btn.ghost { background: var(--btn-bg); color: var(--ink); border: var(--btn-border); }
 .btn:active, .searchbtn:active { transform: translate(var(--btn-press-move)); box-shadow: var(--btn-press); }
 .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.btn.small { font-size: 13px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px; }
+.btn.small svg { width: 15px; height: 15px; }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.btn-row.end { justify-content: flex-end; margin-top: 14px; }
+.icon-btn { border: 0; background: none; width: 34px; height: 34px; border-radius: 9px; display: inline-grid; place-items: center; cursor: pointer; color: var(--ink-faint); padding: 0; flex: none; }
+.icon-btn:hover { background: var(--surface-2); color: var(--ink); }
+.icon-btn svg { width: 19px; height: 19px; }
+.icon-btn.on { color: var(--accent); }
+.icon-btn.on svg { fill: currentColor; }
+.title-row { display: flex; align-items: center; gap: 4px; }
+.title-row .page-title { flex: 1; min-width: 0; }
+.ns-path { margin: 0 0 2px; font-size: 14.5px; color: var(--ink-faint); }
+.ns-path a { color: var(--ink-soft); text-decoration: none; }
+.view-tools { display: flex; justify-content: flex-end; margin: -8px 0 10px; }
+.onthisday { font-size: 13.5px; color: var(--ink-faint); margin: 12px 0 0; }
+.onthisday a { color: var(--ink-soft); }
+.disclose { font: inherit; font-weight: 600; border: 0; background: none; color: inherit; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.disclose::before { content: ""; border-left: 5px solid currentColor; border-top: 4.5px solid transparent; border-bottom: 4.5px solid transparent; transition: transform .12s; }
+.disclose[aria-expanded="true"]::before { transform: rotate(90deg); }
 .more { display: block; margin: 8px auto 0; }
 
 /* ---------- banners, toasts ---------- */
@@ -204,15 +400,59 @@ a.tag .hash { display: var(--hash); }
 #ac li { padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #ac li[aria-selected="true"] { background: var(--accent-tint); }
 #ac li .new { color: var(--ink-faint); }
+#ac li .hint { float: right; margin-left: 14px; color: var(--ink-faint); font-size: 12.5px; font-family: var(--font-mono); }
+
+/* ---------- popovers, date picker, menus, dialogs ---------- */
+.pop { position: fixed; z-index: 56; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 40px -14px rgba(0,0,0,.4); font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.4; color: var(--ink); }
+.pop-title { font-size: 13px; font-weight: 600; color: var(--ink-soft); padding: 10px 12px 2px; }
+.datepick { padding-bottom: 8px; width: 286px; }
+.datepick .quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 2px; }
+.datepick .quick button, .chiplike { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: var(--surface-2); border-radius: 999px; padding: 2px 9px; cursor: pointer; color: var(--ink-soft); }
+.datepick .pop-note { margin: 0; padding: 8px 12px 0; font-size: 12px; color: var(--ink-faint); }
+.datepick .rep { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-soft); padding: 8px 12px 0; }
+.datepick select { font: inherit; font-size: 13px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.cal { padding: 4px 8px; user-select: none; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 2px 6px; }
+.cal-head button { border: 0; background: none; font-size: 20px; line-height: 1; width: 32px; height: 30px; border-radius: 8px; cursor: pointer; color: var(--ink-soft); }
+.cal-head button:hover { background: var(--surface-2); }
+.cal-title { font-weight: 600; font-size: 14.5px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal-grid .dow { font-size: 11.5px; color: var(--ink-faint); text-align: center; padding: 2px 0; }
+.cal-grid .day { position: relative; border: 0; background: none; font: inherit; font-size: 13.5px; height: 34px; border-radius: 8px; cursor: pointer; color: var(--ink); font-variant-numeric: tabular-nums; }
+.cal-grid .day:hover, .cal-grid .day:focus-visible { background: var(--accent-tint); outline: none; }
+.cal-grid .day.other { color: var(--ink-faint); }
+.cal-grid .day.today { color: var(--accent); font-weight: 700; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.cal-grid .day.focus { background: var(--surface-2); }
+.cal-grid .day.mark::after { content: ""; position: absolute; left: 50%; bottom: 4px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--accent); }
+.menu { list-style: none; margin: 0; padding: 5px; min-width: 200px; }
+.menu button { display: block; width: 100%; text-align: left; border: 0; background: none; font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 8px; cursor: pointer; color: var(--ink); }
+.menu button:hover, .menu button:focus-visible { background: var(--accent-tint); outline: none; }
+.menu button.danger { color: var(--danger); }
+.modal-back { position: fixed; inset: 0; z-index: 70; background: color-mix(in srgb, var(--ink) 32%, transparent); display: flex; align-items: flex-start; justify-content: center; padding: 14vh 16px 16px; }
+.modal { width: min(460px, 100%); background: var(--surface); border-radius: 14px; border: var(--sheet-border); box-shadow: 0 24px 60px -20px rgba(0,0,0,.45); padding: 18px 20px; line-height: 1.5; font-family: "IBM Plex Sans", system-ui, sans-serif; color: var(--ink); }
+.modal h2 { margin: 0 0 8px; font-size: 18px; }
+.modal .filter { margin: 12px 0 0; }
+.lightbox { align-items: center; padding: 16px; cursor: zoom-out; }
+.lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 20px 60px -20px rgba(0,0,0,.6); }
+.preview { width: min(420px, calc(100vw - 24px)); max-height: 340px; overflow: hidden; padding: 0 12px 6px; pointer-events: none; font-size: 14px; }
+.preview .pop-title { padding: 10px 0 4px; font-size: 14.5px; color: var(--ink); }
+.preview .pv-b { padding: 1px 0 1px calc(var(--d, 0) * 14px + 12px); position: relative; }
+.preview .pv-b::before { content: ""; position: absolute; left: calc(var(--d, 0) * 14px + 2px); top: .68em; width: 4px; height: 4px; border-radius: 50%; background: var(--bullet); }
+.preview .note { margin: 6px 0 4px; font-size: 12.5px; }
 
 /* ---------- mobile edit toolbar ---------- */
+/* buttons packed close together so more fit without scrolling sideways; the hide-keyboard button
+   stays put at the end while the rest scroll under it */
 #toolbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; gap: 2px; justify-content: space-around;
-  background: var(--surface); border-top: 1px solid var(--line); padding: 4px 6px;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; align-items: center;
+  background: var(--surface); border-top: 1px solid var(--line); padding: 4px 4px;
 }
-#toolbar button { flex: 1; min-width: 0; height: 42px; border: 0; background: none; border-radius: 8px; font-size: 14px; letter-spacing: -0.04em; white-space: nowrap; color: var(--ink-soft); cursor: pointer; display: grid; place-items: center; font-family: var(--font-mono); }
+.tb-scroll { display: flex; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
+.tb-scroll::-webkit-scrollbar { display: none; }
+#toolbar button { flex: 0 0 auto; width: 38px; height: 42px; border: 0; background: none; border-radius: 8px; font-size: 14px; letter-spacing: -0.04em; white-space: nowrap; color: var(--ink-soft); cursor: pointer; display: grid; place-items: center; font-family: var(--font-mono); }
 #toolbar button:active { background: var(--accent-tint); }
 #toolbar svg { width: 20px; height: 20px; }
+#toolbar .tb-pin { width: 44px; margin-left: 2px; border-left: 1px solid var(--line-soft); border-radius: 0 8px 8px 0; }
 
 /* ---------- settings ---------- */
 .card { padding: 18px 20px; margin-bottom: 18px; line-height: 1.5; }
@@ -239,30 +479,104 @@ a.tag .hash { display: var(--hash); }
 .skin-card .label { padding: 8px 12px 10px; background: var(--surface); border-top: 1px solid var(--line-soft); font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.35; }
 .skin-card .label b { display: block; font-size: 14.5px; }
 .skin-card .label span { font-size: 12.5px; color: var(--ink-soft); }
+.size-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 14px; font-size: 14px; }
+.size-row input { vertical-align: middle; width: 180px; accent-color: var(--accent); }
+/* link colour and fonts (Settings > Look) */
+.text-style { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; font-size: 14px; }
+.ts-row { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.ts-l { min-width: 86px; color: var(--ink-soft); }
+.swatches { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+.sw { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--line); background: var(--c, var(--surface-2)); cursor: pointer; padding: 0; position: relative; }
+.sw.own { width: auto; border-radius: 999px; padding: 0 9px; font: inherit; font-size: 12px; color: var(--ink-soft); }
+.sw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
+.sw.pick { overflow: hidden; background: conic-gradient(#f44, #fd3, #4d4, #3cf, #45f, #e4e, #f44); }
+.sw.pick input { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.ts-row select { font: inherit; font-size: 13.5px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); max-width: 280px; }
+.card h3 { font-size: 15px; margin: 14px 0 2px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; color: var(--ink-soft); margin: 10px 0; }
+.field input, input.inline { font-family: var(--font-mono); font-size: 13px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+input.inline { padding: 3px 7px; width: 170px; }
+.radio { display: flex; flex-direction: column; gap: 6px; font-size: 14px; margin: 6px 0; }
+.note.small { font-size: 12.5px; }
+.bookmarklet { text-decoration: none; cursor: grab; }
+.filter.key { width: 240px; margin: 0; font-family: var(--font-mono); cursor: pointer; }
+table.keys { border-collapse: collapse; font-size: 13.5px; margin-top: 8px; width: 100%; }
+table.keys td { padding: 5px 4px; border-top: 1px solid var(--line-soft); vertical-align: top; }
+table.keys td:first-child { color: var(--ink-soft); width: 46%; }
+kbd { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; white-space: nowrap; }
+pre.log { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); border-radius: 8px; padding: 10px; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+.bin li { display: flex; gap: 10px; align-items: center; padding: 6px 4px; border-bottom: 1px solid var(--line-soft); }
+.bin li span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.update { font-size: 13px; color: var(--accent-ink); background: var(--accent); border-radius: 8px; padding: 6px 10px; text-decoration: none; text-align: center; }
+
+/* ---------- to-dos ---------- */
+.todo-item { display: flex; gap: 8px; align-items: flex-start; padding: 6px 4px; border-bottom: 1px solid var(--line-soft); cursor: pointer; }
+.todo-item .todo { margin-top: 5px; flex: none; }
+.todo-item .bc { flex: 1; min-width: 0; padding: 0; margin: 0; cursor: pointer; }
+.todo-item .where { font-size: 12.5px; color: var(--ink-faint); margin-top: 1px; }
+.todo-item .where a { color: var(--ink-soft); text-decoration: none; }
+.todo-item.marker-done .bc { color: var(--ink-faint); text-decoration: line-through; }
+
+/* ---------- sidebar hidden (laptop) ---------- */
+.show-side { position: fixed; top: 12px; left: 12px; z-index: 35; display: none; background: var(--surface); border: 1px solid var(--line); }
+body.side-hidden #side { display: none; }
+body.side-hidden #app { grid-template-columns: minmax(0, 1fr); }
+body.side-hidden .show-side { display: inline-grid; }
 
 /* ---------- narrow screens ---------- */
 @media (max-width: 860px) {
-  #app { grid-template-columns: minmax(0, 1fr); }
+  #app { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 100%; }
+  #col { display: block; }
+  #main { overflow: visible; }
+  /* the whole page scrolls: keep the block being edited clear of the top bar (it stays on screen)
+     and of the phone's editing toolbar at the bottom */
+  html { scroll-padding: 64px 0 60px; }
+  #histbar { display: none; }
+  body.side-hidden #side { display: flex; }
+  .show-side, body.side-hidden .show-side, .brand .hide-side { display: none; }
+  .tree { columns: 1; }
   #side {
     position: fixed; z-index: 45; left: 0; top: 0; bottom: 0; height: auto; width: min(300px, 86vw);
-    background: var(--bg); transform: translateX(-103%); transition: transform .2s ease; box-shadow: 0 0 40px rgba(0,0,0,.25);
+    background: var(--bg); box-shadow: 0 0 40px rgba(0,0,0,.25);
+    /* closed: fully off screen, shadow included, and out of reach of the Tab key */
+    transform: translateX(calc(-100% - 48px)); visibility: hidden; transition: transform .2s ease, visibility 0s linear .2s;
   }
-  body.drawer #side { transform: none; }
+  body.drawer #side { transform: none; visibility: visible; transition: transform .2s ease; }
   body.drawer::after { content: ""; position: fixed; inset: 0; z-index: 44; background: rgba(0,0,0,.25); }
   #topbar {
     display: flex; align-items: center; gap: 4px; position: sticky; top: 0; z-index: 30;
     background: var(--bg); padding: 6px 8px; border-bottom: 1px solid var(--line-soft); line-height: 1.3;
   }
-  #topbar button { border: 0; background: none; width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; color: var(--ink-soft); }
+  #topbar button { flex: none; border: 0; background: none; width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; color: var(--ink-soft); }
   #topbar svg { width: 22px; height: 22px; }
-  #topbar .t { flex: 1; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  /* back and forward, like the laptop's; greyed out when there is nowhere to go */
+  #topbar [data-h], #topbar [data-a="home"] { width: 36px; }
+  #topbar [data-h] svg, #topbar [data-a="home"] svg { width: 21px; height: 21px; }
+  #topbar button:disabled { opacity: .3; cursor: default; }
+  /* a very narrow Windows window also has the window buttons: Forward and Home make room for them
+     (Journals is in the menu too) */
+  @media (max-width: 460px) { #topbar.has-winctl [data-h="forward"], #topbar.has-winctl [data-a="home"] { display: none; } }
+  #topbar .t { flex: 1; min-width: 0; padding-left: 6px; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: "IBM Plex Sans", system-ui, sans-serif; }
   #main { padding: 16px 14px 120px; }
-  .sheet { padding-left: min(var(--sheet-pad-x), 18px); padding-right: min(var(--sheet-pad-x), 18px); margin-bottom: 18px; }
-  .blk { padding-left: calc(var(--d, 0) * 20px + 22px); }
-  .blk::before { width: calc(var(--d, 0) * 20px); background: repeating-linear-gradient(90deg, transparent 0 9px, var(--guide) 9px 10px, transparent 10px 20px); }
-  .bul { left: calc(var(--d, 0) * 20px + 2px); }
+  .sheet { padding-left: min(var(--sheet-pad-x), 18px); padding-right: min(var(--sheet-pad-x), 18px); margin-bottom: min(var(--sheet-gap), 20px); }
+  .outline { --ind: 20px; --txt: 22px; }
+  /* a day's page: the date at the size it has in the Journals list, so it fits next to its calendar
+     icon and the star and menu buttons */
+  .day-head .page-title { font-size: clamp(26px, 4.4vw, 34px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
+}
+
+/* ---------- printing / save as PDF: just the page ---------- */
+@media print {
+  #side, #topbar, #histbar, #toolbar, .show-side, #toast, .view-tools, .title-row .icon-btn, .sec, .banner, .more, .fold, .add-props { display: none !important; }
+  .blk.has-kids > .bc { padding-right: 6px !important; } /* no room kept for the phone's fold arrow */
+  #app, #col { display: block; height: auto; }
+  #main { padding: 0; zoom: 1; overflow: visible; }
+  body { background: #fff; color: #000; }
+  .sheet { box-shadow: none !important; border: 0 !important; outline: none !important; background: #fff !important; padding: 0; }
+  .view { max-width: none; }
+  a { color: inherit; }
 }
