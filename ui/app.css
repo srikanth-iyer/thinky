@@ -56,6 +56,9 @@ body.side-hidden #histbar { padding-left: 62px; }
 
 /* reaches the sidebar's top and side edges, so the whole strip above the search box moves the window */
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; color: var(--ink-soft); margin: 0 -14px; padding: 16px 14px 0 20px; }
+/* wide windows: the sidebar's top row (logo, name, hide button) lines up with Home, back and forward
+   in #histbar (same top and height), and so does the "show sidebar" button when the sidebar is hidden */
+@media (min-width: 861px) { .brand { padding-top: 8px; min-height: 34px; } }
 .brand .hide-side { margin-left: auto; }
 .brand svg { width: 22px; height: 22px; flex: none; }
 
@@ -123,6 +126,9 @@ body.side-hidden #histbar { padding-left: 62px; }
 .weekday::before { content: var(--weekday-before); }
 .weekday::after { content: var(--weekday-after); }
 .page-head { margin-bottom: 14px; }
+/* a page's icon:: emoji, before its name (title, lists, sidebar, search, references) */
+.pg-ic { margin-right: .35em; font-style: normal; }
+.page-title .pg-ic { font-size: .82em; vertical-align: .04em; }
 /* page properties sit right under the title ("+ properties" on a page without any) */
 .page-head .page-props { margin: 4px 0 0; }
 /* journal days: a small calendar icon before the date; the weekday above lines up with the date */
@@ -143,7 +149,7 @@ body.side-hidden #histbar { padding-left: 62px; }
   border: var(--sheet-border); border-radius: var(--sheet-radius); box-shadow: var(--sheet-shadow);
   outline: var(--sheet-outline); outline-offset: var(--sheet-outline-offset);
 }
-.sheet { padding: calc(var(--sheet-band-h) + var(--sheet-pad-top)) var(--sheet-pad-x) var(--sheet-pad-bottom); margin-bottom: var(--sheet-gap); border-bottom: var(--sheet-divider); }
+.sheet { --sx: var(--sheet-pad-x); padding: calc(var(--sheet-band-h) + var(--sheet-pad-top)) var(--sheet-pad-x) var(--sheet-pad-bottom); margin-bottom: var(--sheet-gap); border-bottom: var(--sheet-divider); }
 .sheet.today { background-color: var(--today-bg); }
 .sheet .page-title { font-size: clamp(26px, 4.4vw, 34px); }
 .sheet .page-title::before { content: var(--title-ornament); color: var(--accent); font-style: normal; }
@@ -154,7 +160,8 @@ body.side-hidden #histbar { padding-left: 62px; }
    note's dot, under its open children, and nothing else is drawn on it: the fold arrow sits left of
    the dot, clear of the line above it, on a laptop (on hover), and at the right end of the note's
    first line on phones and in narrow windows, so the lines and dots on the left stay clear. */
-.outline { position: relative; margin-left: -4px; background-image: var(--ruled); --ind: 24px; --txt: 24px; }
+.outline { position: relative; margin-left: -4px; background-image: var(--ruled); }
+.outline, .pins { --ind: 24px; --txt: 24px; }
 /* --bul-h: height of the note's first line, where the dot and the arrow are centred. A heading makes
    it taller: the editor sets --hf (how much bigger the heading is, e.g. .3 for ##); --h-grow is 0
    in looks whose lines have a fixed height */
@@ -167,10 +174,10 @@ body.side-hidden #histbar { padding-left: 62px; }
 /* and its own line, from just below its dot down to its children (when they're showing) */
 .blk.has-kids:not(.collapsed)::after {
   content: ""; position: absolute; left: calc(var(--d, 0) * var(--ind) + 9px); width: 1px; bottom: 0; pointer-events: none;
-  top: calc(var(--bc-pad-y) + var(--bul-h) / 2 + var(--bullet-h) / 2 + 4px); background: var(--guide);
+  top: calc(var(--bc-pad-y) + var(--lead, 0px) + var(--bul-h) / 2 + var(--bullet-h) / 2 + 4px); background: var(--guide);
 }
 .bul {
-  position: absolute; left: calc(var(--d, 0) * var(--ind) + 2px); top: var(--bc-pad-y); width: 15px; height: var(--bul-h);
+  position: absolute; left: calc(var(--d, 0) * var(--ind) + 2px); top: calc(var(--bc-pad-y) + var(--lead, 0px)); width: 15px; height: var(--bul-h);
   display: grid; place-items: center; cursor: pointer; border: 0; background: none; padding: 0;
 }
 .bul::after {
@@ -180,7 +187,7 @@ body.side-hidden #histbar { padding-left: 62px; }
 .blk.has-kids.collapsed > .bul::after { box-shadow: 0 0 0 4px color-mix(in srgb, var(--bullet) 28%, transparent); }
 /* fold arrow: left of the dot, halfway between it and the line above (laptop: on hover) */
 .fold {
-  position: absolute; left: calc(var(--d, 0) * var(--ind) - 11px); top: var(--bc-pad-y); width: 14px; height: var(--bul-h);
+  position: absolute; left: calc(var(--d, 0) * var(--ind) - 11px); top: calc(var(--bc-pad-y) + var(--lead, 0px)); width: 14px; height: var(--bul-h);
   border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink-faint); opacity: 0; display: grid; place-items: center;
 }
 .fold::before { content: ""; width: 0; height: 0; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 6px solid currentColor; transition: transform .12s ease; }
@@ -197,6 +204,17 @@ body.side-hidden #histbar { padding-left: 62px; }
   .blk.has-kids > .bc, .blk.has-kids > .ed { padding-right: 18px; }
 }
 @media (pointer: coarse) { .fold { opacity: .4; } }
+/* the parents of the note at the top of the screen, pinned there while scrolling (editor.js
+   pinParents): one line each, at their own level, across the sheet; a tap goes to the note */
+.pins { position: sticky; top: 0; height: 0; z-index: 6; }
+.pins-in { position: absolute; top: 0; left: calc(-1 * var(--sx, 0px)); right: calc(-1 * var(--sx, 0px)); padding: 2px var(--sx, 0px) 3px;
+  background: linear-gradient(var(--sheet-bg), var(--sheet-bg)), var(--bg); border-bottom: 1px solid var(--line-soft); box-shadow: 0 8px 14px -12px rgba(0,0,0,.4); }
+.pin { position: relative; height: 30px; line-height: 30px; margin-left: -4px; padding-left: calc(var(--d, 0) * var(--ind) + var(--txt)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-soft); cursor: pointer; font-size: .94em; }
+.pin::before { content: ""; position: absolute; left: calc(var(--d, 0) * var(--ind) + 9.5px - var(--bullet-w) / 2); top: calc(50% - var(--bullet-h) / 2); width: var(--bullet-w); height: var(--bullet-h); border-radius: var(--bullet-radius); background: var(--bullet); transform: rotate(var(--bullet-rotate)); }
+.pin .h { font-size: 1em; font-family: inherit; font-weight: 600; }
+.pin a { pointer-events: none; }
+.pin:hover { color: var(--ink); }
+
 /* Logseq-style thread lines: the one under the pointer lights up; clicking it folds or unfolds all under its block */
 .thread-hl { position: absolute; width: 2px; border-radius: 1px; background: var(--ink-faint); pointer-events: none; }
 .outline.on-thread { cursor: pointer; }
@@ -214,6 +232,8 @@ body.side-hidden #histbar { padding-left: 62px; }
 .blk.marker-done > .bc { color: var(--ink-faint); text-decoration: line-through; text-decoration-color: var(--line); }
 .blk.marker-done > .bc a { color: inherit; }
 .blk.hit > .bc { background: var(--accent-tint); transition: background 1.2s ease; }
+/* phones: a note swiped far enough to move in or out a level (editor.js) */
+.blk.swipe-in > .bc, .blk.swipe-out > .bc { background: var(--accent-tint); }
 
 .bc a.pl, .props a.pl { color: var(--link); text-decoration: none; border-bottom: 1px solid var(--link-line); }
 .bc a.pl:hover { border-bottom-color: var(--link); }
@@ -247,6 +267,17 @@ a.tag .hash { display: var(--hash); }
 .date-chip.due { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .date-chip.overdue { color: var(--danger); background: var(--danger-tint); border-color: transparent; }
 .bc .img { display: block; max-width: 100%; height: auto; border-radius: 8px; margin: 6px 0; cursor: zoom-in; }
+/* quotes, and coloured note boxes: a pale tint, a coloured bar on the left, a coloured title.
+   --callout-gap/--callout-pad: space around and inside a box (0 in looks with ruled lines, so the
+   words stay on the lines); a note that starts with one gets --lead (editor.viewEl) = that space,
+   which moves its dot, arrow and line down to the box's first line of words. */
+.bc blockquote { margin: var(--quote-gap) 0; padding: 0 0 0 12px; border-left: 3px solid var(--line); color: var(--ink-soft); }
+.callout { --c: var(--c-note); margin: var(--callout-gap) 0; padding: var(--callout-pad) 12px var(--callout-pad) 15px; border-radius: 8px; background: color-mix(in srgb, var(--c) var(--callout-tint), transparent); box-shadow: inset 4px 0 0 var(--c); }
+.callout-t { color: var(--c); font-weight: 600; }
+.callout.c-tip { --c: var(--c-tip); } .callout.c-important { --c: var(--c-important); }
+.callout.c-warning { --c: var(--c-warning); } .callout.c-caution { --c: var(--c-caution); } .callout.c-pinned { --c: var(--accent); }
+.bc .center { text-align: center; }
+.bc .verse { white-space: pre-wrap; } /* #+BEGIN_VERSE: the lines' spaces kept */
 .bc .file, .bc .ext-off { color: var(--ink-soft); }
 /* formulas */
 .math { font-family: "Newsreader", Georgia, serif; font-size: 1.04em; white-space: nowrap; }
@@ -383,6 +414,8 @@ a.tag .hash { display: var(--hash); }
 .banner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: var(--danger-tint); color: var(--ink); border-radius: 10px; padding: 10px 12px; margin: 0 0 12px; font-size: 14px; line-height: 1.45; }
 .banner .btn { padding: 5px 10px; font-size: 13px; }
 #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 9px 14px; border-radius: 10px; font-size: 14px; line-height: 1.4; z-index: 60; max-width: calc(100vw - 32px); font-family: "IBM Plex Sans", system-ui, sans-serif; }
+#toast.has-act { display: flex; align-items: center; gap: 14px; }
+#toast .toast-act { border: 0; background: none; padding: 2px 4px; margin: -2px -4px -2px 0; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .note { color: var(--ink-soft); font-size: 14px; line-height: 1.5; }
 .err { color: var(--danger); }
 
@@ -394,6 +427,23 @@ a.tag .hash { display: var(--hash); }
 .results li { padding: 8px 12px; border-radius: 8px; cursor: pointer; }
 .results li[aria-selected="true"] { background: var(--accent-tint); }
 .results .snip { display: block; font-size: 13px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- find and replace on the page (find.js) ---------- */
+/* a small box at the top right, between the back/forward strip and the notes (phones: a strip under
+   the top bar); what's found is highlighted without changing the page (::highlight) */
+#findbar { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding: 2px 28px 6px; font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 14px; line-height: 1.3; }
+.fb-row { display: flex; align-items: center; gap: 1px; width: min(470px, 100%); padding: 3px 4px 3px 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 22px -14px rgba(0,0,0,.4); }
+.fb-row input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; color: var(--ink); padding: 6px 0; }
+.fb-n { flex: none; color: var(--ink-faint); font-size: 12.5px; padding: 0 6px; white-space: nowrap; }
+.fb-n.none { color: var(--danger); }
+.fb-row button { flex: none; min-width: 30px; height: 30px; border: 0; background: none; border-radius: 7px; display: grid; place-items: center; cursor: pointer; color: var(--ink-soft); font-size: 13px; font-weight: 600; padding: 0 4px; }
+.fb-row button:hover { background: var(--surface-2); color: var(--ink); }
+.fb-row button[aria-pressed="true"], .fb-row button[aria-expanded="true"] { background: var(--accent-tint); color: var(--ink); }
+.fb-row svg { width: 17px; height: 17px; }
+.fb-row .fb-txt { font-weight: 500; padding: 0 9px; color: var(--accent); }
+::highlight(find) { background-color: var(--find-bg); }
+::highlight(find-cur) { background-color: var(--find-cur-bg); }
+.blk.find-cur > .bc { box-shadow: inset 2px 0 0 var(--find-cur-bg); background: var(--accent-tint); }
 
 /* ---------- autocomplete ---------- */
 #ac { position: fixed; z-index: 55; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 30px -12px rgba(0,0,0,.35); list-style: none; margin: 0; padding: 4px; min-width: 220px; max-width: min(420px, calc(100vw - 24px)); max-height: 260px; overflow-y: auto; line-height: 1.4; font-family: "IBM Plex Sans", system-ui, sans-serif; }
@@ -431,27 +481,81 @@ a.tag .hash { display: var(--hash); }
 .modal-back { position: fixed; inset: 0; z-index: 70; background: color-mix(in srgb, var(--ink) 32%, transparent); display: flex; align-items: flex-start; justify-content: center; padding: 14vh 16px 16px; }
 .modal { width: min(460px, 100%); background: var(--surface); border-radius: 14px; border: var(--sheet-border); box-shadow: 0 24px 60px -20px rgba(0,0,0,.45); padding: 18px 20px; line-height: 1.5; font-family: "IBM Plex Sans", system-ui, sans-serif; color: var(--ink); }
 .modal h2 { margin: 0 0 8px; font-size: 18px; }
+/* the clash screen (clash.js): both versions of the notes that differ, side by side, to choose from;
+   this device green, the other copy blue, "before both changes" grey */
+.modal-back.clash-back { padding: 4vh 16px; }
+.clash { --mine: var(--c-tip); --theirs: var(--c-note); --was: var(--ink-faint);
+  width: min(920px, 100%); max-height: 92vh; display: flex; flex-direction: column; background: var(--surface); color: var(--ink);
+  border-radius: 14px; border: var(--sheet-border); box-shadow: 0 24px 60px -20px rgba(0,0,0,.45); font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.45; }
+.cl-head { padding: 16px 20px 10px; border-bottom: 1px solid var(--line-soft); }
+.cl-head h2 { margin: 0 0 4px; font-size: 19px; }
+.cl-head .note { margin: 0; }
+.cl-bar { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; color: var(--ink-soft); }
+.cl-key i, .cl-h i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.cl-key i:not(:first-child) { margin-left: 10px; }
+.clash i.mine { background: var(--mine); } .clash i.theirs { background: var(--theirs); } .clash i.base { background: var(--was); }
+.cl-nav { display: flex; align-items: center; gap: 2px; }
+.cl-list { flex: 1 1 auto; overflow-y: auto; padding: 12px 20px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.cl-item { border-radius: 12px; padding: 10px; background: var(--surface-2); scroll-margin: 12px; }
+.cl-item.cur { box-shadow: 0 0 0 2px var(--line); }
+.cl-what { margin: 0 0 6px; font-size: 13px; }
+.cl-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cl-col { display: block; position: relative; border: 2px solid var(--line-soft); border-radius: 10px; padding: 7px 10px 9px; background: var(--surface); cursor: pointer; min-width: 0; }
+.cl-col input { position: absolute; opacity: 0; pointer-events: none; }
+/* .on: the chosen one (clash.js; no :has(), which slows down drawing long pages everywhere) */
+.cl-col.mine.on { border-color: var(--mine); background: color-mix(in srgb, var(--mine) 7%, var(--surface)); }
+.cl-col.theirs.on { border-color: var(--theirs); background: color-mix(in srgb, var(--theirs) 7%, var(--surface)); }
+.cl-col.both { grid-column: 1 / -1; padding-bottom: 7px; }
+.cl-col.both .cl-h { margin: 0; }
+.cl-col.both.on { border-color: var(--accent); background: var(--accent-tint); }
+.cl-col.both.on .cl-h em { background: var(--surface); }
+.cl-col:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cl-h { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); margin-bottom: 3px; }
+.cl-h em { font-style: normal; font-weight: 500; font-size: 11.5px; color: var(--ink); background: var(--accent-tint); padding: 1px 7px; border-radius: 999px; margin-left: 6px; }
+.cl-notes { font-family: var(--font-body); font-size: 15px; overflow-wrap: anywhere; }
+.cl-b { position: relative; padding-left: calc(var(--d, 0) * 18px + 12px); }
+.cl-b::before { content: ""; position: absolute; left: calc(var(--d, 0) * 18px + 2px); top: .62em; width: 5px; height: 5px; border-radius: 50%; background: var(--bullet); }
+.cl-none { margin: 0; color: var(--ink-faint); font-style: italic; }
+.cl-props { margin: 0; font-size: 13px; white-space: pre-wrap; }
+.cl-base { margin-top: 8px; padding: 0 10px; }
+.cl-base .cl-notes { font-size: 13.5px; color: var(--ink-soft); }
+.cl-foot { padding: 10px 20px 14px; border-top: 1px solid var(--line-soft); }
+.cl-foot .note { margin: 0 0 8px; font-size: 12.5px; }
+.cl-foot .btn-row { justify-content: flex-end; }
+.cl-all { margin-right: auto; font-size: 13px; color: var(--ink-soft); }
+button.link { border: 0; background: none; padding: 0; font: inherit; color: var(--link); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+@media (max-width: 640px) {
+  .modal-back.clash-back { padding: 0; }
+  .clash { max-height: none; height: 100%; border-radius: 0; border: 0; }
+  .cl-cols { grid-template-columns: 1fr; }
+  .cl-head, .cl-list, .cl-foot { padding-left: 14px; padding-right: 14px; }
+}
 .modal .filter { margin: 12px 0 0; }
 .lightbox { align-items: center; padding: 16px; cursor: zoom-out; }
 .lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 20px 60px -20px rgba(0,0,0,.6); }
 .preview { width: min(420px, calc(100vw - 24px)); max-height: 340px; overflow: hidden; padding: 0 12px 6px; pointer-events: none; font-size: 14px; }
-.preview .pop-title { padding: 10px 0 4px; font-size: 14.5px; color: var(--ink); }
+.preview .pop-title { padding: 10px 0 4px; font-size: 14.5px; color: var(--ink); display: flex; align-items: center; gap: 10px; }
+.preview .pop-title > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* phones: it stays open after the finger lifts and takes the next tap (closing it, or "Open") */
+.preview.touch { pointer-events: auto; }
+/* phones: holding a link shows the preview, so its words aren't selected and Android adds no menu */
+@media (pointer: coarse) { a[data-page] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } }
 .preview .pv-b { padding: 1px 0 1px calc(var(--d, 0) * 14px + 12px); position: relative; }
 .preview .pv-b::before { content: ""; position: absolute; left: calc(var(--d, 0) * 14px + 2px); top: .68em; width: 4px; height: 4px; border-radius: 50%; background: var(--bullet); }
 .preview .note { margin: 6px 0 4px; font-size: 12.5px; }
 
 /* ---------- mobile edit toolbar ---------- */
-/* buttons packed close together so more fit without scrolling sideways; the hide-keyboard button
-   stays put at the end while the rest scroll under it */
+/* big icons packed close together (same height as before) so more fit without scrolling sideways;
+   the hide-keyboard button stays put at the end while the rest scroll under it */
 #toolbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; align-items: center;
   background: var(--surface); border-top: 1px solid var(--line); padding: 4px 4px;
 }
 .tb-scroll { display: flex; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
 .tb-scroll::-webkit-scrollbar { display: none; }
-#toolbar button { flex: 0 0 auto; width: 38px; height: 42px; border: 0; background: none; border-radius: 8px; font-size: 14px; letter-spacing: -0.04em; white-space: nowrap; color: var(--ink-soft); cursor: pointer; display: grid; place-items: center; font-family: var(--font-mono); }
+#toolbar button { flex: 0 0 auto; width: 36px; height: 42px; border: 0; background: none; border-radius: 8px; font-size: 16px; letter-spacing: -0.04em; white-space: nowrap; color: var(--ink-soft); cursor: pointer; display: grid; place-items: center; font-family: var(--font-mono); }
 #toolbar button:active { background: var(--accent-tint); }
-#toolbar svg { width: 20px; height: 20px; }
+#toolbar svg { width: 24px; height: 24px; }
 #toolbar .tb-pin { width: 44px; margin-left: 2px; border-left: 1px solid var(--line-soft); border-radius: 0 8px 8px 0; }
 
 /* ---------- settings ---------- */
@@ -505,6 +609,11 @@ table.keys td { padding: 5px 4px; border-top: 1px solid var(--line-soft); vertic
 table.keys td:first-child { color: var(--ink-soft); width: 46%; }
 kbd { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; white-space: nowrap; }
 pre.log { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); border-radius: 8px; padding: 10px; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+/* About: newer versions ("Update now", how it's going) */
+.upd { margin-top: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.upd .upd-out { margin: 0; }
+.upd .upd-out:empty { display: none; }
+.upd[data-stage="error"] .upd-out { color: var(--danger); }
 .bin li { display: flex; gap: 10px; align-items: center; padding: 6px 4px; border-bottom: 1px solid var(--line-soft); }
 .bin li span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .update { font-size: 13px; color: var(--accent-ink); background: var(--accent); border-radius: 8px; padding: 6px 10px; text-decoration: none; text-align: center; }
@@ -518,7 +627,7 @@ pre.log { font-family: var(--font-mono); font-size: 12px; background: var(--surf
 .todo-item.marker-done .bc { color: var(--ink-faint); text-decoration: line-through; }
 
 /* ---------- sidebar hidden (laptop) ---------- */
-.show-side { position: fixed; top: 12px; left: 12px; z-index: 35; display: none; background: var(--surface); border: 1px solid var(--line); }
+.show-side { position: fixed; top: 7px; left: 12px; z-index: 35; display: none; background: var(--surface); border: 1px solid var(--line); } /* centred on #histbar's buttons */
 body.side-hidden #side { display: none; }
 body.side-hidden #app { grid-template-columns: minmax(0, 1fr); }
 body.side-hidden .show-side { display: inline-grid; }
@@ -559,10 +668,15 @@ body.side-hidden .show-side { display: inline-grid; }
   #topbar .t { flex: 1; min-width: 0; padding-left: 6px; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: "IBM Plex Sans", system-ui, sans-serif; }
   #main { padding: 16px 14px 120px; }
   .sheet { padding-left: min(var(--sheet-pad-x), 18px); padding-right: min(var(--sheet-pad-x), 18px); margin-bottom: min(var(--sheet-gap), 20px); }
-  .outline { --ind: 20px; --txt: 22px; }
+  .outline, .pins { --ind: 20px; --txt: 22px; }
+  .sheet { --sx: min(var(--sheet-pad-x), 18px); }
   /* a day's page: the date at the size it has in the Journals list, so it fits next to its calendar
      icon and the star and menu buttons */
   .day-head .page-title { font-size: clamp(26px, 4.4vw, 34px); }
+  /* find: a strip under the top bar that stays with it; notes scrolled to stay clear of both */
+  #findbar { position: sticky; top: 55px; z-index: 29; background: var(--bg); padding: 6px 8px; border-bottom: 1px solid var(--line-soft); align-items: stretch; }
+  #findbar .fb-row { width: 100%; box-shadow: none; }
+  html.finding { scroll-padding-top: 112px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -571,7 +685,7 @@ body.side-hidden .show-side { display: inline-grid; }
 
 /* ---------- printing / save as PDF: just the page ---------- */
 @media print {
-  #side, #topbar, #histbar, #toolbar, .show-side, #toast, .view-tools, .title-row .icon-btn, .sec, .banner, .more, .fold, .add-props { display: none !important; }
+  #side, #topbar, #histbar, #findbar, .pins, #toolbar, .show-side, #toast, .view-tools, .title-row .icon-btn, .sec, .banner, .more, .fold, .add-props { display: none !important; }
   .blk.has-kids > .bc { padding-right: 6px !important; } /* no room kept for the phone's fold arrow */
   #app, #col { display: block; height: auto; }
   #main { padding: 0; zoom: 1; overflow: visible; }
@@ -580,3 +694,46 @@ body.side-hidden .show-side { display: inline-grid; }
   .view { max-width: none; }
   a { color: inherit; }
 }
+#toolbar:not([hidden]) ~ #toast { bottom: 72px; } /* above the phone editing toolbar */
+
+/* ---------- Settings: pictures nothing uses (Check this folder) and safety copies ---------- */
+.pics { list-style: none; margin: 8px 0; padding: 0; max-height: 360px; overflow: auto; border: 1px solid var(--line-soft); border-radius: 8px; }
+.pics li { display: flex; gap: 10px; align-items: center; padding: 5px 8px; border-bottom: 1px solid var(--line-soft); }
+.pics li:last-child { border-bottom: 0; }
+.pics .th { flex: none; width: 40px; height: 40px; border-radius: 6px; overflow: hidden; background: var(--surface-2); }
+.pics .th img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pics .th img.broken { visibility: hidden; }
+.pics .nm { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.pics .meta { color: var(--ink-faint); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pics label { display: flex; flex: 1; min-width: 0; gap: 10px; align-items: center; cursor: pointer; }
+.pics input[type="checkbox"] { flex: none; margin: 0; width: 18px; height: 18px; accent-color: var(--accent); }
+.bin .bin-th { width: 28px; height: 28px; margin-right: 8px; border-radius: 4px; object-fit: cover; vertical-align: middle; background: var(--surface-2); }
+.bin .bin-th.broken { visibility: hidden; }
+.sc h3 { margin: 12px 0 4px; overflow-wrap: anywhere; }
+.sc-list { max-height: 360px; overflow: auto; margin: 6px 0; }
+.sc-list button { display: flex; gap: 10px; align-items: baseline; width: 100%; padding: 8px 4px; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.sc-list button:hover { background: var(--surface-2); }
+.sc-list button > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sc-text { font-family: var(--font-mono); font-size: 12.5px; background: var(--surface-2); border-radius: 8px; padding: 10px; max-height: 360px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+
+/* ---------- pictures (render.js image, editor.js dragPicture) ---------- */
+/* a picture without a size of its own is at most this tall (laptop), less on a phone; never wider than the note */
+:root { --pic-max-h: 320px; }
+@media (max-width: 640px), (pointer: coarse) { :root { --pic-max-h: 260px; } }
+.pic { position: relative; display: block; width: fit-content; max-width: 100%; margin: 6px 0; }
+.pic > .img { display: block; max-width: 100%; height: auto; max-height: var(--pic-max-h); margin: 0; border-radius: 8px; }
+/* a size from the note (Logseq's {:height …, :width …}): that width, in the picture's own shape */
+.pic > .img.sized { max-height: none; object-fit: contain; }
+/* in a pinned parent's one-line row (editor.js pinParents): a small thumbnail among the words */
+.pin .pic { display: inline-block; vertical-align: -5px; margin: 0 3px; }
+.pin .pic > .img { width: auto; max-height: 20px; border-radius: 3px; }
+/* the resize handle: the bottom-right corner, shown on hover (always on touch screens, finger-sized) */
+.pic-h { position: absolute; right: 0; bottom: 0; width: min(24px, 33%); height: min(24px, 33%); cursor: nwse-resize; touch-action: pan-y; -webkit-user-select: none; user-select: none; }
+.pic-h::after {
+  content: ""; position: absolute; right: 6px; bottom: 6px; width: 9px; height: 9px; border: solid #fff; border-width: 0 3px 3px 0;
+  border-radius: 0 0 4px 0; filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, .8)); opacity: 0; transition: opacity .12s;
+}
+.pic:hover > .pic-h::after, .pic.resizing > .pic-h::after { opacity: 1; }
+.pic.resizing > .img { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: none), (pointer: coarse) { .pic-h { width: min(32px, 33%); height: min(32px, 33%); } .pic-h::after { right: 7px; bottom: 7px; width: 11px; height: 11px; opacity: .95; } }
+@media print { .pic-h { display: none; } }

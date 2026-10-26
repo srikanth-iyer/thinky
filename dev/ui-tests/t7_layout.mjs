@@ -17,6 +17,18 @@ for (let k = 0; k < 2000; k++) huge.push(`\t\t- hidden ${k}`);
 write('pages/Huge.md', huge.join('\n') + '\n');
 const { browser, page, errors } = await open();
 
+console.log('the sidebar’s top row and Home, back, forward are on one line');
+const mid = (sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return r.top + r.height / 2; }, sel);
+const homeMid = await mid('#histbar [data-a="home"]');
+const rowMids = [await mid('.brand .hide-side'), await mid('.brand > svg'), await mid('.brand > span'), await mid('#histbar [data-h="back"]')];
+check(rowMids.every((m) => Math.abs(m - homeMid) <= 1), 'the logo, name and hide button sit level with Home and the arrows', `${homeMid} vs ${rowMids.join(', ')}`);
+await page.locator('.brand .hide-side').click();
+await sleep(200);
+const showMid = await mid('.show-side');
+check(Math.abs(showMid - await mid('#histbar [data-a="home"]')) <= 1, 'with the sidebar hidden, its "show" button sits level with them too', showMid);
+await page.locator('.show-side').click();
+await sleep(200);
+
 console.log('the block being edited never hides under the top bar');
 const editedVsBar = (bar) => page.evaluate((sel) => {
   const t = document.querySelector('textarea.ed');

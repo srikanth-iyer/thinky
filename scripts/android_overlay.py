@@ -2,7 +2,10 @@
 
 Run from the repo root after init. Idempotent. Touches only src-tauri/gen/android.
 - MainActivity.kt: replaced by android/MainActivity.kt (keeps the generated package + imports)
-- AndroidManifest.xml: storage permissions for the Drive Sync folder
+- android/kotlin/*.kt and android/res: widgets, quick capture pop-up, Quick Settings tile
+- AndroidManifest.xml: storage permissions for the Drive Sync folder; the widgets, the pop-up
+  and the tile (COMPONENTS); one-click updates (permission to install apps, UpdateReceiver).
+  The app icon's shortcuts need nothing here (MainActivity sets them)
 - launcher icons: copied from src-tauri/icons/android
 """
 import glob, os, re, shutil, sys
@@ -52,6 +55,12 @@ perms = [
     '<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />',
     '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />',
     '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" tools:ignore="ScopedStorage" />',
+    # a short buzz when a swipe moves a note or a press-and-hold shows a preview (granted without asking)
+    '<uses-permission android:name="android.permission.VIBRATE" />',
+    # one-click updates: download the new APK and hand it to Android's installer (Android asks him
+    # once to allow "Install unknown apps" for the app, and confirms each update)
+    '<uses-permission android:name="android.permission.INTERNET" />',
+    '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />',
 ]
 missing = [p for p in perms if p.split('"')[1] not in man]
 if missing:
@@ -82,10 +91,19 @@ COMPONENTS = """
                 <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
+        <service android:name=".AddNoteTile" android:exported="true" android:label="Add note"
+            android:icon="@drawable/tile_add_note" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
 """
 if ".JournalWidget" not in man:
     i = man.rindex("</application>")
     man = man[:i] + COMPONENTS + "    " + man[i:]
+# Android's installer reports how an update went (MainActivity.kt); not exported, so only Android,
+# through the app's own PendingIntent, can reach it
+if ".UpdateReceiver" not in man:
+    i = man.rindex("</application>")
+    man = man[:i] + '    <receiver android:name=".UpdateReceiver" android:exported="false" />\n    ' + man[i:]
 if "requestLegacyExternalStorage" not in man:
     man = man.replace("<application", '<application android:requestLegacyExternalStorage="true"', 1)
 open(man_path, "w").write(man)

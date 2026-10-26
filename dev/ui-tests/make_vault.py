@@ -42,6 +42,16 @@ from PIL import Image, ImageDraw
 im = Image.new("RGB", (160, 80), "#0B7B66"); ImageDraw.Draw(im).ellipse((50, 10, 110, 70), fill="#FBEFC0")
 im.save(os.path.join(V, "assets/dot.png"))
 w("pages/Pictures.md", "- A picture: ![dot](../assets/dot.png)\n")
+# "Check this folder" (t10): a picture nothing uses, one only a whiteboard uses, a PDF (not a picture)
+Image.new("RGB", (40, 40), "#E0457B").save(os.path.join(V, "assets/unused.png"))
+Image.new("RGB", (40, 40), "#2F6BFF").save(os.path.join(V, "assets/board.png"))
+w("assets/paper.pdf", "%PDF-1.4 not really\n")
+os.makedirs(os.path.join(V, "whiteboards"))
+w("whiteboards/board.edn", '{:blocks [] :pages [{:block/name "board"}] :assets [{:id "a1" :src "../assets/board.png"}]}\n')
+# pictures from the last 3 days aren't checked (a note using one may still be on its way): these are older
+ten_days_ago = (datetime.datetime.now() - datetime.timedelta(days=10)).timestamp()
+for f in ["dot.png", "unused.png", "board.png"]:
+    os.utime(os.path.join(V, "assets", f), (ten_days_ago, ten_days_ago))
 w("pages/APRON.md", "- The kitchen\n")
 w("pages/APRON___Spice jars.md", "- jars work\n")
 w("pages/APRON___Spice jars___notes.md", "- deeper notes\n")

@@ -152,8 +152,15 @@ fn pieces<'a>(s: &'a str) -> Vec<Piece<'a>> {
             if let Some(close) = s[open..].find(']').map(|x| open + x) {
                 if s[close..].starts_with("](") {
                     if let Some(e) = s[close..].find(')') {
-                        end = Some(close + e + 1);
-                        piece = Some(Piece::Fixed(&s[i..close + e + 1]));
+                        let mut stop = close + e + 1;
+                        // a picture's size right after it, as Logseq writes it: {:height 200, :width 300}
+                        if s[stop..].starts_with('{') && s[stop + 1..].trim_start().starts_with(':') {
+                            if let Some(k) = s[stop..].find('}').filter(|&k| !s[stop..stop + k].contains('\n')) {
+                                stop += k + 1;
+                            }
+                        }
+                        end = Some(stop);
+                        piece = Some(Piece::Fixed(&s[i..stop]));
                     }
                 }
             }

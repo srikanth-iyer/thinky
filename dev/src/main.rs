@@ -6,7 +6,7 @@
 //! A tiny hand-written HTTP/1.1 server: one thread per connection, one request per
 //! connection. (tiny_http 0.12 now and then held back a request for seconds right after
 //! starting, which made browser tests hang.)
-use outline_core::app::{asset_file, dispatch, App};
+use outline_core::app::{asset_file, check_vault_at, dispatch, App};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
@@ -49,6 +49,9 @@ struct Request {
     method: String,
     url: String,
     origin: Option<String>,
+    /// `X-Test-Now: <seconds since 1970>`: UI tests ask "Check this folder" as at another time
+    /// (every picture a test makes is new, and pictures from the last 3 days are left alone).
+    test_now: Option<u64>,
     body: Vec<u8>,
 }
 
@@ -59,7 +62,7 @@ fn read_request(stream: &TcpStream) -> Option<Request> {
     r.read_line(&mut line).ok()?;
     let mut parts = line.split_whitespace();
     let (method, url) = (parts.next()?.to_string(), parts.next()?.to_string());
-    let (mut len, mut origin) = (0usize, None);
+    let (mut len, mut origin, mut test_now) = (0usize, None, None);
     loop {
         let mut h = String::new();
         if r.read_line(&mut h).ok()? == 0 {
@@ -73,6 +76,7 @@ fn read_request(stream: &TcpStream) -> Option<Request> {
             match k.trim().to_ascii_lowercase().as_str() {
                 "content-length" => len = v.trim().parse().ok()?,
                 "origin" => origin = Some(v.trim().to_string()),
+                "x-test-now" => test_now = v.trim().parse().ok(),
                 _ => {}
             }
         }
@@ -82,7 +86,7 @@ fn read_request(stream: &TcpStream) -> Option<Request> {
     }
     let mut body = vec![0; len];
     r.read_exact(&mut body).ok()?;
-    Some(Request { method, url, origin, body })
+    Some(Request { method, url, origin, test_now, body })
 }
 
 fn respond(mut stream: &TcpStream, code: u16, headers: &[(&str, &str)], body: &[u8]) {
@@ -123,7 +127,14 @@ fn handle(sv: &Server, stream: TcpStream) {
         }
         let args = serde_json::from_slice(&req.body).unwrap_or(serde_json::Value::Null);
         let mut state = sv.state.lock().unwrap_or_else(|p| p.into_inner());
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| dispatch(&mut state, cmd, args)));
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match (cmd, req.test_now, state.as_ref()) {
+            ("check", Some(now), Some(app)) => check_vault_at(&app.root, now).map(|r| serde_json::to_value(r).unwrap_or_default()),
+            ("bin_pictures", Some(now), Some(app)) => {
+                let paths: Vec<String> = serde_json::from_value(args.get("paths").cloned().unwrap_or_default()).unwrap_or_default();
+                app.bin_pictures_at(&paths, now).map(|r| serde_json::to_value(r).unwrap_or_default())
+            }
+            _ => dispatch(&mut state, cmd, args),
+        }));
         drop(state);
         let (code, out) = match res {
             Ok(Ok(v)) => (200, v.to_string()),
@@ -158,6 +169,10 @@ fn main() {
     let vault = std::env::args().nth(1).expect("usage: devserver <vault> [port]");
     let port = std::env::args().nth(2).unwrap_or("8765".into());
     let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // safety copies (core/src/app/safety.rs): $LEAN_DATA_DIR (the UI tests use a fresh one per test),
+    // else a folder in the system's temp folder
+    let data = std::env::var_os("LEAN_DATA_DIR").map(PathBuf::from).unwrap_or_else(|| std::env::temp_dir().join("lean-outliner-dev-data"));
+    outline_core::app::set_data_dir(data);
     let app = App::open(std::path::Path::new(&vault)).expect("open vault");
     let listener = TcpListener::bind(format!("127.0.0.1:{port}")).expect("port in use");
     let sv = Arc::new(Server {

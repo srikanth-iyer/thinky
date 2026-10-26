@@ -15,6 +15,11 @@
   --tag-before: ""; --tag-after: ""; --hash: inline; --tag-decoration: none;
   --mark-bg: #FBEFC0; --danger: #B3412A; --danger-tint: #FBE6E0;
   --edit-bg: #F2F7F4; --guide: #DCE1DC; --bullet: #7C8696;
+  /* coloured note boxes (callouts): note, tip, important, warning, caution */
+  --c-note: #2F6BD8; --c-tip: #188A5A; --c-important: #7B4FD6; --c-warning: #C46A12; --c-caution: #C8372D; --callout-tint: 9%;
+  --callout-gap: 5px; --callout-pad: 7px; --quote-gap: 3px;
+  /* words found by find on the page (Ctrl+F): all of them, and the current one */
+  --find-bg: rgba(255, 196, 0, .32); --find-cur-bg: rgba(255, 140, 0, .62);
   /* page */
   --page-image: none; --page-image-size: auto; --side-bg: transparent;
   /* sheets (journal days, page bodies, cards) */
@@ -53,6 +58,7 @@
 /* Night — the Board's dark look: labels sit IN the surface (inset wells), cards and buttons sit ON it */
 [data-skin="night"] {
   color-scheme: dark;
+  --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
   --bg: #1B1E24; --surface: #2A2F38; --surface-2: #242830;
   --ink: #E6E9EE; --ink-soft: #B9BFC9; --ink-faint: #8E95A0;
   --line: #454C58; --line-soft: #3A404B;
@@ -87,6 +93,7 @@
   --ruled: repeating-linear-gradient(transparent 0 27px, rgba(80,120,170,.22) 27px 28px);
   --font-body: "Newsreader", Georgia, serif; --font-label: var(--font-mono);
   --body-size: 17px; --lh: 28px; --line-box: 28px; --props-lh: 28px; --bc-pad-y: 0px; --h-grow: 0;
+  --callout-gap: 0px; --callout-pad: 0px; --quote-gap: 0px;
   --weekday-font: var(--font-mono); --weekday-style: normal;
   --bullet-w: 5px; --bullet-h: 5px;
   --btn-bg: transparent; --btn-border: 1px solid var(--ink-soft); --btn-radius: 3px; --btn-shadow: none;
@@ -118,6 +125,7 @@
 /* Sticker night — the sticker look, dimmed for evenings */
 [data-skin="stickernight"] {
   color-scheme: dark;
+  --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
   --bg: #2B2838; --surface: #383349; --surface-2: #322E42;
   --ink: #F2ECDF; --ink-soft: #D6CFC1; --ink-faint: #B0A99B;
   --line: #8C86A3; --line-soft: #4A4560;
@@ -141,6 +149,7 @@
    matters (bullets, links, ticks), a readable book serif, no clutter */
 [data-skin="grimoire"] {
   color-scheme: dark;
+  --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
   --bg: #121726; --surface: #1A2033; --surface-2: #20273D;
   --ink: #ECE6D8; --ink-soft: #C3BCAA; --ink-faint: #8E8878;
   --line: #303852; --line-soft: #262D45;
@@ -207,6 +216,7 @@
 /* Plain night — Plain for evenings: the same flat, quiet page, in soft white on near-black */
 [data-skin="plainnight"] {
   color-scheme: dark;
+  --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
   --bg: #141414; --surface: #141414; --surface-2: #1E1E1E;
   --ink: #E6E6E6; --ink-soft: #ABABAB; --ink-faint: #767676;
   --line: #303030; --line-soft: #242424;

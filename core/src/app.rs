@@ -20,6 +20,19 @@ pub fn cache_dir() -> Option<PathBuf> {
     CACHE_DIR.get().cloned()
 }
 
+/// Where the app keeps files that must last (the safety copies): not the cache, which Android may
+/// clear, and never inside the notes folder (set once by the Tauri shell / the dev server).
+static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+pub fn set_data_dir(dir: PathBuf) {
+    let _ = DATA_DIR.set(dir);
+}
+pub fn data_dir() -> Option<PathBuf> {
+    DATA_DIR.get().cloned()
+}
+
+pub mod pictures;
+pub mod safety;
+
 /// The notes folder last opened in the app (used by quick capture outside the app), or what's wrong
 /// in words for him: never chosen, or chosen but out of reach right now (Google Drive not running).
 pub fn last_vault_or_why() -> Result<PathBuf, String> {
@@ -62,6 +75,12 @@ pub struct App {
     /// Files that are not valid UTF-8: shown, never saved over.
     non_utf8: HashSet<String>,
     cache_dirty: bool,
+    /// Earlier texts (path, its stamp then, text) that changes made elsewhere replaced or removed,
+    /// not yet in a safety copy (safety.rs): found at start-up from the index cache, or while open.
+    replaced: Vec<(String, Stamp, String)>,
+    /// false: opened only to read (the health check, the capture box): the index cache is never
+    /// written, so the app's own cache stays as the app left it
+    keep_cache: bool,
 }
 
 #[derive(Serialize)]
@@ -86,6 +105,15 @@ pub struct PageView {
     /// Why the page is read-only, when its file couldn't be read.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// See `App::clash`.
+#[derive(Serialize)]
+pub struct Clash {
+    pub hash: String,
+    pub theirs: Doc,
+    pub parts: Option<Vec<crate::merge::Part>>,
+    pub preamble: Option<[String; 3]>,
 }
 
 #[derive(Deserialize)]
@@ -122,6 +150,21 @@ pub struct JournalDay {
     pub exists: bool,
 }
 
+/// Where a note for a page goes (`App::page_target`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PageTarget {
+    /// the page's name as the app shows it
+    pub name: String,
+    /// its file, vault-relative
+    pub rel: String,
+    /// the file is there
+    pub exists: bool,
+    /// a journal day
+    pub journal: bool,
+    /// a new page whose file name can't hold its name: its first line is `title:: <name>`
+    pub title: Option<String>,
+}
+
 #[derive(Serialize)]
 pub struct RenameRes {
     pub name: String,
@@ -135,10 +178,13 @@ pub struct RenameRes {
 pub struct Recycled {
     /// File name inside `logseq/.recycle`.
     pub file: String,
-    /// Page name it had.
+    /// Page name it had (a picture: its file name).
     pub name: String,
     /// Seconds since 1970 when it was deleted (file time).
     pub when: u64,
+    /// A picture moved there from assets: where "Put back" puts it (its path in the notes folder).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
 }
 
 #[derive(Debug)]
@@ -176,18 +222,100 @@ fn stamp_of(md: &std::fs::Metadata) -> Stamp {
 /// Write a file safely: to a hidden temp file next to it, then rename over it, so a crash
 /// never leaves half a page. Falls back to a direct write where renaming over isn't allowed.
 pub fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
+    write_atomic_checked(path, text, Expect::Anything).map(|_| ())
+}
+
+/// What a file must still hold right before `write_atomic_checked` replaces it.
+pub enum Expect<'a> {
+    /// no check
+    Anything,
+    /// the file isn't there
+    Missing,
+    /// exactly these bytes
+    Bytes(&'a [u8]),
+}
+
+/// `write_atomic`, but only if the file still holds what's `expect`ed when the new text is ready to
+/// replace it (checked again just before the rename): Ok(false) when someone else saved it
+/// meanwhile (nothing written; read it again and redo the change). The temp file has a name of
+/// its own (process and a counter), so two programs writing the same page never swap texts; a
+/// rename that fails (Google Drive or a virus checker holding the file for a moment) is tried
+/// again for about half a second before the direct write that some synced drives need.
+pub fn write_atomic_checked(path: &Path, text: &str, expect: Expect) -> Result<bool, String> {
+    static N: AtomicUsize = AtomicUsize::new(0);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        let _ = std::panic::catch_unwind(|| sweep_tmp(dir));
     }
     let fname = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-    let tmp = path.with_file_name(format!(".{fname}.tmp")); // hidden, so other apps ignore it
-    std::fs::write(&tmp, text).map_err(|e| format!("Couldn't write the page: {e}"))?;
-    if let Err(e) = std::fs::rename(&tmp, path) {
-        // some synced drives refuse to replace a file by renaming
+    // hidden (a leading dot), so other apps and the app's own scan ignore it
+    let tmp = path.with_file_name(format!(".{fname}.{}-{}.tmp", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
+    std::fs::write(&tmp, text).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
-        std::fs::write(path, text).map_err(|e2| format!("Couldn't save the page: {e} / {e2}"))?;
+        format!("Couldn't write the page: {e}")
+    })?;
+    let still = || match (&expect, std::fs::read(path)) {
+        (Expect::Anything, _) => true,
+        (Expect::Missing, Err(e)) => e.kind() == std::io::ErrorKind::NotFound,
+        (Expect::Bytes(b), Ok(now)) => now == *b,
+        _ => false,
+    };
+    if !still() {
+        let _ = std::fs::remove_file(&tmp);
+        return Ok(false);
     }
-    Ok(())
+    let mut last = None;
+    for i in 0..6 {
+        if i > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if !still() {
+                let _ = std::fs::remove_file(&tmp);
+                return Ok(false);
+            }
+        }
+        match std::fs::rename(&tmp, path) {
+            Ok(()) => return Ok(true),
+            Err(e) => last = Some(e),
+        }
+    }
+    // some synced drives refuse to replace a file by renaming: write it in place
+    let _ = std::fs::remove_file(&tmp);
+    if !still() {
+        return Ok(false);
+    }
+    let e = last.map(|e| e.to_string()).unwrap_or_default();
+    std::fs::write(path, text).map_err(|e2| format!("Couldn't save the page: {e} / {e2}"))?;
+    Ok(true)
+}
+
+/// Is `name` one of this app's temp files (`.<file>.<process>-<n>.tmp`, `write_atomic_checked`)?
+pub fn is_own_tmp(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix('.').and_then(|r| r.strip_suffix(".tmp")) else { return false };
+    let Some((file, tag)) = rest.rsplit_once('.') else { return false };
+    let Some((pid, n)) = tag.split_once('-') else { return false };
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    !file.is_empty() && !file.starts_with('.') && digits(pid) && digits(n)
+}
+
+/// Remove this app's own temp files older than a day in `dir` (left by a crash or a power cut
+/// between writing and renaming): only names exactly like `is_own_tmp`, once per folder per run.
+fn sweep_tmp(dir: &Path) {
+    static DONE: Mutex<Option<HashSet<PathBuf>>> = Mutex::new(None);
+    if !DONE.lock().unwrap_or_else(|p| p.into_inner()).get_or_insert_with(HashSet::new).insert(dir.to_path_buf()) {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let day = std::time::Duration::from_secs(24 * 3600);
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if !is_own_tmp(&name) {
+            continue;
+        }
+        let old = e.metadata().ok().filter(|m| m.is_file()).and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age > day);
+        if old {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
 }
 
 /// Keep how the original file ended: with a final line break or without one,
@@ -402,33 +530,95 @@ fn set_title_prop(text: &str, new: &str) -> String {
     keep_shape(Some(text), join_doc(&doc), doc.crlf)
 }
 
+/// Give a page's text the `title::` property it lacks: with its page properties at the top (after
+/// a YAML header), or in Logseq's properties-only first block, else as a new first line. Nothing
+/// else in the file changes.
+fn add_title_prop(text: &str, new: &str) -> String {
+    let mut doc = split_doc(text);
+    let nl = if doc.crlf { "\r\n" } else { "\n" };
+    let pre: Vec<&str> = doc.preamble.split_inclusive('\n').collect();
+    let fm = crate::doc::front_matter_len(&pre).unwrap_or(0);
+    let props_on_top = pre[fm..].iter().any(|l| crate::parse::property(l.trim_end_matches(['\n', '\r'])).is_some());
+    let props_block = |b: &DocBlock| {
+        let lines: Vec<&str> = b.text.split('\n').map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+        b.depth == 0 && !b.plain && !lines.is_empty() && lines.iter().all(|l| crate::parse::property(l).is_some())
+    };
+    match doc.blocks.first_mut() {
+        Some(b) if fm == 0 && !props_on_top && props_block(b) => b.text = format!("title:: {new}\n{}", b.text),
+        _ => {
+            let mut p: String = pre[..fm].concat();
+            if !p.is_empty() && !p.ends_with('\n') {
+                p.push_str(nl);
+            }
+            p.push_str(&format!("title:: {new}{nl}"));
+            p.push_str(&pre[fm..].concat());
+            doc.preamble = p;
+        }
+    }
+    keep_shape(Some(text), join_doc(&doc), doc.crlf)
+}
+
 impl App {
     pub fn open(root: &Path) -> Result<App, String> {
+        Self::load(root, true)
+    }
+
+    /// Open a notes folder only to read it (the health check, the Windows capture box): the index
+    /// cache is used, so only files changed since are read, but never written (nor a safety copy
+    /// made). A `logseq/config.edn` that is there but can't be read stops it (as
+    /// `capture::read_config` does): pages and journal days are never placed by guessed settings.
+    pub fn open_read_only(root: &Path) -> Result<App, String> {
+        Self::load(root, false)
+    }
+
+    /// Open a notes folder; `keep_cache`: write the index cache (the app itself; it still opens with
+    /// Logseq's defaults when config.edn can't be read). Not for the read-only opens, which would
+    /// otherwise make the cache forget texts that changes made elsewhere replaced, before the app
+    /// has put them in a safety copy.
+    fn load(root: &Path, keep_cache: bool) -> Result<App, String> {
         if !root.is_dir() {
             return Err(format!("Folder not found: {}", root.display()));
         }
-        let cfg = read_config(root);
+        let cfg = if keep_cache {
+            read_config(root)
+        } else {
+            crate::capture::read_config(root).map_err(|e| format!("Couldn't read logseq/config.edn ({e}). If it's on Google Drive, check it's available offline."))?
+        };
         let stamps = scan(root, &cfg);
         let mut cache = load_cache(root);
         let cache_had = cache.len();
         let mut contents = HashMap::new();
         let mut to_read = vec![];
+        // what the cache held of files that changed while the app was closed (for the safety copy)
+        let mut earlier: HashMap<String, (Stamp, String)> = HashMap::new();
         for (rel, st) in &stamps {
             match cache.remove(rel) {
                 Some((cst, text)) if cst == *st => {
                     contents.insert(rel.clone(), text);
                 }
-                _ => to_read.push(rel.clone()),
+                Some(old) => {
+                    earlier.insert(rel.clone(), old);
+                    to_read.push(rel.clone());
+                }
+                None => to_read.push(rel.clone()),
             }
         }
+        // the rest of the cache: files gone since (removed, renamed or moved elsewhere)
+        let mut replaced: Vec<(String, Stamp, String)> = cache.into_iter().map(|(r, (st, t))| (r, st, t)).collect();
         let mut non_utf8 = HashSet::new();
         let mut files = HashMap::new();
         for (rel, text, utf8) in read_parallel(root, &to_read) {
             if !utf8 {
                 non_utf8.insert(rel.clone());
             }
+            if let Some((st, old)) = earlier.remove(&rel) {
+                if !utf8 || old != text {
+                    replaced.push((rel.clone(), st, old));
+                }
+            }
             contents.insert(rel, text);
         }
+        replaced.extend(earlier.into_iter().map(|(r, (st, t))| (r, st, t))); // changed, and unreadable now
         // index in a fixed order, so which file wins a duplicated page name is stable
         let mut rels: Vec<&String> = contents.keys().collect();
         rels.sort();
@@ -441,13 +631,19 @@ impl App {
             contents.remove(rel); // never cache text we couldn't read exactly
         }
         let cache_dirty = !to_read.is_empty() || cache_had != contents.len();
-        let mut app = App { root: root.to_path_buf(), vault, files, contents, non_utf8, cache_dirty };
-        app.write_cache();
+        let mut app = App { root: root.to_path_buf(), vault, files, contents, non_utf8, cache_dirty, replaced: vec![], keep_cache };
+        app.write_cache(); // (not when opened only to read: see write_cache)
+        app.replaced = replaced; // for the safety copy made next (start_safety_copy)
         Ok(app)
     }
 
-    /// Persist file texts so the next start only reads files that changed.
+    /// Persist file texts so the next start only reads files that changed. The cache forgets the
+    /// earlier texts that changes made elsewhere replaced, so those go into a safety copy first.
     fn write_cache(&mut self) {
+        if !self.keep_cache {
+            return; // opened only to read: nothing is written, not the cache, not a safety copy
+        }
+        self.keep_replaced();
         if !self.cache_dirty {
             return;
         }
@@ -485,6 +681,9 @@ impl App {
             if self.files.get(&rel) != ch.base.get(&rel) {
                 continue; // saved by us meanwhile
             }
+            if !utf8 || self.contents.get(&rel).is_some_and(|old| *old != text) {
+                self.note_replaced(&rel);
+            }
             self.vault.upsert(&rel, &text);
             self.files.insert(rel.clone(), ch.now[&rel]);
             if utf8 {
@@ -500,6 +699,7 @@ impl App {
             if self.files.get(&rel) != ch.base.get(&rel) {
                 continue;
             }
+            self.note_replaced(&rel);
             self.vault.remove(&rel);
             self.files.remove(&rel);
             self.contents.remove(&rel);
@@ -515,6 +715,17 @@ impl App {
             self.write_cache();
         }
         changed
+    }
+
+    /// A change made elsewhere is about to replace (or remove) this file's text: keep the text as it
+    /// was for the next safety copy (every one, also several of the same note; within the copies'
+    /// limits: 500 texts, 25 MB).
+    fn note_replaced(&mut self, rel: &str) {
+        let (Some(st), Some(text)) = (self.files.get(rel), self.contents.get(rel)) else { return };
+        let bytes: usize = self.replaced.iter().map(|(_, _, t)| t.len()).sum();
+        if self.replaced.len() < 500 && bytes + text.len() <= 25 << 20 {
+            self.replaced.push((rel.to_string(), *st, text.clone()));
+        }
     }
 
     /// Save the index cache if anything changed (the app calls this when it's put away).
@@ -623,17 +834,52 @@ impl App {
                 text = format!("title:: {}\n{}", info.name, text);
             }
         }
-        self.write_page(&rel, &text)?;
+        if current.is_none() {
+            // a new page: its own file (Vault::free_rel), written only where no file is yet; one
+            // that turned up meanwhile is a clash like any change made elsewhere
+            if !write_atomic_checked(&path, &text, Expect::Missing)? {
+                let now = read_text(&path).ok().flatten();
+                return Ok(SaveRes { ok: false, hash: now.as_deref().map(content_hash).unwrap_or_default(), conflict: true, merged: None });
+            }
+            self.record_write(&rel, &text);
+        } else {
+            self.write_page(&rel, &text)?;
+        }
         let merged = merged.map(|_| split_doc(&text));
         Ok(SaveRes { ok: true, hash: content_hash(&text), conflict: false, merged })
     }
 
-    /// Keep a copy of a page's text in `logseq/bak/<file>/<time>.md` (Logseq's backup place).
+    /// Keep a copy of a page's text in `logseq/bak/<file>/<time>.md` (Logseq's backup place); a
+    /// second copy within the same second gets "-2", "-3"… (never overwrites one).
     fn backup(&self, rel: &str, text: &str) -> Result<(), String> {
         let stem = rel.trim_end_matches(".md");
         let stamp = crate::log::now_utc().replace([' ', ':'], "_").replace("_UTC", "");
-        let p = self.root.join("logseq").join("bak").join(stem).join(format!("{stamp}.md"));
+        let dir = self.root.join("logseq").join("bak").join(stem);
+        let mut p = dir.join(format!("{stamp}.md"));
+        let mut n = 2;
+        while p.exists() {
+            p = dir.join(format!("{stamp}-{n}.md"));
+            n += 1;
+        }
         write_atomic(&p, text).map_err(|e| format!("Couldn't keep a backup copy, so nothing was saved: {e}"))
+    }
+
+    /// A page changed here (`mine`) and in its file (by another app) since `base`, in the same
+    /// places: the file's version and the page in parts, for choosing note by note (the clash
+    /// screen). `parts` is None when the page is too big to compare; `preamble` is set when both
+    /// changed the page properties differently (base, mine, theirs). `path`: the file the editor
+    /// opened (as for `save`: never another file's version).
+    pub fn clash(&self, name: &str, mine: &Doc, base: &Doc, path: Option<&str>) -> Result<Clash, String> {
+        let rel = self.vault.page_info(name).path.ok_or("page has no path")?;
+        if path.is_some_and(|p| p != rel) {
+            return Err("This page's file changed (it was renamed or moved), so the two versions can't be compared.".into());
+        }
+        let current = read_text(&self.root.join(&rel)).map_err(|e| e.say("this page's file"))?.unwrap_or_default();
+        let theirs = split_doc(&current);
+        let parts = crate::merge::clash_parts(&base.blocks, &mine.blocks, &theirs.blocks);
+        let (b, m, t) = (&base.preamble, &mine.preamble, &theirs.preamble);
+        let preamble = (m != b && t != b && m != t).then(|| [b.clone(), m.clone(), t.clone()]);
+        Ok(Clash { hash: content_hash(&current), theirs, parts, preamble })
     }
 
     /// Keep a copy of the editor's version before it's thrown away ("Load the new version").
@@ -726,14 +972,93 @@ impl App {
         if line.is_empty() {
             return Err("Nothing to add.".into());
         }
-        let (rel, name) = if cfg.capture_today {
-            (cfg.journal_rel_path(today), cfg.journal_title(today))
+        if cfg.capture_today {
+            self.append_to(&cfg.journal_rel_path(today), &line)?;
+            return Ok(cfg.journal_title(today));
+        }
+        let t = self.page_target(&cfg.capture_page)?;
+        if t.exists || t.journal {
+            self.append_to(&t.rel, &line)?;
         } else {
-            let info = self.vault.page_info(&cfg.capture_page);
-            (info.path.unwrap_or_else(|| crate::capture::target(&cfg, today)), info.name)
-        };
-        self.append_to(&rel, &line)?;
-        Ok(name)
+            let text = self.create_page(&t, &line)?.ok_or_else(|| format!("Another file turned up at {} just now, so nothing was added. Try again.", t.rel))?;
+            self.record_write(&t.rel, &text);
+        }
+        Ok(t.name)
+    }
+
+    /// The pages a note can be added to (the capture box's list): every page with a file or with
+    /// links to it, not journal days, with its file's change time in seconds (0: no file yet).
+    pub fn page_list(&self) -> Vec<(String, u64)> {
+        self.vault
+            .all_pages()
+            .into_iter()
+            .filter(|p| p.journal.is_none())
+            .map(|p| {
+                let secs = self.vault.page_info(&p.name).path.and_then(|r| self.files.get(&r).map(|s| s.mtime_ns / 1_000_000_000)).unwrap_or(0);
+                (p.name, secs)
+            })
+            .collect()
+    }
+
+    /// Where a note for the page named `name` would go, as everywhere in the app (its file, read
+    /// from `title::` too; an alias's page; the first file of a name two files share; a journal
+    /// day for a journal title), or why a new page can't have that name. A new page gets a file of
+    /// its own, as in the editor (`Vault::free_rel`: when its file name already holds another page,
+    /// one named by its `title::`, the next free one, `<name> (2).md`…, with `title::`).
+    pub fn page_target(&self, name: &str) -> Result<PageTarget, String> {
+        let name = clean_name(name)?;
+        let info = self.vault.page_info(&name);
+        let rel = info.path.ok_or("That page has no file name.")?;
+        let file = rel.rsplit('/').next().unwrap_or(&rel);
+        if !info.exists && (file == ".md" || file.starts_with('.') || !file.ends_with(".md")) {
+            return Err(format!("“{name}” can't be the name of a page (its file name would be empty or hidden)."));
+        }
+        // like a new page saved by the editor: a name the file name can't hold exactly gets title::
+        let title = (!info.exists && info.journal.is_none() && self.vault.title_from_path(&rel).0 != info.name).then(|| info.name.clone());
+        Ok(PageTarget { name: info.name, rel, exists: info.exists, journal: info.journal.is_some(), title })
+    }
+
+    /// A new page's first note (`t` from `page_target`): a file of its own, starting with
+    /// `title::` when its file name can't hold its name, written only where no file is yet.
+    /// Some(text written); None: a file turned up there meanwhile (look again).
+    fn create_page(&self, t: &PageTarget, line: &str) -> Result<Option<String>, String> {
+        let start = t.title.as_ref().map(|n| format!("title:: {n}\n")).unwrap_or_default();
+        let text = crate::append_bullet(&start, line);
+        let path = self.root.join(&t.rel);
+        if write_atomic_checked(&path, &text, Expect::Missing)? {
+            return Ok(Some(text));
+        }
+        // something is there now: a file saved meanwhile, or one that can't be read
+        if let Err(e) = std::fs::read(&path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(format!("Couldn't read {} ({e}), so nothing was added. If it's on Google Drive, check it's available offline.", t.rel));
+            }
+        }
+        Ok(None)
+    }
+
+    /// The capture box: add a note to the page named `page`. Changes made elsewhere are taken in
+    /// first, then the page is found as everywhere in the app (`page_target`); the note is added at
+    /// its end, safely (`capture::append_note`), in the quick capture template, as a to-do if asked.
+    /// A page that doesn't exist yet gets a new file, only if no file appeared there meanwhile
+    /// (then it looks again: it may be this page now, or another page's file). Done as soon as the
+    /// note is written: nothing after it can turn that into a failure. Returns the path written.
+    #[allow(clippy::too_many_arguments)]
+    pub fn capture_to_page(&mut self, page: &str, text: &str, url: &str, todo: bool, today: Date, time: &str) -> Result<String, String> {
+        for _ in 0..3 {
+            self.rescan();
+            let t = self.page_target(page)?;
+            let line = crate::capture::note_line(&self.vault.config, text, url, todo, today, time)?;
+            if t.exists || t.journal {
+                // its own file (a journal day's file that appears meanwhile is still that day)
+                crate::capture::append_note(&self.root.join(&t.rel), &t.rel, "", &line)?;
+                return Ok(t.rel);
+            }
+            if self.create_page(&t, &line)?.is_some() {
+                return Ok(t.rel);
+            }
+        }
+        Err(format!("Files named like “{page}” kept appearing while the note was being added, so nothing was added. Try again in a moment."))
     }
 
     pub fn search(&self, q: &str) -> Vec<SearchHit> {
@@ -799,9 +1124,10 @@ impl App {
         let comma = self.vault.config.comma_props.clone();
         let own_rel = info.path.clone().filter(|_| info.exists);
         // the new file name, next to the old one
+        // (a file of its own, as for a new page: never another page's, `Vault::free_rel`)
         let new_rel = own_rel.as_ref().map(|rel| {
             let dir = rel.rsplit_once('/').map_or(self.vault.config.pages_dir.as_str(), |(d, _)| d).to_string();
-            format!("{dir}/{}.md", crate::file_stem_for(&new))
+            self.vault.free_rel(&format!("{dir}/{}.md", crate::file_stem_for(&new)), Some(rel))
         });
         if let (Some(r), Some(n)) = (&own_rel, &new_rel) {
             if r != n && crate::key(r) != crate::key(n) && self.root.join(n).exists() {
@@ -832,7 +1158,14 @@ impl App {
             let path = self.root.join(&rel);
             let cur = read_text(&path).map_err(|e| e.say("this page's file"))?.unwrap_or_default();
             let text = rename_in_text(&cur, &olds, &new, &comma).unwrap_or_else(|| cur.clone());
-            let text = if self.vault.page_info(&info.name).props.iter().any(|(k, _)| k == "title") { set_title_prop(&text, &new) } else { text };
+            let text = if crate::parse::parse_page(&text, &comma).title.is_some() {
+                set_title_prop(&text, &new)
+            } else if self.vault.title_from_path(&nrel).0 != new {
+                // like a new page: a name the file name can't hold exactly (con, a trailing dot…)
+                add_title_prop(&text, &new)
+            } else {
+                text
+            };
             if text != cur {
                 write_atomic(&path, &text)?;
             }
@@ -896,19 +1229,24 @@ impl App {
         Ok(n)
     }
 
-    /// Pages in the bin, newest first.
+    /// Pages and pictures in the bin, newest first.
     pub fn recycled(&self) -> Vec<Recycled> {
         let mut v = vec![];
         let Ok(rd) = std::fs::read_dir(self.recycle_dir()) else { return v };
         for e in rd.flatten() {
             let file = e.file_name().to_string_lossy().into_owned();
-            if !file.ends_with(".md") || file.starts_with('.') {
+            if file.starts_with('.') {
                 continue;
             }
             let when = e.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
-            let rel = self.restore_rel(&file);
-            let name = self.vault.title_from_path(&rel).0;
-            v.push(Recycled { file, name, when });
+            if file.ends_with(".md") {
+                let rel = self.restore_rel(&file);
+                let name = self.vault.title_from_path(&rel).0;
+                v.push(Recycled { file, name, when, picture: None });
+            } else if let Some(rel) = self.picture_home(&file) {
+                let name = rel.rsplit('/').next().unwrap_or(&rel).to_string();
+                v.push(Recycled { file, name, when, picture: Some(rel) });
+            }
         }
         v.sort_by(|a, b| b.when.cmp(&a.when));
         v
@@ -931,10 +1269,14 @@ impl App {
         format!("{}/{stem}.md", cfg.pages_dir)
     }
 
-    /// Put a page from the bin back. Returns its name.
+    /// Put a page (or a picture) from the bin back. Returns its name (a picture: where it went in the
+    /// notes folder, "assets/sub/x.png").
     pub fn restore(&mut self, file: &str) -> Result<String, String> {
         if file.contains(['/', '\\']) || file.starts_with('.') {
             return Err("Not a file in the bin.".into());
+        }
+        if pictures::is_picture(file) {
+            return self.restore_picture(file);
         }
         let src = self.recycle_dir().join(file);
         let rel = self.restore_rel(file);
@@ -956,27 +1298,7 @@ impl App {
     /// Save an image or file into `assets/` and return the link path Logseq uses
     /// from a page (`../assets/name_123.png`).
     pub fn save_asset(&mut self, name: &str, data: &str) -> Result<String, String> {
-        let bytes = b64_decode(data)?;
-        if bytes.is_empty() {
-            return Err("The file is empty.".into());
-        }
-        let name = name.rsplit(['/', '\\']).next().unwrap_or(name);
-        let (stem, ext) = name.rsplit_once('.').unwrap_or((name, "png"));
-        let clean = |s: &str| -> String {
-            s.chars().map(|c| if c.is_alphanumeric() || "-_".contains(c) { c } else { '_' }).collect::<String>().trim_matches('_').to_string()
-        };
-        let mut stem = clean(stem);
-        if stem.is_empty() {
-            stem = "image".into();
-        }
-        let stem: String = stem.chars().take(60).collect();
-        let ext = clean(ext).to_lowercase();
-        let ms = std::time::SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis());
-        let file = format!("{stem}_{ms}.{}", if ext.is_empty() { "bin" } else { &ext });
-        let path = self.root.join("assets").join(&file);
-        std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-        std::fs::write(&path, bytes).map_err(|e| format!("Couldn't save the file: {e}"))?;
-        Ok(format!("../assets/{file}"))
+        save_asset_file(&self.root, name, &b64_decode(data)?)
     }
 
     /// Change `:favorites` in config.edn (add or remove one page).
@@ -1030,6 +1352,91 @@ impl App {
     /// Is `p` (relative to the vault, e.g. "assets/x.png") a file inside the vault?
     pub fn asset_file(&self, p: &str) -> Option<PathBuf> {
         asset_file(&self.root, p)
+    }
+}
+
+/// The largest picture or file added to `assets/` (the app's editor says so before reading one).
+pub const MAX_ASSET_BYTES: usize = 25_000_000;
+
+/// Pictures the app shows in a note (by file name).
+pub fn is_picture(name: &str) -> bool {
+    let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+    matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "ico" | "avif")
+}
+
+/// The name a file gets in `assets/`, the way Logseq names them: `<name, only letters, digits, -
+/// and _>_<milliseconds>.<ext>` (e.g. `My_Photo__1_1761487200000.png`). Its own extension
+/// (lower case, at most 10 letters or digits; a longer "extension" is part of the name), or none.
+pub fn asset_file_name(name: &str, ms: u128) -> String {
+    let name = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    let clean = |s: &str| -> String {
+        s.chars().map(|c| if c.is_alphanumeric() || "-_".contains(c) { c } else { '_' }).collect::<String>().trim_matches('_').to_string()
+    };
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) if !s.is_empty() && !e.is_empty() && e.chars().count() <= 10 && e.chars().all(|c| c.is_ascii_alphanumeric()) => (s, e.to_ascii_lowercase()),
+        _ => (name, String::new()),
+    };
+    let mut stem = clean(stem);
+    if stem.is_empty() {
+        stem = "image".into();
+    }
+    let stem: String = stem.chars().take(60).collect();
+    if ext.is_empty() {
+        format!("{stem}_{ms}")
+    } else {
+        format!("{stem}_{ms}.{ext}")
+    }
+}
+
+/// Copy a picture or file into the notes folder's `assets/` folder (named by `asset_file_name`).
+/// Never over another file: a name already taken moves to the next millisecond. Shared by the
+/// app's editor and the Windows capture box. Returns the link target, "../assets/<file>".
+pub fn save_asset_file(root: &Path, name: &str, bytes: &[u8]) -> Result<String, String> {
+    save_asset_file_at(root, name, bytes, std::time::SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis()))
+}
+
+/// `save_asset_file` with the name worked out for millisecond `ms` (the capture box names a file
+/// when it's added to the note and copies it when the note is added): that name if it's free.
+pub fn save_asset_file_at(root: &Path, name: &str, bytes: &[u8], ms: u128) -> Result<String, String> {
+    if bytes.is_empty() {
+        return Err("The file is empty.".into());
+    }
+    if bytes.len() > MAX_ASSET_BYTES {
+        return Err("That file is over 25 MB; pick a smaller one.".into());
+    }
+    let dir = root.join("assets");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't make the assets folder: {e}"))?;
+    let mut ms = ms;
+    for _ in 0..1000 {
+        let file = asset_file_name(name, ms);
+        let path = dir.join(&file);
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut f) => {
+                use std::io::Write;
+                if let Err(e) = f.write_all(bytes).and_then(|_| f.flush()) {
+                    drop(f);
+                    let _ = std::fs::remove_file(&path); // never leave half a file behind
+                    return Err(format!("Couldn't save the file: {e}"));
+                }
+                return Ok(format!("../assets/{file}"));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => ms += 1,
+            Err(e) => return Err(format!("Couldn't save the file: {e}")),
+        }
+    }
+    Err("Couldn't find a free file name in assets.".into())
+}
+
+/// The Markdown for a file added to a note: a picture shows in the note (`![name](…)`, the name
+/// without its extension, as the app's editor writes it), anything else is a link (`[name.ext](…)`).
+pub fn asset_markdown(name: &str, rel: &str) -> String {
+    let name = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    let label: String = name.chars().filter(|c| !matches!(c, '[' | ']' | '\n' | '\r')).collect();
+    if is_picture(name) {
+        let alt = label.rsplit_once('.').map_or(label.as_str(), |(s, _)| s);
+        format!("![{alt}]({rel})")
+    } else {
+        format!("[{label}]({rel})")
     }
 }
 
@@ -1088,13 +1495,19 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
             return Ok(json!(true));
         }
         "task_done" => return Ok(json!(crate::task::complete(&s("text"), date("today")?))),
+        // the look's colours for the Windows capture box (it draws itself without the web page)
+        "save_look" => return Ok(json!(crate::capture_box::save_look(cache_dir().as_deref(), &s("look"), args.get("colors").unwrap_or(&Value::Null))?)),
         // saving the index when the app hides: nothing to do before a folder is open
         "persist" if state.is_none() => return Ok(json!(false)),
         _ => {}
     }
     if cmd == "open" {
-        let app = App::open(Path::new(&s("path")))?;
+        if let Some(old) = state.as_mut() {
+            old.persist(); // its index cache, and earlier texts not yet in a safety copy
+        }
+        let mut app = App::open(Path::new(&s("path")))?;
         remember_vault(&app.root);
+        app.start_safety_copy(); // in the background (see safety.rs)
         let sum = to_value(app.summary()).unwrap();
         *state = Some(app);
         return Ok(sum);
@@ -1171,6 +1584,20 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
             app.backup_doc(&s("name"), &doc)?;
             Ok(json!(true))
         }
+        "clash" => {
+            let doc = |k: &str| serde_json::from_value::<Doc>(args.get(k).cloned().unwrap_or(Value::Null)).map_err(|e| e.to_string());
+            to_value(app.clash(&s("name"), &doc("doc")?, &doc("base")?, args.get("path").and_then(Value::as_str))?)
+        }
+        // pictures nothing uses → the bin (pictures.rs); safety copies (safety.rs)
+        "bin_pictures" => {
+            let paths: Vec<String> = serde_json::from_value(args.get("paths").cloned().unwrap_or(Value::Null)).map_err(|e| e.to_string())?;
+            to_value(app.bin_pictures(&paths)?)
+        }
+        "safety_copies" => to_value(data_dir().map(|d| app.safety_copies(&d)).unwrap_or_default()),
+        "safety_copy" => to_value(app.safety_copy(&safety::folder()?, &s("id"))?),
+        // "before": 0 (or none) the note as copied, 1, 2… one of its earlier texts
+        "safety_note" => to_value(app.safety_note(&safety::folder()?, &s("id"), &s("path"), n("before") as u32)?),
+        "safety_restore" => to_value(app.safety_restore(&safety::folder()?, &s("id"), &s("path"), n("before") as u32)?),
         _ => return Err(format!("unknown command: {cmd}")),
     };
     v.map_err(|e| e.to_string())
@@ -1243,6 +1670,15 @@ pub struct CheckReport {
     pub biggest: Vec<(String, usize)>,
     /// Pages with the most linked references: (name, references).
     pub most_linked: Vec<(String, usize)>,
+    /// How many pictures `assets/` holds.
+    pub pictures: usize,
+    /// Pictures in `assets/` that nothing in the folder mentions: (path, bytes). See pictures.rs.
+    pub unused_pictures: Vec<(String, u64)>,
+    pub unused_pictures_bytes: u64,
+    /// Text files that couldn't be read: while there are any, no picture is called unused.
+    pub pictures_unreadable: Vec<String>,
+    /// Pictures changed in the last 3 days, left out (a note using one may still be on its way).
+    pub pictures_recent: usize,
 }
 
 /// "Page (1).md", "Page (conflict 2026-…).md", "Page [Conflict].md": a sync copy of "Page.md"?
@@ -1262,8 +1698,14 @@ fn conflict_copy_of(rel: &str, all: &HashMap<String, Stamp>) -> bool {
 
 /// Read-only health check of a vault: load time and round-trip safety of every file.
 pub fn check_vault(root: &Path) -> Result<CheckReport, String> {
+    check_vault_at(root, std::time::SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs()))
+}
+
+/// `check_vault` with pictures judged as at `now` (seconds since 1970): for tests (the dev server's
+/// too), whose pictures are all new. Reads only: not even the index cache is written.
+pub fn check_vault_at(root: &Path, now: u64) -> Result<CheckReport, String> {
     let t = std::time::Instant::now();
-    let app = App::open(root)?;
+    let app = App::open_read_only(root)?;
     let load_ms = t.elapsed().as_millis();
     let mut fails = vec![];
     for (rel, text) in &app.contents {
@@ -1287,7 +1729,13 @@ pub fn check_vault(root: &Path) -> Result<CheckReport, String> {
     let mut most_linked: Vec<(String, usize)> = app.vault.all_pages().into_iter().map(|p| (p.name, p.refs)).collect();
     most_linked.sort_by(|a, b| b.1.cmp(&a.1));
     most_linked.truncate(5);
+    let pics = app.picture_check_at(now);
     Ok(CheckReport {
+        pictures: pics.pictures,
+        unused_pictures: pics.unused,
+        unused_pictures_bytes: pics.bytes,
+        pictures_unreadable: pics.unreadable,
+        pictures_recent: pics.recent,
         files: app.files.len(),
         pages: app.vault.page_count(),
         load_ms,

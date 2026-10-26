@@ -175,6 +175,9 @@ fn logseq_file_names() {
         ("a:b", "a%3Ab"),
         ("hydration__/x", "hydration_%5F___x"),
         ("CON", "CON___"),
+        ("con", "con___"),
+        ("Nul", "Nul___"),
+        ("com1", "com1___"),
         (".hidden", "%2Ehidden"),
         ("100% sure", "100% sure"),
         ("%2F", "%252F"),
@@ -185,7 +188,7 @@ fn logseq_file_names() {
         assert_eq!(file_stem_for(name), stem, "{name}");
         // and it reads back as the same name
         let v = Vault::new();
-        if name != "CON" {
+        if !["CON", "con", "Nul", "com1"].contains(&name) {
             assert_eq!(v.title_from_path(&format!("pages/{stem}.md")).0, name, "{name}");
         }
     }

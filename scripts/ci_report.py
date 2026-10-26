@@ -23,6 +23,8 @@ if kind == "sizes":
         n = os.path.getsize(p)
         ch = (n - ref) / ref * 100
         out.append(f"| {name} | {mb(n)} | {mb(ref)} | {ch:+.1f}% |")
+        # also as a notice: readable from the job's annotations (the summary isn't, from the API)
+        print(f"::notice title=Size of {name}::{n} bytes ({mb(n)}, {ch:+.1f}% vs the reference)", file=sys.stderr)
         if n > ref * base["size_warn_ratio"]:
             warn.append(f"{name} grew to {mb(n)} ({ch:+.1f}% vs {mb(ref)})")
 elif kind == "bench":

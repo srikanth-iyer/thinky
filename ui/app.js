@@ -3,13 +3,14 @@
 // editor.js / render.js, floating bits in popups.js.
 
 import { call, today, nowTime, store, isApp, isAndroid, listen } from './api.js';
-import { Outline } from './editor.js';
+import { Outline, EDGE, PIN_H } from './editor.js';
 import { renderBlock, propsHtml, visibleProps, esc } from './render.js';
 import { Suggest, Preview, menu, confirmBox, promptBox, pickDate, place } from './popups.js';
 import { pagesView, tagsView, propsView, todosView, taskRow, taskClicks, taskDay, num } from './views.js';
 import { settingsView } from './settings.js';
 import { h, pageLink, ICON } from './dom.js';
 import { keyOf } from './calendar.js';
+import { Find } from './find.js';
 
 // Looks: name and one-line note for the picker; the look itself lives in skins.css.
 export const SKINS = [
@@ -25,6 +26,27 @@ export const SKINS = [
   { id: 'azulejo', name: 'Azulejo', note: 'Cobalt tiles on white' },
 ];
 const SKIN_IDS = new Set(SKINS.map((s) => s.id));
+/** The current look's colours for the Windows "Add to journal" box, as #rrggbb: each token painted
+ *  on a 1-pixel canvas over the box's background, so any CSS colour (see-through ones too) comes
+ *  out as the colour seen. The names are the CSS tokens (outline_core::capture_box::COLOR_KEYS). */
+function lookColors() {
+  const probe = document.createElement('i');
+  probe.style.display = 'none';
+  document.body.append(probe);
+  const g = Object.assign(document.createElement('canvas'), { width: 1, height: 1 }).getContext('2d', { willReadFrequently: true });
+  const paint = (token, under) => {
+    probe.style.color = `var(--${token})`;
+    g.fillStyle = under;
+    g.fillRect(0, 0, 1, 1);
+    g.fillStyle = getComputedStyle(probe).color;
+    g.fillRect(0, 0, 1, 1);
+    return '#' + [...g.getImageData(0, 0, 1, 1).data.slice(0, 3)].map((c) => c.toString(16).padStart(2, '0')).join('');
+  };
+  const out = { surface: paint('surface', '#ffffff') };
+  for (const t of ['surface-2', 'ink', 'ink-soft', 'ink-faint', 'accent', 'accent-ink', 'line', 'line-soft', 'danger']) out[t] = paint(t, out.surface);
+  probe.remove();
+  return out;
+}
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SCROLL_KEYS = new Set(['PageDown', 'PageUp', 'Home', 'End', ' ', 'ArrowDown', 'ArrowUp']);
 const QUIET_BUTTONS = '#histbar button, #topbar button, .side-fold, .title-row .icon-btn';
@@ -55,6 +77,8 @@ const DEFAULT_KEYS = {
   'editor/highlight': [],
   'editor/toggle-open-blocks': ['t o'],
   'go/search': ['mod+k'],
+  'go/search-in-page': ['mod+f'], // find (and replace) on the page that's open
+  'go/replace-in-page': ['mod+h'],
   'go/journals': ['g j', 'mod+j'],
   'go/all-pages': ['g a'],
   'go/todos': ['g t'],
@@ -87,6 +111,7 @@ class App {
     this.active = null;
     this.ac = new Suggest(this);
     this.preview = new Preview();
+    this.find = new Find(this);
     this.pendingLine = null;
     this.conflicts = new Set();
     this.keyMap = { ...DEFAULT_KEYS };
@@ -94,10 +119,19 @@ class App {
   }
 
   // ----- small services used by editors and views -----
-  toast(msg, ms = 3200) {
+  /** A short message at the bottom; action {label, run}: a button in it (e.g. Undo). */
+  toast(msg, ms = 3200, action = null) {
     let t = $('#toast');
     if (!t) { t = h('div'); t.id = 'toast'; t.setAttribute('role', 'status'); document.body.append(t); }
     t.textContent = msg;
+    if (action) {
+      const b = h('button', 'toast-act');
+      b.type = 'button';
+      b.textContent = action.label;
+      b.onclick = () => { t.hidden = true; action.run(); };
+      t.append(b);
+    }
+    t.classList.toggle('has-act', !!action);
     t.hidden = false;
     clearTimeout(this.toastT);
     this.toastT = setTimeout(() => (t.hidden = true), ms);
@@ -117,6 +151,33 @@ class App {
     this.active = on ? outline : (this.active === outline ? null : this.active);
     if (on) this.outlines.forEach((o) => o !== outline && o.clearSel());
     this.updateToolbar();
+    this.pinSoon();
+  }
+  /** Long pages keep the parents of the note at the top of the screen pinned there (editor.js
+   *  pinParents); worked out once per frame while scrolling. On a phone, not while typing: the
+   *  keyboard leaves little room. */
+  pinSoon() {
+    if (this.pinF) return;
+    this.pinF = requestAnimationFrame(() => {
+      this.pinF = 0;
+      if (!this.outlines.length) return;
+      const cs = getComputedStyle($('#main'));
+      const narrow = cs.overflowY === 'visible';
+      const fb = $('#findbar');
+      const top = this.scroller().top + (narrow && !fb.hidden ? fb.getBoundingClientRect().height : 0);
+      const typing = narrow && this.outlines.some((o) => o.cur !== null);
+      // sticky rows stop at the scrolling part's padding: in a wide window that's #main's, so they
+      // go up by as much to sit right under the top strip
+      const main = $('#main'), z = (main.offsetWidth ? main.getBoundingClientRect().width / main.offsetWidth : 1) || 1; // text size zooms #main, not the top bar
+      const stick = narrow ? top / z : -parseFloat(cs.paddingTop);
+      for (const o of this.outlines) o.pinParents(top, stick, typing);
+      // a wide window: scrolling a note into view (typing, find) keeps it below the pinned rows
+      if (!narrow) {
+        const rows = Math.max(0, ...this.outlines.map((o) => (o.pins.hidden ? 0 : o.pins.firstChild.childElementCount)));
+        const pad = rows ? `${8 + rows * PIN_H}px` : '';
+        if (main.style.scrollPaddingTop !== pad) main.style.scrollPaddingTop = pad;
+      }
+    });
   }
   selecting(outline, on) {
     if (on) { this.active = outline; this.outlines.forEach((o) => o !== outline && o.clearSel()); }
@@ -129,7 +190,12 @@ class App {
   }
   saved(outline) {
     window.LeanAndroid?.refreshWidget?.();
-    if (!this.names.some((n) => n.exists && n.name.toLowerCase() === outline.name.toLowerCase())) this.refreshNames();
+    const key = outline.name.toLowerCase();
+    const isNew = !this.names.some((n) => n.exists && n.name.toLowerCase() === key);
+    // a page icon (icon::) added, changed or removed shows next to its name everywhere straight away
+    const iconAt = (t) => (t || '').match(/(?:^|\n)\s*icon::[ \t]*(.*)/i)?.[1].trim() ?? '';
+    const icon = iconAt(outline.doc?.preamble) || iconAt(outline.doc?.blocks?.[0]?.text);
+    if (isNew || icon !== (this.icons?.get(key) ?? '')) this.refreshNames();
     this.widgetTasksSoon();
   }
   recent() { return store.get('recent', []); }
@@ -141,6 +207,14 @@ class App {
 
   async refreshNames() {
     try { this.names = await call('pages'); } catch { /* vault not open */ }
+    // pages with an icon:: (an emoji shown before their name everywhere)
+    this.icons = new Map(this.names.filter((n) => n.icon).map((n) => [n.name.toLowerCase(), n.icon]));
+    this.renderSideLists();
+  }
+  /** A page's icon (its icon:: emoji), ready to put before its name; '' without one. */
+  icon(name) {
+    const i = this.icons?.get(String(name).toLowerCase());
+    return i ? `<span class="pg-ic" aria-hidden="true">${esc(i)}</span>` : '';
   }
 
   /** Does this key event trigger a Logseq action (single key combinations only)? */
@@ -185,6 +259,9 @@ class App {
     document.body.classList.remove('drawer');
     this.ac.close();
     this.closeLooks?.();
+    this.find.close();
+    this.find.undo = null; // a replace's Undo belongs to the page it was made on
+    this.preview.hide();
     await Promise.all(this.outlines.map((o) => { o.stopEdit(); return o.flush(); }));
     if (seq !== this.routeSeq) return;
     // a page whose changes clash with changes made elsewhere stays open until the user chooses
@@ -421,7 +498,9 @@ class App {
     if (ns) head.append(h('p', 'ns-path', parts.slice(0, -1).map((p, k) => pageLink(parts.slice(0, k + 1).join('/'), p)).join(' / ') + ' /'));
     const titleRow = h('div', 'title-row');
     const fav = (this.summary?.config?.favorites || []).some((f) => f.toLowerCase() === pv.info.name.toLowerCase());
-    titleRow.innerHTML = `<h1 class="page-title">${esc(ns ? parts[parts.length - 1] : pv.info.name)}</h1>
+    const pic = (pv.info.props || []).find(([k]) => k === 'icon')?.[1]?.trim();
+    const picHtml = pic && [...pic].length <= 8 ? `<span class="pg-ic" aria-hidden="true">${esc(pic)}</span>` : '';
+    titleRow.innerHTML = `<h1 class="page-title">${picHtml}${esc(ns ? parts[parts.length - 1] : pv.info.name)}</h1>
       <button class="icon-btn${fav ? ' on' : ''}" data-a="fav" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" title="Favourite">${ICON.star}</button>
       <button class="icon-btn" data-a="more" aria-label="Page actions" title="More">${ICON.more}</button>`;
     // page properties ("+ properties" when there are none) go right under the title
@@ -526,7 +605,7 @@ class App {
     const wrap = h('div');
     for (const g of groups) {
       const grp = h('div', 'refgrp');
-      grp.innerHTML = `<h3>${pageLink(g.page)}</h3>`;
+      grp.innerHTML = `<h3>${this.icon(g.page)}${pageLink(g.page)}</h3>`;
       for (const hit of g.hits) {
         const row = h('div', 'refhit');
         row.style.setProperty('--d', Math.min(hit.depth, 4));
@@ -567,12 +646,22 @@ class App {
   pageMenu(btn, pv) {
     const items = [];
     if (!pv.info.journal) items.push({ label: 'Rename…', run: () => this.renamePage(pv.info.name) });
+    items.push({ label: 'Find on this page', run: () => this.find.open() });
     items.push({ label: 'Print or save as PDF', run: () => this.printPage() });
     if (pv.info.exists) items.push({ label: 'Delete page…', danger: true, run: async () => { if (await this.deletePages([pv.info.name])) this.go('journals'); } });
     menu(btn, items);
   }
 
+  /** True (and says so) while a page waits for his choice on the clash screen: renaming or deleting
+   *  pages then could take that page's file away from under it. */
+  clashWaiting() {
+    const o = this.outlines.find((x) => x.conflict);
+    if (o) this.toast(`First choose which version of “${o.name}” to keep (the button at the top of the page).`, 5000);
+    return !!o;
+  }
+
   async renamePage(name) {
+    if (this.clashWaiting()) return;
     const info = this.names.find((n) => n.name.toLowerCase() === name.toLowerCase());
     const n = info?.refs || 0;
     const v = await promptBox({ title: 'Rename page', value: name, ok: 'Rename', body: n ? `Links to it in ${n} place${n === 1 ? '' : 's'} will be updated to the new name.` : '' });
@@ -598,6 +687,7 @@ class App {
 
   /** Delete pages (they go to the bin, logseq/.recycle). Returns true if deleted. */
   async deletePages(names) {
+    if (this.clashWaiting()) return false;
     const links = names.reduce((s, n) => s + (this.names.find((x) => x.name.toLowerCase() === n.toLowerCase())?.refs || 0), 0);
     const what = names.length === 1 ? `“${esc(names[0])}”` : `${names.length} pages`;
     const ok = await confirmBox({
@@ -658,6 +748,13 @@ class App {
     if (rgb.length === 3 && window.LeanAndroid?.setBarColors) {
       const hex = '#' + rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('');
       window.LeanAndroid.setBarColors(hex, 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 140);
+    }
+    // and so does the Windows "Add to journal" box, which draws itself without this page: it reads
+    // the colours from a small file the app keeps (written only when they change). A moment later,
+    // so starting up and trying looks one after another stay quick.
+    if (!isAndroid) {
+      clearTimeout(this.lookTimer);
+      this.lookTimer = setTimeout(() => call('save_look', { look: id, colors: lookColors() }).catch(() => {}), 700);
     }
   }
   /** The look picker: a short list that opens from the sidebar's Look button. Each row has a
@@ -737,7 +834,7 @@ class App {
       sel = 0;
       ul.innerHTML = items.map((x) => x.create
         ? `<li>New page: <b>${esc(x.page)}</b></li>`
-        : `<li>${esc(x.page)}${x.line === null ? '' : `<span class="snip">${esc(x.snippet)}</span>`}</li>`).join('');
+        : `<li>${this.icon(x.page)}${esc(x.page)}${x.line === null ? '' : `<span class="snip">${esc(x.snippet)}</span>`}</li>`).join('');
       paint();
     };
     let t;
@@ -822,7 +919,8 @@ class App {
     // screen scrolls now (see app.css). Keep what was at the top of the notes there, and let the
     // journals watch the right part for loading older days.
     let noteT = 0;
-    const onScroll = () => { clearTimeout(noteT); noteT = setTimeout(() => this.noteTop(), 150); };
+    const onScroll = () => { clearTimeout(noteT); noteT = setTimeout(() => this.noteTop(), 150); this.pinSoon(); };
+    window.addEventListener('resize', () => this.pinSoon());
     $('#main').addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('scroll', onScroll, { passive: true });
     matchMedia('(max-width: 860px)').addEventListener('change', () => { this.restoreTop(); this.journalWatch?.(); });
@@ -880,6 +978,23 @@ class App {
     document.addEventListener('click', (e) => {
       if (document.body.classList.contains('drawer') && !e.target.closest('#side, #topbar, .pop, .modal-back')) document.body.classList.remove('drawer');
     });
+    // phones: a swipe in from the left edge opens the menu, a swipe to the left closes it
+    // (Android's Back gesture keeps the very edge; notes swipe in and out further in, editor.js)
+    let sw = null;
+    document.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      const open = document.body.classList.contains('drawer');
+      sw = e.touches.length === 1 && matchMedia('(max-width: 860px)').matches && (open || t.clientX < EDGE) ? { x: t.clientX, y: t.clientY, open } : null;
+    }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+      if (!sw) return;
+      const dx = e.touches[0].clientX - sw.x, dy = Math.abs(e.touches[0].clientY - sw.y);
+      if (dy > 30 && dy > Math.abs(dx)) { sw = null; return; }
+      if (Math.abs(dx) < 50 || Math.abs(dx) < dy * 1.5) return;
+      if (!sw.open && dx > 0) document.body.classList.add('drawer');
+      if (sw.open && dx < 0) document.body.classList.remove('drawer');
+      sw = null;
+    }, { passive: true });
 
     // phone editing toolbar: scrolls sideways, except "close keyboard", which stays at the end
     const tb = $('#toolbar');
@@ -888,10 +1003,25 @@ class App {
       ['image', 'Add image'], ['undo', 'Undo'], ['redo', 'Redo']];
     const tbBtn = ([k, label], cls = '') => `<button data-t="${k}"${cls ? ` class="${cls}"` : ''} aria-label="${label}" title="${label}">${ICON[k] ?? (k === 'link' ? '[[]]' : '#')}</button>`;
     tb.innerHTML = `<div class="tb-scroll">${tools.map((t) => tbBtn(t)).join('')}</div>${tbBtn(['done', 'Close keyboard'], 'tb-pin')}`;
+    // A button acts when it's tapped (the finger lifted where it went down), not as soon as a finger
+    // lands on it: a sideways swipe that starts on a button scrolls the toolbar and presses nothing
+    // (moving more than 10px, or the browser taking the touch over for scrolling, cancels it).
+    let press = null;
     tb.addEventListener('pointerdown', (e) => {
       const b = e.target.closest('button');
       if (!b) return;
-      e.preventDefault(); // keep the keyboard open
+      e.preventDefault(); // keep the keyboard open (the button never takes the focus)
+      press = { b, id: e.pointerId, x: e.clientX, y: e.clientY };
+    });
+    tb.addEventListener('pointermove', (e) => {
+      if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) press = null;
+    });
+    tb.addEventListener('pointercancel', () => { press = null; });
+    tb.addEventListener('pointerup', (e) => {
+      const p = press;
+      press = null;
+      if (!p || e.pointerId !== p.id || e.target.closest('button') !== p.b) return;
+      const b = p.b;
       const o = this.active;
       if (!o) return;
       const i = o.cur ?? (o.sel ? o.selRange()[0] : null);
@@ -899,7 +1029,9 @@ class App {
       const heading = () => { const m = o.textOf(i).match(/^(?:[A-Z-]+ )?(#{1,6}) /); o.setHeading(m ? (m[1].length >= 3 ? 0 : m[1].length + 1) : 1); };
       ({
         outdent: () => o.outdent(i), indent: () => o.indent(i), up: () => o.move(i, -1), down: () => o.move(i, 1),
-        newline: () => o.insertAtCaret('\n'), link: () => o.insertAtCaret('[[]]', 2), tag: () => o.insertAtCaret('#'),
+        newline: () => o.insertAtCaret('\n'), tag: () => o.insertAtCaret('#'),
+        // with words selected, the link button makes them a page link
+        link: () => (o.ta && o.ta.selectionStart !== o.ta.selectionEnd ? o.wrap('[[', ']]') : o.insertAtCaret('[[]]', 2)),
         check: () => (o.sel ? o.cycleTodoSel() : o.cycleTodo()), date: () => o.editDate(i, 'scheduled'),
         bold: () => o.wrap('**', '**'), mark: () => o.wrap('^^', '^^'), heading,
         image: () => o.pickImage(), undo: () => o.undo(), redo: () => o.redo(),
@@ -927,19 +1059,35 @@ class App {
     // (not when "all files access" was just turned on: then the folder is opened again anyway, see start)
     const refresh = () => { if (!(this.noAccess && window.LeanAndroid?.hasAllFilesAccess?.())) this.rescan(); };
     listen('lean-files', refresh);
+    // Put away (Android may then close the app without a word), reloaded or closed: save what can be
+    // saved; a page waiting for his choice on the clash screen is saved nowhere, so it gets a copy
+    // in logseq/bak if he typed more since the last one (editor.js backupPending)
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') refresh();
-      else { this.outlines.forEach((o) => o.flush()); if (this.vaultOpen) call('persist').catch(() => {}); }
+      else { this.outlines.forEach((o) => { o.flush(); o.backupPending(true); }); if (this.vaultOpen) call('persist').catch(() => {}); }
     });
     window.addEventListener('focus', refresh);
     // without file notifications (the dev server), fall back to a slow check
     if (!isApp) setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 30000);
-    window.addEventListener('beforeunload', () => this.outlines.forEach((o) => o.flush()));
+    window.addEventListener('beforeunload', () => this.outlines.forEach((o) => { o.flush(); o.backupPending(true); }));
     // finish saving before the window closes
     listen('lean-close', async () => {
-      try { await Promise.race([Promise.all(this.outlines.map((o) => { o.stopEdit(); return o.flush(); })), new Promise((r) => setTimeout(r, 3500))]); } catch {}
+      await this.saveAll();
       call('quit').catch(() => {});
     });
+  }
+
+  /** Save every open page now (closing the app, installing an update). True when all is saved;
+   *  false if something isn't: a clash waiting for him, a save that failed or took over `ms`. */
+  async saveAll(ms = 3500) {
+    let done = false;
+    try {
+      // (a page waiting for his choice on the clash screen is saved nowhere: it gets its copy in
+      // logseq/bak first, editor.js backupPending)
+      const all = Promise.all(this.outlines.map(async (o) => { o.stopEdit(); await o.flush(); await o.backupPending(); })).then(() => true);
+      done = await Promise.race([all, new Promise((r) => setTimeout(() => r(false), ms))]);
+    } catch { /* not saved */ }
+    return done && !this.outlines.some((o) => !o.readonly && (o.dirty || o.conflict));
   }
 
   onKey(e) {
@@ -949,6 +1097,8 @@ class App {
     if (document.querySelector('.modal-back, .pop.datepick, .pop.menu')) return;
     const act = (name) => (this.keyMap[name] || []).some((k) => !k.includes(' ') && same(parseChord(k), evChord(e)));
     if (act('go/search')) { e.preventDefault(); this.openSearch(); return; }
+    // (not when the note being edited already used the key, e.g. :editor/highlight set to ctrl+h)
+    if ((act('go/search-in-page') || act('go/replace-in-page')) && this.outlines.length && !e.defaultPrevented) { e.preventDefault(); this.find.open(act('go/replace-in-page')); return; }
     if (act('go/backward')) { e.preventDefault(); history.back(); return; }
     if (act('go/forward')) { e.preventDefault(); history.forward(); return; }
     if (act('ui/text-bigger')) { e.preventDefault(); this.toast(`Text size ${Math.round(this.textSize(this.textSize() + 0.05) * 100)}%`, 900); return; }
@@ -961,6 +1111,8 @@ class App {
     const o = this.outlines.find((x) => x.sel);
     if (o && o.onSelKey(e)) { e.preventDefault(); return; }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      // right after a replace in find (several pages, maybe): undo it everywhere it changed things
+      if (!e.shiftKey && this.find.canUndo) { e.preventDefault(); this.find.undoReplace(); return; }
       const last = this.active || this.outlines[0];
       if (last) { e.preventDefault(); e.shiftKey ? last.redo() : last.undo(); }
       return;
@@ -1049,10 +1201,10 @@ class App {
 
   renderSideLists() {
     const el = $('#recent');
-    if (el) el.innerHTML = this.recent().map((n) => `<a href="#" data-page="${esc(n)}">${esc(n)}</a>`).join('') || '<span class="note" style="padding:0 8px;font-size:13px">Pages you open show up here.</span>';
+    if (el) el.innerHTML = this.recent().map((n) => `<a href="#" data-page="${esc(n)}">${this.icon(n)}${esc(n)}</a>`).join('') || '<span class="note" style="padding:0 8px;font-size:13px">Pages you open show up here.</span>';
     const favs = this.summary?.config?.favorites || [];
     const f = $('#favs');
-    if (f) f.innerHTML = favs.length ? `<div class="side-sec" data-sec="favs"><button type="button" class="side-h side-fold" aria-expanded="true">Favourites</button><div class="side-list">${favs.map((n) => `<a href="#" data-page="${esc(n)}">${esc(n)}</a>`).join('')}</div></div>` : '';
+    if (f) f.innerHTML = favs.length ? `<div class="side-sec" data-sec="favs"><button type="button" class="side-h side-fold" aria-expanded="true">Favourites</button><div class="side-list">${favs.map((n) => `<a href="#" data-page="${esc(n)}">${this.icon(n)}${esc(n)}</a>`).join('')}</div></div>` : '';
     this.applySideFolds();
     requestAnimationFrame(() => this.fitRecent());
   }
@@ -1152,9 +1304,11 @@ class App {
     const lightbox = $('.modal-back.lightbox');
     if (lightbox) { lightbox.remove(); return true; }
     if ($('.modal-back, .pop.datepick, .pop.menu')) { esc(); return true; }
+    if (!this.preview.el.hidden) { this.preview.hide(); return true; }
     if (this.closeLooks) { this.closeLooks(); return true; }
     if (!$('#search').hidden) { this.closeSearch(); return true; }
     if (this.ac.isOpen) { this.ac.close(); return true; }
+    if (this.find.isOpen) { this.find.close(); return true; }
     if (document.body.classList.contains('drawer')) { document.body.classList.remove('drawer'); return true; }
     const o = this.outlines.find((x) => x.cur !== null || x.sel);
     if (o) { o.stopEdit(); o.clearSel(); document.activeElement?.blur(); this.updateToolbar(); return true; }
@@ -1196,6 +1350,19 @@ class App {
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reopen(); });
     document.addEventListener('lean-access', reopen);
     this.checkUpdate();
+    this.started = true;
+    this.openShortcut(); // Android: opened from a long-press shortcut on the app icon?
+  }
+
+  /** Android's long-press shortcuts on the app icon: "Today" and "Search" ("Add note" opens the
+   *  pop-up, not the app). MainActivity keeps the one picked until the page takes it: at the end of
+   *  start(), or straight away (from onNewIntent) when the app was already open. */
+  async openShortcut() {
+    if (!this.started) return; // still starting: start() asks once the notes are open
+    const kind = window.LeanAndroid?.takeShortcut?.();
+    if (!kind || !this.vaultOpen) return;
+    if (kind === 'today') { this.closeSearch(); this.go('page', await call('journal_name', { date: today() })); }
+    else if (kind === 'search') { this.openSearch(); window.LeanAndroid.showKeyboard?.(); }
   }
 
   async openVault() {
@@ -1241,7 +1408,8 @@ class App {
     if (force || Date.now() - last.at > 864e5) {
       try {
         const r = await fetch('https://api.github.com/repos/srikanth-iyer/lean-outliner-releases/releases/latest', { headers: { Accept: 'application/vnd.github+json' } });
-        if (r.ok) { const j = await r.json(); latest = { tag: j.tag_name, url: j.html_url }; }
+        // (with each file's size: About says how much "Update now" downloads)
+        if (r.ok) { const j = await r.json(); latest = { tag: j.tag_name, url: j.html_url, sizes: Object.fromEntries((j.assets || []).map((a) => [a.name, a.size])) }; }
       } catch { /* offline */ }
       store.set('updateCheck', { at: Date.now(), latest });
     }

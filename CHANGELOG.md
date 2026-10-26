@@ -5,6 +5,16 @@ each one the code exactly as it was released at its last build. Later releases a
 the top. (Until Build 32 the app was called Lean Outliner; its downloads and hidden id keep that
 name, so updates install over older builds.)
 
+## Milestone 3 — Builds 23 to 26 (October 26, 2026)
+
+- Reading and writing: coloured note boxes and quotes, page icons, easier links, find and replace, press and hold to preview a link, pinned parent notes, swipes on the phone.
+- The clash screen: when a page changed here and elsewhere, both versions side by side with a suggested pick, and nothing is ever lost.
+- Safety copies of recently changed notes, and a bin for pictures nothing uses.
+- Pictures you can resize, as in Logseq.
+- An "Add note" tile in Android's Quick Settings and shortcuts on the app icon.
+- A native "Add to journal" box on Windows that opens at once.
+- One-click updates from Settings › About, checked against a signing key.
+
 ## Milestone 2 — Builds 13 to 22 (October 26, 2026)
 
 - To-dos with dates and repeats, a calendar, templates, unlinked references, rename and delete with a bin.

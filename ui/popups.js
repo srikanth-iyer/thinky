@@ -66,6 +66,7 @@ export class Suggest {
 
   /** Look at the text before the caret and open the matching list (or close). */
   check(outline) {
+    this.seq = (this.seq || 0) + 1; // each keystroke: a list still loading for an older one is dropped
     const ta = outline.ta;
     if (!ta || ta.selectionStart !== ta.selectionEnd) return this.close();
     const c = ta.selectionStart;
@@ -109,7 +110,12 @@ export class Suggest {
   }
 
   async propKeys(outline, start, q) {
-    if (!this.keys) { try { this.keys = (await call('props')).map(([k]) => k); } catch { this.keys = []; } }
+    const seq = this.seq;
+    if (!this.keys) {
+      this.keysLoading ??= call('props').then((r) => r.map(([k]) => k), () => []);
+      this.keys = await this.keysLoading;
+      if (seq !== this.seq) return; // typing went on meanwhile: the newest keystroke decides
+    }
     const ql = q.toLowerCase();
     const list = this.keys.filter((k) => k.includes(ql) && k !== 'id' && k !== 'collapsed').slice(0, 10);
     const items = list.map((k) => ({ label: k, html: esc(k), value: k }));
@@ -120,12 +126,13 @@ export class Suggest {
 
   async propValues(outline, key, start, q) {
     if (['id', 'collapsed', 'title'].includes(key)) return this.close();
-    if (!this.valCache.has(key)) {
-      this.valCache.set(key, []);
-      try { this.valCache.set(key, (await call('prop_values', { key })).map(([v]) => v)); } catch { /* none */ }
-    }
+    const seq = this.seq;
+    // one request per property, shared by the keystrokes that arrive while it loads
+    if (!this.valCache.has(key)) this.valCache.set(key, call('prop_values', { key }).then((r) => r.map(([v]) => v), () => []));
+    const vals = await this.valCache.get(key);
+    if (seq !== this.seq) return;
     const ql = q.toLowerCase();
-    const list = this.valCache.get(key).filter((v) => v.toLowerCase().includes(ql) && v.toLowerCase() !== ql).slice(0, 8);
+    const list = vals.filter((v) => v.toLowerCase().includes(ql) && v.toLowerCase() !== ql).slice(0, 8);
     if (!list.length || !outline.ta) return this.close();
     this.show(outline, 'propval', start, q, list.map((v) => ({ label: v, html: esc(v), value: v })));
   }
@@ -137,7 +144,7 @@ export class Suggest {
     place(this.el, caretRect(outline.ta));
   }
 
-  close() { this.el.hidden = true; this.items = null; }
+  close() { this.seq = (this.seq || 0) + 1; this.el.hidden = true; this.items = null; }
 
   handleKey(e) {
     if (!this.isOpen) return false;
@@ -287,15 +294,21 @@ export function menu(anchor, items) {
 // ---------------------------------------------------------------------------
 // Link preview on hover (laptop only)
 
+/** A page's first notes in a small box: hovering a link or tag for a moment (laptop), or pressing
+ *  and holding one (phone; a short tap still opens the page, and the box has an "Open" button). */
 export class Preview {
   constructor() {
-    if (matchMedia('(pointer: coarse)').matches) return;
     this.el = h('div', 'pop preview');
     this.el.hidden = true;
     document.body.append(this.el);
+    const linkAt = (t) => {
+      const a = t?.closest?.('a[data-page]');
+      return a && a.closest('.bc, .refhit, .props, .tagged') && !a.closest('.pop') ? a : null;
+    };
+    if (matchMedia('(pointer: coarse)').matches) { this.touch(linkAt); return; }
     document.addEventListener('mouseover', (e) => {
-      const a = e.target.closest?.('a[data-page]');
-      if (!a || !a.closest('.bc, .refhit, .props, .tagged') || a.closest('.pop')) return;
+      const a = linkAt(e.target);
+      if (!a) return;
       clearTimeout(this.t);
       this.t = setTimeout(() => this.show(a), 550);
     });
@@ -304,23 +317,65 @@ export class Preview {
     });
     document.addEventListener('pointerdown', () => { clearTimeout(this.t); this.hide(); }, true);
   }
-  async show(a) {
+
+  touch(linkAt) {
+    this.el.classList.add('touch');
+    let from = null; // where the finger went down
+    let held = null; // the link just held, until its finger lifts (the click that follows is ignored)
+    let closedAt = 0, closedFrom = null; // a tap elsewhere only closes it: that tap's click isn't passed on
+    const stop = () => { clearTimeout(this.t); from = null; };
+    document.addEventListener('touchstart', (e) => {
+      if (!this.el.hidden && !e.target.closest('.preview')) { this.hide(); closedAt = Date.now(); closedFrom = { x: e.touches[0].clientX, y: e.touches[0].clientY }; } // a tap elsewhere closes it
+      const a = linkAt(e.target);
+      if (!a || e.touches.length > 1) { stop(); return; }
+      from = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      clearTimeout(this.t);
+      this.t = setTimeout(() => { held = { a, at: 0 }; navigator.vibrate?.(10); this.show(a, true); }, 450);
+    }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+      if (from && Math.hypot(e.touches[0].clientX - from.x, e.touches[0].clientY - from.y) > 10) stop(); // scrolling or swiping
+      // the touch that closed it goes on to scroll: no click follows, so the next tap counts again
+      if (closedAt && Math.hypot(e.touches[0].clientX - closedFrom.x, e.touches[0].clientY - closedFrom.y) > 10) closedAt = 0;
+    }, { passive: true });
+    document.addEventListener('touchend', () => { stop(); if (held) held.at = Date.now(); }, { passive: true });
+    document.addEventListener('touchcancel', stop, { passive: true });
+    document.addEventListener('click', (e) => {
+      const swallow = (held && e.target.closest?.('a') === held.a && Date.now() - held.at < 800) || Date.now() - closedAt < 800;
+      if (swallow) { e.preventDefault(); e.stopPropagation(); }
+      held = null;
+      closedAt = 0;
+    }, true);
+    // no Android menu for a long-pressed link (copy address…): holding shows the preview instead
+    document.addEventListener('contextmenu', (e) => { if (linkAt(e.target)) e.preventDefault(); });
+    // a tap on it closes it; on "Open" (or a link in it) that page opens
+    this.el.addEventListener('click', (e) => {
+      e.preventDefault();
+      const b = e.target.closest('[data-open], a[data-page]');
+      this.hide();
+      const name = b?.dataset.open ?? b?.dataset.page;
+      if (name) location.hash = '#/page/' + encodeURIComponent(name);
+    });
+  }
+
+  async show(a, touch = false) {
     const name = a.dataset.page;
     let pv;
     try { pv = await call('page', { name }); } catch { return; }
-    if (!a.isConnected || !a.matches(':hover')) return;
+    if (!a.isConnected || (!touch && !a.matches(':hover'))) return;
     const blocks = pv.doc.blocks.slice(0, 12);
     const body = blocks.map((b) => {
       const r = renderBlock(b.text);
       return `<div class="pv-b" style="--d:${Math.min(b.depth, 5)}">${r.marker ? `<span class="mk">${esc(r.marker)}</span>` : ''}${r.html}${propsHtml(r.props)}</div>`;
     }).join('');
     const refs = pv.refs.reduce((s, g) => s + g.hits.length, 0);
-    this.el.innerHTML = `<div class="pop-title">${esc(pv.info.name)}</div>${body || '<p class="note">Nothing written on this page yet.</p>'}
-      ${pv.doc.blocks.length > 12 ? '<p class="note">…</p>' : ''}<p class="note">${refs} linked reference${refs === 1 ? '' : 's'}</p>`;
+    const icon = (pv.info.props || []).find(([k]) => k === 'icon')?.[1]?.trim();
+    const open = touch ? `<button type="button" class="btn small" data-open="${esc(pv.info.name)}">Open</button>` : '';
+    this.el.innerHTML = `<div class="pop-title"><span>${icon && [...icon].length <= 8 ? esc(icon) + ' ' : ''}${esc(pv.info.name)}</span>${open}</div><div class="pv-body">${body || '<p class="note">Nothing written on this page yet.</p>'}
+      ${pv.doc.blocks.length > 12 ? '<p class="note">…</p>' : ''}</div><p class="note">${refs} linked reference${refs === 1 ? '' : 's'}</p>`;
     this.el.hidden = false;
     place(this.el, a.getBoundingClientRect());
   }
-  hide() { if (this.el) this.el.hidden = true; }
+  hide() { this.el.hidden = true; }
 }
 
 export { nowTime };

@@ -19,9 +19,30 @@ fn capture(text: &str, url: &str) -> Result<String, String> {
     outline_core::capture::capture_to_vault(&root, text, url, today, &time)
 }
 
+/// The "Add to journal" box: on Windows the native one, which appears at once (no web engine to
+/// start); the web one elsewhere, or when the native one can't be made.
+fn open_box(prefill: Option<(String, String)>) {
+    #[cfg(windows)]
+    if lean_outliner_lib::capture_box::run(prefill.clone()).is_ok() {
+        return;
+    }
+    lean_outliner_lib::run_capture_box(prefill);
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let arg = |i: usize| args.get(i).cloned().unwrap_or_default();
+    // `--capture-box-selftest <folder>`: CI's check of the native box, with a made-up notes folder
+    // and cache inside <folder> (see capture_box/selftest.rs); the exit code counts the failures.
+    if arg(1) == "--capture-box-selftest" {
+        if arg(2).is_empty() {
+            std::process::exit(2);
+        }
+        #[cfg(windows)]
+        std::process::exit(lean_outliner_lib::capture_box::selftest(std::path::Path::new(&arg(2))));
+        #[cfg(not(windows))]
+        std::process::exit(2);
+    }
     // `lean-outliner --check <vault> <report.json>`: read-only vault health check, no window.
     if args.len() >= 4 && args[1] == "--check" {
         let res = std::panic::catch_unwind(|| outline_core::app::check_vault(std::path::Path::new(&args[2])));
@@ -33,10 +54,18 @@ fn main() {
         let _ = std::fs::write(&args[3], out);
         return;
     }
+    // `--verify-update <installer> <signature file> <build number>`: would this app accept that
+    // installer as that build? CI runs it on the app it has just built. Exit code 0 = yes.
+    if arg(1) == "--verify-update" {
+        let (p, n) = (std::path::Path::new, arg(4).parse().unwrap_or(0));
+        let r = lean_outliner_lib::update::verify_files(p(&arg(2)), p(&arg(3)), n, None);
+        println!("{}", r.as_ref().map_or_else(|e| format!("refused: {e}"), |_| "genuine".to_string()));
+        std::process::exit(if r.is_ok() { 0 } else { 1 });
+    }
     // `lean-outliner --capture "text" ["url"]`: straight into the journal, no window.
     if arg(1) == "--capture" {
         if capture(&arg(2), &arg(3)).is_err() {
-            lean_outliner_lib::run_capture_box(Some((arg(2), arg(3))));
+            open_box(Some((arg(2), arg(3))));
         }
         return;
     }
@@ -45,7 +74,7 @@ fn main() {
         if let Some(d) = cache_dir() {
             outline_core::app::set_cache_dir(d);
         }
-        lean_outliner_lib::run_capture_box(None);
+        open_box(None);
         return;
     }
     // `leanoutliner://capture?…` from the browser bookmarklet.
@@ -54,7 +83,7 @@ fn main() {
             if let Some(d) = cache_dir() {
                 outline_core::app::set_cache_dir(d);
             }
-            lean_outliner_lib::run_capture_box(Some((text, url)));
+            open_box(Some((text, url)));
         }
         return;
     }

@@ -1,10 +1,21 @@
 # Builds the Windows app and the Android app on GitHub's machines and publishes them
 # as a GitHub Release ("Build N"). Runs on every push to main, or by hand (Actions tab).
 #
-# Android signing: the key is created by this workflow on its first run (when the
-# ANDROID_KEY_PASSWORD repository secret exists) and committed as android/release.keystore,
-# which is unusable without that password. Without the secret, each build is signed with a
-# one-off key, so installing a newer build needs an uninstall first.
+# Android signing: android/release.keystore (made once by an early run of this workflow, locked by
+# the ANDROID_KEY_PASSWORD secret). Only the `android-sign` job uses it, on main; it never makes a
+# new one (phones only install an update signed like the app they have). wip APKs get a throw-away key.
+#
+# Windows update signing (one-click updates, src-tauri/src/update.rs): a P-256 key made once on
+# main and committed as ci/update-key.pem, locked with the same secret. Only the `update-key` and
+# `sign` jobs (small, on their own machines, no build tools) see it: the build gets only the public
+# key, which the app checks updates with. `sign` signs the built installer
+# (LeanOutliner-setup.exe.sig) and `verify` checks that the shipped program accepts it and refuses
+# changed or wrongly signed copies; only then are the Windows files released. Never a second key:
+# CI stops instead (installed apps would refuse every update). wip/* builds use the TEST ONLY key
+# ci/wip-update-key.pem (public on purpose; no real build trusts it).
+#
+# Jobs get only what they need: the token can only read, except where a job says otherwise; the
+# jobs that build (npm, cargo, Gradle) get no secrets.
 name: build
 
 on:
@@ -17,6 +28,9 @@ on:
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   # The build number: one more than the newest release ("Build N"), so releases go up by one each
@@ -47,19 +61,141 @@ jobs:
           cargo run --release -p outline_core --example bench | tee bench.txt
           python3 scripts/ci_report.py bench bench.txt >> "$GITHUB_STEP_SUMMARY"
 
-  windows:
-    needs: [test, number]
-    runs-on: windows-latest
+  # The update key. Makes it (main's first build with updates only: made locked, unlocked again
+  # with the same tools, proven by a test signature, and only then kept in the repo) or unlocks it,
+  # and gives the other jobs only its public key. One openssl for all of it, by its full path (also in
+  # `sign`), so the same program always makes, unlocks and uses it. On main it stops, never making a
+  # new key, when the kept key is missing while an earlier release was signed, can't be unlocked, or
+  # doesn't check out with the newest signed release. wip: the TEST ONLY key (ci/wip-update-key.pem).
+  update-key:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # only used on main's first build with updates, to keep the new key (pushed below)
+    outputs:
+      pub: ${{ steps.key.outputs.pub }}
+      ref: ${{ steps.key.outputs.ref }}
+    env:
+      OPENSSL: /usr/bin/openssl
     steps:
       - uses: actions/checkout@v4
+        with: { sparse-checkout: "scripts\nci", persist-credentials: false }
+      - id: key
+        env:
+          KEY_PASS: ${{ github.ref == 'refs/heads/main' && secrets.ANDROID_KEY_PASSWORD || '' }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          newkey() { "$OPENSSL" genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256; }
+          TEST_PUB=$(KEY_PASS= python3 scripts/update_sig.py pub ci/wip-update-key.pem)
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            # wip: the TEST ONLY key, public on purpose (no real build trusts it)
+            { echo "pub=$TEST_PUB"; echo "ref=$GITHUB_SHA"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          KEY=ci/update-key.pem
+          # the newest earlier release with a signed installer (signed with the kept key)
+          PREV=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[] | select(any(.assets[]; .name == "LeanOutliner-setup.exe.sig")) | .tag_name | select(test("^build-[0-9]+$")) | ltrimstr("build-") | tonumber] | max // empty')
+          if [ ! -f "$KEY" ] && [ -n "$PREV" ]; then
+            echo "::error::ci/update-key.pem is missing, but build-$PREV was signed with it. Restore it from the repo's history. Never make a new key: installed apps would refuse every update."
+            exit 1
+          fi
+          if [ -z "$KEY_PASS" ]; then
+            if [ -f "$KEY" ]; then
+              echo "::error::The ANDROID_KEY_PASSWORD secret is missing, so the update key can't be unlocked (installed apps would refuse this build's update)."
+              exit 1
+            fi
+            echo "::warning::No ANDROID_KEY_PASSWORD secret: this build can't update itself (no update key)."
+            echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          NEW=""
+          if [ ! -f "$KEY" ]; then
+            # the first build with updates: a new key, locked from the start (never written unlocked)
+            newkey | "$OPENSSL" pkcs8 -topk8 -v2 aes-256-cbc -iter 600000 -passout env:KEY_PASS -out "$KEY"
+            NEW=1
+          fi
+          # unlock it as every build does, and prove it signs: a test signature, checked
+          PUB=$(python3 scripts/update_sig.py pub "$KEY") || {
+            echo "::error::The update key couldn't be unlocked with the ANDROID_KEY_PASSWORD secret. Don't replace it with a new key: installed apps would refuse every update."
+            exit 1
+          }
+          [ "$PUB" != "$TEST_PUB" ] || { echo "::error::ci/update-key.pem is the public TEST ONLY key."; exit 1; }
+          T="$RUNNER_TEMP/keytest"; mkdir -p "$T"
+          printf 'test\n' > "$T/LeanOutliner-setup.exe"
+          python3 scripts/update_sig.py sign "$KEY" "$T/LeanOutliner-setup.exe" "$T/test.sig" 0.0.1
+          python3 scripts/update_sig.py check "$PUB" "$T/test.sig"
+          # the newest signed release must check out with this key (installed apps have its public key)
+          if [ -n "$PREV" ]; then
+            gh release download "build-$PREV" -R "$GITHUB_REPOSITORY" -p LeanOutliner-setup.exe.sig -D "$T/prev"
+            python3 scripts/update_sig.py check "$PUB" "$T/prev/LeanOutliner-setup.exe.sig" || {
+              echo "::error::build-$PREV's signature doesn't check out with ci/update-key.pem: installed apps would refuse this build. Put back the key that signed it."
+              exit 1
+            }
+          fi
+          echo "pub=$PUB" >> "$GITHUB_OUTPUT"
+          REF=$GITHUB_SHA
+          if [ -n "$NEW" ]; then
+            # only now, with the key proven, keep it in the repo (the token is used for this push only)
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add "$KEY"
+            git commit -q -m "Add the update signing key (locked by the ANDROID_KEY_PASSWORD secret)"
+            git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/main"
+            REF=$(git rev-parse HEAD)
+            echo "::notice title=Update key::Made the update signing key and kept it, locked, in ci/update-key.pem."
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
+  # The build: no secrets, and only the update key's public key.
+  windows:
+    needs: [test, number, update-key]
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
-      - run: python scripts/ci_version.py
+      - id: version
+        run: python scripts/ci_version.py
         env: { BUILD_NUMBER: '${{ needs.number.outputs.n }}' }
       - run: npx tauri build --bundles nsis
+        env: { LEAN_UPDATE_KEY: '${{ needs.update-key.outputs.pub }}' } # (empty: a build that can't update itself)
+      # The native "Add to journal" box on a real Windows: how soon it's on screen after the
+      # program starts, and that it works (a made-up notes folder in a fresh capbox-selftest folder
+      # of its own; the box never takes the keyboard itself).
+      - name: Capture box check
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $d = Join-Path $env:RUNNER_TEMP 'capbox-selftest'
+          $p = Start-Process -FilePath 'target\release\lean-outliner.exe' -ArgumentList @('--capture-box-selftest', $env:RUNNER_TEMP) -PassThru -Wait
+          $lines = @(Get-Content (Join-Path $d 'result.txt') -ErrorAction SilentlyContinue)
+          $lines | ForEach-Object { Write-Host $_ }
+          $num = { param($k) $m = $lines | Select-String "^$k=(\d+)" | Select-Object -First 1; if ($m) { $m.Matches[0].Groups[1].Value } else { '?' } }
+          $shown = & $num 'shown_ms'
+          $where = & $num 'where_ms'
+          $pass = @($lines | Where-Object { $_ -like 'PASS*' }).Count
+          $fails = @($lines | Where-Object { $_ -like 'FAIL*' })
+          echo "::notice title=Capture box::shown after $shown ms (where the note goes: $where ms); $pass checks passed, $($fails.Count) failed"
+          foreach ($f in $fails) { echo "::error title=Capture box::$f" }
+          if ($p.ExitCode -ne 0 -or $fails.Count -gt 0 -or $shown -eq '?') { exit 1 }
+      - name: Keep the capture box pictures (wip builds; pushed by the capture-shots job)
+        if: always() && startsWith(github.ref, 'refs/heads/wip/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-box-shots
+          path: |
+            ${{ runner.temp }}/capbox-selftest/shots/*.png
+            ${{ runner.temp }}/capbox-selftest/result.txt
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Collect
         shell: bash
         run: |
@@ -69,13 +205,133 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: out/* }
 
-  android:
-    needs: [test, number]
+  # A wip build's capture box pictures (from the Windows job's check), kept on the capture-box-shots
+  # branch for Claude to look at. A job of its own: the build job's token can only read.
+  capture-shots:
+    needs: windows
+    if: always() && startsWith(github.ref, 'refs/heads/wip/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with: { name: capture-box-shots, path: got }
+      - name: Push them
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          [ -d got ] || exit 0
+          mkdir repo && cd repo
+          cp ../got/shots/*.png . 2>/dev/null || true
+          cp ../got/result.txt . 2>/dev/null || true
+          [ -n "$(ls)" ] || exit 0
+          git init -q -b capture-box-shots
+          git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Capture box pictures for ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}" capture-box-shots
+
+  # Sign the built installer, on a machine of its own that only gets the scripts, the locked key and
+  # the version rule (no build tools run here). The version signed is worked out here from the build
+  # number, not taken from the build. Also signs it with another key, for `verify` to see refused.
+  sign:
+    needs: [number, update-key, windows]
+    if: needs.update-key.outputs.pub != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      OPENSSL: /usr/bin/openssl
+    steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.update-key.outputs.ref }}
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /ci/
+            /src-tauri/tauri.conf.json
+      - uses: actions/download-artifact@v4
+        with: { name: windows, path: built }
+      - name: Sign the installer
+        env:
+          KEY_PASS: ${{ github.ref == 'refs/heads/main' && secrets.ANDROID_KEY_PASSWORD || '' }}
+          PUB: ${{ needs.update-key.outputs.pub }}
+          N: ${{ needs.number.outputs.n }}
+          BUILT: ${{ needs.windows.outputs.version }}
+        run: |
+          set -euo pipefail
+          # main: the kept key; wip: the TEST ONLY key (no real build trusts it)
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then KEY=ci/update-key.pem; else KEY=ci/wip-update-key.pem; KEY_PASS=; fi
+          # the key that signs must be the one built into the app
+          [ "$(python3 scripts/update_sig.py pub "$KEY")" = "$PUB" ] || { echo "::error::The signing key isn't the one built into the app."; exit 1; }
+          # build N is version major.minor.N (worked out here); the build must have said the same
+          VERSION=$(python3 scripts/update_sig.py version "$N")
+          [ "$VERSION" = "$BUILT" ] || { echo "::error::The build says it is version '$BUILT', but build $N is $VERSION: not signed."; exit 1; }
+          mkdir -p sig checks
+          python3 scripts/update_sig.py sign "$KEY" built/LeanOutliner-setup.exe sig/LeanOutliner-setup.exe.sig "$VERSION"
+          "$OPENSSL" genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$RUNNER_TEMP/other.pem"
+          KEY_PASS= python3 scripts/update_sig.py sign "$RUNNER_TEMP/other.pem" built/LeanOutliner-setup.exe checks/other-key.sig "$VERSION"
+          rm -f "$RUNNER_TEMP/other.pem"
+      - uses: actions/upload-artifact@v4
+        with: { name: update-signature, path: sig/LeanOutliner-setup.exe.sig }
+      - uses: actions/upload-artifact@v4
+        with: { name: update-checks, path: checks/other-key.sig, retention-days: 5 }
+
+  # The shipped program (the one inside the installer) must accept its signed installer and refuse
+  # a changed one, another build number, an edited version and another key: the same check an
+  # installed app makes before it updates itself. The release waits for this.
+  verify:
+    needs: [number, windows, sign]
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: windows, path: built }
+      - uses: actions/download-artifact@v4
+        with: { name: update-signature, path: built }
+      - uses: actions/download-artifact@v4
+        with: { name: update-checks, path: checks }
+      - name: The app accepts its signed installer, and only that
+        shell: bash
+        env:
+          N: ${{ needs.number.outputs.n }}
+        run: |
+          set -euo pipefail
+          SETUP=built/LeanOutliner-setup.exe; SIG=built/LeanOutliner-setup.exe.sig
+          T="$RUNNER_TEMP/verify"; mkdir -p "$T"
+          python -c "import sys; b = bytearray(open(sys.argv[1], 'rb').read()); b[len(b) // 2] ^= 1; open(sys.argv[2], 'wb').write(b)" "$SETUP" "$T/changed.exe"
+          python -c "import json, sys; d = json.load(open(sys.argv[1])); v = d['version'].split('.'); v[-1] = str(int(v[-1]) + 1); d['version'] = '.'.join(v); json.dump(d, open(sys.argv[2], 'w'))" "$SIG" "$T/edited.sig"
+          bad=0 seen=""
+          expect() { # expect <genuine|refused> <what> <installer> <signature file> <build number>
+            local want=$1 what=$2 code=0 said; shift 2
+            built/LeanOutliner-portable.exe --verify-update "$@" > "$T/said.txt" 2>&1 || code=$?
+            said=$(tr -d '\r' < "$T/said.txt")
+            if { [ "$want" = genuine ] && [ $code = 0 ]; } || { [ "$want" = refused ] && [ $code = 1 ]; }; then
+              echo "ok: $what -> $said"; seen="$seen | $what: $said"
+            else
+              echo "::error::Update check: $what should be $want, but the app said (exit $code): $said"; bad=1
+            fi
+          }
+          expect genuine "the signed installer" "$SETUP" "$SIG" "$N"
+          expect refused "a changed installer" "$T/changed.exe" "$SIG" "$N"
+          expect refused "the installer offered as another build" "$SETUP" "$SIG" "$((N + 1))"
+          expect refused "a signature file with its version edited" "$SETUP" "$T/edited.sig" "$((N + 1))"
+          expect refused "an installer signed with another key" "$SETUP" checks/other-key.sig "$N"
+          # (the app's own words, readable from the job's annotations)
+          [ $bad = 1 ] || echo "::notice title=Update check of build $N::${seen# | }"
+          exit $bad
+
+  # The APK, built unsigned: no secrets here (npm, cargo and Gradle run in this job).
+  android:
+    needs: [test, number]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - uses: dtolnay/rust-toolchain@stable
@@ -91,48 +347,87 @@ jobs:
       - run: npx tauri android init --ci
       - run: python3 scripts/android_overlay.py
       - run: npx tauri android build --apk --target aarch64 --ci
+      - name: Collect the unsigned APK
+        run: cp "$(find src-tauri/gen/android -name '*release-unsigned.apk' | head -1)" LeanOutliner-unsigned.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: android-unsigned, path: LeanOutliner-unsigned.apk, retention-days: 5 }
+
+  # Sign the APK on a machine of its own: only the keystore checked out, and no tools but the
+  # Android SDK's zipalign and apksigner and Java's keytool. Main: the release keystore, which must
+  # be there (made once, long ago; never a new one: phones would refuse every update). wip: a
+  # throw-away key (a phone with the real app won't take it), after checking that the release keystore
+  # still unlocks (without signing anything with it). On main the new APK's certificate must be that of
+  # the newest release with an APK: a different one means a different keystore, which phones refuse.
+  android-sign:
+    needs: [android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: /android/release.keystore
+      - uses: actions/download-artifact@v4
+        with: { name: android-unsigned, path: unsigned }
       - name: Sign
         env:
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -e
-          APK=$(find src-tauri/gen/android -name "*release-unsigned.apk" | head -1)
-          echo "unsigned: $APK"
+          set -euo pipefail
           BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
-          "$BT/zipalign" -p -f 4 "$APK" aligned.apk
-          # the real key is only ever created on main (so there is exactly one)
-          if [ -n "$KEY_PASS" ] && { [ -f android/release.keystore ] || [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+          "$BT/zipalign" -p -f 4 unsigned/LeanOutliner-unsigned.apk aligned.apk
+          KS=android/release.keystore
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            [ -f "$KS" ] || { echo "::error::android/release.keystore is missing. Restore it from the repo's history; never make a new one (phones would refuse every update)."; exit 1; }
+            [ -n "$KEY_PASS" ] || { echo "::error::The ANDROID_KEY_PASSWORD secret is missing, so the APK can't be signed with the release key."; exit 1; }
             export PASS="$KEY_PASS"
-            KS=android/release.keystore
-            if [ ! -f "$KS" ]; then
-              keytool -genkeypair -noprompt -keystore "$KS" -storetype PKCS12 -alias leanoutliner \
-                -keyalg RSA -keysize 2048 -validity 10000 -storepass:env PASS -dname "CN=Lean Outliner"
-              echo "NEW_KEYSTORE=1" >> "$GITHUB_ENV"
-            fi
+            WHICH="the release key"
           else
-            echo "::warning::No ANDROID_KEY_PASSWORD secret - signing with a one-off key."
+            if [ -n "$KEY_PASS" ]; then
+              PASS="$KEY_PASS" keytool -list -keystore "$KS" -storetype PKCS12 -storepass:env PASS -alias leanoutliner > /dev/null \
+                || { echo "::error::android/release.keystore doesn't unlock with the ANDROID_KEY_PASSWORD secret."; exit 1; }
+              echo "The release keystore unlocks (not used for this wip build)."
+            fi
+            unset KEY_PASS
             export PASS="$(openssl rand -hex 16)"
-            KS="$RUNNER_TEMP/oneoff.keystore"
+            KS="$RUNNER_TEMP/throwaway.keystore"
             keytool -genkeypair -noprompt -keystore "$KS" -storetype PKCS12 -alias leanoutliner \
-              -keyalg RSA -keysize 2048 -validity 10000 -storepass:env PASS -dname "CN=Lean Outliner (one-off)"
+              -keyalg RSA -keysize 2048 -validity 10000 -storepass:env PASS -dname "CN=Lean Outliner (wip test build)"
+            WHICH="a throw-away key (wip test build)"
           fi
           "$BT/apksigner" sign --ks "$KS" --ks-key-alias leanoutliner --ks-pass env:PASS --out LeanOutliner.apk aligned.apk
           "$BT/apksigner" verify LeanOutliner.apk
-      - name: Keep the new signing key in the repo
-        if: env.NEW_KEYSTORE == '1'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add android/release.keystore
-          git commit -m "Add Android signing key (locked by the ANDROID_KEY_PASSWORD secret)"
-          git push origin "HEAD:${{ github.ref_name }}"
+          rm -f "$RUNNER_TEMP/throwaway.keystore"
+          # an APK's signing certificates (SHA-256, the text after the line's last ": "), or nothing
+          # if they can't be read; only 64-hex-digit values count (so unreadable never matches)
+          cert() { { "$BT/apksigner" verify --print-certs "$1" || true; } | awk -F': ' '/certificate SHA-256 digest/ { print $NF }' | tr -d ' \r' | sort -u | grep -E '^[0-9a-f]{64}$' | tr '\n' ' ' | sed 's/ $//' || true; }
+          NEW=$(cert LeanOutliner.apk)
+          [ -n "$NEW" ] || { echo "::error::The new APK's signing certificate couldn't be read."; exit 1; }
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            # signed like the newest release with an APK? (phones only take an update signed like their app)
+            PREV=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[] | select(any(.assets[]; .name == "LeanOutliner.apk")) | .tag_name | select(test("^build-[0-9]+$")) | ltrimstr("build-") | tonumber] | max // empty')
+            if [ -n "$PREV" ]; then
+              gh release download "build-$PREV" -R "$GITHUB_REPOSITORY" -p LeanOutliner.apk -D "$RUNNER_TEMP/prev"
+              OLD=$(cert "$RUNNER_TEMP/prev/LeanOutliner.apk")
+              [ "$OLD" = "$NEW" ] || {
+                echo "::error::This APK isn't signed like build-$PREV's (certificate $NEW, build-$PREV: ${OLD:-unreadable}), so phones would refuse it as an update. Put back the keystore that signed build-$PREV; never make a new one."
+                exit 1
+              }
+              WHICH="$WHICH, the same as build-$PREV"
+            fi
+          fi
+          echo "::notice title=APK signed::with $WHICH (certificate SHA-256 $NEW)"
       - uses: actions/upload-artifact@v4
         with: { name: android, path: LeanOutliner.apk }
 
-  # Size check on every build (wip branches too); releases only from main.
+  # Size check on every build (wip branches too); releases only from main. The Windows files only
+  # once `verify` passed (or as they are, in a build without an update key).
   release:
-    needs: [number, windows, android]
-    if: ${{ always() && (needs.windows.result == 'success' || needs.android.result == 'success') }}
+    needs: [number, update-key, windows, sign, verify, android-sign]
+    if: ${{ always() && (needs.android-sign.result == 'success' || (needs.windows.result == 'success' && (needs.update-key.outputs.pub == '' || needs.verify.result == 'success'))) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -142,7 +437,14 @@ jobs:
       - uses: actions/checkout@v4
         with: { sparse-checkout: "scripts\nci" }
       - uses: actions/download-artifact@v4
-        with: { path: dist, merge-multiple: true }
+        if: needs.android-sign.result == 'success'
+        with: { name: android, path: dist }
+      - uses: actions/download-artifact@v4
+        if: needs.windows.result == 'success' && (needs.update-key.outputs.pub == '' || needs.verify.result == 'success')
+        with: { name: windows, path: dist }
+      - uses: actions/download-artifact@v4
+        if: needs.verify.result == 'success'
+        with: { name: update-signature, path: dist }
       - name: Size check
         env:
           MSG: ${{ github.event.head_commit.message }}

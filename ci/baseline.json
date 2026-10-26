@@ -18,7 +18,9 @@
     "day_unlinked_ms": 25,
     "save_ms": 2,
     "rescan_ms": 10,
-    "json_ms": 8
+    "json_ms": 8,
+    "pictures_ms": 20,
+    "safety_copy_ms": 60
   },
   "bench_warn_ratio": 2.0
 }

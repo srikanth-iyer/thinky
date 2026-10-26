@@ -2,6 +2,9 @@
 import { open, check, failures, sleep, SHOTS } from './lib.mjs';
 
 const { browser, page, errors } = await open();
+// the Windows capture box gets the look's colours through save_look (it can't read the CSS)
+const saved = [];
+await page.route('**/api/save_look', async (route) => { saved.push(JSON.parse(route.request().postData() || '{}')); await route.continue(); });
 const csp = await page.evaluate(async () => (await fetch('/')).headers.get('content-security-policy'));
 check(csp && csp.includes("script-src 'self'"), 'dev server sends the app CSP', csp);
 check(await page.locator('#side .skins').count() === 0, 'no row of look dots in the sidebar');
@@ -28,6 +31,11 @@ await page.keyboard.press('ArrowDown');
 await page.keyboard.press('Enter');
 await sleep(100);
 check((await skin()) === 'night' && (await curName()) === 'Night', 'Enter applies the look', await skin());
+await sleep(1000);
+const sent = saved.at(-1);
+check(sent?.look === 'night' && sent.colors.surface === '#2a2f38' && sent.colors['surface-2'] === '#242830' && sent.colors.ink === '#e6e9ee'
+  && sent.colors.accent === '#86c4b3' && sent.colors['accent-ink'] === '#12141a' && sent.colors.danger === '#eba394' && Object.keys(sent.colors).length === 10,
+  'the look’s colours are saved for the Windows capture box', JSON.stringify(sent));
 check(await pop.isVisible(), 'list stays open to compare');
 check(await page.locator('.pop.looks [aria-pressed="true"]').getAttribute('data-look') === 'night', 'tick moves to the new look');
 for (let k = 0; k < 4; k++) await page.keyboard.press('ArrowUp'); // Night → Calm → Plain night → Plain → (round) Azulejo

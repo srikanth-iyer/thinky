@@ -8,6 +8,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use tauri::{Emitter, Manager};
 
+pub mod update;
+#[cfg(windows)]
+pub mod capture_box;
 mod watch;
 pub mod win;
 
@@ -72,13 +75,19 @@ fn call(app: tauri::AppHandle, state: tauri::State<'_, State>, cmd: String, args
         "capture_where" => {
             let root = outline_core::app::last_vault_or_why()?;
             // the same rule as adding the note: only a missing config.edn means Logseq's defaults
-            let cfg = match std::fs::read_to_string(root.join("logseq").join("config.edn")) {
-                Ok(t) => outline_core::Config::from_edn(&t),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => outline_core::Config::default(),
-                Err(e) => return Err(format!("Couldn't read logseq/config.edn ({e}).")),
-            };
-            let (today, _) = win::local_now();
-            Ok(json!({ "today": cfg.capture_today, "page": if cfg.capture_today { cfg.journal_title(today) } else { cfg.capture_page.clone() } }))
+            let cfg = outline_core::capture::read_config(&root).map_err(|e| format!("Couldn't read logseq/config.edn ({e})."))?;
+            let (today, page) = outline_core::capture::default_place(&cfg, win::local_now().0);
+            Ok(json!({ "today": today, "page": page }))
+        }
+        // one-click updates (update.rs); the page passes only the build it saw ("build-24")
+        "update_status" | "update_download" | "update_check" => update::command(&cmd, &s("tag"), &app.package_info().version.to_string()),
+        "update_install" => {
+            if let Some(a) = lock(&state).as_mut() {
+                a.persist(); // as when quitting (the page saved the notes themselves first)
+            }
+            update::install(&app.package_info().version.to_string())?;
+            app.exit(0);
+            Ok(json!(true))
         }
         // the capture box: add to the notes folder last opened, without loading it
         "quick_capture" => {
@@ -149,9 +158,15 @@ fn builder() -> tauri::Builder<tauri::Wry> {
             if let Ok(dir) = app.path().app_cache_dir() {
                 outline_core::app::set_cache_dir(dir);
             }
+            // safety copies: not the cache (Android may clear it), not the notes folder
+            if let Ok(dir) = app.path().app_local_data_dir() {
+                outline_core::app::set_data_dir(dir);
+            }
             std::thread::spawn(win::register_link_handler);
             if let Some(w) = app.get_webview_window("capture") {
                 place_capture_box(&w);
+            } else {
+                std::thread::spawn(update::tidy); // the last update's installer, once it has run
             }
             Ok(())
         })
@@ -202,10 +217,11 @@ pub fn run() {
     builder().run(context()).expect("error while running the app");
 }
 
-/// The small "Add to journal" box (Windows shortcut key, browser link with `box=1`), like a
-/// launcher (Spotlight, Raycast): no title bar, one wide line to type in that grows with the
-/// text (capture.js), a little above the middle of the screen, on top, not in the taskbar.
-/// Windows 11 gives it rounded corners and a shadow (`shadow`).
+/// The web version of the small "Add to journal" box (Windows shortcut key, browser link with
+/// `box=1`), like a launcher (Spotlight, Raycast): no title bar, one wide line to type in that
+/// grows with the text (capture.js), a little above the middle of the screen, on top, not in the
+/// taskbar. Windows 11 gives it rounded corners and a shadow (`shadow`). On Windows the native
+/// box (capture_box) is used instead; this one is the fallback when that can't be made.
 pub fn run_capture_box(prefill: Option<(String, String)>) {
     *PREFILL.lock().unwrap_or_else(|p| p.into_inner()) = prefill;
     let mut ctx = context();

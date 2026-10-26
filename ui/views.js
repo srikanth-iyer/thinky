@@ -58,7 +58,7 @@ export async function pagesView(app, view) {
   };
   const row = (n, label = n.name, depth = 0) => `<li style="--d:${depth}"${chosen.has(n.name) ? ' class="chosen"' : ''}>
     <a href="#" data-page="${esc(n.name)}">${selecting && n.exists ? `<input type="checkbox" tabindex="-1" ${chosen.has(n.name) ? 'checked' : ''}>` : ''}
-    <span class="${n.exists ? '' : 'ghost'}">${esc(label)}</span>
+    <span class="${n.exists ? '' : 'ghost'}">${n.icon ? `<span class="pg-ic" aria-hidden="true">${esc(n.icon)}</span>` : ''}${esc(label)}</span>
     <span class="meta">${n.exists ? (n.refs ? plural(n.refs, 'link') : '') : 'no file yet'}</span></a></li>`;
   const draw = () => {
     shown = list();

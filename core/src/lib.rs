@@ -9,6 +9,7 @@
 
 pub mod app;
 pub mod capture;
+pub mod capture_box;
 mod config;
 mod doc;
 pub mod date;
@@ -18,12 +19,13 @@ pub mod merge;
 mod parse;
 pub mod task;
 pub mod text;
+pub mod update;
 mod vault;
 
 pub use parse::{parse_page, Block, ParsedPage};
 pub use config::Config;
 pub use doc::{block_lines, content_hash, join_doc, split_doc, Doc, DocBlock};
-pub use vault::{file_stem_for, PageInfo, RefGroup, RefHit, SearchHit, TaskHit, Vault};
+pub use vault::{file_stem_for, page_name_from_stem, PageInfo, RefGroup, RefHit, SearchHit, TaskHit, Vault};
 
 /// Lowercased lookup key for a page name (Logseq page names are case-insensitive).
 pub fn key(name: &str) -> String {
@@ -32,13 +34,15 @@ pub fn key(name: &str) -> String {
 
 /// Append a new top-level bullet to a page's text. Used by quick capture / the widget.
 /// Multi-line input becomes one bullet with continuation lines indented under it.
-/// Keeps the file's line endings (CRLF stays CRLF) and a leading byte-order mark.
+/// Keeps the file's shape, as the editor does: its line endings (CRLF stays CRLF), a leading
+/// byte-order mark, and a missing final line break (a new file gets one).
 pub fn append_bullet(content: &str, text: &str) -> String {
     let (bom, body) = match content.strip_prefix('\u{feff}') {
         Some(b) => ("\u{feff}", b),
         None => ("", content),
     };
     let nl = if body.contains("\r\n") { "\r\n" } else { "\n" };
+    let final_nl = body.is_empty() || body.ends_with('\n');
     // drop trailing line breaks and blank (whitespace-only) last lines, nothing else
     let mut out = body;
     loop {
@@ -70,6 +74,8 @@ pub fn append_bullet(content: &str, text: &str) -> String {
             out.push_str(l);
         }
     }
-    out.push_str(nl);
+    if final_nl {
+        out.push_str(nl);
+    }
     format!("{bom}{out}")
 }

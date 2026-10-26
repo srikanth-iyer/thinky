@@ -118,7 +118,12 @@ run adb shell am start -n "$PKG/.QuickCaptureActivity" -a android.intent.action.
 sleep 4; shot 10-share-picture
 run python3 scripts/ui_tap.py Add --exact
 sleep 3
-run adb shell ls /sdcard/vault/assets
+# the same picture shared again: a file of its own, the first never written over
+run adb shell am start -n "$PKG/.QuickCaptureActivity" -a android.intent.action.SEND -t image/png --eu android.intent.extra.STREAM file:///sdcard/Download/shared.png
+sleep 4
+run python3 scripts/ui_tap.py Add --exact
+sleep 3
+run adb shell ls -l /sdcard/vault/assets
 run adb shell "cat '/sdcard/vault/pages/quick capture.md'"
 ensure_app
 if [ -n "$SOCK" ]; then
@@ -158,10 +163,135 @@ if [ -n "$SOCK" ]; then
   sleep 3; shot 17-after-back-at-start
   TOP=$(adb shell dumpsys activity activities | tr -d '\r' | grep -m1 -o 'topResumedActivity=[^}]*')
   log "after Back at the start: $TOP"
+  LEFT=$(adb shell pidof "$PKG" | tr -d '\r') # (step 13 stops and restarts the app on purpose)
 fi
 
-# 11. the widgets (today's journal, and the one-tap +) are offered to the home screen
+# 11. one-click update (Settings → About → "Update now"), the real thing: Android's "Install unknown
+#     apps" screen first; once allowed, the newest release is downloaded from the public downloads
+#     page and checked (this test build is 0.1.0, so any release is newer). The release is signed
+#     with the real key and this test build with a debug key, so the app itself must refuse it, before
+#     Android's installer. Then the steps after a good download (a test-build-only path hands Android's
+#     installer the app's own APK): Android asks to go ahead, the test cancels, and the app says so.
+LATEST=$(curl -sS -o /dev/null -w '%{redirect_url}' https://github.com/srikanth-iyer/lean-outliner-releases/releases/latest | grep -o 'build-[0-9]*$')
+log "newest release on the downloads page: ${LATEST:-none found}"
+if [ -n "$SOCK" ] && [ -n "$LATEST" ]; then
+  ensure_app
+  run adb shell am start -W -n "$PKG/.MainActivity" # back to the front (Back at the start left it)
+  sleep 3
+  connect
+  # as if today's check had just found that release (no GitHub API call needed)
+  UPD=$($CDP eval "(async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); localStorage.setItem('updateCheck', JSON.stringify({ at: Date.now(), latest: { tag: '$LATEST', url: 'https://github.com/srikanth-iyer/lean-outliner-releases/releases/tag/$LATEST' } })); await window.leanApp.checkUpdate(); location.hash = '#/settings/about'; await s(2500); const b = document.querySelector('.upd [data-a=update]'); if (!b) return { stage: document.querySelector('.upd')?.dataset.stage || null, about: document.querySelector('.set-panel:not([hidden])')?.innerText.slice(0, 300) }; b.click(); await s(3000); return { stage: document.querySelector('.upd')?.dataset.stage, text: document.querySelector('.upd-out')?.textContent }; })()" | tr -d '\r')
+  log "after Update now: $UPD"
+  shot 18-update-install-unknown-apps
+  UNKNOWN=$(adb shell dumpsys activity activities | tr -d '\r' | grep -m1 -o 'topResumedActivity=[^}]*')
+  log "on top after Update now: $UNKNOWN"
+  run adb shell appops set "$PKG" REQUEST_INSTALL_PACKAGES allow
+  run adb shell input keyevent KEYCODE_BACK
+  # the download (~8 MB) and the app's checks
+  ST=""
+  for i in $(seq 90); do
+    sleep 2
+    ST=$($CDP eval "document.querySelector('.upd')?.dataset.stage || ''" 2>/dev/null | tr -d '\r"')
+    case "$ST" in confirm|error|done) break;; esac
+  done
+  REFUSED=$($CDP eval "document.querySelector('.upd-out')?.textContent || ''" 2>/dev/null | tr -d '\r')
+  log "update stage: $ST; the app says: $REFUSED"
+  shot 19-update-refused-by-the-app
+  # the steps after a good download: Android's installer asks; cancelled, the app says so
+  run $CDP eval "window.LeanAndroid.testInstallSelf(); 'handed over'"
+  ASKED=""
+  for i in $(seq 15); do
+    sleep 2
+    ASKED=$(adb shell dumpsys activity activities | tr -d '\r' | grep -m1 -o 'topResumedActivity=[^}]*')
+    echo "$ASKED" | grep -qi packageinstaller && break
+  done
+  log "on top after handing over: $ASKED"
+  shot 20-update-android-asks
+  run adb shell input keyevent KEYCODE_BACK
+  CANCELLED=""
+  for i in $(seq 15); do
+    sleep 2
+    CANCELLED=$($CDP eval "document.querySelector('.upd-out')?.textContent || ''" 2>/dev/null | tr -d '\r')
+    echo "$CANCELLED" | grep -q cancelled && break
+  done
+  log "after cancelling, the app says: $CANCELLED"
+  shot 21-update-cancelled
+  # (also as a notice: readable from the job's annotations even after another run replaced the results branch)
+  echo "::notice title=One-click update on the emulator::Update now -> $(echo "$UPD" | tr -d '\n' | cut -c1-160) | on top: ${UNKNOWN#topResumedActivity=} | allowed -> stage $ST: $REFUSED | handed over -> on top: ${ASKED#topResumedActivity=} | cancelled -> $CANCELLED"
+  run adb shell am start -W -n "$PKG/.MainActivity"
+  sleep 2
+fi
+
+# 12. the widgets (today's journal, and the one-tap +) are offered to the home screen
 run bash -c "adb shell dumpsys appwidget | grep -i -A2 'journalwidget\|quickaddwidget' | head -12"
+
+# 13. the app icon's long-press shortcuts (Today, Add note, Search), which the app sets when it starts:
+#     press and hold the icon on the home screen (else in the list of all apps), pick one from its menu
+SIZE=$(adb shell wm size | tr -d '\r' | grep -o '[0-9]*x[0-9]*' | tail -1); W=${SIZE%x*}; H=${SIZE#*x}
+adb shell dumpsys shortcut | tr -d '\r' | awk -v p="Package: $PKG" 'index($0, p) { on = 1; print; next } /Package: / { on = 0 } on' > $OUT/shortcuts.txt
+log "the app's shortcuts (dumpsys shortcut):"
+run grep -E 'id=|shortLabel=|intents=' $OUT/shortcuts.txt
+shortcut() { # $1: the shortcut's name; $2: name for a screenshot of the menu
+  #   each menu that opens is saved (icon-menu-<n>.xml): the check passes when one of them shows all three
+  adb shell input keyevent KEYCODE_HOME; sleep 2
+  if ! python3 scripts/ui_tap.py "Lean Outliner" --exact --long >> $OUT/log.txt; then
+    log "no app icon on the home screen: trying the list of all apps"
+    local try found=
+    for try in 1 2; do # the list sometimes opens without the app in view: look again from the home screen
+      adb shell input swipe $((W / 2)) $((H * 4 / 5)) $((W / 2)) $((H / 5)) 300; sleep 3
+      if python3 scripts/ui_tap.py "Lean Outliner" --exact --long >> $OUT/log.txt; then found=1; break; fi
+      shot "18x-all-apps-$MENUS-$try"; adb shell input keyevent KEYCODE_HOME; sleep 2
+    done
+    [ -n "$found" ] || return 1
+  fi
+  sleep 2
+  MENUS=$((MENUS + 1)); adb shell uiautomator dump /sdcard/menu.xml >/dev/null 2>&1; adb shell cat /sdcard/menu.xml > $OUT/icon-menu-$MENUS.xml
+  if [ -n "$2" ]; then shot "$2"; fi
+  python3 scripts/ui_tap.py "$1" --exact --last >> $OUT/log.txt # the menu is drawn on top: the last match
+}
+MENUS=0
+menu_shown() { local f; for f in $OUT/icon-menu-*.xml; do [ -f "$f" ] && grep -q 'text="Today"' "$f" && grep -q 'text="Add note"' "$f" && grep -q 'text="Search"' "$f" && return 0; done; return 1; }
+if [ -n "$SOCK" ]; then
+  # 13a. "Today" with the app open in the background (Back left it above): today's journal page
+  shortcut "Today" 18-icon-menu || { log "!! couldn't use the launcher: sending the shortcut's request instead"; run adb shell am start -n "$PKG/.MainActivity" -a android.intent.action.MAIN --es open today; }
+  sleep 4; connect; shot 19-shortcut-today
+  SC_TODAY=$($CDP eval "decodeURIComponent(location.hash)" | tr -d '\r')
+  log "after the Today shortcut: $SC_TODAY"
+  # 13b. "Search" with the app not running (stopped here on purpose): it starts with the search box open
+  run adb shell am force-stop "$PKG"
+  shortcut "Search" || { log "!! couldn't use the launcher: sending the shortcut's request instead"; run adb shell am start -n "$PKG/.MainActivity" -a android.intent.action.MAIN --es open search; }
+  sleep 10; connect; shot 20-shortcut-search
+  SC_SEARCH=$($CDP eval "({ open: !document.querySelector('#search').hidden, focused: document.activeElement === document.querySelector('#search input'), hash: location.hash })" | tr -d '\r')
+  log "after the Search shortcut: $SC_SEARCH"
+  KEYBOARD=$(adb shell dumpsys input_method | tr -d '\r' | grep -m1 -o -E 'mInputShown=[a-z]+')
+  log "keyboard: $KEYBOARD"
+fi
+# 13c. "Add note": the pop-up for a new note (as from the widget's +); Back twice closes keyboard and pop-up
+shortcut "Add note"
+sleep 3; shot 21-shortcut-add-note
+SC_ADD=$(adb shell dumpsys activity activities | tr -d '\r' | grep -m1 -o 'topResumedActivity=[^}]*')
+log "after the Add note shortcut: $SC_ADD"
+adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK; sleep 1
+
+# 14. the Quick Settings tile "Add note": offered with the other tiles; a tap opens the pop-up and closes
+#     the pull-down shade
+QS=$(adb shell cmd package query-services --components -a android.service.quicksettings.action.QS_TILE | tr -d '\r')
+log "Quick Settings tiles that apps offer: $(echo $QS)"
+run adb shell cmd statusbar add-tile "$PKG/.AddNoteTile"
+sleep 2
+log "tiles in the shade: $(adb shell settings get secure sysui_qs_tiles | tr -d '\r')"
+adb shell input keyevent KEYCODE_HOME; sleep 1
+run adb shell cmd statusbar expand-settings
+sleep 3; shot 22-quick-settings
+if ! python3 scripts/ui_tap.py "add note" --last >> $OUT/log.txt; then
+  log "the tile isn't on screen: clicking it with cmd statusbar click-tile"
+  run adb shell cmd statusbar click-tile "$PKG/.AddNoteTile"
+fi
+sleep 4; shot 23-tile-add-note
+TILE_TOP=$(adb shell dumpsys activity activities | tr -d '\r' | grep -m1 -o 'topResumedActivity=[^}]*')
+TILE_FOCUS=$(adb shell dumpsys window | tr -d '\r' | grep -m1 -o 'mCurrentFocus=[^}]*')
+log "after tapping the tile: $TILE_TOP; focus: $TILE_FOCUS"
+adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK; sleep 1
 log "crashes (none expected):"
 run adb logcat -b crash -d
 log "the app's own problems log:"
@@ -170,26 +300,46 @@ kill $LOGCAT 2>/dev/null
 log "app processes that ended (from the full log):"
 run bash -c "grep -E 'Process $PKG|has died|Killing [0-9]+:$PKG|Force finishing|ANR in|Fatal signal|FATAL|crash detected|wasn.t handled' $OUT/logcat.txt | head -40"
 
-# 12. results, one line each, so a run where something didn't work can't look fine
+# 15. results, one line each, so a run where something didn't work can't look fine
 FAILED=0
 result() { if eval "$2" >/dev/null 2>&1; then log "PASS $1"; else log "FAIL $1"; FAILED=1; fi; }
 dev() { adb shell "cat '$1'" 2>/dev/null | tr -d '\r'; }
 result "the app kept running (never had to be started again)" "! grep -q 'the app was not running' $OUT/log.txt"
 result "the app didn't crash" "! adb logcat -b crash -d | grep -q '$PKG'"
-result "nothing in the app's problems log" "! adb shell \"run-as $PKG sh -c 'cat cache/problems.log 2>/dev/null'\" | grep -q ."
+# (Android refusing the test's update, step 11, is expected there)
+result "nothing in the app's problems log" "! adb shell \"run-as $PKG sh -c 'cat cache/problems.log 2>/dev/null'\" | grep -v 'update (Android)' | grep -q ."
 result "choosing the folder opened the notes" "grep -q '\"hash\": \"#/journals\"' $OUT/log.txt"
 result "typing on the phone was saved" "dev '/sdcard/vault/Diary/$TODAY.md' | grep -q 'typed on android'"
 result "a page with linked references opened" "grep -q '\"title\": \"Sourdough Bread\"' $OUT/log.txt"
 result "text shared from another app was added" "{ dev '/sdcard/vault/Diary/$TODAY.md'; dev '/sdcard/vault/pages/quick capture.md'; } | grep -q 'Shared from another app'"
 result "a shared picture was saved and linked" "adb shell ls /sdcard/vault/assets | grep -q . && { dev '/sdcard/vault/Diary/$TODAY.md'; dev '/sdcard/vault/pages/quick capture.md'; } | grep -q 'assets/'"
 result "the picture shows in the app" "grep -q '\"loaded\": true' $OUT/log.txt"
+adb exec-out cat '/sdcard/vault/pages/quick capture.md' > $OUT/quick-capture.md 2>/dev/null
+SHARED=$(adb shell ls /sdcard/vault/assets | tr -d '\r' | grep '^shared_.*\.png$')
+NSHARED=$(echo "$SHARED" | grep -c .)
+SAME=0
+for f in $SHARED; do adb exec-out cat "/sdcard/vault/assets/$f" > $OUT/asset.png 2>/dev/null; cmp -s $OUT/asset.png /tmp/shared.png && SAME=$((SAME + 1)); done
+log "shared pictures in assets: $NSHARED, the same as the picture: $SAME"
+result "a picture shared twice is kept twice, never written over" "[ '$NSHARED' = 2 ] && [ '$SAME' = 2 ]"
+result "adding keeps a page's missing last line break" "python3 -c 'import sys; d=open(sys.argv[1],\"rb\").read(); sys.exit(0 if d.startswith(b\"- written before the share\\n- \") and not d.endswith(b\"\\n\") else 1)' $OUT/quick-capture.md"
 result "the look list fits the screen" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if d[\"rows\"] >= 9 and d[\"top\"] >= 0 and d[\"bottom\"] <= d[\"height\"] else 1)' '$LOOKS'"
 result "scrolling the journals loads older days" "[ -n '$BEFORE' ] && [ -n '$AFTER' ] && [ '$AFTER' -gt '$BEFORE' ]"
 result "Android's back button goes back inside the app" "[ '$BACKHASH' = '\"#/journals\"' ]"
 result "Back closes the menu drawer first and stays on the page" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if d[\"drawer\"] is False and d[\"hash\"].endswith(\"Sourdough Bread\") else 1)' '$DRAWER'"
 result "Back at the start leaves the app for the home screen" "[ -n '$TOP' ] && ! echo '$TOP' | grep -q '$PKG'"
-result "the app keeps running after leaving" "[ -n \"\$(adb shell pidof $PKG | tr -d '\r')\" ]"
+result "the app keeps running after leaving" "[ -n '$LEFT' ]"
+result "Update now asks for Android's “Install unknown apps” first" "echo \"\$UPD\" | grep -q '\"permission\"' && echo \"\$UNKNOWN\" | grep -q 'com.android.settings'"
+result "allowed, the newest release downloads and the app refuses it: not signed like this test build" "[ \"\$ST\" = error ] && echo \"\$REFUSED\" | grep -q 'signed like this app'"
+result "handed a good download, Android's installer asks to go ahead; cancelled, the app says so" "echo \"\$ASKED\" | grep -qi 'packageinstaller' && echo \"\$CANCELLED\" | grep -q 'cancelled'"
 result "both widgets are offered to the home screen" "adb shell dumpsys appwidget | grep -qi journalwidget && adb shell dumpsys appwidget | grep -qi quickaddwidget"
+result "the app sets up its icon shortcuts Today, Add note and Search" "grep -q '{id=today' $OUT/shortcuts.txt && grep -q '{id=add' $OUT/shortcuts.txt && grep -q '{id=search' $OUT/shortcuts.txt"
+result "pressing and holding the app icon shows them" "menu_shown"
+result "the Today shortcut opens today's journal page (app open)" "[ '$SC_TODAY' = '\"#/page/$TODAY\"' ]"
+result "the Search shortcut starts the app with the search box open" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if d[\"open\"] and d[\"focused\"] else 1)' '$SC_SEARCH'"
+result "the keyboard comes up for the search" "[ '$KEYBOARD' = 'mInputShown=true' ]"
+result "the Add note shortcut opens the pop-up" "echo '$SC_ADD' | grep -q QuickCaptureActivity"
+result "the Add note tile is offered in Quick Settings" "echo '$QS' | grep -q AddNoteTile"
+result "tapping the tile opens the pop-up and closes the shade" "echo '$TILE_TOP' | grep -q QuickCaptureActivity && echo '$TILE_FOCUS' | grep -q QuickCaptureActivity"
 gzip -9 $OUT/logcat.txt
 log "done: $([ $FAILED = 0 ] && echo 'everything passed' || echo 'SOMETHING FAILED, see the FAIL lines')"
 exit $FAILED

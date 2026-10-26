@@ -104,7 +104,9 @@ object Journal {
     s = sb.toString()
     if (s.startsWith(".")) s = "%2E" + s.substring(1)
     val reserved = setOf("CON", "PRN", "AUX", "NUL") + (1..9).flatMap { listOf("COM$it", "LPT$it") }
-    if (s in reserved || s.endsWith(".")) s += "/"
+    // Windows' reserved names in any capitals (con, Nul…), as Logseq and the app do
+    val upper = s.map { if (it in 'a'..'z') it - 32 else it }.joinToString("")
+    if (upper in reserved || s.endsWith(".")) s += "/"
     return s.replace("___", "%5F%5F%5F").replace("_/", "%5F/").replace("/_", "/%5F").replace("/", "___")
   }
   private fun Char.isHex() = this in '0'..'9' || this in 'a'..'f' || this in 'A'..'F'
@@ -150,8 +152,9 @@ object Journal {
   }
 
   // links and pictures: [name](address), ![name](address); an address may hold (balanced) brackets,
-  // like "…_(2003)._1678.pdf" or Wikipedia's "…_(disambiguation)"
-  private val MD_IMG = Regex("!\\[([^\\]]*)\\]\\(((?:[^()]|\\([^()]*\\))*)\\)")
+  // like "…_(2003)._1678.pdf" or Wikipedia's "…_(disambiguation)". A picture's size, as Logseq writes
+  // it right after the link ({:height 200, :width 300}), goes with it.
+  private val MD_IMG = Regex("!\\[([^\\]]*)\\]\\(((?:[^()]|\\([^()]*\\))*)\\)(?:\\{\\s*:[^}\\r\\n]*\\})?")
   private val MD_LINK = Regex("\\[([^\\]]*)\\]\\(((?:[^()\\s]|\\([^()\\s]*\\))*)\\)")
   private val WEB = Regex("https?://[^\\s)\\]]+")
   private val MACRO = Regex("\\{\\{([^}]*)\\}\\}")
@@ -321,9 +324,10 @@ object Journal {
     return name
   }
 
-  /** Same rules as outline_core::append_bullet: keeps CRLF and a byte-order mark. Written to a
-   *  hidden temp file in the same folder, flushed to disk, then renamed over the original, and
-   *  only if the file didn't change in between (a sync app may be writing it right then). */
+  /** Same rules as outline_core::append_bullet: keeps CRLF, a byte-order mark and a missing final
+   *  line break (a new file gets one). Written to a hidden temp file in the same folder, flushed to
+   *  disk, then renamed over the original, and only if the file didn't change in between (a sync
+   *  app may be writing it right then). */
   fun append(f: File, text: String) {
     val dir = f.parentFile ?: throw CaptureError("Couldn't find the folder for ${f.name}")
     dir.mkdirs()
@@ -333,6 +337,7 @@ object Journal {
       val bom = if (cur.startsWith("\uFEFF")) "\uFEFF" else ""
       cur = cur.removePrefix("\uFEFF")
       val nl = if (cur.contains("\r\n")) "\r\n" else "\n"
+      val finalNl = cur.isEmpty() || cur.endsWith("\n")
       // drop trailing line breaks and blank last lines, nothing else
       while (true) {
         val t = cur.trimEnd('\n', '\r')
@@ -345,7 +350,7 @@ object Journal {
       val lines = text.replace("\r\n", "\n").trimEnd('\n').split('\n')
       sb.append("- ").append(lines[0])
       for (l in lines.drop(1)) { sb.append(nl); if (l.isNotEmpty()) sb.append("  ").append(l) }
-      sb.append(nl)
+      if (finalNl) sb.append(nl)
       val out = (bom + sb.toString()).toByteArray(Charsets.UTF_8)
       val tmp = File.createTempFile(".capture-", ".tmp", dir) // hidden name: the app ignores it
       try {
@@ -362,15 +367,36 @@ object Journal {
     throw CaptureError("${f.name} kept changing (is it syncing?). Try again in a moment")
   }
 
-  /** Copy a shared file into the vault's assets folder. Returns the link path (../assets/…). */
+  /** Copy a shared file into the vault's assets folder. Returns the link path (../assets/…).
+   *  Named as outline_core::app::asset_file_name names files: its own extension (at most 10
+   *  letters or digits), else the one of its type as Android reports it (a picture's jpg or png),
+   *  else none; never a made-up one. */
   fun saveAsset(ctx: Context, uri: Uri, name: String): String {
     val vault = vault(ctx) ?: throw CaptureError("Open Lean Outliner once and choose your notes folder first")
     val dir = File(vault, "assets").apply { mkdirs() }
     val dot = name.lastIndexOf('.')
-    val stem = (if (dot > 0) name.substring(0, dot) else name).map { if (it.isLetterOrDigit() || it == '-' || it == '_') it else '_' }
+    val own = if (dot > 0) name.substring(dot + 1) else ""
+    val hasExt = own.isNotEmpty() && own.length <= 10 && own.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' }
+    val stem = (if (hasExt) name.substring(0, dot) else name).map { if (it.isLetterOrDigit() || it == '-' || it == '_') it else '_' }
       .joinToString("").trim('_').take(60).ifEmpty { "image" }
-    val ext = if (dot > 0) name.substring(dot + 1).lowercase(Locale.US).filter { it.isLetterOrDigit() } else "png"
-    val file = File(dir, "${stem}_${System.currentTimeMillis()}.$ext")
+    val typeExt = try {
+      ctx.contentResolver.getType(uri)?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+    } catch (e: Exception) { null }
+    val ext = if (hasExt) own.lowercase(Locale.US) else (typeExt ?: "").lowercase(Locale.US).filter { it in 'a'..'z' || it in '0'..'9' }.take(10)
+    // never over another file: a name already taken moves to the next millisecond (as
+    // outline_core::app::save_asset_file does); createNewFile claims the name in one step
+    var ms = System.currentTimeMillis()
+    var file = File(dir, if (ext.isEmpty()) "${stem}_$ms" else "${stem}_$ms.$ext")
+    var tries = 0
+    try {
+      while (!file.createNewFile()) {
+        if (++tries > 1000) throw CaptureError("Couldn't find a free file name in assets")
+        ms++
+        file = File(dir, if (ext.isEmpty()) "${stem}_$ms" else "${stem}_$ms.$ext")
+      }
+    } catch (e: java.io.IOException) {
+      throw CaptureError("Couldn't copy the picture: ${e.message ?: e.javaClass.simpleName}")
+    }
     try {
       val input = ctx.contentResolver.openInputStream(uri) ?: throw CaptureError("Couldn't open the picture")
       input.use { i -> file.outputStream().use { i.copyTo(it) } }

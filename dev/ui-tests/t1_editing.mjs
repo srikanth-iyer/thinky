@@ -76,12 +76,17 @@ await sleep(300);
 check(await page.locator('.date-chip', { hasText: 'Tomorrow' }).count() === 1, 'date chip shows "Tomorrow"');
 
 console.log('property suggestions');
+// the list of names loads once; answers that come back late (a busy machine) must not show an
+// older keystroke's list: the first request is held back here while the rest of "::sta" is typed
+let heldBack = false;
+await page.route('**/api/props', async (route) => { if (!heldBack) { heldBack = true; await sleep(700); } await route.continue(); });
 await editBlock(page, 'Step-by-step fermentation menu');
 await page.keyboard.press('Shift+Enter');
 await page.keyboard.type('::sta');
-await sleep(400);
+await sleep(1100);
+await page.unroute('**/api/props');
 const keys = await page.locator('#ac:not([hidden]) li').allTextContents();
-check(keys.some((k) => k === 'status'), 'property keys suggested after ::', keys.join('|'));
+check(keys.some((k) => k === 'status') && keys.every((k) => k.includes('sta')), 'property keys suggested after ::, for what was typed last', keys.join('|'));
 await page.keyboard.press('Enter');
 await sleep(400);
 check((await ed().inputValue()).endsWith('status:: '), 'key inserted as "status:: "', await ed().inputValue());

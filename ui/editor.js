@@ -4,16 +4,22 @@
 // the user chooses (the other version is kept as a backup copy).
 
 import { call, today, nowTime } from './api.js';
-import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, parseStamp, stampText } from './render.js';
+import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, parseStamp, stampText, withPictureSize } from './render.js';
 import { pickDate, caretRect } from './popups.js';
+import { openClash } from './clash.js';
 
 const HIDE = /^\s*(id|collapsed)::/i; // Logseq bookkeeping: never shown in the editing box
 const COLLAPSED_RE = /\ncollapsed:: true(?=\n|$)/;
 const OPEN = new Set(['TODO', 'DOING', 'LATER', 'NOW', 'WAITING', 'WAIT', 'IN-PROGRESS', 'STARTED']);
 const CHUNK = 300; // blocks drawn at once; the rest follow right after (long pages)
+export const PIN_H = 30; // height of a pinned parent's row (px; app.css .pin)
+export const EDGE = 48; // phones: a swipe starting this close to the left edge opens the menu instead (app.js)
+const SWIPE = 56; // how far a swipe goes to move a note in or out a level (px)
 const nl = (s) => (s.match(/\n/g) || []).length;
 const isProp = (l) => PROP.test(l);
 const clone = (x) => JSON.parse(JSON.stringify(x));
+/** What a page says (properties, and each note's level and words): equal keys, same version. */
+const docKey = (d) => JSON.stringify([d.preamble, d.blocks.map((b) => [b.depth, b.text])]);
 /** How much the text size setting zooms the page at el: its size on screen over its own size. */
 const zoomOf = (el, rect = el.getBoundingClientRect()) => (el.offsetWidth ? rect.width / el.offsetWidth : 1) || 1;
 
@@ -53,7 +59,13 @@ export class Outline {
     this.crumbs.hidden = true;
     this.el = document.createElement('div');
     this.el.className = 'outline';
-    host.append(this.banner, this.crumbs, this.el);
+    // parents of the note at the top of the screen, pinned there while scrolling (pinParents)
+    this.pins = document.createElement('div');
+    this.pins.className = 'pins';
+    this.pins.hidden = true;
+    this.pins.innerHTML = '<div class="pins-in"></div>';
+    this.pinned = '';
+    host.append(this.banner, this.crumbs, this.pins, this.el);
     this.cur = null; // index of the block being edited
     this.ta = null;
     this.sel = null; // selected blocks {a, b} (anchor, head)
@@ -129,9 +141,12 @@ export class Outline {
     clearTimeout(this.chunkT);
     this.drawn = this.start;
     this.hidden = this.hiddenSet();
+    this.divs = [];
     this.el.replaceChildren();
     this.drawMore(CHUNK);
     this.renderCrumbs();
+    this.pinned = null; // notes moved: the pinned ones are worked out again
+    this.app.pinSoon?.();
   }
   drawMore(n) {
     const frag = document.createDocumentFragment();
@@ -150,6 +165,7 @@ export class Outline {
     const div = document.createElement('div');
     div.className = 'blk';
     div.dataset.i = i;
+    this.divs[i] = div;
     div.style.setProperty('--d', b.depth - this.baseDepth);
     if (this.hidden.has(i)) div.hidden = true;
     if (this.hasKids(i)) {
@@ -169,7 +185,22 @@ export class Outline {
     div.append(bul, this.viewEl(i));
     return div;
   }
-  blockDiv(i) { return this.el.querySelector(`.blk[data-i="${i}"]`); }
+  blockDiv(i) { return this.divs[i] ?? null; } // the rows drawn so far, by note (render, blockEl)
+  /** The shown row at height y on screen: a binary search over the drawn rows (no hit testing). */
+  rowAt(y) {
+    let lo = this.start, hi = this.drawn - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      let k = mid;
+      while (k <= hi && this.divs[k].hidden) k++; // inside a folded note: the next shown row
+      if (k > hi) { hi = mid - 1; continue; }
+      const r = this.divs[k].getBoundingClientRect();
+      if (r.bottom <= y) lo = k + 1;
+      else if (r.top > y) hi = mid - 1;
+      else return this.divs[k];
+    }
+    return null;
+  }
 
   viewEl(i) {
     const b = this.blocks[i];
@@ -184,16 +215,25 @@ export class Outline {
       if (!['TODO', 'DONE'].includes(r.marker)) pre += `<span class="mk">${esc(r.marker)}</span>`;
     }
     if (r.priority) pre += `<span class="prio p${r.priority}" title="Priority ${r.priority}">${r.priority}</span>`;
-    bc.innerHTML = pre + r.html + datesHtml(r.dates, !r.marker || OPEN.has(r.marker)) + propsHtml(r.props);
+    const html = pre + r.html + datesHtml(r.dates, !r.marker || OPEN.has(r.marker)) + propsHtml(r.props);
+    bc.innerHTML = html;
+    // pictures get a corner handle to resize them (dragPicture), unless the note can't be edited
+    if (!this.readonly && html.includes('class="pic"')) {
+      for (const p of bc.querySelectorAll('.pic')) p.insertAdjacentHTML('beforeend', '<span class="pic-h" title="Drag to change the size (double-click: the usual size)"></span>');
+    }
     if (!b.text.trim()) bc.dataset.ph = i === this.start && this.end - this.start === 1 ? 'Click to write…' : '';
     const doneCls = r.marker === 'DONE' || (r.marker || '').startsWith('CANCEL');
     // a heading makes the first line taller: the dot and the fold arrow centre on it (--hf, app.css)
     const hf = [0, 0.5, 0.3, 0.15, 0.05, 0.05, 0.05][r.heading] || 0;
+    // a note that starts with a box or a quote: the dot moves down to its first line of words (--lead)
+    const lead = r.html.startsWith('<div class="callout') ? 'calc(var(--callout-gap) + var(--callout-pad))'
+      : r.html.startsWith('<blockquote') ? 'var(--quote-gap)' : '';
     queueMicrotask(() => {
       const div = bc.parentElement;
       if (!div) return;
       div.classList.toggle('marker-done', doneCls);
       if (hf) div.style.setProperty('--hf', hf); else div.style.removeProperty('--hf');
+      if (lead) div.style.setProperty('--lead', lead); else div.style.removeProperty('--lead');
     });
     return bc;
   }
@@ -203,6 +243,67 @@ export class Outline {
     if (!div) return;
     const old = div.querySelector('.bc, .ed');
     if (old && old !== this.ta) old.replaceWith(this.viewEl(i));
+    if (this.pinned?.split(',').includes(String(i))) { this.pinned = null; this.app.pinSoon?.(); }
+  }
+
+  /** Dragging a picture's corner handle resizes it on screen, keeping its shape (mouse or finger);
+   *  on release its size goes into the note (sizePicture). A click without a drag does nothing. */
+  dragPicture(e) {
+    const hd = e.target;
+    const img = hd.parentElement.querySelector('img');
+    if (this.readonly || e.button > 0 || !img?.naturalWidth) return;
+    e.preventDefault();
+    const z = zoomOf(img);
+    const w0 = img.offsetWidth, h0 = img.offsetHeight, x0 = e.clientX, y0 = e.clientY;
+    let moved = false;
+    hd.setPointerCapture(e.pointerId);
+    hd.parentElement.classList.add('resizing');
+    const move = (ev) => {
+      const dx = (ev.clientX - x0) / z, dy = (ev.clientY - y0) / z;
+      if (!moved && Math.hypot(dx, dy) < 4) return;
+      moved = true;
+      // how far the corner went along the picture's diagonal; never wider than the note (max-width)
+      const w = w0 * (1 + (dx * w0 + dy * h0) / (w0 * w0 + h0 * h0));
+      Object.assign(img.style, { width: Math.max(40, Math.round(w)) + 'px', height: 'auto', maxHeight: 'none' });
+    };
+    const end = (ev) => {
+      hd.removeEventListener('pointermove', move);
+      hd.removeEventListener('pointerup', end);
+      hd.removeEventListener('pointercancel', end);
+      hd.parentElement.classList.remove('resizing');
+      if (!moved) return;
+      this.swipedAt = Date.now(); // the click that ends a drag neither opens the picture nor edits
+      if (ev.type === 'pointerup') this.sizePicture(hd, img.offsetWidth, img.offsetHeight);
+      else { const blk = hd.closest('.blk'); if (blk) this.refreshBlock(+blk.dataset.i); }
+    };
+    hd.addEventListener('pointermove', move);
+    hd.addEventListener('pointerup', end);
+    hd.addEventListener('pointercancel', end);
+  }
+
+  /** Write the size of handle hd's picture into its note as Logseq does, {:height h, :width w} right
+   *  after its link (w 0: take the size out). One Undo step; nothing else in the note changes. */
+  sizePicture(hd, w, h) {
+    const blk = hd.closest('.blk');
+    const img = hd.parentElement?.querySelector('img');
+    if (this.readonly || !blk?.isConnected || !img) return; // (the page was drawn again meanwhile)
+    const i = +blk.dataset.i;
+    const md = img.dataset.md;
+    const same = [...hd.closest('.bc').querySelectorAll('img.img')].filter((x) => x.dataset.md === md);
+    const text = this.textOf(i);
+    // the same link also written where it isn't a picture (in code): unclear which one this is
+    // (or also as a property value, which shows in a different place than it's written)
+    const inCode = text.split(md).length - 1 !== same.length;
+    if (inCode || (same.length > 1 && same.some((x) => x.closest('.props')))) {
+      this.refreshBlock(i);
+      this.app.toast(`This picture’s size can’t be changed here: the same picture is also ${inCode ? 'written as code' : 'in a property'} in this note, so it’s unclear which one to change.`, 5000);
+      return;
+    }
+    const after = withPictureSize(text, md, same.indexOf(img), w, h);
+    if (after === text) { this.refreshBlock(i); return; }
+    this.snap();
+    this.setText(i, () => after);
+    if (this.app.active?.cur == null) this.app.active = this; // Ctrl+Z (app.js) undoes it, on any journal day too
   }
 
   renderCrumbs() {
@@ -216,6 +317,12 @@ export class Outline {
 
   // ---------- events ----------
   bindEvents() {
+    this.pins.addEventListener('click', (e) => {
+      const row = e.target.closest('.pin');
+      if (!row) return;
+      e.preventDefault();
+      this.goToPinned(+row.dataset.i);
+    });
     this.crumbs.addEventListener('click', (e) => {
       const a = e.target.closest('[data-z]');
       if (!a) return;
@@ -225,6 +332,7 @@ export class Outline {
       else this.app.go('zoom', this.name, { line: this.lineOf(+a.dataset.z) });
     });
     this.el.addEventListener('click', (e) => {
+      if (Date.now() - (this.swipedAt || 0) < 400) return; // the end of a swipe (phones)
       const t = e.target;
       const blk = t.closest('.blk');
       if (!blk) return;
@@ -243,6 +351,7 @@ export class Outline {
       if (t.classList.contains('fold')) { this.toggleCollapse(i); return; }
       if (t.closest('.date-chip')) { this.editDate(i, t.closest('.date-chip').textContent.includes('Deadline') ? 'deadline' : 'scheduled'); return; }
       if (t.tagName === 'IMG') { this.app.showImage(t.src); return; }
+      if (t.closest('.pic')) return; // a picture's resize handle (or around a picture that didn't load)
       if (e.shiftKey && (this.sel || this.cur !== null)) { e.preventDefault(); this.extendTo(i); return; }
       if (t.classList.contains('bul')) {
         if (this.longPressed) { this.longPressed = false; return; }
@@ -264,6 +373,9 @@ export class Outline {
       this.showThread(blk ? this.threadAt(e, blk) : null);
     });
     this.el.addEventListener('mouseleave', () => this.showThread(null));
+    // a picture's corner handle: drag it to resize the picture, double-click it for the usual size
+    this.el.addEventListener('pointerdown', (e) => { if (e.target.classList.contains('pic-h')) this.dragPicture(e); });
+    this.el.addEventListener('dblclick', (e) => { if (e.target.classList.contains('pic-h')) this.sizePicture(e.target, 0, 0); });
     // phone: hold a bullet to select blocks (then tap other bullets to add)
     this.el.addEventListener('pointerdown', (e) => {
       const bul = e.target.closest('.bul');
@@ -277,6 +389,76 @@ export class Outline {
       }, 450);
     });
     for (const ev of ['pointerup', 'pointercancel', 'pointermove']) this.el.addEventListener(ev, (e) => { if (ev !== 'pointermove' || Math.abs(e.movementY) > 4) clearTimeout(this.pressT); });
+    // phones: swipe a note to the right to move it in a level, to the left to move it out (with its
+    // children; the row follows the finger a little). Not from the screen's left edge: a swipe
+    // from there opens the menu (app.js), and Android's Back gesture owns the very edge.
+    let sw = null;
+    this.el.addEventListener('touchstart', (e) => {
+      sw = null;
+      const t = e.touches[0];
+      const blk = e.target.closest('.blk');
+      // only on a note's words (not its dot or the margin), never from the edge
+      if (e.touches.length !== 1 || this.readonly || !blk || !e.target.closest('.bc') || t.clientX < EDGE || e.target.closest('.ed, .fold, .todo, img, .pic-h, pre, .math')) return;
+      sw = { blk, i: +blk.dataset.i, x: t.clientX, y: t.clientY, dx: 0, dy: 0, on: false, sy: scrollY + document.querySelector('#main').scrollTop };
+    }, { passive: true });
+    this.el.addEventListener('touchmove', (e) => {
+      if (!sw) return;
+      const t = e.touches[0];
+      const dx = t.clientX - sw.x, dy = t.clientY - sw.y;
+      if (!sw.on) {
+        if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; } // scrolling
+        if (Math.abs(dx) < 14 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+        sw.on = true;
+        clearTimeout(this.pressT); // not a long press on the dot
+      }
+      sw.dx = dx; sw.dy = dy;
+      if (Math.abs(dy) > 24) { swipeEnd(true); return; } // the finger went on up or down: scrolling after all
+      sw.blk.style.translate = `${Math.max(-40, Math.min(40, dx / 2))}px 0`;
+      sw.blk.classList.toggle('swipe-in', dx >= SWIPE);
+      sw.blk.classList.toggle('swipe-out', dx <= -SWIPE);
+    }, { passive: true });
+    const swipeEnd = (cancel = false) => {
+      if (!sw) return;
+      const { blk, i, dx, dy, on, sy } = sw;
+      sw = null;
+      blk.classList.remove('swipe-in', 'swipe-out');
+      blk.style.transition = 'translate .15s ease';
+      blk.style.translate = '';
+      setTimeout(() => { blk.style.transition = ''; }, 200);
+      if (!on) return;
+      this.swipedAt = Date.now(); // the touch that ends a swipe doesn't start editing
+      const scrolled = Math.abs(scrollY + document.querySelector('#main').scrollTop - sy) > 4;
+      if (!cancel && !scrolled && Math.abs(dx) >= SWIPE && Math.abs(dx) > 2 * Math.abs(dy) && this.shiftLevel(i, dx > 0 ? 1 : -1)) {
+        navigator.vibrate?.(10);
+        // (on a phone there's no Undo button unless a note is being edited); only this move is undone
+        const step = this.undoStack.at(-1);
+        this.app.toast(dx > 0 ? 'Moved in a level.' : 'Moved out a level.', 4000, { label: 'Undo', run: () => {
+          if (this.undoStack.at(-1) === step) this.undo();
+          else this.app.toast('Something else was changed since, so this can’t be undone from here.', 3000);
+        } });
+      }
+    };
+    this.el.addEventListener('touchend', () => swipeEnd());
+    this.el.addEventListener('touchcancel', () => swipeEnd(true));
+  }
+
+  /** A swipe moved note i (and its children, or the selected notes) in (dir 1) or out (-1) a level.
+   *  Unlike Tab, nothing starts being edited (no keyboard). False if it can't move that way. */
+  shiftLevel(i, dir) {
+    if (this.readonly || i === this.root) return false;
+    if (this.sel && !this.inSel(i)) this.clearSel();
+    const r = this.opRange(i);
+    if (!r) return false;
+    const [a, z] = r;
+    const d = this.blocks[a].depth;
+    if (dir > 0 && (a <= this.start || a === this.root || this.blocks[a - 1].depth < d)) return false;
+    if (dir < 0 && (d === 0 || a === this.root || (this.root !== null && d <= this.blocks[this.root].depth + 1))) return false;
+    this.stopEdit();
+    this.snap();
+    for (let j = a; j < z; j++) this.blocks[j].depth += dir;
+    this.render();
+    this.markDirty();
+    return true;
   }
 
   /** Put the caret where the block was clicked (roughly: by visible text length). */
@@ -329,14 +511,26 @@ export class Outline {
     div.querySelector('.bc').replaceWith(ta);
     div.classList.remove('marker-done');
     div.style.removeProperty('--hf'); // the editing box shows "## …" at the normal size
+    div.style.removeProperty('--lead');
     this.ta = ta;
     this.cur = i;
     this.autosize();
     ta.focus({ preventScroll: true });
     const pos = caret === 'end' ? contentEnd(shown) : Math.min(caret, shown.length);
     ta.setSelectionRange(pos, pos);
+    // a wide window: once this note is at the top, its parents get pinned there; scroll it in below them
+    const main = document.querySelector('#main');
+    if (main && getComputedStyle(main).overflowY !== 'visible') {
+      let n = 0;
+      for (let a = this.parentOf(i); a >= this.start; a = this.parentOf(a)) n++;
+      main.style.scrollPaddingTop = n ? `${8 + n * PIN_H}px` : '';
+    }
     ta.scrollIntoView({ block: 'nearest' });
-    ta.addEventListener('beforeinput', () => this.beforeTyping());
+    ta.addEventListener('beforeinput', (e) => {
+      // "[" with words selected wraps them: [words]; a second "[" makes a page link [[words]] (like Logseq)
+      if (e.inputType === 'insertText' && e.data === '[' && ta.selectionStart !== ta.selectionEnd) { e.preventDefault(); this.wrap('[', ']'); return; }
+      this.beforeTyping();
+    });
     ta.addEventListener('input', (e) => this.onInput(e));
     ta.addEventListener('keydown', (e) => this.onKey(e));
     ta.addEventListener('paste', (e) => this.onPaste(e));
@@ -438,6 +632,22 @@ export class Outline {
     const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith('image/'));
     if (files.length) { e.preventDefault(); for (const f of files) await this.addImage(f); return; }
     const text = e.clipboardData?.getData('text/plain') ?? '';
+    // a web address pasted over selected words makes them a link to it: [words](address)
+    const ta = this.ta;
+    const url = text.trim();
+    if (ta && ta.selectionStart !== ta.selectionEnd && /^https?:\/\/\S+$/i.test(url)) {
+      const words = ta.value.slice(ta.selectionStart, ta.selectionEnd);
+      // not over an address (that's swapping one address for another), nor inside a link's "(…)"
+      const before = ta.value.slice(0, ta.selectionStart);
+      const inAddress = /\]\([^)\s]*$/.test(before) || /^[a-z][\w+.-]*:\/\/|^www\./i.test(words.trim());
+      if (!words.includes('\n') && words.trim() && !inAddress) {
+        e.preventDefault();
+        this.snap();
+        ta.setRangeText(`[${words}](${url})`, ta.selectionStart, ta.selectionEnd, 'end');
+        this.typed();
+        return;
+      }
+    }
     const lines = text.replace(/\r/g, '').split('\n');
     const isBullet = (l) => /^\s*[-*+] |^\s*-$/.test(l);
     if (lines.filter(isBullet).length < 2) return; // plain paste stays inside this block
@@ -493,6 +703,12 @@ export class Outline {
     this.render();
     this.markDirty();
     if (st.cur !== null && st.cur < this.blocks.length) this.edit(st.cur, st.caret ?? 'end');
+  }
+  /** The page was replaced from outside the editor (merged, chosen on the clash screen, read again). */
+  forgetUndo() {
+    this.undoStack = [];
+    this.redoStack = [];
+    this.lastSnap = null;
   }
   undo() {
     if (!this.undoStack.length) { this.app.toast('Nothing to undo', 1200); return; }
@@ -1095,6 +1311,60 @@ export class Outline {
     this.edit(Math.max(this.start, Math.min(i, this.end - 1)), caret);
   }
 
+  // ---------- parents pinned at the top ----------
+  /** Long pages: the notes above the one at the top of the screen (its parent, grandparent…) stay
+   *  pinned there, one line each, so you can see where you are; a tap on one goes to it. Called
+   *  by the app while scrolling. top: where the notes start on screen; stick: the pinned rows'
+   *  place for position: sticky (that, or 0 when #main scrolls); hide: show none (editing on a phone). */
+  pinParents(top, stick, hide = false) {
+    const r = this.el.getBoundingClientRect();
+    const rowH = PIN_H * zoomOf(this.el, r);
+    let pins = [];
+    if (!hide && r.top < top && r.bottom > top + 2 * rowH) {
+      const x = r.left + r.width / 2;
+      for (let n = 0; n < 8; n++) { // the rows found cover notes, which may have parents too: again
+        const y = top + pins.length * rowH + 1;
+        const blk = this.rowAt(y);
+        if (!blk) break;
+        const i = +blk.dataset.i;
+        const chain = [];
+        for (let a = this.parentOf(i); a >= this.start; a = this.parentOf(a)) chain.unshift(a);
+        // the note there too, if its first line is out of sight and its children are showing
+        if (this.hasKids(i) && !this.isCollapsed(i) && blk.getBoundingClientRect().top < y - rowH / 2) chain.push(i);
+        const next = [];
+        for (let k = 0; k < chain.length; k++) {
+          const d = this.blockDiv(chain[k]);
+          if (!d || d.getBoundingClientRect().top >= top + k * rowH - 1) break; // still in sight
+          next.push(chain[k]);
+        }
+        const same = next.length === pins.length;
+        pins = next;
+        if (same) break;
+      }
+    }
+    if (this.pinStick !== stick) { this.pinStick = stick; this.pins.style.top = stick + 'px'; }
+    const key = pins.join(',');
+    if (key === this.pinned) return;
+    this.pinned = key;
+    this.pins.hidden = !pins.length;
+    this.pins.firstChild.innerHTML = pins.map((i) => `<div class="pin" data-i="${i}" style="--d:${this.blocks[i].depth - this.baseDepth}">${this.pinText(i)}</div>`).join('');
+  }
+  /** A note's first line of words, for a pinned row. */
+  pinText(i) {
+    const lines = this.blocks[i].text.split('\n').filter((l) => !isProp(l) && !/^\s*(#\+(BEGIN|END)_|:[A-Za-z-]+:\s*$|(SCHEDULED|DEADLINE):|```)/i.test(l));
+    const r = renderBlock((lines[0] || '').replace(/^\s*>\s?(\[![\w-]+\][+-]?\s*)?/, ''));
+    return (r.marker ? (r.marker === 'DONE' ? '☑ ' : '☐ ') : '') + r.html;
+  }
+  /** Scroll so note i is at the top, just under its own pinned parents. */
+  goToPinned(i) {
+    const d = this.blockDiv(i);
+    if (!d) return;
+    let above = 0;
+    for (let a = this.parentOf(i); a >= this.start; a = this.parentOf(a)) above++;
+    const s = this.app.scroller();
+    s.by(d.getBoundingClientRect().top - s.top - above * PIN_H * zoomOf(this.el) - 4);
+  }
+
   flash(i) {
     this.ensureDrawn(i);
     const div = this.blockDiv(i);
@@ -1120,19 +1390,29 @@ export class Outline {
   }
 
   save(force = false) {
-    if (this.saving) { this.again = true; return this.saving; }
+    // one save at a time: another asked for meanwhile follows it (still forced if it was)
+    if (this.saving) { this.again = true; this.againForce ||= force; return this.saving; }
     if ((!this.dirty && !force) || this.readonly) return Promise.resolve();
+    if (this.conflict && !force) return Promise.resolve(); // waiting for his choice (clash.js): trying again would only clash again
     this.saving = (async () => {
       this.dirty = false;
       const sent = clone(this.doc);
       try {
         const res = await call('save', { name: this.name, doc: sent, base_hash: this.hash, force, path: this.path, base: this.base });
-        if (res.conflict) { this.dirty = true; this.conflict = true; this.showConflict(); return; }
+        this.saveError = null;
+        if (res.conflict) {
+          this.dirty = true;
+          this.conflict = true;
+          this.backupPending(); // until he chooses, this page is only in memory
+          this.showConflict();
+          return;
+        }
         this.conflict = false;
         this.banner.hidden = true;
         if (res.hash) this.exists = true;
         if (res.merged && this.dirty) {
-          // more typing arrived while saving: merge again on the next save, from what we sent
+          // more typing arrived while saving: merge again on the next save, from what we sent (an
+          // Undo meanwhile is merged the same way, so the undo steps can stay)
           this.base = sent;
           this.app.toast('Changes made elsewhere were added to this page', 2500);
         } else if (res.merged) {
@@ -1146,22 +1426,30 @@ export class Outline {
         this.app.saved(this);
       } catch (err) {
         this.dirty = true;
+        this.saveError = String(err); // (the clash screen's "Keep mine" checks it)
         this.app.toast('Could not save “' + this.name + '”: ' + err, 6000);
       }
     })();
     return this.saving.finally(() => {
       this.saving = null;
-      if (this.again) { this.again = false; return this.save(); }
+      if (this.again) {
+        const f = this.againForce;
+        this.again = this.againForce = false;
+        return this.save(f);
+      }
     });
   }
 
-  /** The page as saved after combining with changes made elsewhere: show it, keep the caret. */
+  /** The page as saved after combining with changes made elsewhere: show it, keep the caret. The
+   *  undo steps are dropped: they hold the page from before the other changes came in, so going back
+   *  to one would quietly remove them again. */
   applyMerged(doc) {
     const editing = this.cur;
     const caret = this.ta?.selectionStart ?? null;
     const key = editing !== null ? this.blocks[editing] : null;
     this.doc = doc;
     this.base = clone(doc);
+    this.forgetUndo();
     if (this.zoomLine !== null && this.root !== null) this.root = Math.min(this.root, this.blocks.length - 1);
     let at = null;
     if (key) {
@@ -1180,23 +1468,40 @@ export class Outline {
     this.banner.innerHTML = html;
   }
 
+  /** The page was changed here and somewhere else in the same notes: the clash screen (clash.js)
+   *  shows both versions to choose from; until he chooses, this banner offers it again. Nothing on
+   *  the page is saved meanwhile (backupPending keeps copies of it in logseq/bak instead). */
   showConflict() {
-    this.showBanner(`<span>This page was also changed somewhere else (your phone, Claude or another app), in the same place you’re editing. Choose which version to keep; the other is saved as a backup copy in <code>logseq/bak</code>.</span>
-      <span class="btn-row"><button class="btn ghost" data-a="load">Use the other version</button>
-      <button class="btn" data-a="keep">Keep mine</button></span>`);
+    this.showBanner(`<span>This page was also changed somewhere else (your phone, Claude or another app), in the same notes as here. Nothing on this page is saved until you choose.</span>
+      <span class="btn-row"><button class="btn" data-a="choose">Choose what to keep…</button></span>`);
     this.app.conflicts?.add(this);
-    this.banner.onclick = async (e) => {
-      const a = e.target.dataset.a;
-      if (a === 'keep') { this.dirty = true; this.conflict = false; await this.save(true); }
-      if (a === 'load') {
-        try { await call('backup', { name: this.name, doc: this.doc }); }
-        catch (err) { this.app.toast('Couldn’t keep a backup copy, so nothing was changed: ' + err, 6000); return; }
-        this.dirty = false;
-        this.conflict = false;
-        await this.reload(true);
-      }
-      if (!this.conflict) this.app.conflicts?.delete(this);
-    };
+    this.banner.onclick = (e) => { if (e.target.closest('[data-a="choose"]')) openClash(this); };
+    openClash(this);
+  }
+
+  /** Keep this device's version of the page in logseq/bak, unless this exact version is kept there
+   *  already (or on its way: two calls at once make one copy). Throws if it can't be kept. */
+  async backupMine(keepalive = false) {
+    const key = docKey(this.doc);
+    if (key === this.bakKey) return;
+    if (this.bakRun?.key !== key) {
+      const p = call('backup', { name: this.name, doc: clone(this.doc) }, { keepalive });
+      const run = { key, p, n: (this.bakN = (this.bakN || 0) + 1) };
+      this.bakRun = run;
+      // the newest version backed up is the one that counts (an older call may finish later)
+      p.then(() => { if (run.n > (this.bakDone || 0)) { this.bakDone = run.n; this.bakKey = key; } }, () => {})
+        .finally(() => { if (this.bakRun === run) this.bakRun = null; });
+    }
+    await this.bakRun.p;
+  }
+
+  /** While a clash waits for his choice, this page exists only here: a copy goes to logseq/bak when
+   *  the clash first shows, and again when the app is put away or closed if he typed more since.
+   *  Never throws (a problem goes to the problems log). */
+  async backupPending(keepalive = false) {
+    if (!this.conflict || this.readonly) return;
+    try { await this.backupMine(keepalive); }
+    catch (err) { call('log', { msg: `backup while a clash waits (“${this.name}”): ${err}` }).catch(() => {}); }
   }
 
   /** Re-read the page from disk (after sync/Claude changed it). Skips if the user is busy here. */
@@ -1208,8 +1513,7 @@ export class Outline {
     this.stopEdit();
     this.load(view);
     if (!this.error) this.banner.hidden = true;
-    this.undoStack = [];
-    this.redoStack = [];
+    this.forgetUndo();
     this.render();
     return true;
   }

@@ -1,9 +1,12 @@
 // Backend bridge: Tauri when running as the app, HTTP when running under the dev server.
 const T = window.__TAURI__;
 
-export async function call(cmd, args = {}) {
+/** opts.keepalive: the request may outlive the page (sent while it closes or reloads; the dev
+ *  server only, and only small ones, as browsers allow) */
+export async function call(cmd, args = {}, opts = {}) {
   if (T) return T.core.invoke('call', { cmd, args });
-  const r = await fetch('/api/' + cmd, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
+  const body = JSON.stringify(args);
+  const r = await fetch('/api/' + cmd, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: !!opts.keepalive && body.length < 60000 });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;

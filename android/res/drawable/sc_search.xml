@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App icon shortcut "Search": the app's magnifier in teal on a pale round badge -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48">
+    <path android:fillColor="#FFE3F1EE" android:pathData="M24,2a22,22 0 1,1 0,44a22,22 0 1,1 0,-44z" />
+    <group android:translateX="11.5" android:translateY="11.5">
+        <path android:pathData="M11,4.5a6.5,6.5 0 1,1 0,13a6.5,6.5 0 1,1 0,-13z M16,16l4.5,4.5"
+            android:strokeColor="#FF0B7B66" android:strokeWidth="2"
+            android:strokeLineCap="round" android:strokeLineJoin="round" />
+    </group>
+</vector>

@@ -25,6 +25,7 @@ mod imp {
         fn GetLocalTime(st: *mut SystemTime);
         fn GlobalLock(h: *mut c_void) -> *mut c_void;
         fn GlobalUnlock(h: *mut c_void) -> i32;
+        fn GlobalSize(h: *mut c_void) -> usize;
     }
     #[link(name = "user32")]
     extern "system" {
@@ -66,8 +67,10 @@ mod imp {
             if !h.is_null() {
                 let p = GlobalLock(h) as *const u16;
                 if !p.is_null() {
+                    // never past the clipboard's block, even if its text has no end marker
+                    let max = (GlobalSize(h) / 2).min(4_000_000);
                     let mut n = 0;
-                    while *p.add(n) != 0 && n < 1_000_000 {
+                    while n < max && *p.add(n) != 0 {
                         n += 1;
                     }
                     out = String::from_utf16_lossy(std::slice::from_raw_parts(p, n));

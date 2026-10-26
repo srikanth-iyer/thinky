@@ -118,6 +118,13 @@ fn mentions_skip_links_code_and_props() {
     let m = text::mentions(t, &names);
     assert_eq!(m.len(), 1);
     assert_eq!(&t[m[0].0..m[0].1], "İstanbul");
+    // a picture's size ({:height …, :width …}, as Logseq writes it) is part of the picture, not words
+    let names = vec!["width".to_string(), "height".to_string()];
+    let t = "a chart ![c](../assets/c.png){:height 95, :width 190} of the width";
+    let m = text::mentions(t, &names);
+    let words: Vec<&str> = m.iter().map(|&(s, e)| &t[s..e]).collect();
+    assert_eq!(words, vec!["width"]);
+    assert_eq!(text::link_first_mention(t, &names).unwrap(), "a chart ![c](../assets/c.png){:height 95, :width 190} of the [[width]]");
 }
 
 fn sample_vault(tag: &str) -> (PathBuf, App) {
@@ -348,7 +355,7 @@ fn every_new_command_survives_bad_input() {
     let cmds = [
         "save_block", "tasks", "task_done", "unlinked", "link_mention", "rename", "delete", "recycled", "restore", "templates",
         "template", "save_asset", "set_favorite", "set_capture", "capture", "prop_values", "journal_dates", "errors", "page",
-        "unlinked_any",
+        "unlinked_any", "clash", "save_look",
     ];
     for c in cmds {
         for args in [json!({}), json!({"name": 5, "line": "x", "names": "notalist", "data": "!!", "today": [2026, 13, 40]}), json!(null)] {
@@ -463,6 +470,149 @@ fn edit_next_to_an_addition_is_merged() {
 }
 
 #[test]
+fn clashes_come_in_parts_to_choose_from() {
+    use outline_core::merge::{clash_parts, Part};
+    let base = split_doc("- one\n- two\n- three\n- four\n- five\n");
+    // here: "two" and "four" edited; there: "two" and "four" edited differently, "five" removed, one added
+    let mut mine = base.clone();
+    mine.blocks[1].text = "two, here".into();
+    mine.blocks[3].text = "four, here".into();
+    let theirs = split_doc("- one\n- two, there\n- three\n- four, there\n- added there\n");
+    let parts = clash_parts(&base.blocks, &mine.blocks, &theirs.blocks).expect("small enough");
+    let texts = |v: &[DocBlock]| v.iter().map(|b| b.text.clone()).collect::<Vec<_>>().join("|");
+    let shape: Vec<String> = parts.iter().map(|p| match p {
+        Part::Same { blocks } => format!("same {}", texts(blocks)),
+        Part::Clash { base, mine, theirs } => format!("clash {} / {} / {}", texts(base), texts(mine), texts(theirs)),
+    }).collect();
+    // "four" + "five" is one stretch (between notes nobody changed) where both changed "four": shown
+    // whole, so the other copy's "added there" isn't paired with this device's untouched "five"
+    assert_eq!(shape, [
+        "same one",
+        "clash two / two, here / two, there",
+        "same three",
+        "clash four|five / four, here|five / four, there|added there",
+    ]);
+    // choosing a side for each clash and joining the parts gives a page; untouched notes keep their lines
+    let pick = |mine_side: bool| -> String { join_doc(&Doc { blocks: pick_parts(&parts, |_, _| mine_side), ..theirs.clone() }) };
+    assert_eq!(pick(false), "- one\n- two, there\n- three\n- four, there\n- added there\n");
+    assert_eq!(pick(true), "- one\n- two, here\n- three\n- four, here\n- five\n");
+    // nothing clashing (next to each other, but different notes): one part, and saving merges it
+    let mut other = base.clone();
+    other.blocks[4].text = "five, edited".into();
+    let parts = clash_parts(&base.blocks, &mine.blocks, &other.blocks).unwrap();
+    assert!(matches!(&parts[..], [Part::Same { .. }]));
+    let m = outline_core::merge::merge_docs(&base, &mine, &other).expect("merges");
+    assert_eq!(join_doc(&m), "- one\n- two, here\n- three\n- four, here\n- five, edited\n");
+}
+
+/// The page from clash parts, picking this device's side of a clash when `mine(mine, theirs)` says so.
+fn pick_parts(parts: &[outline_core::merge::Part], mine: impl Fn(&[DocBlock], &[DocBlock]) -> bool) -> Vec<DocBlock> {
+    use outline_core::merge::Part;
+    let mut out = vec![];
+    for p in parts {
+        match p {
+            Part::Same { blocks } => out.extend(blocks.iter().cloned()),
+            Part::Clash { mine: m, theirs: t, .. } => out.extend(if mine(m, t) { m } else { t }.iter().cloned()),
+        }
+    }
+    out
+}
+
+#[test]
+fn a_removed_note_next_to_an_added_one_is_never_paired_with_an_edit() {
+    use outline_core::merge::{clash_parts, merge_docs, Part};
+    // here "bravo" was edited; there "alpha" was removed and "november" added after "bravo"
+    let base = split_doc("- alpha\n- bravo\n- charlie\n");
+    let mine = split_doc("- alpha\n- bravo mine\n- charlie\n");
+    let theirs = split_doc("- bravo\n- november\n- charlie\n");
+    assert!(merge_docs(&base, &mine, &theirs).is_none());
+    let parts = clash_parts(&base.blocks, &mine.blocks, &theirs.blocks).unwrap();
+    let texts = |v: &[DocBlock]| v.iter().map(|b| b.text.as_str()).collect::<Vec<_>>().join("|");
+    match &parts[0] {
+        Part::Clash { base, mine, theirs } => assert_eq!((texts(base), texts(mine), texts(theirs)), ("alpha|bravo".into(), "alpha|bravo mine".into(), "bravo|november".into())),
+        p => panic!("{p:?}"),
+    }
+    // either choice gives a page with each note once
+    for side in [true, false] {
+        let page = join_doc(&Doc { blocks: pick_parts(&parts, |_, _| side), ..theirs.clone() });
+        assert_eq!(page, if side { "- alpha\n- bravo mine\n- charlie\n" } else { "- bravo\n- november\n- charlie\n" });
+    }
+}
+
+#[test]
+fn notes_added_at_the_same_place_on_both_sides_are_both_kept() {
+    use outline_core::merge::{clash_parts, merge_docs, Part};
+    let merged = |b: &str, m: &str, t: &str| merge_docs(&split_doc(b), &split_doc(m), &split_doc(t)).map(|d| join_doc(&d));
+    // the end of today's journal: typed here while the phone's widget (or Claude) added one
+    assert_eq!(
+        merged("- morning\n", "- morning\n- typed on the laptop\n", "- morning\n- added from the phone widget\n").as_deref(),
+        Some("- morning\n- typed on the laptop\n- added from the phone widget\n")
+    );
+    // a note under the last one here, a top-level one there: each keeps its parent, either way round
+    assert_eq!(merged("- a\n", "- a\n\t- child here\n", "- a\n- top there\n").as_deref(), Some("- a\n\t- child here\n- top there\n"));
+    assert_eq!(merged("- a\n", "- a\n- top here\n", "- a\n\t- child there\n").as_deref(), Some("- a\n\t- child there\n- top here\n"));
+    assert_eq!(merged("- a\n- b\n", "- a\n\t- under a, here\n- b\n", "- a\n- new top there\n\t- its child\n- b\n").as_deref(), Some("- a\n\t- under a, here\n- new top there\n\t- its child\n- b\n"));
+    // the same note on both sides is kept once
+    assert_eq!(merged("- a\n", "- a\n- same\n", "- a\n- same\n- more there\n").as_deref(), Some("- a\n- same\n- more there\n"));
+    assert_eq!(merged("- a\n", "- a\n- same\n- more here\n", "- a\n- same\n").as_deref(), Some("- a\n- same\n- more here\n"));
+    // an empty page made on both sides (a journal template here, a note from the phone there)
+    assert_eq!(merged("", "- ## Morning\n- typed\n", "- added from the phone widget\n").as_deref(), Some("- ## Morning\n- typed\n- added from the phone widget\n"));
+    // no order keeps every parent: he chooses (shown with nothing before both changes)
+    let (b, m, t) = (split_doc("- a\n"), split_doc("- a\n\t- child here\n- top here\n"), split_doc("- a\n\t- child there\n- top there\n"));
+    assert!(merge_docs(&b, &m, &t).is_none());
+    let parts = clash_parts(&b.blocks, &m.blocks, &t.blocks).unwrap();
+    assert!(matches!(&parts[..], [Part::Same { .. }, Part::Clash { base, .. }] if base.is_empty()), "{parts:?}");
+    // a note moved to the end here (not added) while one was added there: he chooses, so a note
+    // moved on both sides can never come out twice
+    assert!(merged("- a\n- x\n- b\n", "- a\n- b\n- x\n", "- a\n- x\n- b\n- y\n").is_none());
+    // both moved the same note to the same place, one also edited it: never kept twice
+    assert!(merged("- x\n- a\n", "- a\n- x\n", "- a\n- x, edited\n").is_none());
+    assert!(merged("- x\n- a\n", "- a\n- x, here\n", "- a\n- x, there\n").is_none());
+    // the notes after the place keep their parents: an added note shallower than the next note both
+    // still have would take it (and its children) under itself, so he chooses
+    assert_eq!(merged("- a\n\t- b\n", "- a\n\t- here\n\t- b\n", "- a\n\t- there\n\t- b\n").as_deref(), Some("- a\n\t- here\n\t- there\n\t- b\n"));
+    assert!(merged("- a\n\t- b\n", "- a\n- here\n\t- b\n", "- a\n\t- there\n\t- b\n").is_none());
+    assert!(merged("- a\n\t- b\n", "- a\n- here\n\t- b\n", "- a\n- there\n\t- b\n").is_none());
+    // at the end of the page nothing follows: any depth
+    assert_eq!(merged("- a\n\t- b\n", "- a\n\t- b\n- here\n", "- a\n\t- b\n\t- there\n").as_deref(), Some("- a\n\t- b\n\t- there\n- here\n"));
+    // a note with the words of one the page already had, added on both sides: maybe two notes, maybe
+    // one moved, so he chooses (even when both sides' look the same)
+    assert!(merged("- TODO water plants\n- b\n", "- TODO water plants\n- b\n- TODO water plants\n", "- TODO water plants\n- b\n- TODO water plants\n- c\n").is_none());
+}
+
+#[test]
+fn the_clash_command_reads_the_file_and_backups_never_overwrite() {
+    let (v, mut app) = sample_vault("clash");
+    std::fs::write(v.join("pages/Day.md"), "tags:: a\n\n- one\n- two\n").unwrap();
+    app.rescan();
+    let pv = app.page("Day", None);
+    std::fs::write(v.join("pages/Day.md"), "tags:: b\n\n- one, there\n- two\n").unwrap();
+    let mut mine = pv.doc.clone();
+    mine.preamble = "tags:: c\n\n".into();
+    mine.blocks[0].text = "one, here".into();
+    let mut st = Some(app);
+    let c = dispatch(&mut st, "clash", json!({"name": "Day", "doc": mine, "base": pv.doc})).unwrap();
+    assert_eq!(c["hash"], json!(content_hash("tags:: b\n\n- one, there\n- two\n")));
+    assert_eq!(c["preamble"], json!(["tags:: a\n\n", "tags:: c\n\n", "tags:: b\n\n"]));
+    assert_eq!(c["parts"][0]["kind"], json!("clash"));
+    assert_eq!(c["parts"][0]["theirs"][0]["text"], json!("one, there"));
+    assert_eq!(c["parts"][1], json!({"kind": "same", "blocks": [{"depth": 0, "text": "two", "raw": "- two\n", "plain": false}]}));
+    assert_eq!(c["theirs"]["blocks"][0]["text"], json!("one, there"));
+    // like a save: never another file's version (the page was renamed, or the name moved on)
+    let ok = dispatch(&mut st, "clash", json!({"name": "Day", "doc": mine, "base": pv.doc, "path": "pages/Day.md"}));
+    assert!(ok.is_ok());
+    let moved = dispatch(&mut st, "clash", json!({"name": "Day", "doc": mine, "base": pv.doc, "path": "pages/Other.md"}));
+    assert!(moved.unwrap_err().contains("renamed or moved"));
+    // two backups within the same second both stay
+    for _ in 0..2 {
+        dispatch(&mut st, "backup", json!({"name": "Day", "doc": mine})).unwrap();
+    }
+    let bak: Vec<_> = std::fs::read_dir(v.join("logseq/bak/pages/Day")).unwrap().flatten().collect();
+    assert_eq!(bak.len(), 2);
+    let _ = std::fs::remove_dir_all(&v);
+}
+
+#[test]
 fn journal_days_are_the_days_with_something_written() {
     let v = tmp_vault("jdays");
     std::fs::write(v.join("journals/2026_10_20.md"), "- wrote something\n").unwrap();
@@ -473,4 +623,88 @@ fn journal_days_are_the_days_with_something_written() {
     let days = dispatch(&mut app, "journal_days", json!({})).unwrap();
     assert_eq!(days, json!([[2026, 10, 20], [2026, 10, 23]]));
     let _ = std::fs::remove_dir_all(&v);
+}
+
+#[test]
+fn a_new_page_never_opens_or_saves_into_another_pages_file() {
+    // pages/bar.md holds the page "Foo" (its title::); following [[bar]] makes the new page "bar"
+    let (v, app) = sample_vault("newname");
+    std::fs::write(v.join("pages/bar.md"), "title:: Foo\n- notes of Foo\n").unwrap();
+    std::fs::write(v.join("pages/Links.md"), "- see [[bar]] and [[Qux]]\n").unwrap();
+    std::fs::write(v.join("pages/QUX.md"), "title:: Other\n- other notes\n").unwrap();
+    drop(app);
+    let mut st = Some(App::open(&v).unwrap());
+    let app = st.as_ref().unwrap();
+    // opening it shows an empty new page, not Foo's notes
+    let pv = app.page("bar", None);
+    assert!(!pv.info.exists && pv.info.path.as_deref() == Some("pages/bar (2).md"), "{:?}", pv.info);
+    assert!(pv.doc.blocks.is_empty() && pv.hash.is_empty(), "{:?}", pv.doc.blocks);
+    // names that differ only in capitals are the same file on Windows and Android (the new page
+    // is named as linked, "Qux")
+    assert_eq!(app.vault.page_info("qux").path.as_deref(), Some("pages/Qux (2).md"));
+    // its first save makes a file of its own, with title::; Foo stays as it was
+    let mut doc = pv.doc.clone();
+    doc.blocks.push(DocBlock { depth: 0, text: "first words of bar".into(), raw: None, plain: false });
+    let path = pv.info.path.clone();
+    let res = dispatch(&mut st, "save", json!({"name": "bar", "doc": doc, "base_hash": pv.hash, "path": path})).unwrap();
+    assert_eq!(res["ok"], json!(true), "{res}");
+    assert_eq!(std::fs::read_to_string(v.join("pages/bar (2).md")).unwrap(), "title:: bar\n- first words of bar\n");
+    assert_eq!(std::fs::read_to_string(v.join("pages/bar.md")).unwrap(), "title:: Foo\n- notes of Foo\n");
+    let app = st.as_mut().unwrap();
+    assert_eq!(app.vault.page_info("bar").path.as_deref(), Some("pages/bar (2).md"));
+    assert_eq!(app.vault.page_info("Foo").path.as_deref(), Some("pages/bar.md"));
+    // and it stays that page: the next save goes to the same file
+    let pv = app.page("bar", None);
+    let mut doc = pv.doc.clone();
+    doc.blocks[0].text = "first words of bar, edited".into();
+    let res = dispatch(&mut st, "save", json!({"name": "bar", "doc": doc, "base_hash": pv.hash, "path": pv.info.path})).unwrap();
+    assert_eq!(res["ok"], json!(true), "{res}");
+    assert_eq!(std::fs::read_to_string(v.join("pages/bar (2).md")).unwrap(), "title:: bar\n- first words of bar, edited\n");
+    // a file that turns up at the new page's place before its first save: a clash, never overwritten
+    let app = st.as_mut().unwrap();
+    let pv = app.page("Fresh", None);
+    std::fs::write(v.join("pages/Fresh.md"), "- written elsewhere meanwhile\n").unwrap();
+    let mut doc = pv.doc.clone();
+    doc.blocks.push(DocBlock { depth: 0, text: "mine".into(), raw: None, plain: false });
+    let res = dispatch(&mut st, "save", json!({"name": "Fresh", "doc": doc, "base_hash": pv.hash, "path": pv.info.path})).unwrap();
+    assert_eq!((res["ok"].clone(), res["conflict"].clone()), (json!(false), json!(true)), "{res}");
+    assert_eq!(std::fs::read_to_string(v.join("pages/Fresh.md")).unwrap(), "- written elsewhere meanwhile\n");
+    // renaming a page onto such a name: the next free file name, with title::
+    std::fs::write(v.join("pages/baz.md"), "title:: Qux2\n- qux notes\n").unwrap();
+    std::fs::write(v.join("pages/Thing.md"), "- a thing\n").unwrap();
+    let app = st.as_mut().unwrap();
+    app.rescan();
+    assert_eq!(app.rename("Thing", "baz").unwrap().name, "baz");
+    assert!(!v.join("pages/Thing.md").exists());
+    assert_eq!(std::fs::read_to_string(v.join("pages/baz (2).md")).unwrap(), "title:: baz\n- a thing\n");
+    assert_eq!(std::fs::read_to_string(v.join("pages/baz.md")).unwrap(), "title:: Qux2\n- qux notes\n");
+    assert_eq!(app.vault.page_info("baz").path.as_deref(), Some("pages/baz (2).md"));
+    // a rename that only changes capitals keeps its own file name
+    assert_eq!(app.rename("baz", "Baz").unwrap().name, "Baz");
+    assert!(app.vault.page_info("Baz").path.as_deref() == Some("pages/baz (2).md") || app.vault.page_info("Baz").path.as_deref() == Some("pages/Baz (2).md"), "{:?}", app.vault.page_info("Baz").path);
+    // duplicate names keep their rule: the first file owns the name
+    std::fs::write(v.join("pages/zz-bar.md"), "title:: bar\n- a stray copy\n").unwrap();
+    app.rescan();
+    assert_eq!(app.vault.page_info("bar").path.as_deref(), Some("pages/bar (2).md"));
+    let _ = std::fs::remove_dir_all(&v);
+}
+
+#[test]
+fn the_file_name_check_follows_files_coming_and_going() {
+    let mut vlt = Vault::new();
+    vlt.upsert("pages/Note.md", "title:: Something else\n- x\n");
+    assert_eq!(vlt.page_info("note").path.as_deref(), Some("pages/note (2).md"));
+    vlt.upsert("pages/note (2).md", "title:: Third\n- y\n");
+    assert_eq!(vlt.page_info("note").path.as_deref(), Some("pages/note (3).md"));
+    vlt.remove("pages/Note.md");
+    assert_eq!(vlt.page_info("note").path.as_deref(), Some("pages/note.md"), "the name's own file name is free again");
+    // a file waiting for a taken name (a duplicate) still holds its file name
+    vlt.upsert("pages/a.md", "title:: Dup\n- first\n");
+    vlt.upsert("pages/b.md", "title:: Dup\n- second\n");
+    assert_eq!(vlt.page_info("b").path.as_deref(), Some("pages/b (2).md"));
+    vlt.remove("pages/a.md");
+    assert_eq!(vlt.page_info("Dup").path.as_deref(), Some("pages/b.md"), "promoted");
+    assert_eq!(vlt.page_info("b").path.as_deref(), Some("pages/b (2).md"));
+    vlt.remove("pages/b.md");
+    assert_eq!(vlt.page_info("b").path.as_deref(), Some("pages/b.md"));
 }

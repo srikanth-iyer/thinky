@@ -84,11 +84,38 @@ await sleep(400);
 const tb = await page.evaluate(() => {
   const pin = document.querySelector('#toolbar .tb-pin').getBoundingClientRect();
   const btns = [...document.querySelectorAll('#toolbar .tb-scroll button')].map((b) => b.getBoundingClientRect());
-  return { shown: !document.querySelector('#toolbar').hidden, pinRight: Math.round(innerWidth - pin.right), pinDone: document.querySelector('#toolbar .tb-pin').dataset.t, all: btns.length, visible: btns.filter((r) => r.right <= pin.left + 1).length, w: Math.round(btns[0].width) };
+  return { shown: !document.querySelector('#toolbar').hidden, pinRight: Math.round(innerWidth - pin.right), pinDone: document.querySelector('#toolbar .tb-pin').dataset.t, all: btns.length, visible: btns.filter((r) => r.right <= pin.left + 1).length, w: Math.round(btns[0].width),
+    icon: Math.round(document.querySelector('#toolbar .tb-scroll svg').getBoundingClientRect().width), h: Math.round(document.querySelector('#toolbar').getBoundingClientRect().height) };
 });
 check(tb.shown && tb.pinDone === 'done' && tb.pinRight <= 6, 'the hide-keyboard button stays at the right end', JSON.stringify(tb));
 check(tb.all === 15 && tb.visible >= 9 && tb.w <= 38, 'the other buttons are closer together: at least 9 show without scrolling', JSON.stringify(tb));
+check(tb.icon >= 24 && tb.h <= 51, 'its icons are big, and the toolbar is no taller than before', JSON.stringify(tb));
 await page.screenshot({ path: SHOTS + '/phone-toolbar.png' });
+// a button acts on a tap, not as soon as a finger lands on it: a sideways swipe that starts on a
+// button scrolls the toolbar and presses nothing
+const tbTouch = await page.evaluate(async () => {
+  const s = (ms) => new Promise((r) => setTimeout(r, ms));
+  const text = () => document.querySelector('textarea.ed')?.value;
+  const before = text();
+  const touch = (k, type, dx, id) => {
+    const b = document.querySelector(`#toolbar [data-t="${k}"]`), r = b.getBoundingClientRect();
+    b.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, pointerType: 'touch', isPrimary: true, clientX: r.left + r.width / 2 + dx, clientY: r.top + r.height / 2 }));
+  };
+  touch('bold', 'pointerdown', 0, 7); touch('bold', 'pointermove', -30, 7); touch('bold', 'pointerup', -30, 7);
+  await s(150);
+  const afterSwipe = text();
+  touch('bold', 'pointerdown', 0, 8); touch('bold', 'pointercancel', 0, 8); // the browser took it over to scroll
+  await s(150);
+  const afterCancel = text();
+  touch('bold', 'pointerdown', 0, 9); touch('bold', 'pointerup', 3, 9);
+  await s(150);
+  const afterTap = text();
+  touch('undo', 'pointerdown', 0, 10); touch('undo', 'pointerup', 0, 10);
+  await s(150);
+  return { before, afterSwipe, afterCancel, afterTap, afterUndo: text() };
+});
+check(tbTouch.afterSwipe === tbTouch.before && tbTouch.afterCancel === tbTouch.before, 'a sideways swipe that starts on a toolbar button presses nothing', JSON.stringify(tbTouch));
+check(tbTouch.afterTap !== tbTouch.before && tbTouch.afterTap.includes('**') && tbTouch.afterUndo === tbTouch.before, 'a tap on a toolbar button still presses it (and Undo takes it back)', JSON.stringify(tbTouch));
 await page.locator('#toolbar .tb-scroll').evaluate((s) => { s.scrollLeft = 1e4; });
 await sleep(150);
 check(await page.evaluate(() => { const pin = document.querySelector('#toolbar .tb-pin').getBoundingClientRect(); return pin.right <= innerWidth && pin.left > innerWidth - 60; }), 'scrolling the toolbar leaves the hide-keyboard button where it is');

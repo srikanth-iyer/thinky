@@ -14,6 +14,8 @@ files = {
     "pages/Sourdough Bread.md": "alias:: SB\ntags:: baking\n\n- Mix, fold, rest, shape\n\t- [[Crumb texture chart]] is the guide\n"
         f"- TODO redo the tasting\n  SCHEDULED: <{today.isoformat()} {today.strftime('%a')}>\n",
     "pages/Plain note.md": "Written in another app, no bullets. Mentions [[Sourdough Bread]].",
+    # where shared notes go (Logseq's default); no final line break, which adding must keep
+    "pages/quick capture.md": "- written before the share",
 }
 # a month of older days, so scrolling the journals has more to load
 for k in range(2, 32):

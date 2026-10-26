@@ -129,6 +129,15 @@ impl Config {
         c
     }
 
+    /// The marker a new to-do starts with: LATER with `:preferred-workflow :now`, else TODO.
+    pub fn todo_marker(&self) -> &'static str {
+        if self.workflow == "now" {
+            "LATER"
+        } else {
+            "TODO"
+        }
+    }
+
     pub fn journal_title(&self, d: Date) -> String {
         date::format(&self.journal_title_format, d)
     }

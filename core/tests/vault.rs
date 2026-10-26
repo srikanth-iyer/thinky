@@ -152,6 +152,9 @@ fn append_bullet_works() {
     assert_eq!(append_bullet("", "hi"), "- hi\n");
     assert_eq!(append_bullet("-\n", "hi"), "- hi\n");
     assert_eq!(append_bullet("- a\n\n", "b\nc"), "- a\n- b\n  c\n");
+    // a file without a final line break keeps it that way (as the editor does)
+    assert_eq!(append_bullet("- a", "b"), "- a\n- b");
+    assert_eq!(append_bullet("- a\r\n- b", "c"), "- a\r\n- b\r\n- c");
 }
 
 #[test]

@@ -69,6 +69,15 @@ pub struct PageEntry {
     pub exists: bool,
     /// How many blocks/pages link to it.
     pub refs: usize,
+    /// The page's `icon::` (an emoji, shown before its name), if it has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+}
+
+/// A page's `icon::` property: short (an emoji or two), else none.
+pub fn page_icon(props: &[(String, String)]) -> Option<String> {
+    let v = props.iter().find(|(k, _)| k == "icon")?.1.trim();
+    (!v.is_empty() && v.chars().count() <= 8).then(|| v.to_string())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -98,6 +107,9 @@ pub struct Vault {
     /// Files whose page name is already taken by another file: rel → (key, content).
     /// Not indexed; promoted if the owning file goes away.
     shadowed: HashMap<String, (String, String)>,
+    /// Every file above (both kinds), by its path in small letters, with how many have it (names
+    /// that differ only in capitals are one file on Windows and Android): see `free_rel`.
+    lc_paths: HashMap<String, u32>,
 }
 
 fn percent_decode(s: &str) -> String {
@@ -138,7 +150,7 @@ impl Vault {
                 return (self.config.journal_title(d), Some(d));
             }
         }
-        (percent_decode(&stem.replace("___", "/")), None)
+        (page_name_from_stem(stem), None)
     }
 
     /// Read `logseq/config.edn` (if present) then every page and journal file.
@@ -193,6 +205,7 @@ impl Vault {
             }
         }
         let k = key(&name);
+        self.lc_add(&rel);
         if self.pages.get(&k).is_some_and(|p| p.path != rel) {
             self.shadowed.insert(rel, (k, content.to_string()));
         } else {
@@ -232,9 +245,11 @@ impl Vault {
     /// Unindex a file without promoting anyone. Returns the name key it owned.
     fn take(&mut self, rel: &str) -> Option<String> {
         if self.shadowed.remove(rel).is_some() {
+            self.lc_del(rel);
             return None;
         }
         let k = self.by_path.remove(rel)?;
+        self.lc_del(rel);
         let p = self.pages.remove(&k)?;
         self.unindex(&k, &p);
         Some(k)
@@ -248,6 +263,7 @@ impl Vault {
         let next = self.shadowed.iter().filter(|(_, (sk, _))| sk == k).map(|(r, _)| r.clone()).min();
         if let Some(r) = next {
             if let Some((_, content)) = self.shadowed.remove(&r) {
+                self.lc_del(&r);
                 self.upsert(&r, &content);
             }
         }
@@ -279,6 +295,37 @@ impl Vault {
         if !self.incoming.contains_key(k) {
             self.display.remove(k);
         }
+    }
+
+    fn lc_add(&mut self, rel: &str) {
+        *self.lc_paths.entry(rel.to_lowercase()).or_insert(0) += 1;
+    }
+
+    fn lc_del(&mut self, rel: &str) {
+        let l = rel.to_lowercase();
+        if let Some(n) = self.lc_paths.get_mut(&l) {
+            *n -= 1;
+            if *n == 0 {
+                self.lc_paths.remove(&l);
+            }
+        }
+    }
+
+    /// The file a new page gets: `rel` when no file has that name (in any capitals: Windows and
+    /// Android ignore them), else the first free `<stem> (2).md`, `<stem> (3).md`… next to it, so a
+    /// new page never takes another page's file (one named by its `title::`). `own`: the page's own
+    /// file (a rename), which doesn't count.
+    pub fn free_rel(&self, rel: &str, own: Option<&str>) -> String {
+        let own = own.map(str::to_lowercase);
+        let taken = |r: &str| {
+            let l = r.to_lowercase();
+            own.as_deref() != Some(l.as_str()) && self.lc_paths.contains_key(&l)
+        };
+        if !taken(rel) {
+            return rel.to_string();
+        }
+        let stem = rel.strip_suffix(".md").unwrap_or(rel);
+        (2..).map(|k| format!("{stem} ({k}).md")).find(|r| !taken(r)).unwrap_or_default()
     }
 
     /// Page names claimed by more than one file: (name, [owning file, other files…]).
@@ -342,7 +389,8 @@ impl Vault {
                 PageInfo {
                     path: Some(match journal {
                         Some(d) => self.config.journal_rel_path(d),
-                        None => format!("{}/{}.md", self.config.pages_dir, file_stem_for(&display)),
+                        // a file of its own, never another page's
+                        None => self.free_rel(&format!("{}/{}.md", self.config.pages_dir, file_stem_for(&display)), None),
                     }),
                     name: display,
                     journal,
@@ -500,8 +548,8 @@ impl Vault {
             .filter(|(k, _)| !self.alias.contains_key(*k) || self.pages.contains_key(*k))
             .filter(|(k, _)| self.pages.contains_key(*k) || self.incoming.get(*k).is_some_and(|v| !v.is_empty()))
             .map(|(k, d)| match self.pages.get(k) {
-                Some(p) => PageEntry { name: p.name.clone(), journal: p.journal, exists: true, refs: count(k) },
-                None => PageEntry { name: d.clone(), journal: self.config.journal_from_title(d), exists: false, refs: count(k) },
+                Some(p) => PageEntry { name: p.name.clone(), journal: p.journal, exists: true, refs: count(k), icon: page_icon(&p.parsed.props) },
+                None => PageEntry { name: d.clone(), journal: self.config.journal_from_title(d), exists: false, refs: count(k), icon: None },
             })
             .collect();
         v.sort_by_key(|x| x.name.to_lowercase());
@@ -746,6 +794,12 @@ impl Vault {
     }
 }
 
+/// Page name from a page file's name (without `.md`): the inverse of `file_stem_for`
+/// (`___` = namespace slash, `%3F`-style escapes; older `%2F` names read the same way).
+pub fn page_name_from_stem(stem: &str) -> String {
+    percent_decode(&stem.replace("___", "/"))
+}
+
 /// File name for a new page, following Logseq's triple-lowbar format.
 /// Same rules as Logseq's `:triple-lowbar` format (frontend.util.fs/tri-lb-file-name-sanity):
 /// `/` becomes `___`, characters files can't hold are percent-encoded (`Why?` → `Why%3F`),
@@ -772,7 +826,8 @@ pub fn file_stem_for(name: &str) -> String {
         "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2",
         "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
-    if RESERVED.contains(&t.as_str()) || t.ends_with('.') {
+    // Windows' reserved names, in any case (con, Nul, COM1…), as Logseq does
+    if RESERVED.contains(&t.to_ascii_uppercase().as_str()) || t.ends_with('.') {
         t.push('/');
     }
     t.replace("___", "%5F%5F%5F").replace("_/", "%5F/").replace("/_", "/%5F").replace('/', "___")

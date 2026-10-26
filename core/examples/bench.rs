@@ -10,6 +10,7 @@ fn ms(t: Instant) -> f64 {
 
 fn main() {
     let base = std::env::temp_dir().join("outline_bench");
+    let generated = std::env::args().nth(1).is_none();
     let root = match std::env::args().nth(1) {
         Some(d) => std::path::PathBuf::from(d),
         None => {
@@ -82,12 +83,38 @@ fn main() {
     let t = Instant::now();
     app.rescan();
     let rescan = ms(t);
+    // "Check this folder": which of 1,000 pictures no note uses (half are used, so every note is read
+    // to the end); then the safety copy made when the folder opens (every note here is new: 500 copied)
+    if generated {
+        std::fs::create_dir_all(root.join("assets")).unwrap();
+        let mut s = String::new();
+        for i in 0..1000 {
+            std::fs::write(root.join("assets").join(format!("image_{i}.png")), [0u8; 64]).unwrap();
+            if i % 2 == 0 {
+                s.push_str(&format!("- ![a picture](../assets/image_{i}.png)\n"));
+            }
+        }
+        std::fs::write(root.join("pages").join("Pictures.md"), s).unwrap();
+        app.rescan();
+    }
+    // as from 4 days later: pictures from the last 3 days are left out, and these are all new
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let t = Instant::now();
+    let pics = app.picture_check_at(now + 4 * 86_400);
+    let pictures = ms(t);
+    let _ = std::fs::remove_dir_all(base.join("data"));
+    let t = Instant::now();
+    let plan = app.safety_plan(now);
+    let copied = plan.paths().len();
+    let _ = plan.run(&base.join("data"));
+    let safety = ms(t);
     println!("{pages} pages; open {open_cold} ms (first time) / {open_warm} ms (with cache)");
     println!("all pages {list} ms · linked refs ({refs} pages) {linked} ms · long page ({} blocks) {long_page} ms", pv.doc.blocks.len());
     println!("search ({hits} hits) {search} ms · unlinked refs ({} pages) {unlinked} ms · to-dos ({tasks}) {todos} ms", un.len());
     println!("journals: any unlinked references for 5 days ({any} have some) {day_unlinked} ms");
     println!("save {save} ms · rescan {rescan} ms · JSON for the window ({json_bytes} bytes) {json} ms");
+    println!("pictures nothing uses ({} of {}) {pictures} ms · safety copy ({copied} notes, in the background) {safety} ms", pics.unused.len(), pics.pictures);
     println!(
-        "BENCH {{\"open_cold_ms\":{open_cold},\"open_warm_ms\":{open_warm},\"pages_ms\":{list},\"linked_ms\":{linked},\"page_ms\":{long_page},\"search_ms\":{search},\"unlinked_ms\":{unlinked},\"todos_ms\":{todos},\"day_unlinked_ms\":{day_unlinked},\"save_ms\":{save},\"rescan_ms\":{rescan},\"json_ms\":{json}}}"
+        "BENCH {{\"open_cold_ms\":{open_cold},\"open_warm_ms\":{open_warm},\"pages_ms\":{list},\"linked_ms\":{linked},\"page_ms\":{long_page},\"search_ms\":{search},\"unlinked_ms\":{unlinked},\"todos_ms\":{todos},\"day_unlinked_ms\":{day_unlinked},\"save_ms\":{save},\"rescan_ms\":{rescan},\"json_ms\":{json},\"pictures_ms\":{pictures},\"safety_copy_ms\":{safety}}}"
     );
 }
