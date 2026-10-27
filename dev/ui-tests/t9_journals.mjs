@@ -92,6 +92,33 @@ await go(page, '#/journals');
 await sleep(1500);
 check(await page.locator('.sheet').first().locator('.sched').count() === 0, 'no box when nothing is due');
 
+console.log('Undo goes back through the changes on the Journals list in order, whichever day they were in');
+await go(page, '#/journals');
+await sleep(1500);
+const dayNote = (k, text) => page.locator('.sheet.day').nth(k).locator('.outline .blk > .bc', { hasText: text }).first();
+const todayNow = () => read(`Diary/${title(today)}.md`), ydayNow = () => read(`Diary/${title(yday)}.md`);
+await dayNote(0, 'cold-proving').click({ position: { x: 8, y: 8 } }); // (on its first word: not on a link)
+await page.keyboard.press('End');
+await page.keyboard.type(' AAA');
+await page.keyboard.press('Escape');
+await sleep(300);
+await dayNote(1, 'Walked to the bakery').click({ position: { x: 8, y: 8 } });
+await page.keyboard.press('End');
+await page.keyboard.type(' BBB');
+await page.keyboard.press('Escape');
+await sleep(1500);
+check(todayNow().includes('key idea AAA') && ydayNow().includes('fillings BBB'), 'typed in two days', todayNow() + ydayNow());
+await page.keyboard.press('Control+z');
+await sleep(1500);
+check(!ydayNow().includes('BBB') && todayNow().includes('AAA'), 'the first Undo takes back the newest change (yesterday’s)', todayNow() + ydayNow());
+await page.keyboard.press('Control+z');
+await sleep(1500);
+check(!todayNow().includes('AAA') && !ydayNow().includes('BBB'), 'the next Undo goes on to the change before it, in the other day', todayNow() + ydayNow());
+await page.keyboard.press('Control+Shift+z');
+await sleep(1500);
+check(todayNow().includes('AAA') && !ydayNow().includes('BBB'), 'Redo brings back the one undone last', todayNow() + ydayNow());
+await page.keyboard.press('Escape');
+
 check(!errors.length, 'no script errors', errors.join(' | '));
 await browser.close();
 process.exit(failures() ? 1 : 0);

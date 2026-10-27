@@ -4,8 +4,9 @@ Run from the repo root after init. Idempotent. Touches only src-tauri/gen/androi
 - MainActivity.kt: replaced by android/MainActivity.kt (keeps the generated package + imports)
 - android/kotlin/*.kt and android/res: widgets, quick capture pop-up, Quick Settings tile
 - AndroidManifest.xml: storage permissions for the Drive Sync folder; the widgets, the pop-up
-  and the tile (COMPONENTS); one-click updates (permission to install apps, UpdateReceiver).
-  The app icon's shortcuts need nothing here (MainActivity sets them)
+  and the tile (COMPONENTS); one-click updates (permission to install apps, UpdateReceiver);
+  leanoutliner:// links (a VIEW filter on MainActivity). The app icon's shortcuts need nothing
+  here (MainActivity sets them)
 - launcher icons: copied from src-tauri/icons/android
 """
 import glob, os, re, shutil, sys
@@ -104,6 +105,24 @@ if ".JournalWidget" not in man:
 if ".UpdateReceiver" not in man:
     i = man.rindex("</application>")
     man = man[:i] + '    <receiver android:name=".UpdateReceiver" android:exported="false" />\n    ' + man[i:]
+# leanoutliner://page/… and …/note/… links (the app's "Copy link") open the app at that page:
+# Android hands them to MainActivity (takeIntent; already open: onNewIntent, as it's singleTask)
+LINKS = """    <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="leanoutliner" />
+            </intent-filter>
+        """
+if 'android:scheme="leanoutliner"' not in man:
+    m = re.search(r'<activity\b[^>]*android:name="\.MainActivity"[^>]*?(/?)>', man)
+    if not m:
+        sys.exit("MainActivity not found in the manifest")
+    if m.group(1):  # <activity … /> : give it a body
+        man = man[:m.start()] + m.group(0)[:-2].rstrip() + ">\n        " + LINKS + "</activity>" + man[m.end():]
+    else:
+        i = man.index("</activity>", m.end())
+        man = man[:i] + LINKS + man[i:]
 if "requestLegacyExternalStorage" not in man:
     man = man.replace("<application", '<application android:requestLegacyExternalStorage="true"', 1)
 open(man_path, "w").write(man)

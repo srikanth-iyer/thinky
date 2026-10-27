@@ -45,7 +45,7 @@ fn folder() -> Option<PathBuf> {
 }
 
 /// Installed with the installer (which puts uninstall.exe beside the program), not the portable copy.
-fn installed() -> bool {
+pub(crate) fn installed() -> bool {
     std::env::current_exe().ok().and_then(|e| Some(e.parent()?.join("uninstall.exe").is_file())).unwrap_or(false)
 }
 
@@ -82,7 +82,8 @@ pub fn command(cmd: &str, tag: &str, own: &str) -> Result<Value, String> {
 }
 
 /// The installer closes every running copy of the program (Windows' Restart Manager), and a copy
-/// closed that way can't save first: so the update waits until he has closed the others.
+/// closed that way can't save first: so the update waits until he has closed the others. The
+/// shortcut key's helper doesn't count (it has nothing to save; `install` asks it to quit).
 const OTHER_COPIES: &str = "Lean Outliner is also open in another window, or the Add to journal box is open. Close it, then press Update now again.";
 
 fn own_version(own: &str) -> Result<rules::Version, String> {
@@ -151,6 +152,13 @@ fn check(own: &str) -> Result<(), String> {
     }
 }
 
+/// Other copies of this program running now (the self-test of the shortcut key checks that its
+/// helper isn't one).
+#[cfg(windows)]
+pub(crate) fn other_copies() -> Result<usize, String> {
+    imp::other_copies()
+}
+
 /// Start the checked installer in its passive mode: a small progress window that updates the app
 /// and starts it again (/R), with no new desktop shortcut (/UPDATE). It closes every running copy
 /// of the app, so not while another one is open. The installer is checked once more, through a
@@ -163,6 +171,9 @@ pub fn install(own: &str) -> Result<(), String> {
     if imp::other_copies()? > 0 {
         return Err(OTHER_COPIES.into()); // (the download stays: pressed again, it goes straight on)
     }
+    // the shortcut key's helper is this program too: it quits so the installer can replace the
+    // program (the updated app starts it again: hotkey::at_start)
+    let helper = crate::hotkey::stop();
     let r = (|| -> Result<(), String> {
         let (held, bytes) = imp::open_held(&setup)?;
         verify_bytes(&bytes, &got.dir.join(rules::SIG_FILE), got.n, Some(own_version(own)?))?;
@@ -172,6 +183,9 @@ pub fn install(own: &str) -> Result<(), String> {
     })();
     if let Err(e) = &r {
         outline_core::log::record(&format!("update_install: {e}"));
+        if helper {
+            std::thread::spawn(crate::hotkey::at_start); // no update after all: the key works again
+        }
     }
     p.got = None;
     r
@@ -305,8 +319,20 @@ mod imp {
     }
 
     /// How many other copies of this program are running (another window, the "Add to journal"
-    /// box, a note being added from the browser), by Windows' list of running programs.
+    /// box, a note being added from the browser), by Windows' list of running programs; the
+    /// shortcut key's helper (hotkey.rs) left out, also while it's starting (its window is there
+    /// from its first milliseconds: if any other copy is seen, it's looked for once more a moment
+    /// later, so a helper started just now isn't counted).
     pub fn other_copies() -> Result<usize, String> {
+        if count_others()? == 0 {
+            return Ok(0);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        count_others()
+    }
+
+    fn count_others() -> Result<usize, String> {
+        let helpers = crate::hotkey::helper_pids();
         let me = std::env::current_exe().ok().and_then(|e| e.file_name().map(|n| n.to_string_lossy().to_lowercase())).ok_or("this program’s name isn’t known")?;
         let snap = unsafe { CreateToolhelp32Snapshot(0x2, 0) }; // TH32CS_SNAPPROCESS
         if snap.is_null() || snap as isize == -1 {
@@ -319,7 +345,7 @@ mod imp {
         let mut more = unsafe { Process32FirstW(snap, &mut e) } != 0;
         while more {
             let len = e.exe.iter().position(|&c| c == 0).unwrap_or(e.exe.len());
-            if e.pid != std::process::id() && String::from_utf16_lossy(&e.exe[..len]).to_lowercase() == me {
+            if e.pid != std::process::id() && !helpers.contains(&e.pid) && String::from_utf16_lossy(&e.exe[..len]).to_lowercase() == me {
                 found += 1;
             }
             more = unsafe { Process32NextW(snap, &mut e) } != 0;

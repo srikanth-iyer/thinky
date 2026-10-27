@@ -17,14 +17,17 @@ check(exists("pages/Grandma's dumplings.md") && !exists('pages/Dumplings recipe.
 check(read(`Diary/${title(yesterday)}.md`).includes("[[Grandma's dumplings]]"), 'link in the journal updated', read(`Diary/${title(yesterday)}.md`));
 check(decodeURIComponent(await page.evaluate(() => location.hash)) === "#/page/Grandma's dumplings", 'now showing the renamed page');
 
-console.log('rename clash is refused');
+console.log('renaming to the name of another page offers to merge them (t15_pages merges); cancelled, nothing changes');
+const SB = read('pages/Sourdough Bread.md');
 await page.locator('[data-a="more"]').click();
 await page.locator('.menu button', { hasText: 'Rename' }).click();
 await page.locator('.modal input').fill('sourdough bread');
 await page.locator('.modal [data-v="1"]').click();
 await sleep(500);
-check((await page.locator('#toast').textContent()).includes('already a page'), 'clash message', await page.locator('#toast').textContent());
-check(exists("pages/Grandma's dumplings.md"), 'nothing renamed');
+check((await page.locator('.modal h2').textContent()).includes('“Sourdough Bread” already exists'), 'it offers to merge the two', await page.locator('.modal').textContent());
+await page.locator('.modal [data-v="0"]').click();
+await sleep(300);
+check(exists("pages/Grandma's dumplings.md") && read('pages/Sourdough Bread.md') === SB, 'nothing renamed');
 
 console.log('a new page whose file name another page has (by its title::) gets a file of its own');
 write('pages/bar.md', 'title:: Foo\n- notes of Foo\n');
@@ -135,26 +138,54 @@ await sleep(500);
 check(await hashNow() === '#/page/Maths', 'forward goes ahead again', await hashNow());
 check(await page.locator('.nav a[data-view="calendar"]').count() === 0, 'no Calendar tab');
 
-console.log('+ properties shows on hover and opens the properties box');
+console.log('page properties: nothing under the title until there are some; the ⋯ menu adds them');
 await go(page, '#/page/Marta%20Pell');
-const addp = page.locator('.page-props .add-props');
-check(await addp.count() === 1 && (await addp.textContent()) === '+ properties', 'a page without properties offers "+ properties"');
-check(await addp.evaluate((b) => getComputedStyle(b).opacity) === '0', 'hidden while not pointed at');
-await page.locator('.page-props').hover();
-await sleep(300);
-check(await addp.evaluate((b) => getComputedStyle(b).opacity) === '1', 'appears when the pointer is over it');
-await addp.click();
-check(await page.locator('.page-props textarea.preamble-ed').count() === 1, 'clicking it opens the properties box');
+check(await page.locator('.page-head .page-props').evaluate((b) => b.textContent.trim() === '' && !b.querySelector('button')), 'a page without properties shows nothing under its title');
+await page.locator('.title-row [data-a="more"]').click();
+const firstItem = page.locator('.pop.menu button').first();
+check(await firstItem.textContent() === 'Add properties', 'its ⋯ menu starts with "Add properties"', await firstItem.textContent());
+await firstItem.click();
+await sleep(200);
+check(await page.evaluate(() => document.activeElement?.matches('.page-head .page-props textarea.preamble-ed')), 'which opens the properties box under the title, ready to type');
 await page.keyboard.press('Escape');
 await sleep(300);
+write('pages/First note props.md', '- tags:: idea, reading\n- second note\n');
+await page.reload();
+await page.waitForSelector('.sheet .outline');
+await go(page, '#/page/First%20note%20props');
+await page.waitForFunction(() => document.querySelector('.page-head .page-title')?.textContent.includes('First note props') && document.querySelector('.view .outline .blk'));
+const fp = await page.evaluate(() => ({ head: document.querySelector('.page-head .page-props').textContent.trim(), first: document.querySelector('.view .outline .blk').textContent }));
+check(fp.head === '' && /tags/.test(fp.first) && /idea/.test(fp.first), 'properties written as the first note (Logseq’s way) show once, in that note', JSON.stringify(fp));
+await page.locator('.title-row [data-a="more"]').click();
+check(await page.locator('.pop.menu button', { hasText: 'Add properties' }).count() === 0, 'and the ⋯ menu doesn’t offer to add some');
+await page.keyboard.press('Escape');
+await sleep(200);
+await go(page, '#/zoom/First%20note%20props/1'); // zoomed in on the second note: the first isn't drawn
+await page.waitForFunction(() => document.querySelector('.view .outline .blk')?.textContent.includes('second note'));
+check(/tags/.test(await page.locator('.page-head .page-props').textContent()), 'zoomed in on another note, they show under the title instead');
+await page.locator('.page-head .page-props').evaluate((b) => b.click());
+await sleep(200);
+check(await page.locator('.page-props textarea').count() === 0, 'but they’re changed in that note, not from there (a second set would replace them)');
 
-console.log('Go to date: dots on days with notes');
+console.log('Go to date: a calendar button in the top strip, dots on days with notes');
 await go(page, '#/journals');
-await page.locator('[data-a="date"]').click();
+await sleep(400);
+const dateBtn = page.locator('#histbar .hb-nav[data-p="0"] [data-a="date"]');
+check(await dateBtn.isVisible() && await dateBtn.evaluate((b) => b.previousElementSibling?.dataset.h === 'forward'), 'right after Back and Forward');
+check(await page.locator('.view-tools').count() === 0 && await page.locator('.view > div > section.sheet').first().evaluate((s) => s.parentElement.previousElementSibling === null), 'nothing above the days any more');
+await dateBtn.click();
 await page.waitForSelector('.datepick .cal-grid');
 await sleep(400);
 check(await page.locator('.datepick .day.mark').count() >= 1, 'days with notes have a dot', await page.locator('.datepick .day.mark').count());
 check((await page.locator('.datepick .pop-note').textContent()).includes('Dots mark days with notes'), 'the picker says what the dots mean');
+await page.keyboard.press('Escape');
+await sleep(200);
+await page.evaluate(() => document.activeElement?.blur());
+await page.keyboard.press('g');
+await page.keyboard.press('d');
+await page.waitForSelector('.datepick .cal-grid');
+const under = await page.evaluate(() => { const p = document.querySelector('.datepick').getBoundingClientRect(), b = document.querySelector('#histbar .hb-nav[data-p="0"] [data-a="date"]').getBoundingClientRect(); return { top: Math.round(p.top - b.bottom), left: Math.round(p.left - b.left) }; });
+check(under.top >= -2 && under.top <= 24 && Math.abs(under.left) <= 320, 'g d opens it under that button', JSON.stringify(under));
 await page.keyboard.press('Escape');
 await sleep(200);
 
@@ -190,8 +221,9 @@ await page.waitForSelector('.sheet .outline');
 await go(page, '#/journals');
 await sleep(800);
 await page.mouse.move(760, 500); // over the notes: in a wide window only they scroll
-for (let k = 0; k < 6; k++) { await page.mouse.wheel(0, 6000); await sleep(500); }
-const shown = await page.locator('#main .view > div > section.sheet').count();
+const daysShown = () => page.locator('#main .view > div > section.sheet').count();
+for (let k = 0; k < 16 && await daysShown() < 25; k++) { await page.mouse.wheel(0, 6000); await sleep(500); } // (each day is roomy: about one batch a turn)
+const shown = await daysShown();
 check(shown >= 25, 'scrolling to the end keeps loading older days (no button needed)', shown);
 
 console.log('wide window: only the notes scroll, below the top strip');
@@ -201,8 +233,8 @@ const lay = await page.evaluate(() => {
 });
 check(lay.scrolls && lay.docOver <= 0, 'the notes scroll in their own area; the window itself never does', JSON.stringify(lay));
 check(lay.top >= lay.hbBottom - 0.5 && lay.right >= lay.w - 0.5, 'that area (and its scroll bar) starts below the top strip and reaches the right edge', JSON.stringify(lay));
-const brand = await page.evaluate(() => { const b = document.querySelector('#side .brand').getBoundingClientRect(), s = document.querySelector('#side').getBoundingClientRect(); return { top: b.top - s.top, left: b.left - s.left, short: s.width - b.width }; });
-check(brand.top === 0 && brand.left === 0 && brand.short <= 1.5, 'the sidebar’s name strip reaches its top and sides (all of it moves the window)', JSON.stringify(brand));
+const strip = await page.evaluate(() => { const b = document.querySelector('#histbar').getBoundingClientRect(); return { top: b.top, left: b.left, short: innerWidth - b.width }; });
+check(strip.top === 0 && strip.left === 0 && strip.short <= 0.5, 'the top strip reaches the window’s top and both sides, above the sidebar too (all of it moves the window)', JSON.stringify(strip));
 check(await page.locator('[data-tauri-drag-region]').count() === 0, 'outside the Windows app nothing is marked for moving the window');
 await page.locator('.nav a[data-view="journals"]').click(); // focus is now in the sidebar
 await sleep(800);
@@ -235,8 +267,10 @@ const big = await page.evaluate(async () => {
 check(big.scale === '1.3' && big.atEnd && big.mainBottom <= big.h && big.lastBottom <= big.h, 'with bigger text the end of the notes can still be reached', JSON.stringify(big));
 await page.keyboard.press('Control+0');
 await page.emulateMedia({ media: 'print' });
-const pr = await page.evaluate(() => ({ docH: document.scrollingElement.scrollHeight, h: innerHeight, ov: getComputedStyle(document.querySelector('#main')).overflowY }));
+const pr = await page.evaluate(() => ({ docH: document.scrollingElement.scrollHeight, h: innerHeight, ov: getComputedStyle(document.querySelector('#main')).overflowY,
+  least: [...document.querySelectorAll('.sheet.day')].map((s) => getComputedStyle(s).minHeight).filter((m) => m !== '0px') }));
 check(pr.ov === 'visible' && pr.docH > pr.h * 2, 'printing lays out the whole page, not just what fits the window', JSON.stringify(pr));
+check(pr.least.length === 0, 'printed days have no least height (today’s neither)', JSON.stringify(pr.least));
 await page.emulateMedia({ media: 'screen' });
 
 console.log('narrow window: the whole page scrolls; the closed menu stays out of sight');
@@ -248,8 +282,8 @@ const nar = await page.evaluate(() => { const s = document.querySelector('#side'
 check(nar.docOver > 0 && nar.ov === 'visible', 'the page itself scrolls, as on the phone', JSON.stringify(nar));
 check(nar.sideRight <= -40 && nar.vis === 'hidden', 'the closed menu is fully off screen (its shadow too) and skipped by Tab', JSON.stringify(nar));
 await page.mouse.move(300, 500);
-for (let k = 0; k < 8; k++) { await page.mouse.wheel(0, 6000); await sleep(400); }
-const shownNarrow = await page.locator('#main .view > div > section.sheet').count();
+for (let k = 0; k < 16 && await daysShown() < 25; k++) { await page.mouse.wheel(0, 6000); await sleep(400); }
+const shownNarrow = await daysShown();
 check(shownNarrow >= 25, 'older days still load by themselves after the window got narrow', shownNarrow);
 await page.locator('#topbar [data-a="menu"]').click();
 await sleep(350);
@@ -282,7 +316,7 @@ await page.keyboard.press('t');
 await page.keyboard.press('l');
 await sleep(200);
 check(await page.evaluate(() => document.body.classList.contains('side-hidden')), '"t l" hides the sidebar');
-await page.locator('.show-side').click();
+await page.locator('#histbar [data-a="side"]').click();
 check(!(await page.evaluate(() => document.body.classList.contains('side-hidden'))), 'button brings it back');
 await page.keyboard.press('Control+=');
 await sleep(100);

@@ -18,7 +18,7 @@ await btn.click();
 await sleep(150);
 const pop = page.locator('.pop.looks');
 check(await pop.isVisible(), 'clicking it opens the list');
-check(await page.locator('.pop.looks [data-look]').count() === 10, '10 looks listed');
+check(await page.locator('.pop.looks [data-look]').count() === 11, '11 looks listed');
 check(await page.evaluate(() => document.activeElement?.dataset.look) === 'calm', 'focus starts on the current look');
 const bgs = await page.evaluate(() => [...document.querySelectorAll('.look-sw')].map((e) => getComputedStyle(e).backgroundColor));
 check(new Set(bgs).size >= 6, 'each sample is painted in its own look', bgs.join(' | '));
@@ -26,7 +26,8 @@ const box = await pop.boundingBox();
 check(box.y >= 0 && box.y + box.height <= 900 && box.x >= 0, 'list fits on screen', JSON.stringify(box));
 await page.screenshot({ path: SHOTS + '/looks-laptop.png' });
 
-// keyboard: down to Night, Enter applies, list stays open
+// keyboard: down to Night (past Calm plain), Enter applies, list stays open
+await page.keyboard.press('ArrowDown');
 await page.keyboard.press('ArrowDown');
 await page.keyboard.press('Enter');
 await sleep(100);
@@ -38,7 +39,7 @@ check(sent?.look === 'night' && sent.colors.surface === '#2a2f38' && sent.colors
   'the look’s colours are saved for the Windows capture box', JSON.stringify(sent));
 check(await pop.isVisible(), 'list stays open to compare');
 check(await page.locator('.pop.looks [aria-pressed="true"]').getAttribute('data-look') === 'night', 'tick moves to the new look');
-for (let k = 0; k < 4; k++) await page.keyboard.press('ArrowUp'); // Night → Calm → Plain night → Plain → (round) Azulejo
+for (let k = 0; k < 5; k++) await page.keyboard.press('ArrowUp'); // Night → Calm plain → Calm → Plain night → Plain → (round) Azulejo
 check(await page.evaluate(() => document.activeElement?.dataset.look) === 'azulejo', 'arrow keys wrap around');
 await page.keyboard.press('Escape');
 await sleep(100);
@@ -58,7 +59,7 @@ const kept = await page.evaluate(() => localStorage.getItem('skin'));
 check(kept === '"plain"', 'the choice is remembered', kept);
 // Settings still has the big previews
 await page.evaluate(() => { location.hash = '#/settings/look'; }); await sleep(500);
-check(await page.locator('.skin-card').count() === 10, 'Settings still shows the large previews');
+check(await page.locator('.skin-card').count() === 11, 'Settings still shows the large previews');
 console.log('link colour and fonts');
 await page.evaluate(() => { location.hash = '#/settings/look'; });
 await sleep(700);

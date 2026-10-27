@@ -111,5 +111,11 @@ fn config_reader_never_panics() {
         if let Some(out) = edn::set_path(&s, &["favorites"], "[\"x\"]") {
             assert!(edn::parse(&out).is_some(), "{s:?} -> {out:?}");
         }
+        // favourites put in another order (reversed): the file still reads, with as many of them
+        let n = edn::parse(&s).and_then(|root| root.get("favorites").map(|f| f.items().len())).unwrap_or(0);
+        if let Some(out) = edn::reorder_items(&s, "favorites", &(0..n).rev().collect::<Vec<_>>()) {
+            let again = edn::parse(&out).and_then(|root| root.get("favorites").map(|f| f.items().len()));
+            assert_eq!(again, Some(n), "{s:?} -> {out:?}");
+        }
     }
 }

@@ -6,14 +6,16 @@ use crate::doc::{Doc, DocBlock};
 use serde::Serialize;
 use std::collections::HashSet;
 
-type Key<'a> = (usize, &'a str);
+/// A note as compared: its level and words.
+pub(crate) type Key<'a> = (usize, &'a str);
 
-fn keys(b: &[DocBlock]) -> Vec<Key<'_>> {
+pub(crate) fn keys(b: &[DocBlock]) -> Vec<Key<'_>> {
     b.iter().map(|x| (x.depth, x.text.as_str())).collect()
 }
 
 /// Matched index pairs of a longest common subsequence, in order. None if too big to diff.
-fn lcs(a: &[Key], b: &[Key]) -> Option<Vec<(usize, usize)>> {
+/// (Also how a page's earlier version differs from it now: app/history.rs.)
+pub(crate) fn lcs(a: &[Key], b: &[Key]) -> Option<Vec<(usize, usize)>> {
     // common prefix and suffix first: most edits touch a small part of a page
     let mut pre = 0;
     while pre < a.len() && pre < b.len() && a[pre] == b[pre] {

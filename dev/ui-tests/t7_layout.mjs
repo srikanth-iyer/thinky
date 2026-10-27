@@ -17,17 +17,17 @@ for (let k = 0; k < 2000; k++) huge.push(`\t\t- hidden ${k}`);
 write('pages/Huge.md', huge.join('\n') + '\n');
 const { browser, page, errors } = await open();
 
-console.log('the sidebar’s top row and Home, back, forward are on one line');
+console.log('the logo, the sidebar’s button, Search, Home, back and forward are on one line');
 const mid = (sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return r.top + r.height / 2; }, sel);
 const homeMid = await mid('#histbar [data-a="home"]');
-const rowMids = [await mid('.brand .hide-side'), await mid('.brand > svg'), await mid('.brand > span'), await mid('#histbar [data-h="back"]')];
-check(rowMids.every((m) => Math.abs(m - homeMid) <= 1), 'the logo, name and hide button sit level with Home and the arrows', `${homeMid} vs ${rowMids.join(', ')}`);
-await page.locator('.brand .hide-side').click();
-await sleep(200);
-const showMid = await mid('.show-side');
-check(Math.abs(showMid - await mid('#histbar [data-a="home"]')) <= 1, 'with the sidebar hidden, its "show" button sits level with them too', showMid);
-await page.locator('.show-side').click();
-await sleep(200);
+const rowMids = [await mid('#histbar .hb-logo'), await mid('#histbar [data-a="side"]'), await mid('#histbar [data-a="search"]'), await mid('#histbar [data-h="back"]'), await mid('#histbar [data-a="date"]')];
+check(rowMids.every((m) => Math.abs(m - homeMid) <= 1), 'they sit level with each other', `${homeMid} vs ${rowMids.join(', ')}`);
+const sideX = await page.evaluate(() => document.querySelector('#histbar [data-a="side"]').getBoundingClientRect().left);
+await page.locator('#histbar [data-a="side"]').click();
+await sleep(400);
+check(await page.evaluate(() => document.querySelector('#histbar [data-a="side"]').getBoundingClientRect().left) === sideX && Math.abs(await mid('#histbar [data-a="side"]') - homeMid) <= 1, 'with the sidebar hidden, its button stays where it was');
+await page.locator('#histbar [data-a="side"]').click();
+await sleep(400);
 
 console.log('the block being edited never hides under the top bar');
 const editedVsBar = (bar) => page.evaluate((sel) => {
@@ -169,7 +169,7 @@ await page.keyboard.press('l');
 await sleep(200);
 await page.setViewportSize({ width: 1280, height: 560 });
 await sleep(300);
-await page.locator('.show-side').click();
+await page.locator('#histbar [data-a="side"]').click();
 await sleep(300);
 const shownNow = await page.evaluate(() => [...document.querySelectorAll('#recent a')].filter((a) => !a.hidden).length);
 check(!(await halfCut()) && shownNow >= 1, 'showing the sidebar again after the window changed: no page name cut in half', shownNow);
@@ -179,12 +179,6 @@ check(!(await halfCut()), 'nor when the "newer version" notice appears');
 await page.evaluate(() => { document.querySelector('#update').hidden = true; });
 await page.setViewportSize({ width: 1280, height: 900 });
 await sleep(300);
-
-console.log('printing leaves out "+ properties"');
-await go(page, '#/page/Orphan%20page');
-await page.emulateMedia({ media: 'print' });
-check(await page.evaluate(() => [...document.querySelectorAll('.add-props')].every((b) => getComputedStyle(b).display === 'none')), '"+ properties" isn’t printed');
-await page.emulateMedia({ media: 'screen' });
 
 console.log('the reading position survives the window switching between wide and narrow');
 await go(page, '#/page/Long');

@@ -17,6 +17,7 @@ for (let a = 1; a <= 2; a++) {
 write('pages/Deep.md', deep.join('\n') + '\n');
 write('pages/Swipe.md', '- one\n- two with a [[Marta Pell]] link\n- three\n');
 write('pages/Typing.md', '- three\n- four\n');
+write('pages/Cards.md', '- What is a walk with no repeated link called? #card\n\t- A {{cloze trail}} is that walk.\n');
 // text that isn't shown as typed: find must never match or change it
 const HIDDEN = '- TODO [#A] alpha task\n  SCHEDULED: <2026-10-27 Tue>\n  :LOGBOOK:\n  CLOCK: [2026-10-20 Tue 10:00]--[2026-10-20 Tue 11:00] =>  01:00:00\n  :END:\n- see [the guide](https://example.com/guide) and {{embed [[Marta Pell]]}}\n- #+BEGIN_NOTE\n  inside the box\n  #+END_NOTE\n- # Big title\n  heading:: true\n';
 write('pages/Hidden.md', HIDDEN);
@@ -139,6 +140,23 @@ check(read('pages/Finds.md').includes('- The CAT and the cat'), 'Undo puts back 
 await page.keyboard.press('Control+f');
 await go(page, '#/page/Deep');
 check(!(await page.locator('#findbar').isVisible()), 'going to another page closes it');
+
+console.log('flashcards: a cloze shows its words, marked, and find finds them (not the {{cloze}})');
+await go(page, '#/page/Cards');
+await sleep(400);
+const cz = await page.evaluate(() => ({ text: document.querySelector('.outline .cloze')?.textContent, macros: document.querySelectorAll('.outline .macro').length }));
+check(cz.text === 'trail' && cz.macros === 0, '{{cloze trail}} shows "trail", marked, not as code', JSON.stringify(cz));
+await page.keyboard.press('Control+f');
+await sleep(150);
+await page.keyboard.type('trail');
+await sleep(400);
+const czFound = await page.locator('.fb-n').textContent();
+await page.locator('.fb-q').fill('cloze');
+await sleep(400);
+const czHidden = await page.locator('.fb-n').textContent();
+check(czFound === '1 of 1' && !/of [1-9]/.test(czHidden), 'find finds the word, and not the hidden {{cloze', czFound + ' / ' + czHidden);
+await page.evaluate(() => window.leanApp.onBack());
+await sleep(150);
 
 console.log('find never matches or changes what isn’t shown as typed');
 await go(page, '#/page/Hidden');

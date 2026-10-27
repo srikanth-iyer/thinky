@@ -11,6 +11,8 @@ use tauri::{Emitter, Manager};
 pub mod update;
 #[cfg(windows)]
 pub mod capture_box;
+pub mod hotkey;
+pub mod links;
 mod watch;
 pub mod win;
 
@@ -21,6 +23,9 @@ struct State(Mutex<Option<App>>);
 static ROOT: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// Text handed to the capture box (from a browser link or the clipboard).
 static PREFILL: Mutex<Option<(String, String)>> = Mutex::new(None);
+/// The files last dropped on the window from Explorer (its drag-drop event): `save_asset_path`
+/// copies only these, so the page can never ask for any other file on the computer.
+static DROPPED: Mutex<Vec<std::path::PathBuf>> = Mutex::new(Vec::new());
 static CLOSING: AtomicBool = AtomicBool::new(false);
 
 fn lock(s: &State) -> MutexGuard<'_, Option<App>> {
@@ -59,6 +64,17 @@ fn call(app: tauri::AppHandle, state: tauri::State<'_, State>, cmd: String, args
             Ok(json!(true))
         }
         "platform" => Ok(json!(std::env::consts::OS)),
+        // a picture or file dropped on the window from Explorer (Tauri's drag-drop event gives its
+        // path; ui/filedrop.js): copied into the open notes folder's assets/, and its link
+        "save_asset_path" => {
+            let root = lock(&state).as_ref().map(|a| a.root.clone()).ok_or("no notes folder is open")?;
+            let file = std::path::PathBuf::from(s("path"));
+            if !DROPPED.lock().unwrap_or_else(|p| p.into_inner()).contains(&file) {
+                return Err("only files dropped on the window can be added this way".into());
+            }
+            let (path, md) = outline_core::app::save_dropped_file(&root, &file)?;
+            Ok(json!({ "path": path, "md": md }))
+        }
         "clipboard" => Ok(json!(win::clipboard_text())),
         "prefill" => {
             let p = PREFILL.lock().unwrap_or_else(|p| p.into_inner()).clone();
@@ -67,10 +83,17 @@ fn call(app: tauri::AppHandle, state: tauri::State<'_, State>, cmd: String, args
                 None => json!({ "text": win::clipboard_text(), "url": "", "from": "clipboard" }),
             })
         }
-        "set_shortcut" => {
-            win::set_capture_shortcut(&s("key"))?;
+        // a leanoutliner://page/… or …/note/… link the app was started with (links.rs), once
+        "start_link" => Ok(json!(links::take_start())),
+        // the page ⋯ menu's "Show in Explorer": its file, selected in a File Explorer window
+        "reveal_file" => {
+            let file = lock(&state).as_ref().ok_or("no vault open")?.page_file(&s("name"))?;
+            tauri_plugin_opener::reveal_item_in_dir(&file).map_err(|e| format!("Couldn’t show the file: {e}"))?;
             Ok(json!(true))
         }
+        // the capture box's shortcut key (hotkey.rs): the key as saved, or what's set now
+        "set_shortcut" => Ok(json!(hotkey::set(&s("key"))?)),
+        "get_shortcut" => Ok(hotkey::state()),
         // the capture box says where a note will go: today's journal or the quick capture page
         "capture_where" => {
             let root = outline_core::app::last_vault_or_why()?;
@@ -167,6 +190,8 @@ fn builder() -> tauri::Builder<tauri::Wry> {
                 place_capture_box(&w);
             } else {
                 std::thread::spawn(update::tidy); // the last update's installer, once it has run
+                std::thread::spawn(hotkey::at_start); // the shortcut key's helper runs
+                links::listen(app.handle().clone()); // page and note links clicked while it's open
             }
             Ok(())
         })
@@ -189,6 +214,10 @@ fn builder() -> tauri::Builder<tauri::Wry> {
             });
         })
         .on_window_event(|window, event| {
+            // files dropped from Explorer: the only ones save_asset_path will copy
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                *DROPPED.lock().unwrap_or_else(|p| p.into_inner()) = paths.clone();
+            }
             // let the page finish saving before the window goes away
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" && !CLOSING.swap(true, Ordering::SeqCst) {

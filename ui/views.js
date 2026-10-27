@@ -18,9 +18,32 @@ export function fitChips(row) {
 }
 
 // ---------------------------------------------------------------------------
+// All pages' columns, as Logseq's table: what each sorts by, its first direction, and what the
+// two directions are called (for the button's words to screen readers and its tooltip).
+const SORTS = {
+  name: { label: 'Name', desc: false, says: ['A to Z', 'Z to A'] },
+  links: { label: 'Links', desc: true, says: ['fewest first', 'most first'] },
+  created: { label: 'Created', desc: true, says: ['oldest first', 'newest first'] },
+  changed: { label: 'Changed', desc: true, says: ['oldest first', 'newest first'] },
+};
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** A file time (seconds) in few words: "Today 14:05", "Yesterday 09:12", "Oct 12, 2026". */
+export function shortWhen(secs, now = new Date()) {
+  if (!secs) return '';
+  const d = new Date(secs * 1000);
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const yday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (d.toDateString() === now.toDateString()) return `Today ${hm}`;
+  if (d.toDateString() === yday.toDateString()) return `Yesterday ${hm}`;
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+const fullWhen = (secs) => (secs ? new Date(secs * 1000).toLocaleString() : '');
+
 export async function pagesView(app, view) {
   await app.refreshNames();
   const opt = store.get('pagesOpts', { journals: false, ghosts: false, orphans: false, tree: false, sort: 'name' });
+  if (!SORTS[opt.sort]) opt.sort = 'name';
+  if (typeof opt.desc !== 'boolean') opt.desc = SORTS[opt.sort].desc; // (saved before there were directions)
   view.append(h('h1', 'page-title', 'All pages'));
   const tools = h('div', 'list-tools');
   tools.innerHTML = `<input class="filter" type="search" aria-label="Filter pages">
@@ -32,14 +55,27 @@ export async function pagesView(app, view) {
     </div>
     <div class="btn-row"><button class="btn ghost small" data-a="select">Select pages</button>
       <button class="btn ghost small" data-a="random">${ICON.shuffle}<span>Random page</span></button>
-      <select class="sort" data-o="sort" aria-label="Sort"><option value="name">A–Z</option><option value="links">Most linked</option></select>
       <span class="sel-tools" hidden><button class="btn small danger" data-a="delete" disabled>Delete</button>
       <button class="btn ghost small" data-a="all">Select all shown</button><button class="btn ghost small" data-a="none">Done</button></span></div>`;
-  const ul = h('ul', 'rows');
-  view.append(tools, ul);
+  // the columns' heads: a click sorts by that column, again turns the order round (remembered)
+  const cols = h('div', 'pg-cols');
+  cols.setAttribute('role', 'group');
+  cols.setAttribute('aria-label', 'Sort by');
+  cols.innerHTML = Object.entries(SORTS).map(([k, c]) => `<button type="button" class="pg-col c-${k}" data-s="${k}">${c.label}<span class="dir" aria-hidden="true"></span></button>`).join('');
+  const ul = h('ul', 'rows pg-rows');
+  const table = h('div', 'pg-table');
+  table.append(cols, ul);
+  view.append(tools, table);
   const input = $('input.filter', tools);
+  cols.onclick = (e) => {
+    const b = e.target.closest('[data-s]');
+    if (!b || b.disabled) return;
+    if (opt.sort === b.dataset.s) opt.desc = !opt.desc;
+    else { opt.sort = b.dataset.s; opt.desc = SORTS[opt.sort].desc; }
+    store.set('pagesOpts', opt);
+    draw();
+  };
   tools.querySelectorAll('[data-o]').forEach((el) => {
-    if (el.tagName === 'SELECT') { el.value = opt[el.dataset.o]; el.onchange = () => { opt.sort = el.value; store.set('pagesOpts', opt); draw(); }; return; }
     el.setAttribute('aria-pressed', String(!!opt[el.dataset.o]));
     el.onclick = () => { opt[el.dataset.o] = !opt[el.dataset.o]; el.setAttribute('aria-pressed', String(opt[el.dataset.o])); store.set('pagesOpts', opt); draw(); };
   });
@@ -53,15 +89,36 @@ export async function pagesView(app, view) {
     const q = input.value.trim().toLowerCase();
     let v = app.names.filter((n) => (opt.journals || !n.journal) && (opt.ghosts || n.exists) && (!opt.orphans || (n.exists && !n.refs && !n.journal))
       && (!q || n.name.toLowerCase().includes(q)));
-    if (opt.sort === 'links') v = v.slice().sort((a, b) => b.refs - a.refs || a.name.localeCompare(b.name));
-    return v;
+    // the list comes A to Z, and sorting keeps that order among equals; pages with no file have no
+    // times: last, either way
+    const by = { links: (n) => n.refs, created: (n) => n.created, changed: (n) => n.changed }[opt.sort];
+    if (!by) return opt.desc ? v.reverse() : v;
+    const dir = opt.desc ? -1 : 1;
+    return v.sort((a, b) => {
+      const x = by(a), y = by(b);
+      if ((x == null) !== (y == null)) return x == null ? 1 : -1;
+      return x == null ? 0 : dir * (x - y);
+    });
   };
   const row = (n, label = n.name, depth = 0) => `<li style="--d:${depth}"${chosen.has(n.name) ? ' class="chosen"' : ''}>
-    <a href="#" data-page="${esc(n.name)}">${selecting && n.exists ? `<input type="checkbox" tabindex="-1" ${chosen.has(n.name) ? 'checked' : ''}>` : ''}
-    <span class="${n.exists ? '' : 'ghost'}">${n.icon ? `<span class="pg-ic" aria-hidden="true">${esc(n.icon)}</span>` : ''}${esc(label)}</span>
-    <span class="meta">${n.exists ? (n.refs ? plural(n.refs, 'link') : '') : 'no file yet'}</span></a></li>`;
+    <a href="#" data-page="${esc(n.name)}"><span class="pg-name${n.exists ? '' : ' ghost'}">${selecting && n.exists ? `<input type="checkbox" tabindex="-1" ${chosen.has(n.name) ? 'checked' : ''}>` : ''}${n.icon ? `<span class="pg-ic" aria-hidden="true">${esc(n.icon)}</span>` : ''}${esc(label)}</span>
+    <span class="meta c-links">${n.exists ? (n.refs ? plural(n.refs, 'link') : '') : 'no file yet'}</span>
+    <span class="meta c-created" title="${n.created ? 'Created ' + esc(fullWhen(n.created)) : ''}">${shortWhen(n.created)}</span>
+    <span class="meta c-changed" title="${n.changed ? 'Changed ' + esc(fullWhen(n.changed)) : ''}">${shortWhen(n.changed)}</span></a></li>`;
   const draw = () => {
     shown = list();
+    // (Namespaces: pages under their parents, A to Z; the sorting waits until that's off)
+    const tree = opt.tree && !input.value.trim();
+    const sort = tree ? 'name' : opt.sort, desc = !tree && opt.desc;
+    table.dataset.sort = sort; // (narrow: only the column it's sorted by shows beside the names)
+    for (const b of cols.querySelectorAll('[data-s]')) {
+      const k = b.dataset.s, on = k === sort, c = SORTS[k];
+      b.setAttribute('aria-pressed', String(on));
+      b.disabled = tree;
+      b.querySelector('.dir').textContent = on ? (desc ? '↓' : '↑') : '';
+      b.title = tree ? 'With Namespaces on, pages are listed A to Z under their parents' : on ? `Sorted ${c.says[+desc]}; click for ${c.says[+!desc]}` : `Sort by ${c.label.toLowerCase()}, ${c.says[+c.desc]}`;
+      b.setAttribute('aria-label', on ? `${c.label}, sorted ${c.says[+desc]}` : `Sort by ${c.label.toLowerCase()}`);
+    }
     const files = app.names.filter((n) => n.exists && !n.journal).length;
     input.placeholder = `Filter ${files} pages`;
     if (opt.tree && !input.value.trim()) {
@@ -80,10 +137,10 @@ export async function pagesView(app, view) {
         }
         if (!seen.has(n.name.toLowerCase())) { seen.add(n.name.toLowerCase()); rows.push(row(n, parts[parts.length - 1], parts.length - 1)); }
       }
-      ul.className = 'rows tree-rows';
+      ul.className = 'rows pg-rows tree-rows';
       ul.innerHTML = rows.join('') || '<li class="note">No pages match.</li>';
     } else {
-      ul.className = 'rows';
+      ul.className = 'rows pg-rows';
       ul.innerHTML = shown.map((n) => row(n)).join('') || '<li class="note">No pages match.</li>';
     }
     $('[data-a="delete"]', tools).disabled = !chosen.size;
@@ -93,7 +150,7 @@ export async function pagesView(app, view) {
     selecting = on;
     chosen.clear();
     $('.sel-tools', tools).hidden = !on;
-    for (const el of tools.querySelectorAll('[data-a="select"], [data-a="random"], .sort')) el.hidden = on;
+    for (const el of tools.querySelectorAll('[data-a="select"], [data-a="random"]')) el.hidden = on;
     draw();
   };
   tools.onclick = async (e) => {

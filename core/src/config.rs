@@ -32,6 +32,9 @@ pub struct Config {
     pub shortcuts: Vec<(String, Vec<String>)>,
     /// `:scheduled/future-days`: how many days ahead today's "Scheduled & deadline" box looks.
     pub future_days: u32,
+    /// `:ref/default-open-blocks-level`: how many levels of a linked reference start open (1 = the
+    /// note itself, 2 = and its sub-notes; deeper ones are folded).
+    pub ref_open_level: u32,
 }
 
 pub const DEFAULT_CAPTURE_TEXT: &str = "[[quick capture]] **{time}**: {text} from {url}";
@@ -55,6 +58,7 @@ impl Default for Config {
             capture_page: "quick capture".into(),
             shortcuts: vec![],
             future_days: 7,
+            ref_open_level: 2,
         }
     }
 }
@@ -114,6 +118,11 @@ impl Config {
         if let Some(n) = root.get("scheduled/future-days").and_then(|n| n.as_num()) {
             if n >= 0.0 {
                 c.future_days = n.min(365.0) as u32;
+            }
+        }
+        if let Some(n) = root.get("ref/default-open-blocks-level").and_then(|n| n.as_num()) {
+            if n >= 0.0 {
+                c.ref_open_level = n.min(100.0) as u32;
             }
         }
         if let Some(sc) = root.get("shortcuts") {

@@ -11,13 +11,27 @@
   --line: #DFE3E0; --line-soft: #ECEFEC;
   --accent: #0B7B66; --accent-ink: #FFFFFF; --accent-tint: #E0F2EC;
   --link: #4A3CB0; --link-line: color-mix(in srgb, var(--link) 35%, transparent);
+  /* how a page link looks: the line under it (0 = colour only), and what shows before/after it (none,
+     or "[[" "]]" in --link-bracket); Settings → Look → Page links overrides these (end of this file) */
+  --link-deco: 1px solid var(--link-line); --link-open: none; --link-close: none;
+  --link-bracket: color-mix(in srgb, var(--ink) 35%, transparent);
   --tag-bg: #EEEBFB; --tag-ink: #3A2D8F; --tag-border: 1px solid transparent; --tag-shadow: none; --tag-radius: 999px;
-  --tag-before: ""; --tag-after: ""; --hash: inline; --tag-decoration: none;
+  --tag-before: ""; --tag-after: ""; --hash: inline; --tag-decoration: none; --tag-pad: 0 7px;
   --mark-bg: #FBEFC0; --danger: #B3412A; --danger-tint: #FBE6E0;
   --edit-bg: #F2F7F4; --guide: #DCE1DC; --bullet: #7C8696;
+  /* a done (or cancelled) to-do, as Logseq shows it: its words faded (--done-fade of their colour,
+     links too) with a clear line through them in that same colour */
+  --done-fade: 62%; --done-ink: color-mix(in srgb, var(--ink) var(--done-fade), transparent); --done-line: currentcolor;
+  /* a note's properties (key:: value): a pale rounded box under its words, one per line */
+  --props-bg: var(--surface-2); --props-border: 0; --props-radius: 6px; --props-pad: 3px 9px; --props-gap: 3px;
+  --props-size: 13.5px; --props-key-font: var(--font-label); --props-key-ink: var(--ink-faint); --props-key-weight: 400; --props-val-ink: var(--ink-soft);
   /* coloured note boxes (callouts): note, tip, important, warning, caution */
   --c-note: #2F6BD8; --c-tip: #188A5A; --c-important: #7B4FD6; --c-warning: #C46A12; --c-caution: #C8372D; --callout-tint: 9%;
   --callout-gap: 5px; --callout-pad: 7px; --quote-gap: 3px;
+  /* a note's background colour (Logseq's background-color:: yellow…): each colour, and how much of it
+     tints the note (the note menu's swatches show the colour itself) */
+  --hl-yellow: #EAB308; --hl-red: #EF4444; --hl-pink: #EC4899; --hl-green: #22C55E; --hl-blue: #3B82F6; --hl-purple: #A855F7; --hl-gray: #6B7280;
+  --hl-tint: 18%;
   /* words found by find on the page (Ctrl+F): all of them, and the current one */
   --find-bg: rgba(255, 196, 0, .32); --find-cur-bg: rgba(255, 140, 0, .62);
   /* page */
@@ -30,20 +44,31 @@
   --sheet-band: none; --sheet-band-h: 0px; --today-bg: var(--sheet-bg);
   --sheet-divider: var(--sheet-border); --sheet-gap: 26px;
   --sheet-pad-top: 22px; --sheet-pad-bottom: 18px; /* inside a sheet, above and below what it holds */
-  --ruled: none;
+  --day-gap: 56px; /* between days in the Journals list (app.css .sheet.day) */
+  /* boxes and section headings (today's "Scheduled & deadline", references) */
+  --sec-font: "IBM Plex Sans", system-ui, sans-serif;
+  --box-bg: var(--surface-2); --box-border: 1px solid var(--line-soft); --box-radius: 12px;
+  --ref-rule: 3px solid var(--accent-tint);
   /* type */
   --font-body: "IBM Plex Sans", system-ui, sans-serif;
   --font-title: "Newsreader", Georgia, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-label: var(--font-body);
-  --body-size: 15.5px; --lh: 1.6; --line-box: 1.6em; --props-lh: 1.5; --bc-pad-y: 3px;
+  /* (Logseq: 16px, lines 1.5, 2px above and below each note = 28px a one-line note; these looks keep
+     a little more air: 15.5px, 1.5, 3px = 29.3px) */
+  --body-size: 15.5px; --lh: 1.5; --line-box: 1.5em; --props-lh: 1.5;
+  --bc-pad-y: 3px; /* above and below each note's words: room between notes */
+  --indent: 24px; /* each level of notes steps in this far (laptop; phones 20px) */
   --h-grow: 1; /* headings in notes make their line taller (0 when --lh is a fixed height) */
+  --title-size: clamp(30px, 5.2vw, 42px); /* page titles and journal dates on a laptop */
   --title-weight: 500; --title-style: normal; --title-transform: none; --title-tracking: -0.015em;
   --title-ornament: "";
   --weekday-font: var(--font-title); --weekday-style: italic; --weekday-transform: none;
   --weekday-before: ""; --weekday-after: "";
-  /* bullets */
+  /* bullets; on a laptop the dot under the mouse grows a little on a soft round patch (Logseq's) */
   --bullet-w: 7px; --bullet-h: 7px; --bullet-radius: 50%; --bullet-rotate: 0deg;
+  --bullet-ring: color-mix(in srgb, var(--bullet) 28%, transparent); /* round a folded note's dot */
+  --bullet-hover-bg: var(--bullet-ring); --bullet-hover-size: 16px;
   /* controls (raised, like the Board's buttons) */
   --btn-bg: linear-gradient(var(--surface), var(--surface-2)); --btn-border: 1px solid var(--line); --btn-radius: 10px;
   --btn-shadow: 0 1px 0 rgba(26,33,48,.07), 0 1px 3px rgba(26,33,48,.12), inset 0 1px 0 rgba(255,255,255,.7);
@@ -55,10 +80,19 @@
 /* Calm — the Board's original: light, teal, lifted cards with firm edges */
 [data-skin="calm"] { }
 
+/* Calm plain — Calm's colours and fonts with no cards: the notes sit on a white page (the white of
+   Calm's cards), a hairline between days (as in Plain) */
+[data-skin="calmplain"] {
+  --bg: #FFFFFF; --sheet-bg: var(--bg);
+  --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
+  --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+}
+
 /* Night — the Board's dark look: labels sit IN the surface (inset wells), cards and buttons sit ON it */
 [data-skin="night"] {
   color-scheme: dark;
   --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
+  --hl-yellow: #FACC15; --hl-red: #F87171; --hl-pink: #F472B6; --hl-green: #4ADE80; --hl-blue: #60A5FA; --hl-purple: #C084FC; --hl-gray: #9CA3AF; --hl-tint: 24%;
   --bg: #1B1E24; --surface: #2A2F38; --surface-2: #242830;
   --ink: #E6E9EE; --ink-soft: #B9BFC9; --ink-faint: #8E95A0;
   --line: #454C58; --line-soft: #3A404B;
@@ -74,8 +108,8 @@
   --check-tick: #12141A;
 }
 
-/* Paper — the Board's papery look: grain, sheets lying on a desk, serif writing on ruled lines
-   with a red margin, typewriter labels, highlighter marks, a red-pen tick */
+/* Paper — the Board's papery look: grain, sheets of dot-grid paper lying on a desk, serif writing,
+   typewriter labels, highlighter marks, a red-pen tick */
 [data-skin="paper"] {
   --bg: #F4F2EC; --surface: #FFFEFA; --surface-2: #F8F6F0;
   --ink: #2A251E; --ink-soft: #5E564A; --ink-faint: #8F8676;
@@ -87,21 +121,25 @@
   --mark-bg: linear-gradient(transparent 12%, rgba(250,215,80,.55) 12%, rgba(250,215,80,.55) 88%, transparent 88%);
   --edit-bg: rgba(250,215,80,.12); --guide: transparent; --bullet: #8F8676;
   --page-image: url(skins/grain.svg);
-  --sheet-image: linear-gradient(90deg, transparent 13px, rgba(200,70,60,.45) 13px, rgba(200,70,60,.45) 14px, transparent 14px), url(skins/grain.svg);
+  /* dot-grid paper (his first mockups's): faint dots in a square grid, no margin line */
+  --sheet-image: radial-gradient(circle, rgba(70,60,45,.20) .55px, transparent .8px), url(skins/grain.svg); --sheet-image-size: 9px 9px, auto;
   --sheet-border: 1px solid var(--line-soft); --sheet-radius: 2px; --sheet-pad-x: 30px;
   --sheet-shadow: 0 1px 1px rgba(70,50,20,.10), 0 2px 6px -1px rgba(70,50,20,.10), 0 10px 18px -12px rgba(70,50,20,.22);
-  --ruled: repeating-linear-gradient(transparent 0 27px, rgba(80,120,170,.22) 27px 28px);
+  /* "Scheduled & deadline" and references: typewriter headings, a pencilled box, a quiet rule */
+  --sec-font: var(--font-label); --box-bg: transparent; --box-border: 1.2px dashed var(--line); --box-radius: 2px;
+  --ref-rule: 1px solid var(--line);
+  /* a note's properties: pencilled round, like the box above, typewriter keys */
+  --props-bg: transparent; --props-border: 1.2px dashed var(--line); --props-radius: 2px;
   --font-body: "Newsreader", Georgia, serif; --font-label: var(--font-mono);
-  --body-size: 17px; --lh: 28px; --line-box: 28px; --props-lh: 28px; --bc-pad-y: 0px; --h-grow: 0;
-  --callout-gap: 0px; --callout-pad: 0px; --quote-gap: 0px;
+  /* (no ruled lines to keep to: headings get room of their own, notes a little space between them) */
+  --body-size: 17px; --lh: 1.65; --line-box: 1.65em; --props-lh: 1.6; --bc-pad-y: 3px; --h-grow: 1;
   --weekday-font: var(--font-mono); --weekday-style: normal;
   --bullet-w: 5px; --bullet-h: 5px;
   --btn-bg: transparent; --btn-border: 1px solid var(--ink-soft); --btn-radius: 3px; --btn-shadow: none;
   --check-radius: 2px; --check-border: 1.5px solid var(--ink-soft); --check-on-bg: transparent; --check-tick: #B23A26;
 }
 
-/* Sticker — the Board's own look: cream, bold outlines, hard offset shadows, purple, chunky type;
-   today's sheet is the Board's yellow */
+/* Sticker — the Board's own look: cream, bold outlines, hard offset shadows, purple, chunky type */
 [data-skin="sticker"] {
   --bg: #FDF6E6; --surface: #FFFDF7; --surface-2: #FFF8E8;
   --ink: #1D1A33; --ink-soft: #4A4566; --ink-faint: #7C7799;
@@ -112,7 +150,6 @@
   --mark-bg: #FBEFB3; --danger: #C8372D; --danger-tint: #FFD6D0;
   --edit-bg: #FFF4D6; --guide: #E4DCC8; --bullet: #1D1A33;
   --sheet-border: 2.5px solid #1D1A33; --sheet-radius: 14px; --sheet-shadow: 4px 4px 0 #1D1A33;
-  --today-bg: #FBEFB3;
   --font-title: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
   --title-weight: 800; --title-tracking: -0.02em;
   --weekday-font: var(--font-title); --weekday-style: normal;
@@ -126,6 +163,7 @@
 [data-skin="stickernight"] {
   color-scheme: dark;
   --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
+  --hl-yellow: #FACC15; --hl-red: #F87171; --hl-pink: #F472B6; --hl-green: #4ADE80; --hl-blue: #60A5FA; --hl-purple: #C084FC; --hl-gray: #9CA3AF; --hl-tint: 24%;
   --bg: #2B2838; --surface: #383349; --surface-2: #322E42;
   --ink: #F2ECDF; --ink-soft: #D6CFC1; --ink-faint: #B0A99B;
   --line: #8C86A3; --line-soft: #4A4560;
@@ -135,7 +173,6 @@
   --mark-bg: #4D4532; --danger: #F0A898; --danger-tint: #553A40;
   --edit-bg: #403A55; --guide: #4A4560; --bullet: #D6CFC1;
   --sheet-border: 2.5px solid #6E6880; --sheet-radius: 14px; --sheet-shadow: 4px 4px 0 #17141F;
-  --today-bg: #4D4532;
   --font-title: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
   --title-weight: 800; --title-tracking: -0.02em;
   --weekday-font: var(--font-title); --weekday-style: normal;
@@ -150,6 +187,7 @@
 [data-skin="grimoire"] {
   color-scheme: dark;
   --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
+  --hl-yellow: #FACC15; --hl-red: #F87171; --hl-pink: #F472B6; --hl-green: #4ADE80; --hl-blue: #60A5FA; --hl-purple: #C084FC; --hl-gray: #9CA3AF; --hl-tint: 24%;
   --bg: #121726; --surface: #1A2033; --surface-2: #20273D;
   --ink: #ECE6D8; --ink-soft: #C3BCAA; --ink-faint: #8E8878;
   --line: #303852; --line-soft: #262D45;
@@ -161,7 +199,7 @@
   --page-image: radial-gradient(120% 70% at 50% 0%, #1B2240 0%, transparent 70%); --side-bg: #10141F;
   --sheet-border: 1px solid #2C3450; --sheet-radius: 12px;
   --sheet-shadow: 0 18px 40px -26px rgba(0,0,0,.85);
-  --font-body: "Newsreader", Georgia, serif; --body-size: 17.5px; --lh: 1.65;
+  --font-body: "Newsreader", Georgia, serif; --body-size: 17.5px; --lh: 1.55; --line-box: 1.55em;
   --title-weight: 500;
   --bullet-w: 5px; --bullet-h: 5px; --bullet-radius: 1px; --bullet-rotate: 45deg;
   --btn-bg: var(--surface-2); --btn-border: 1px solid #39425F;
@@ -191,49 +229,61 @@
   --btn-radius: 6px; --check-radius: 3px;
 }
 
-/* Plain — flat and white: no cards, no shadows, no textures; a hairline between days */
+/* Plain — Logseq's own look (0.10's default light theme, "logseq" colours): an off-white page, no
+   cards, a thin grey line between days, near-black words in Inter (Segoe UI when Inter isn't
+   installed: nothing is bundled), muted blue links with no underline, small light-grey dots, a faint
+   line under a parent's dot, Logseq's spacing (16px words, lines 1.5, 2px between notes, 29px steps) */
 [data-skin="plain"] {
-  --bg: #FFFFFF; --surface: #FFFFFF; --surface-2: #F6F6F6;
-  --ink: #1A1A1A; --ink-soft: #555555; --ink-faint: #9A9A9A;
-  --line: #E4E4E4; --line-soft: #F0F0F0;
-  --accent: #1A1A1A; --accent-ink: #FFFFFF; --accent-tint: #F1F1F1;
-  --link: #1A1A1A; --link-line: #C9C9C9;
-  --tag-bg: transparent; --tag-ink: #6B6B6B; --tag-border: 0; --tag-radius: 0;
-  --mark-bg: #FFF2B3; --danger: #B3261E; --danger-tint: #FCE8E6;
-  --edit-bg: #FAFAFA; --guide: #EFEFEF; --bullet: #B5B5B5;
-  --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
-  /* no cards: the same space above and below the hairline between days */
-  --sheet-divider: 1px solid #EDEDED; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px;
-  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-title: var(--font-body); --title-weight: 650; --title-tracking: -0.02em;
+  --bg: #FCFCFC; --surface: #FFFFFF; --surface-2: #F3F3F3; --side-bg: #F8F8F8;
+  --ink: #171717; --ink-soft: #6F6F6F; --ink-faint: #8F8F8F;
+  --line: #E2E2E2; --line-soft: #EDEDED;
+  --accent: #171717; --accent-ink: #FFFFFF; --accent-tint: #EDEDED;
+  --link: #1B6898; --link-line: rgba(27,104,152,.35); --link-deco: 0; /* its own link colour (Settings' one overrides it) */
+  --tag-bg: transparent; --tag-ink: color-mix(in srgb, var(--link) 80%, transparent); --tag-border: 0; --tag-radius: 4px; --tag-pad: 0 2px;
+  --mark-bg: #FEF3AC; --danger: #B3261E; --danger-tint: #FCE8E6;
+  --edit-bg: #F3F3F3; --guide: rgba(46,27,5,.08); --bullet: rgba(199,199,199,.8); --bullet-ring: #DEDEDE;
+  --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
+  /* no cards: a hairline between days, the same space above and below it (he chose that over Logseq's
+     48px above and 24px below) */
+  --sheet-divider: 1px solid #DBDBDB; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-title: var(--font-body); --title-weight: 500; --title-tracking: -0.01em; --title-size: clamp(28px, 4.6vw, 36px);
   --weekday-font: var(--font-body); --weekday-style: normal;
-  --bullet-w: 5px; --bullet-h: 5px;
+  --body-size: 16px; --lh: 1.5; --line-box: 1.5em; --bc-pad-y: 2px; --indent: 29px;
+  --bullet-w: 6px; --bullet-h: 6px;
+  --props-bg: #F3F3F3; --props-radius: 4px; --props-pad: 4px 8px; --props-size: 14.5px;
+  --props-key-font: var(--font-body); --props-key-ink: var(--ink); --props-key-weight: 500; --props-val-ink: var(--ink);
   --btn-bg: #FFFFFF; --btn-border: 1px solid #DDDDDD; --btn-radius: 8px; --btn-shadow: none;
   --btn-press: none; --btn-press-move: 0px, 0px;
-  --check-radius: 3px; --check-border: 1.5px solid #A8A8A8; --check-on-bg: #1A1A1A;
+  --check-radius: 3px; --check-border: 1.5px solid #A8A8A8; --check-on-bg: #171717;
 }
 
-/* Plain night — Plain for evenings: the same flat, quiet page, in soft white on near-black */
+/* Plain night — Logseq's own dark look (0.10's default dark theme): its deep blue-green page, soft
+   grey-green words, pale teal links; otherwise as Plain (no cards, Logseq's spacing and dots) */
 [data-skin="plainnight"] {
   color-scheme: dark;
   --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
-  --bg: #141414; --surface: #141414; --surface-2: #1E1E1E;
-  --ink: #E6E6E6; --ink-soft: #ABABAB; --ink-faint: #767676;
-  --line: #303030; --line-soft: #242424;
-  --accent: #E6E6E6; --accent-ink: #141414; --accent-tint: #262626;
-  --link: #E6E6E6; --link-line: #5A5A5A;
-  --tag-bg: transparent; --tag-ink: #9C9C9C; --tag-border: 0; --tag-radius: 0;
-  --mark-bg: #4A4120; --danger: #F2B8B5; --danger-tint: #3A2523;
-  --edit-bg: #1A1A1A; --guide: #2A2A2A; --bullet: #6A6A6A;
-  --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
-  --sheet-divider: 1px solid #262626; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px;
-  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-title: var(--font-body); --title-weight: 650; --title-tracking: -0.02em;
+  --hl-yellow: #FACC15; --hl-red: #F87171; --hl-pink: #F472B6; --hl-green: #4ADE80; --hl-blue: #60A5FA; --hl-purple: #C084FC; --hl-gray: #9CA3AF; --hl-tint: 24%;
+  --bg: #002B36; --surface: #023643; --surface-2: #08404F; --side-bg: #023643;
+  --ink: #A4B5B6; --ink-soft: #8DA2A4; --ink-faint: #6A8A8F;
+  --line: #0E5263; --line-soft: #0B4A5A;
+  --accent: #8EC2C2; --accent-ink: #002B36; --accent-tint: #094B5A;
+  --link: #9BD3D4; --link-line: rgba(155,211,212,.4); --link-deco: 0;
+  --tag-bg: transparent; --tag-ink: color-mix(in srgb, var(--link) 80%, transparent); --tag-border: 0; --tag-radius: 4px; --tag-pad: 0 2px;
+  --mark-bg: #5A5223; --danger: #F2B8B5; --danger-tint: #4A2A2E;
+  --edit-bg: #023643; --guide: #0B4A5A; --bullet: rgba(96,142,145,.8); --bullet-ring: #0F4958;
+  --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
+  --sheet-divider: 1px solid #0E5263; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-title: var(--font-body); --title-weight: 500; --title-tracking: -0.01em; --title-size: clamp(28px, 4.6vw, 36px);
   --weekday-font: var(--font-body); --weekday-style: normal;
-  --bullet-w: 5px; --bullet-h: 5px;
-  --btn-bg: #1C1C1C; --btn-border: 1px solid #333333; --btn-radius: 8px; --btn-shadow: none;
+  --body-size: 16px; --lh: 1.5; --line-box: 1.5em; --bc-pad-y: 2px; --indent: 29px;
+  --bullet-w: 6px; --bullet-h: 6px;
+  --props-bg: #06323E; --props-radius: 4px; --props-pad: 4px 8px; --props-size: 14.5px;
+  --props-key-font: var(--font-body); --props-key-ink: #C9D3D3; --props-key-weight: 500; --props-val-ink: var(--ink);
+  --btn-bg: #023643; --btn-border: 1px solid #0E5263; --btn-radius: 8px; --btn-shadow: none;
   --btn-press: none; --btn-press-move: 0px, 0px;
-  --check-radius: 3px; --check-border: 1.5px solid #6A6A6A; --check-on-bg: #E6E6E6; --check-tick: #141414;
+  --check-radius: 3px; --check-border: 1.5px solid #4F7F86; --check-on-bg: #8EC2C2; --check-tick: #002B36;
 }
 
 /* Azulejo — glazed tiles: cobalt on white, a tiled wall behind the pages, a tile border on each */
@@ -251,3 +301,9 @@
   --sheet-shadow: 0 2px 0 rgba(29,79,163,.10), 0 14px 28px -18px rgba(16,32,63,.35);
   --check-border: 1.6px solid #8391AD;
 }
+
+/* Settings → Look → Page links (this device only; App.applyTextStyle and boot.js set html[data-links]):
+   on top of every look, also in the look samples (their own data-skin would otherwise win) */
+html[data-links="underline"], html[data-links="underline"] [data-skin] { --link-deco: 1px solid var(--link-line); --link-open: none; --link-close: none; }
+html[data-links="color"], html[data-links="color"] [data-skin] { --link-deco: 0; --link-open: none; --link-close: none; }
+html[data-links="brackets"], html[data-links="brackets"] [data-skin] { --link-deco: 0; --link-open: "[["; --link-close: "]]"; }

@@ -328,6 +328,38 @@ pub fn set_path(text: &str, path: &[&str], value: &str) -> Option<String> {
     None
 }
 
+/// Put the items of the vector (or list, or set) at top-level `key` in another order, in place: the
+/// item at place k afterwards is the one that was at `order[k]`. Only the items' own texts move;
+/// everything between them (spaces, commas, line breaks, comments, `#_` forms) stays where it was,
+/// byte for byte, and so does the rest of the file. None if `key` isn't a sequence, or `order` isn't
+/// a reordering of all its items.
+pub fn reorder_items(text: &str, key: &str, order: &[usize]) -> Option<String> {
+    let root = parse(text)?;
+    let items = match &root.get(key)?.v {
+        Edn::Vec(v) | Edn::List(v) | Edn::Set(v) => v,
+        _ => return None,
+    };
+    if order.len() != items.len() {
+        return None;
+    }
+    let mut seen = vec![false; items.len()];
+    for &k in order {
+        if k >= items.len() || std::mem::replace(&mut seen[k], true) {
+            return None;
+        }
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut at = 0;
+    for (slot, item) in items.iter().enumerate() {
+        let from = &items[order[slot]];
+        out.push_str(&text[at..item.start]);
+        out.push_str(&text[from.start..from.end]);
+        at = item.end;
+    }
+    out.push_str(&text[at..]);
+    Some(out)
+}
+
 fn nested(path: &[&str], value: &str) -> String {
     match path.split_first() {
         None => value.to_string(),

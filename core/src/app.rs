@@ -30,6 +30,7 @@ pub fn data_dir() -> Option<PathBuf> {
     DATA_DIR.get().cloned()
 }
 
+pub mod history;
 pub mod pictures;
 pub mod safety;
 
@@ -81,6 +82,42 @@ pub struct App {
     /// false: opened only to read (the health check, the capture box): the index cache is never
     /// written, so the app's own cache stays as the app left it
     keep_cache: bool,
+    /// When each file was made (seconds since 1970), All pages' "Created": the earliest of what the
+    /// system says (its creation time, where it keeps one: Windows does, Android doesn't), the file's
+    /// change time, and what the app noted before (kept in the index cache). So a save that replaces
+    /// the file (a new file under the old name) never makes a page look new.
+    born: HashMap<String, u64>,
+    /// The last merge of two pages (`merge_pages`), for its Undo.
+    last_merge: Option<MergeUndo>,
+}
+
+/// What `undo_merge` needs: every file the merge changed (path, text before, text after) and the
+/// merged page's file, now in the bin (where it was, where it is, its text).
+struct MergeUndo {
+    id: u64,
+    from: String,
+    files: Vec<(String, String, String)>,
+    binned: Option<(String, PathBuf, String)>,
+    /// config.edn before and after a favourite was renamed by the merge.
+    config: Option<(String, String)>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MergeRes {
+    /// The page the notes went into.
+    pub name: String,
+    /// How many notes were added at its end.
+    pub notes: usize,
+    /// The merged page's properties came along, as the first of those notes.
+    pub props: bool,
+    /// Other files whose links now point at the page.
+    pub files_changed: usize,
+    /// Files that link to the old name but couldn't be changed (not UTF-8 text).
+    pub skipped: Vec<String>,
+    /// For `undo_merge`.
+    pub undo: u64,
+    /// `:favorites` afterwards (a favourite of the merged page now names the page it went into).
+    pub favorites: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -168,6 +205,8 @@ pub struct PageTarget {
 #[derive(Serialize)]
 pub struct RenameRes {
     pub name: String,
+    /// `:favorites` afterwards (a favourite of the page follows its new name).
+    pub favorites: Vec<String>,
     /// Other files whose links were updated.
     pub files_changed: usize,
     /// Files that link to the page but couldn't be updated (not UTF-8 text).
@@ -217,6 +256,19 @@ fn read_text(p: &Path) -> Result<Option<String>, ReadErr> {
 fn stamp_of(md: &std::fs::Metadata) -> Stamp {
     let mtime_ns = md.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos() as u64);
     Stamp { mtime_ns, size: md.len() }
+}
+
+/// The file's creation time in seconds, where the system keeps one (Windows, from the folder
+/// listing; Linux with most disks); Android doesn't.
+fn made_of(md: &std::fs::Metadata) -> Option<u64> {
+    md.created().ok()?.duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs()).filter(|&s| s > 0)
+}
+
+/// When a file was made, from what's known: what the app noted before, the system's creation time,
+/// its change time (a file isn't made after it was last changed). The earliest wins.
+fn born_from(noted: Option<u64>, made: Option<u64>, st: Stamp) -> u64 {
+    let changed = st.mtime_ns / 1_000_000_000;
+    [noted, made, (changed > 0).then_some(changed)].into_iter().flatten().min().unwrap_or(0)
 }
 
 /// Write a file safely: to a hidden temp file next to it, then rename over it, so a crash
@@ -340,10 +392,12 @@ fn keep_shape(orig: Option<&str>, mut text: String, crlf: bool) -> String {
     text
 }
 
-/// Every `.md` file in the pages and journals folders, with stamps. Uses the directory
-/// listing only (no per-file calls on Windows), which matters on Google Drive's virtual drive.
-fn scan(root: &Path, cfg: &Config) -> HashMap<String, Stamp> {
+/// Every `.md` file in the pages and journals folders, with stamps, and the creation times the
+/// system gives (`made_of`). Uses the directory listing only (no per-file calls on Windows, where
+/// the listing has the creation time too), which matters on Google Drive's virtual drive.
+fn scan(root: &Path, cfg: &Config) -> (HashMap<String, Stamp>, HashMap<String, u64>) {
     let mut m = HashMap::new();
+    let mut made = HashMap::new();
     for sub in [&cfg.pages_dir, &cfg.journals_dir] {
         let mut stack = vec![root.join(sub)];
         while let Some(d) = stack.pop() {
@@ -360,18 +414,22 @@ fn scan(root: &Path, cfg: &Config) -> HashMap<String, Stamp> {
                 } else if name.ends_with(".md") {
                     let Ok(md) = e.metadata() else { continue };
                     if let Ok(rel) = e.path().strip_prefix(root) {
-                        m.insert(rel.to_string_lossy().replace('\\', "/"), stamp_of(&md));
+                        let rel = rel.to_string_lossy().replace('\\', "/");
+                        if let Some(t) = made_of(&md) {
+                            made.insert(rel.clone(), t);
+                        }
+                        m.insert(rel, stamp_of(&md));
                     }
                 }
             }
         }
     }
-    m
+    (m, made)
 }
 
 /// Read many files at once (Drive's virtual drive answers in parallel much faster).
-/// Returns (rel, text, is_utf8); unreadable files are left out.
-fn read_parallel(root: &Path, rels: &[String]) -> Vec<(String, String, bool)> {
+/// Returns (rel, text, is_utf8); unreadable files are left out. (History reads full paths: root "".)
+fn read_parallel<T: Clone + AsRef<Path> + Sync + Send>(root: &Path, rels: &[T]) -> Vec<(T, String, bool)> {
     let n = rels.len();
     let next = AtomicUsize::new(0);
     let out = Mutex::new(Vec::with_capacity(n));
@@ -400,20 +458,25 @@ struct CacheFile {
     v: u32,
     root: String,
     files: Vec<(String, Stamp, String)>,
+    /// When each file was made, as the app knows it (`App::born`). (Older caches have none.)
+    #[serde(default)]
+    born: HashMap<String, u64>,
 }
 
 fn cache_path(root: &Path) -> Option<PathBuf> {
     Some(CACHE_DIR.get()?.join(format!("vault-{}.json", content_hash(&root.display().to_string()))))
 }
 
-fn load_cache(root: &Path) -> HashMap<String, (Stamp, String)> {
-    let Some(p) = cache_path(root) else { return HashMap::new() };
-    let Ok(bytes) = std::fs::read(&p) else { return HashMap::new() };
+type Cached = (HashMap<String, (Stamp, String)>, HashMap<String, u64>);
+
+fn load_cache(root: &Path) -> Cached {
+    let Some(p) = cache_path(root) else { return Default::default() };
+    let Ok(bytes) = std::fs::read(&p) else { return Default::default() };
     match serde_json::from_slice::<CacheFile>(&bytes) {
         Ok(c) if c.v == CACHE_VERSION && c.root == root.display().to_string() => {
-            c.files.into_iter().map(|(r, st, t)| (r, (st, t))).collect()
+            (c.files.into_iter().map(|(r, st, t)| (r, (st, t))).collect(), c.born)
         }
-        _ => HashMap::new(),
+        _ => Default::default(),
     }
 }
 
@@ -427,6 +490,8 @@ pub struct ScanPlan {
 /// Files that changed on disk, already read.
 pub struct Changes {
     now: HashMap<String, Stamp>,
+    /// creation times the system gives (`made_of`)
+    made: HashMap<String, u64>,
     read: Vec<(String, String, bool)>,
     removed: Vec<String>,
     base: HashMap<String, Stamp>,
@@ -434,11 +499,11 @@ pub struct Changes {
 
 /// Scan the folders and read changed files (no app lock needed).
 pub fn collect_changes(plan: ScanPlan) -> Changes {
-    let now = scan(&plan.root, &plan.cfg);
+    let (now, made) = scan(&plan.root, &plan.cfg);
     let to_read: Vec<String> = now.iter().filter(|(r, st)| plan.files.get(*r) != Some(st)).map(|(r, _)| r.clone()).collect();
     let removed: Vec<String> = plan.files.keys().filter(|r| !now.contains_key(*r)).cloned().collect();
     let read = read_parallel(&plan.root, &to_read);
-    Changes { now, read, removed, base: plan.files }
+    Changes { now, made, read, removed, base: plan.files }
 }
 
 /// A name the user typed for a page: trimmed, one line, not empty.
@@ -497,6 +562,104 @@ fn rename_in_text(text: &str, olds: &[String], new: &str, comma: &[String]) -> O
         }
     }
     changed.then(|| keep_shape(Some(text), join_doc(&doc), doc.crlf))
+}
+
+/// `rename_in_text` on a page already split: links to `olds` in its properties and notes now point
+/// at `new` (only the notes that change are touched).
+fn rename_doc(doc: &mut Doc, olds: &[String], new: &str, comma: &[String]) {
+    if let Some(p) = crate::text::rename_refs(&doc.preamble, olds, new, comma) {
+        doc.preamble = p;
+    }
+    for b in &mut doc.blocks {
+        if let Some(t) = crate::text::rename_refs(&b.text, olds, new, comma) {
+            b.text = t;
+        }
+    }
+}
+
+/// Can a page's YAML header (if it has one) all become `key:: value` properties (`parse::yaml_props`):
+/// one-line values, `[a, b]` lists and `- item` lists? Not: a value over several lines (`|`, `>`,
+/// an indented continuation) or nested keys, which a merge would lose.
+fn yaml_header_simple(text: &str) -> bool {
+    let d = split_doc(text);
+    let pre: Vec<&str> = d.preamble.split_inclusive('\n').collect();
+    let fm = crate::doc::front_matter_len(&pre).unwrap_or(0);
+    let mut list = false; // (after a key with no value: its "- item" lines)
+    for l in pre.iter().take(fm).skip(1) {
+        let t = l.trim_end_matches(['\n', '\r']);
+        if t.trim_end() == "---" || t.trim_end() == "..." {
+            break;
+        }
+        if t.trim().is_empty() || t.starts_with('#') {
+            continue;
+        }
+        if t.starts_with(' ') || t.starts_with('\t') || t.starts_with("- ") || t == "-" {
+            if !list || !t.trim_start().starts_with("- ") || crate::doc::yaml_key(t.trim_start().trim_start_matches("- ")).is_some() {
+                return false;
+            }
+            continue;
+        }
+        match crate::doc::yaml_key(t) {
+            Some((_, v)) => {
+                let v = v.trim();
+                if v.starts_with('|') || v.starts_with('>') {
+                    return false;
+                }
+                list = v.is_empty();
+            }
+            None => return false,
+        }
+    }
+    true
+}
+
+/// The notes of a page being merged into another (`App::merge_pages`), as new notes for the end of
+/// that page: its properties first, as a note of their own (Logseq lines as written, a YAML
+/// header's as `key:: value`; `title::` left out: the name goes away), then its notes (paragraphs
+/// before its first bullet become bullets; a note never steps in more than one level below the one
+/// before it), links to `olds` pointing at `new`. Also: did its properties come along?
+fn moved_notes(text: &str, olds: &[String], new: &str, comma: &[String]) -> (Vec<DocBlock>, bool) {
+    let d = split_doc(text);
+    let is_title = |l: &str| crate::parse::property(l.trim()).is_some_and(|(k, _)| k == "title");
+    let pre: Vec<&str> = d.preamble.split_inclusive('\n').collect();
+    let fm = crate::doc::front_matter_len(&pre).unwrap_or(0);
+    let mut props: Vec<String> = crate::parse::yaml_props(&pre[..fm]).into_iter().filter(|(k, _)| k != "title").map(|(k, v)| format!("{k}:: {v}")).collect();
+    let mut on_top = fm > 0; // (the page has properties at the top of its file)
+    for l in &pre[fm..] {
+        let l = l.trim_end_matches(['\n', '\r']).trim();
+        if crate::parse::property(l).is_some() {
+            on_top = true;
+            if !is_title(l) {
+                props.push(l.to_string());
+            }
+        }
+    }
+    let mut came = !props.is_empty();
+    let mut out = vec![];
+    let mut prev: Option<usize> = None;
+    let mut push = |text: String, depth: usize, out: &mut Vec<DocBlock>| {
+        let text = crate::text::rename_refs(&text, olds, new, comma).unwrap_or(text);
+        let depth = prev.map_or(0, |p| depth.min(p + 1));
+        prev = Some(depth);
+        out.push(DocBlock { depth, text, raw: None, plain: false });
+    };
+    if came {
+        push(props.join("\n"), 0, &mut out);
+    }
+    for (n, b) in d.blocks.iter().enumerate() {
+        let mut t = b.text.clone();
+        // Logseq's other place for page properties: a first note holding only them
+        let lines = || t.split('\n').filter(|l| !l.trim().is_empty());
+        if n == 0 && !on_top && !b.plain && b.depth == 0 && lines().count() > 0 && lines().all(|l| crate::parse::property(l.trim()).is_some()) {
+            t = lines().filter(|l| !is_title(l)).collect::<Vec<_>>().join("\n");
+            if t.is_empty() {
+                continue;
+            }
+            came = true;
+        }
+        push(t, b.depth, &mut out);
+    }
+    (out, came)
 }
 
 /// Set an existing `title::` property (preamble or a properties-only first block) to `new`.
@@ -584,8 +747,8 @@ impl App {
         } else {
             crate::capture::read_config(root).map_err(|e| format!("Couldn't read logseq/config.edn ({e}). If it's on Google Drive, check it's available offline."))?
         };
-        let stamps = scan(root, &cfg);
-        let mut cache = load_cache(root);
+        let (stamps, made) = scan(root, &cfg);
+        let (mut cache, noted) = load_cache(root);
         let cache_had = cache.len();
         let mut contents = HashMap::new();
         let mut to_read = vec![];
@@ -630,20 +793,30 @@ impl App {
         for rel in &non_utf8 {
             contents.remove(rel); // never cache text we couldn't read exactly
         }
-        let cache_dirty = !to_read.is_empty() || cache_had != contents.len();
-        let mut app = App { root: root.to_path_buf(), vault, files, contents, non_utf8, cache_dirty, replaced: vec![], keep_cache };
-        app.write_cache(); // (not when opened only to read: see write_cache)
-        app.replaced = replaced; // for the safety copy made next (start_safety_copy)
+        // when each file was made (All pages' "Created"); a cache from before kept none: written once
+        let born: HashMap<String, u64> = files.iter().map(|(r, st)| (r.clone(), born_from(noted.get(r).copied(), made.get(r).copied(), *st))).collect();
+        let cache_dirty = !to_read.is_empty() || cache_had != contents.len() || born.keys().any(|r| !noted.contains_key(r));
+        // `replaced`: for the safety copy made next (start_safety_copy). Until they're in a copy, the
+        // index cache on disk is the only place that has those earlier texts: it's written now only
+        // when there are none (else by start_safety_copy once they're kept, or the next persist).
+        // Opened only to read (the capture box, the check), it's never written: see write_cache.
+        let mut app = App { root: root.to_path_buf(), vault, files, contents, non_utf8, cache_dirty, replaced, keep_cache, born, last_merge: None };
+        if keep_cache && app.replaced.is_empty() {
+            app.write_cache();
+        }
         Ok(app)
     }
 
     /// Persist file texts so the next start only reads files that changed. The cache forgets the
-    /// earlier texts that changes made elsewhere replaced, so those go into a safety copy first.
+    /// earlier texts that changes made elsewhere replaced, so those go into a safety copy first; if
+    /// that copy can't be made, the cache isn't written (the one on disk still has them).
     fn write_cache(&mut self) {
         if !self.keep_cache {
             return; // opened only to read: nothing is written, not the cache, not a safety copy
         }
-        self.keep_replaced();
+        if !self.keep_replaced() {
+            return;
+        }
         if !self.cache_dirty {
             return;
         }
@@ -654,7 +827,8 @@ impl App {
             .filter_map(|(r, t)| Some((r.clone(), *self.files.get(r)?, t.clone())))
             .collect();
         files.sort_by(|a, b| a.0.cmp(&b.0));
-        let c = CacheFile { v: CACHE_VERSION, root: self.root.display().to_string(), files };
+        let born = self.born.iter().filter(|(r, _)| self.contents.contains_key(*r)).map(|(r, t)| (r.clone(), *t)).collect();
+        let c = CacheFile { v: CACHE_VERSION, root: self.root.display().to_string(), files, born };
         if let Ok(bytes) = serde_json::to_vec(&c) {
             let _ = std::fs::create_dir_all(p.parent().unwrap_or(Path::new(".")));
             let tmp = p.with_extension("tmp");
@@ -686,6 +860,8 @@ impl App {
             }
             self.vault.upsert(&rel, &text);
             self.files.insert(rel.clone(), ch.now[&rel]);
+            let b = born_from(self.born.get(&rel).copied(), ch.made.get(&rel).copied(), ch.now[&rel]);
+            self.born.insert(rel.clone(), b);
             if utf8 {
                 self.non_utf8.remove(&rel);
                 self.contents.insert(rel.clone(), text);
@@ -704,6 +880,7 @@ impl App {
             self.files.remove(&rel);
             self.contents.remove(&rel);
             self.non_utf8.remove(&rel);
+            self.born.remove(&rel);
             changed.push(rel);
         }
         if !changed.is_empty() {
@@ -770,7 +947,11 @@ impl App {
     fn record_write(&mut self, rel: &str, text: &str) {
         self.vault.upsert(rel, text);
         if let Ok(md) = std::fs::metadata(self.root.join(rel)) {
-            self.files.insert(rel.to_string(), stamp_of(&md));
+            let st = stamp_of(&md);
+            self.files.insert(rel.to_string(), st);
+            // (a save writes a new file under the old name: its creation time is now, the page's isn't)
+            let b = born_from(self.born.get(rel).copied(), made_of(&md), st);
+            self.born.insert(rel.to_string(), b);
         }
         self.contents.insert(rel.to_string(), text.to_string());
         self.non_utf8.remove(rel);
@@ -782,6 +963,7 @@ impl App {
         self.files.remove(rel);
         self.contents.remove(rel);
         self.non_utf8.remove(rel);
+        self.born.remove(rel);
         self.cache_dirty = true;
     }
 
@@ -849,19 +1031,25 @@ impl App {
         Ok(SaveRes { ok: true, hash: content_hash(&text), conflict: false, merged })
     }
 
-    /// Keep a copy of a page's text in `logseq/bak/<file>/<time>.md` (Logseq's backup place); a
-    /// second copy within the same second gets "-2", "-3"… (never overwrites one).
-    fn backup(&self, rel: &str, text: &str) -> Result<(), String> {
-        let stem = rel.trim_end_matches(".md");
+    /// A page's backup folder, `logseq/bak/<its file without .md>` (Logseq's place for its backups).
+    fn bak_dir(&self, rel: &str) -> PathBuf {
+        self.root.join("logseq").join("bak").join(rel.trim_end_matches(".md"))
+    }
+
+    /// Keep a copy of a page's text in `logseq/bak/<file>/<UTC time>.md` (Logseq's backup place); a
+    /// second copy within the same second gets "-2", "-3"… (never overwrites one). Returns where it
+    /// went ("logseq/bak/pages/Note/2026-10-27_01_32_00.md").
+    fn backup(&self, rel: &str, text: &str) -> Result<String, String> {
         let stamp = crate::log::now_utc().replace([' ', ':'], "_").replace("_UTC", "");
-        let dir = self.root.join("logseq").join("bak").join(stem);
-        let mut p = dir.join(format!("{stamp}.md"));
+        let dir = self.bak_dir(rel);
+        let mut name = format!("{stamp}.md");
         let mut n = 2;
-        while p.exists() {
-            p = dir.join(format!("{stamp}-{n}.md"));
+        while dir.join(&name).exists() {
+            name = format!("{stamp}-{n}.md");
             n += 1;
         }
-        write_atomic(&p, text).map_err(|e| format!("Couldn't keep a backup copy, so nothing was saved: {e}"))
+        write_atomic(&dir.join(&name), text).map_err(|e| format!("Couldn't keep a backup copy, so nothing was saved: {e}"))?;
+        Ok(format!("logseq/bak/{}/{name}", rel.trim_end_matches(".md")))
     }
 
     /// A page changed here (`mine`) and in its file (by another app) since `base`, in the same
@@ -885,7 +1073,7 @@ impl App {
     /// Keep a copy of the editor's version before it's thrown away ("Load the new version").
     pub fn backup_doc(&self, name: &str, doc: &Doc) -> Result<(), String> {
         let rel = self.vault.page_info(name).path.ok_or("page has no path")?;
-        self.backup(&rel, &join_doc(doc))
+        self.backup(&rel, &join_doc(doc)).map(|_| ())
     }
 
     /// Replace one block's text, found by its line, if it still reads `base` on disk.
@@ -1183,39 +1371,255 @@ impl App {
                 } else {
                     std::fs::rename(&path, &to).map_err(|e| format!("Couldn't rename the file: {e}"))?;
                 }
+                let was = self.born.get(&rel).copied(); // (when the page was made: it's the same page)
                 self.forget(&rel);
+                self.record_write(&nrel, &text);
+                if let Some(w) = was {
+                    let b = self.born.get(&nrel).map_or(w, |&n| n.min(w));
+                    self.born.insert(nrel.clone(), b);
+                }
+            } else {
+                self.record_write(&nrel, &text);
             }
-            self.record_write(&nrel, &text);
         }
         self.write_cache();
-        Ok(RenameRes { name: new, files_changed: changed, skipped })
+        self.rename_favorite(&info.name, &new);
+        Ok(RenameRes { favorites: self.vault.config.favorites.clone(), name: new, files_changed: changed, skipped })
+    }
+
+    /// Before renaming page `old` to `new`: Ok(None) when `new` is free (a plain rename), Ok(Some(its
+    /// name)) when another page already has that name (or alias: then that page): the two can be
+    /// merged (`merge_pages`); Err when the name can't be used (says why).
+    pub fn rename_target(&self, old: &str, new: &str) -> Result<Option<String>, String> {
+        let new = clean_name(new)?;
+        let info = self.vault.page_info(old);
+        if info.journal.is_some() {
+            return Err("Journal pages are named after their date, so they can't be renamed.".into());
+        }
+        if self.vault.config.journal_from_title(&new).is_some() {
+            return Err("That name looks like a journal date. Pick another name.".into());
+        }
+        let old_key = crate::key(&info.name);
+        if crate::key(&new) == old_key {
+            return Ok(None); // only its capitals change
+        }
+        if self.vault.resolve(&new) == old_key {
+            return Err(format!("“{new}” is already another name of this page (its alias)."));
+        }
+        let other = self.vault.page_info(&new);
+        if other.exists && other.journal.is_some() {
+            return Err(format!("“{new}” is another name of the journal day “{}”, and a page can't be merged into a journal day. Pick another name.", other.name));
+        }
+        if other.exists && self.vault.has_duplicate(&info.name) {
+            return Err(format!("Another file also says it is “{}” (Settings → Notes → Check this folder), so it can't be merged safely. Rename or remove that file first.", info.name));
+        }
+        Ok(other.exists.then_some(other.name))
+    }
+
+    /// Merge page `old` into the page `into` (renaming a page to the name of one that exists), as
+    /// Logseq does: `old`'s notes are added at the end of `into` (its properties, except `title::`,
+    /// as the first of them: nothing is lost, and the notes `into` has keep their place), links to
+    /// `old` everywhere point at `into` (in `into`'s own notes too), and `old`'s file goes to the bin
+    /// (`logseq/.recycle`). `into`'s file is changed only by those: every other byte stays, its line
+    /// endings, byte-order mark, indentation and missing last line break too; it's written only if
+    /// nobody saved it meanwhile. `undo_merge(res.undo)` puts it all back while nothing changed since.
+    pub fn merge_pages(&mut self, old: &str, into: &str) -> Result<MergeRes, String> {
+        let info = self.vault.page_info(old);
+        if info.journal.is_some() {
+            return Err("Journal pages are named after their date, so they can't be merged into another page.".into());
+        }
+        let target = self.vault.page_info(&clean_name(into)?);
+        if !target.exists {
+            return Err(format!("There's no page called “{}” now, so nothing was merged.", target.name));
+        }
+        if target.journal.is_some() {
+            return Err("A page can't be merged into a journal day.".into());
+        }
+        if crate::key(&target.name) == crate::key(&info.name) {
+            return Err("That's this page.".into());
+        }
+        if self.vault.has_duplicate(&info.name) {
+            // (its file going to the bin would hand the name to the other file, links already moved)
+            return Err(format!("Another file also says it is “{}” (Settings → Notes → Check this folder), so it can't be merged safely. Rename or remove that file first.", info.name));
+        }
+        let (name, t_rel) = (target.name.clone(), target.path.clone().unwrap_or_default());
+        let t_path = self.root.join(&t_rel);
+        let olds = vec![crate::key(&info.name)];
+        let comma = self.vault.config.comma_props.clone();
+        let from_rel = info.path.clone().filter(|_| info.exists);
+        let from_text = match &from_rel {
+            Some(r) => Some(read_text(&self.root.join(r)).map_err(|e| e.say(&format!("the file of “{}”", info.name)))?.ok_or_else(|| format!("The file of “{}” is gone.", info.name))?),
+            None => None,
+        };
+        if from_text.as_deref().is_some_and(|t| !yaml_header_simple(t)) {
+            return Err(format!("“{}” starts with a YAML header that can't all become properties (a value over several lines, or nested ones), so the pages weren't merged and nothing was changed. Move those lines into a note first.", info.name));
+        }
+        let before = read_text(&t_path).map_err(|e| e.say(&format!("the file of “{name}”")))?.ok_or_else(|| format!("The file of “{name}” is gone."))?;
+        // the page's own links to the old name, then the notes that come over
+        let mut doc = split_doc(&before);
+        rename_doc(&mut doc, &olds, &name, &comma);
+        let (moved, props) = from_text.as_deref().map(|t| moved_notes(t, &olds, &name, &comma)).unwrap_or_default();
+        let notes = moved.len();
+        doc.blocks.extend(moved);
+        let after = keep_shape(Some(&before), join_doc(&doc), doc.crlf);
+        let mut files = vec![];
+        if after != before {
+            if !write_atomic_checked(&t_path, &after, Expect::Bytes(before.as_bytes()))? {
+                return Err(format!("“{name}” was saved somewhere else just now, so nothing was merged. Try again."));
+            }
+            self.record_write(&t_rel, &after);
+            files.push((t_rel.clone(), before.clone(), after.clone()));
+        }
+        // the old page's file to the bin; if it can't go, the other page is put back as it was
+        let mut binned = None;
+        if let (Some(rel), Some(text)) = (from_rel, from_text) {
+            match self.bin_file(&rel) {
+                Ok(dest) => {
+                    self.forget(&rel);
+                    binned = Some((rel, dest, text));
+                }
+                Err(e) => {
+                    if after != before && write_atomic_checked(&t_path, &before, Expect::Bytes(after.as_bytes())).unwrap_or(false) {
+                        self.record_write(&t_rel, &before);
+                    }
+                    return Err(format!("Couldn't move “{}” to the bin ({e}), so nothing was merged.", info.name));
+                }
+            }
+        }
+        // links in other files
+        let mut skipped = vec![];
+        let mut changed = 0;
+        for src in self.vault.linking_pages(&info.name) {
+            let Some(rel) = self.vault.path_of_key(&src).filter(|r| *r != t_rel) else { continue };
+            match read_text(&self.root.join(&rel)) {
+                Ok(Some(cur)) => {
+                    if let Some(t) = rename_in_text(&cur, &olds, &name, &comma) {
+                        // (one that can't be written is listed, and the merge still finishes: its
+                        // Undo, favourites and the index stay right)
+                        match self.write_page(&rel, &t) {
+                            Ok(_) => {
+                                files.push((rel, cur, t));
+                                changed += 1;
+                            }
+                            Err(_) => skipped.push(rel),
+                        }
+                    }
+                }
+                Ok(None) => {}
+                Err(_) => skipped.push(rel),
+            }
+        }
+        self.write_cache();
+        static N: AtomicUsize = AtomicUsize::new(1);
+        let id = N.fetch_add(1, Ordering::Relaxed) as u64;
+        let config = self.rename_favorite(&info.name, &name);
+        self.last_merge = Some(MergeUndo { id, from: info.name, files, binned, config });
+        Ok(MergeRes { favorites: self.vault.config.favorites.clone(), name, notes, props, files_changed: changed, skipped, undo: id })
+    }
+
+    /// Undo merge `id` (the last one): the merged page back from the bin, every file the merge
+    /// changed back as it was. Only while nothing changed since (else it says so, and nothing is
+    /// done: the old page is still in the bin). Returns the merged page's name.
+    pub fn undo_merge(&mut self, id: u64) -> Result<String, String> {
+        if self.last_merge.as_ref().map(|u| u.id) != Some(id) {
+            return Err("That merge can't be undone any more.".into());
+        }
+        let Some(u) = self.last_merge.take() else { return Err("That merge can't be undone any more.".into()) };
+        let later = |what: &str| format!("{what} changed since the merge, so it can't be undone from here. “{}” is in the bin (Settings → Notes → Deleted pages).", u.from);
+        for (rel, _, after) in &u.files {
+            if !matches!(read_text(&self.root.join(rel)), Ok(Some(t)) if t == *after) {
+                return Err(later(&format!("“{}”", self.vault.title_from_path(rel).0)));
+            }
+        }
+        if let Some((rel, dest, text)) = &u.binned {
+            if !matches!(read_text(dest), Ok(Some(t)) if t == *text) {
+                return Err(later("The file in the bin"));
+            }
+            if self.root.join(rel).exists() || self.vault.page_info(&u.from).exists {
+                return Err(format!("There's a page called “{}” again, so the merge can't be undone from here.", u.from));
+            }
+            std::fs::rename(dest, self.root.join(rel)).map_err(|e| format!("Couldn't take “{}” out of the bin: {e}", u.from))?;
+            self.record_write(rel, text);
+        }
+        let mut failed = vec![];
+        for (rel, before, after) in &u.files {
+            match write_atomic_checked(&self.root.join(rel), before, Expect::Bytes(after.as_bytes())) {
+                Ok(true) => self.record_write(rel, before),
+                _ => failed.push(self.vault.title_from_path(rel).0),
+            }
+        }
+        self.write_cache();
+        // the favourite back too (unless config.edn was changed since: then it's left as it is)
+        if let Some((before, after)) = &u.config {
+            let path = self.root.join("logseq").join("config.edn");
+            if let Ok(true) = write_atomic_checked(&path, before, Expect::Bytes(after.as_bytes())) {
+                self.vault.config.favorites = Config::from_edn(before).favorites;
+            }
+        }
+        if !failed.is_empty() {
+            return Err(format!("“{}” is back, but these pages changed meanwhile and were left as they are: {}", u.from, failed.join(", ")));
+        }
+        Ok(self.vault.page_info(&u.from).name)
+    }
+
+    /// A page's file (to show it in Explorer).
+    pub fn page_file(&self, name: &str) -> Result<PathBuf, String> {
+        let info = self.vault.page_info(name);
+        let rel = info.path.filter(|_| info.exists).ok_or("This page has no file yet: it gets one when something is written in it.")?;
+        let p = self.root.join(rel);
+        if !p.is_file() {
+            return Err("This page's file isn't there any more.".into());
+        }
+        Ok(p)
+    }
+
+    /// All pages (and names only linked to), each with its file's change time and when it was made
+    /// (seconds; none without a file).
+    pub fn pages(&self) -> Vec<crate::vault::PageEntry> {
+        let mut v = self.vault.all_pages();
+        for e in &mut v {
+            if let Some(rel) = e.path.as_deref().filter(|_| e.exists) {
+                e.changed = self.files.get(rel).map(|s| s.mtime_ns / 1_000_000_000);
+                e.created = self.born.get(rel).copied();
+            }
+        }
+        v
     }
 
     fn recycle_dir(&self) -> PathBuf {
         self.root.join("logseq").join(".recycle")
     }
 
-    /// Move pages' files to `logseq/.recycle` (Logseq's bin). Returns how many were moved.
-    pub fn delete_pages(&mut self, names: &[String]) -> Result<usize, String> {
+    /// Move a page's file to `logseq/.recycle` (Logseq's bin), named by its path ("/" → "_", as
+    /// Logseq names them; " (2)"… when the bin has that name). Returns where it went.
+    fn bin_file(&self, rel: &str) -> Result<PathBuf, String> {
         let bin = self.recycle_dir();
         std::fs::create_dir_all(&bin).map_err(|e| format!("Couldn't make the bin folder: {e}"))?;
+        let flat = rel.replace('/', "_");
+        let stem = flat.strip_suffix(".md").unwrap_or(&flat).to_string();
+        let mut dest = bin.join(&flat);
+        let mut k = 2;
+        while dest.exists() {
+            dest = bin.join(format!("{stem} ({k}).md"));
+            k += 1;
+        }
+        let src = self.root.join(rel);
+        let moved = std::fs::rename(&src, &dest).is_ok() || (std::fs::copy(&src, &dest).is_ok() && std::fs::remove_file(&src).is_ok());
+        if moved {
+            Ok(dest)
+        } else {
+            Err("the file couldn't be moved".into())
+        }
+    }
+
+    /// Move pages' files to `logseq/.recycle` (Logseq's bin). Returns how many were moved.
+    pub fn delete_pages(&mut self, names: &[String]) -> Result<usize, String> {
         let mut n = 0;
         let mut errors = vec![];
         for name in names {
             let info = self.vault.page_info(name);
             let Some(rel) = info.path.filter(|_| info.exists) else { continue };
-            let flat = rel.replace('/', "_");
-            let stem = flat.strip_suffix(".md").unwrap_or(&flat).to_string();
-            let mut dest = bin.join(&flat);
-            let mut k = 2;
-            while dest.exists() {
-                dest = bin.join(format!("{stem} ({k}).md"));
-                k += 1;
-            }
-            let src = self.root.join(&rel);
-            let moved = std::fs::rename(&src, &dest).is_ok()
-                || (std::fs::copy(&src, &dest).is_ok() && std::fs::remove_file(&src).is_ok());
-            if moved {
+            if self.bin_file(&rel).is_ok() {
                 self.forget(&rel);
                 n += 1;
             } else {
@@ -1310,6 +1714,109 @@ impl App {
         }
         let value = format!("[{}]", favs.iter().map(|f| crate::edn::quote(f)).collect::<Vec<_>>().join(" "));
         self.edit_config(&[("favorites", value)])?;
+        Ok(self.vault.config.favorites.clone())
+    }
+
+    /// After a rename or merge: a favourite naming `old` (any capitals) now names `new`, in the same
+    /// place; when `new` is a favourite already (or `old` is listed twice), the extra entry goes, with
+    /// the spaces before it. Only those entries' own texts change in config.edn: every other byte, the
+    /// comments and the rest of the list too, stays. A config that can't be read or changed is left as
+    /// it is (the rename itself is done; the problems log says why). Returns the file's text before
+    /// and after, when it was changed (for `undo_merge`).
+    fn rename_favorite(&mut self, old: &str, new: &str) -> Option<(String, String)> {
+        let (ko, kn) = (crate::key(old), crate::key(new));
+        if !self.vault.config.favorites.iter().any(|f| crate::key(f) == ko) {
+            return None;
+        }
+        let path = self.root.join("logseq").join("config.edn");
+        let text = std::fs::read_to_string(&path).ok()?;
+        let root = crate::edn::parse(&text)?;
+        let items = root.get("favorites").map(|n| n.items()).unwrap_or_default();
+        let is = |n: &crate::edn::Node, k: &str| n.as_str().is_some_and(|s| crate::key(s) == k);
+        let mut keep = kn == ko || !items.iter().any(|i| is(i, &kn)); // (one entry may take the new name)
+        let mut out = String::with_capacity(text.len());
+        let mut at = 0;
+        for item in items.iter().filter(|i| is(i, &ko)) {
+            if keep {
+                out.push_str(&text[at..item.start]);
+                out.push_str(&crate::edn::quote(new));
+                at = item.end;
+                keep = false;
+            } else {
+                // dropped, with the spaces (and commas) before it on its line; first on its line or in
+                // the list: the ones after it instead (line breaks stay: a ;; comment ends at one)
+                let b = text.as_bytes();
+                let gap = |c: u8| c == b' ' || c == b'\t' || c == b',';
+                let mut cut = item.start;
+                while cut > at && gap(b[cut - 1]) {
+                    cut -= 1;
+                }
+                if cut == 0 || matches!(b[cut - 1], b'\n' | b'\r' | b'[' | b'(' | b'{') {
+                    out.push_str(&text[at..item.start]);
+                    at = item.end;
+                    while at < b.len() && gap(b[at]) {
+                        at += 1;
+                    }
+                } else {
+                    out.push_str(&text[at..cut]);
+                    at = item.end;
+                }
+            }
+        }
+        out.push_str(&text[at..]);
+        if out == text {
+            return None;
+        }
+        if crate::edn::parse(&out).is_none() {
+            crate::log::record("Renaming a favourite would break config.edn, so it wasn't changed.");
+            return None;
+        }
+        match write_atomic(&path, &out) {
+            Ok(()) => {
+                self.vault.config.favorites = Config::from_edn(&out).favorites;
+                Some((text, out))
+            }
+            Err(e) => {
+                crate::log::record(&format!("Couldn't rename the favourite in config.edn: {e}"));
+                None
+            }
+        }
+    }
+
+    /// Put `:favorites` in config.edn in the order of `names` (the sidebar's, after dragging one):
+    /// only the favourites' own texts move (`edn::reorder_items`), so everything else in the file,
+    /// the spaces and comments between them too, stays byte for byte. Favourites added or removed
+    /// elsewhere meanwhile stay as the file has them: the ones named take the places they hold, in
+    /// the order asked; any other keeps its own place. Returns the favourites as the file has them.
+    pub fn reorder_favorites(&mut self, names: &[String]) -> Result<Vec<String>, String> {
+        let path = self.root.join("logseq").join("config.edn");
+        let text = match std::fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(_) if !path.exists() => return Ok(vec![]),
+            Err(e) => return Err(format!("Couldn't read config.edn: {e}")),
+        };
+        const BAD: &str = "Couldn't understand logseq/config.edn, so it wasn't changed.";
+        let root = crate::edn::parse(&text).ok_or(BAD)?;
+        let items = root.get("favorites").map(|n| n.items()).unwrap_or_default();
+        let wanted: Vec<String> = names.iter().map(|n| crate::key(n)).collect();
+        let rank = |i: usize| items[i].as_str().and_then(|s| wanted.iter().position(|w| *w == crate::key(s)));
+        let slots: Vec<usize> = (0..items.len()).filter(|&i| rank(i).is_some()).collect();
+        let mut moved = slots.clone();
+        moved.sort_by_key(|&i| rank(i)); // (stable: a name written twice keeps its two in order)
+        let mut order: Vec<usize> = (0..items.len()).collect();
+        for (&s, &m) in slots.iter().zip(&moved) {
+            order[s] = m;
+        }
+        if order.iter().enumerate().any(|(k, &m)| k != m) {
+            let out = crate::edn::reorder_items(&text, "favorites", &order).ok_or(BAD)?;
+            if crate::edn::parse(&out).is_none() {
+                return Err("The change would break config.edn, so it wasn't saved.".into());
+            }
+            write_atomic(&path, &out)?;
+            self.vault.config.favorites = Config::from_edn(&out).favorites;
+        } else {
+            self.vault.config.favorites = Config::from_edn(&text).favorites;
+        }
         Ok(self.vault.config.favorites.clone())
     }
 
@@ -1440,6 +1947,39 @@ pub fn asset_markdown(name: &str, rel: &str) -> String {
     }
 }
 
+/// A file dropped on the app's window (its full path on this computer, from Explorer; ui/filedrop.js):
+/// copied into `assets/` (`save_asset_file`, Logseq's name), or, when it's in `assets/` already, linked
+/// where it is (no second copy). Returns (the link target "../assets/…", its Markdown,
+/// `asset_markdown`). Folders, empty files and files over 25 MB are refused (the size is checked
+/// before reading it).
+pub fn save_dropped_file(root: &Path, path: &Path) -> Result<(String, String), String> {
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).filter(|n| !n.is_empty()).ok_or("that isn't a file")?;
+    let md = std::fs::metadata(path).map_err(|e| format!("couldn't read it ({e})"))?;
+    if md.is_dir() {
+        return Err("it's a folder: drop the files in it instead".into());
+    }
+    if !md.is_file() {
+        return Err("that isn't a file".into());
+    }
+    if let (Ok(full), Ok(assets)) = (path.canonicalize(), root.join("assets").canonicalize()) {
+        if let Ok(rest) = full.strip_prefix(&assets) {
+            // (a name with spaces or brackets, given by another app: written so the link still reads)
+            let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().replace('%', "%25").replace(' ', "%20").replace('(', "%28").replace(')', "%29")).collect();
+            let rel = format!("../assets/{}", parts.join("/"));
+            return Ok((rel.clone(), asset_markdown(&name, &rel)));
+        }
+    }
+    if md.len() > MAX_ASSET_BYTES as u64 {
+        return Err("it's over 25 MB; pick a smaller one".into());
+    }
+    // (at most the limit and one byte: a file growing meanwhile is caught by save_asset_file's check)
+    let mut bytes = vec![];
+    std::io::Read::read_to_end(&mut std::io::Read::take(std::fs::File::open(path).map_err(|e| format!("couldn't read it ({e})"))?, MAX_ASSET_BYTES as u64 + 1), &mut bytes)
+        .map_err(|e| format!("couldn't read it ({e})"))?;
+    let rel = save_asset_file(root, &name, &bytes)?;
+    Ok((rel.clone(), asset_markdown(&name, &rel)))
+}
+
 /// Resolve a vault-relative path for showing a file (images), refusing anything outside the vault.
 pub fn asset_file(root: &Path, p: &str) -> Option<PathBuf> {
     let p = p.trim_start_matches('/');
@@ -1495,6 +2035,8 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
             return Ok(json!(true));
         }
         "task_done" => return Ok(json!(crate::task::complete(&s("text"), date("today")?))),
+        // what a leanoutliner:// link asks for (link.rs): {kind: page|note|capture|app, …}, or null
+        "link" => return to_value(crate::link::parse(&s("link"))).map_err(|e| e.to_string()),
         // the look's colours for the Windows capture box (it draws itself without the web page)
         "save_look" => return Ok(json!(crate::capture_box::save_look(cache_dir().as_deref(), &s("look"), args.get("colors").unwrap_or(&Value::Null))?)),
         // saving the index when the app hides: nothing to do before a folder is open
@@ -1507,7 +2049,7 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
         }
         let mut app = App::open(Path::new(&s("path")))?;
         remember_vault(&app.root);
-        app.start_safety_copy(); // in the background (see safety.rs)
+        app.start_safety_copy(); // earlier texts right away, then the cache; the rest in the background (safety.rs)
         let sum = to_value(app.summary()).unwrap();
         *state = Some(app);
         return Ok(sum);
@@ -1538,7 +2080,14 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
         }
         "capture" => Ok(json!(app.capture(&s("text"), &s("url"), b("media"), date("today")?, &s("time"))?)),
         "search" => to_value(app.search(&s("q"))),
-        "pages" => to_value(app.vault.all_pages()),
+        // block references: notes to pick one from (the editor's "((" and / menu), and the notes named by ids
+        "search_blocks" => to_value(app.vault.search_blocks(&s("q"), 12)),
+        "blocks_by_id" => {
+            let ids: Vec<String> = serde_json::from_value(args.get("ids").cloned().unwrap_or(Value::Null)).map_err(|e| e.to_string())?;
+            to_value(app.vault.blocks_by_id(&ids))
+        }
+        // with each file's change time and when it was made (All pages' Changed and Created)
+        "pages" => to_value(app.pages()),
         "tags" => to_value(app.vault.all_tags()),
         "props" => to_value(app.vault.all_property_keys()),
         "prop_values" => to_value(app.vault.prop_values(&s("key"))),
@@ -1557,6 +2106,12 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
         }
         "link_mention" => to_value(app.link_mention(&s("page"), n("line"), &s("base"), &s("target"))?),
         "rename" => to_value(app.rename(&s("name"), &s("new_name"))?),
+        // renaming to a name a page already has: merge the two (as Logseq does), with an Undo
+        "rename_target" => to_value(app.rename_target(&s("name"), &s("new_name"))?),
+        "merge_pages" => to_value(app.merge_pages(&s("name"), &s("into"))?),
+        "undo_merge" => Ok(json!(app.undo_merge(args.get("undo").and_then(Value::as_u64).unwrap_or(0))?)),
+        // a page's file (the Windows app shows it in Explorer)
+        "page_file" => Ok(json!(app.page_file(&s("name"))?.display().to_string())),
         "delete" => {
             let names: Vec<String> = serde_json::from_value(args.get("names").cloned().unwrap_or(Value::Null)).map_err(|e| e.to_string())?;
             Ok(json!(app.delete_pages(&names)?))
@@ -1570,6 +2125,10 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
         }
         "save_asset" => Ok(json!(app.save_asset(&s("name"), &s("data"))?)),
         "set_favorite" => to_value(app.set_favorite(&s("name"), b("on"))?),
+        "reorder_favorites" => {
+            let names: Vec<String> = serde_json::from_value(args.get("names").cloned().unwrap_or(Value::Null)).map_err(|e| e.to_string())?;
+            to_value(app.reorder_favorites(&names)?)
+        }
         "set_capture" => {
             app.set_capture(&s("text"), &s("media"), b("today"), &s("page"))?;
             to_value(app.summary())
@@ -1598,6 +2157,10 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
         // "before": 0 (or none) the note as copied, 1, 2… one of its earlier texts
         "safety_note" => to_value(app.safety_note(&safety::folder()?, &s("id"), &s("path"), n("before") as u32)?),
         "safety_restore" => to_value(app.safety_restore(&safety::folder()?, &s("id"), &s("path"), n("before") as u32)?),
+        // a page's earlier versions (history.rs); "path": the file the editor opened, as for save
+        "history" => to_value(app.history(data_dir().as_deref(), &s("name"), args.get("path").and_then(Value::as_str))?),
+        "history_version" => to_value(app.history_version(data_dir().as_deref(), &s("name"), args.get("path").and_then(Value::as_str), &s("id"))?),
+        "history_keep" => to_value(app.history_keep(data_dir().as_deref(), &s("name"), args.get("path").and_then(Value::as_str), &s("id"))?),
         _ => return Err(format!("unknown command: {cmd}")),
     };
     v.map_err(|e| e.to_string())

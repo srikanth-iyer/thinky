@@ -22,29 +22,39 @@ code, pre { font-family: var(--font-mono); }
 /* Wide windows: the sidebar and the top strip stay put and only the page under the strip scrolls,
    so the scroll bar starts below the strip like in other Windows apps and the close button sits
    in the window's corner. Narrow windows and phones scroll the whole page (see "narrow screens"). */
-#app { display: grid; grid-template-columns: 252px minmax(0, 1fr); height: 100%; }
+/* The top strip (#histbar) runs across the whole window, the sidebar and the notes below it. The
+   sidebar's width: --side-w (dragging its edge, App.grip; kept, boot.js), at most half the window;
+   --sw is the sidebar's column, 0 while it's hidden. */
+:root { --side-now: min(var(--side-w, 252px), 50vw); }
+#app { display: grid; grid-template-columns: var(--sw) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: 100%; --sw: var(--side-now); }
+#histbar { grid-column: 1 / -1; grid-row: 1; }
+#col { grid-column: 2; grid-row: 2; }
 #side {
   /* Recent shows only what fits (App.fitRecent), so normally there is no scroll bar; one appears only
      when even the rest can't fit (a very short window, a phone on its side) */
-  height: 100vh; overflow-y: auto;
+  grid-column: 1; grid-row: 2; width: var(--side-now); min-height: 0; overflow-y: auto;
   padding: 0 14px 14px; border-right: 1px solid var(--line-soft); background: var(--side-bg);
   display: flex; flex-direction: column; gap: 12px;
   font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 14.5px; line-height: 1.45;
 }
-#col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+#col { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
 #main { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 28px 140px; min-width: 0; zoom: var(--text-scale, 1); scroll-padding: 8px 0 60px; }
 #main:focus { outline: none; } /* it takes the focus after moving to another page, so the keyboard scrolls it */
-/* back and forward at the top (laptop) */
-#histbar { flex: none; display: flex; gap: 2px; padding: 8px 14px 2px; }
-#histbar button { border: 0; background: none; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; cursor: pointer; color: var(--ink-soft); }
+/* the top strip (laptop): the logo, the sidebar's button and Search, then Home, back, forward and Go
+   to date, then the tabs; big icons close together. It stays put when the sidebar opens or closes. */
+#histbar { flex: none; display: flex; align-items: center; gap: 0; padding: 8px 0 2px 10px; }
+#histbar button { border: 0; background: none; width: 31px; height: 34px; border-radius: 8px; display: grid; place-items: center; cursor: pointer; color: var(--ink-soft); padding: 0; }
 #histbar button:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
 #histbar button:disabled { opacity: .3; cursor: default; }
-#histbar svg { width: 20px; height: 20px; }
-body.side-hidden #histbar { padding-left: 62px; }
+#histbar svg { width: 22px; height: 22px; }
+.hb-app { flex: none; display: flex; align-items: center; margin-right: 6px; }
+.hb-logo { display: grid; place-items: center; width: 22px; height: 34px; margin: 0 7px 0 2px; pointer-events: none; } /* (it moves the window) */
+#histbar .hb-logo svg { width: 20px; height: 20px; }
+#histbar [data-a="side"][aria-expanded="false"] { color: var(--ink-faint); }
 #histbar .drag { flex: 1; align-self: stretch; }
 /* window buttons, flush with the window's top-right corner (Windows: the app draws its own title bar) */
 .winctl { display: flex; align-self: stretch; }
-#histbar .winctl { margin: -8px -14px -2px 0; }
+#histbar .winctl { margin: -8px 0 -2px 0; }
 #topbar .winctl { margin: -6px -8px -6px 0; }
 #histbar .winctl button, #topbar .winctl button { width: 46px; height: auto; min-height: 40px; border: 0; border-radius: 0; background: none; display: grid; place-items: center; cursor: default; color: var(--ink-soft); }
 #histbar .winctl button:hover, #topbar .winctl button:hover { background: var(--surface-2); color: var(--ink); }
@@ -52,13 +62,15 @@ body.side-hidden #histbar { padding-left: 62px; }
 .winctl svg { width: 16px !important; height: 16px !important; }
 .brand > svg, .brand > span { pointer-events: none; } /* so the logo and name drag the window too */
 .view { max-width: 760px; margin: 0 auto; }
+/* wide mode (t w, the page's ⋯ menu, Settings → Look; App.setWide): notes use the whole width */
+html.wide .view:not([data-kind="settings"]) { max-width: none; }
 #topbar { display: none; }
 
 /* reaches the sidebar's top and side edges, so the whole strip above the search box moves the window */
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; color: var(--ink-soft); margin: 0 -14px; padding: 16px 14px 0 20px; }
-/* wide windows: the sidebar's top row (logo, name, hide button) lines up with Home, back and forward
-   in #histbar (same top and height), and so does the "show sidebar" button when the sidebar is hidden */
-@media (min-width: 861px) { .brand { padding-top: 8px; min-height: 34px; } }
+/* wide windows: the logo and the sidebar's button are in the top strip instead (it runs above the
+   sidebar), so the sidebar starts with Search */
+@media (min-width: 861px) { .brand { display: none; } #side { padding-top: 4px; } }
 .brand .hide-side { margin-left: auto; }
 .brand svg { width: 22px; height: 22px; flex: none; }
 
@@ -90,6 +102,9 @@ body.side-hidden #histbar { padding-left: 62px; }
 #favs .side-list { overflow-y: auto; min-height: 0; } /* only with very many favourites */
 .side-list { display: flex; flex-direction: column; }
 .side-list a { font-size: 14px; padding: 4px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; flex: none; }
+/* the pages under Favourites and Recent step in a little from their heading, so the headings stand out (as in Logseq) */
+.side-list > a { padding-left: 21px; }
+#recent > .note { padding-left: 21px !important; } /* ("Pages you open show up here.", which has its own padding) */
 .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
 
 /* the Look button (sidebar) and its list; each row's sample carries data-skin, so it is
@@ -117,11 +132,12 @@ body.side-hidden #histbar { padding-left: 62px; }
 .page-title {
   font-family: var(--font-title); font-weight: var(--title-weight); font-style: var(--title-style);
   text-transform: var(--title-transform); letter-spacing: var(--title-tracking);
-  font-size: clamp(30px, 5.2vw, 42px); line-height: 1.08; margin: 0; overflow-wrap: anywhere; text-wrap: balance;
+  font-size: var(--title-size); line-height: 1.08; margin: 0; overflow-wrap: anywhere; text-wrap: balance;
 }
+/* a journal day's weekday, above its date: small and faint, so the date stands out */
 .weekday {
   font-family: var(--weekday-font); font-style: var(--weekday-style); text-transform: var(--weekday-transform);
-  color: var(--ink-soft); font-size: 16px; line-height: 1.4; margin: 0 0 2px;
+  color: var(--ink-faint); font-size: 15px; line-height: 1.4; margin: 0 0 2px;
 }
 .weekday::before { content: var(--weekday-before); }
 .weekday::after { content: var(--weekday-after); }
@@ -129,29 +145,40 @@ body.side-hidden #histbar { padding-left: 62px; }
 /* a page's icon:: emoji, before its name (title, lists, sidebar, search, references) */
 .pg-ic { margin-right: .35em; font-style: normal; }
 .page-title .pg-ic { font-size: .82em; vertical-align: .04em; }
-/* page properties sit right under the title ("+ properties" on a page without any) */
+/* page properties sit right under the title (none: nothing; the ⋯ menu adds them) */
 .page-head .page-props { margin: 4px 0 0; }
-/* journal days: a small calendar icon before the date; the weekday above lines up with the date */
-.day-head { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
-.day-head > :not(.day-ic) { grid-column: 2; }
-.day-head > .day-ic { grid-row: 2; }
-.day-head > .page-title, .day-head > .title-row { grid-row: 2; }
-.day-ic { --ic: clamp(19px, 3.2vw, 26px); display: grid; place-items: center; width: var(--ic); margin-right: 10px; color: var(--ink-faint); translate: 0 calc(var(--ic) * -.1); }
-.day-ic svg { width: var(--ic); height: var(--ic); stroke-width: 1.6; }
-.sheet .day-ic { --ic: clamp(17px, 2.75vw, 21px); margin-right: 9px; }
 
 /* ---------- sheets (journal day / page body / cards) ---------- */
 .sheet, .card {
   background-color: var(--sheet-bg);
   background-image: var(--sheet-band), var(--sheet-image);
-  background-repeat: repeat-x, repeat;
+  background-repeat: repeat-x, repeat, repeat, repeat; /* (band, then each layer of --sheet-image) */
   background-size: auto var(--sheet-band-h), var(--sheet-image-size);
   border: var(--sheet-border); border-radius: var(--sheet-radius); box-shadow: var(--sheet-shadow);
   outline: var(--sheet-outline); outline-offset: var(--sheet-outline-offset);
 }
 .sheet { --sx: var(--sheet-pad-x); padding: calc(var(--sheet-band-h) + var(--sheet-pad-top)) var(--sheet-pad-x) var(--sheet-pad-bottom); margin-bottom: var(--sheet-gap); border-bottom: var(--sheet-divider); }
 .sheet.today { background-color: var(--today-bg); }
-.sheet .page-title { font-size: clamp(26px, 4.4vw, 34px); }
+/* A day in the Journals list (the date is a page title's size): room to breathe, like Logseq.
+   More space above and below its notes, under its date (.day-body) and between days (--day-gap;
+   in looks without cards that's the hairline's space below it, the same as above it), and a
+   minimum height, so empty days don't crowd together; today's is taller (Logseq: 250px, today 500) */
+.sheet.day, .sheet.page { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 22px); padding-bottom: calc(var(--sheet-pad-bottom) + 22px); }
+.sheet.day { margin-bottom: var(--day-gap); min-height: 250px; }
+.sheet.day.today { min-height: 400px; }
+.day-body { margin-top: 24px; }
+/* a day folds away to its date (App.foldDay): an arrow left of the date (a laptop: on hover, or while
+   folded), at the right end of the weekday's line on phones; folded, only the date shows */
+.sheet.day > .day-head { position: relative; }
+.day-fold { position: absolute; left: -28px; bottom: 0; width: 24px; height: 46px; display: grid; place-items: center; border: 0; border-radius: 6px; background: none; padding: 0; cursor: pointer; color: var(--ink-faint); opacity: 0; }
+.day-fold::before { content: ""; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid currentColor; transition: transform .12s ease; }
+.sheet.day.folded .day-fold::before { transform: rotate(-90deg); }
+.day-head:hover > .day-fold, .day-fold:focus-visible, .sheet.day.folded .day-fold { opacity: .75; }
+.day-fold:hover { opacity: 1 !important; color: var(--ink); }
+.sheet.day.folded > :not(.day-head) { display: none; }
+.sheet.day.folded, .sheet.day.today.folded { min-height: 0; }
+/* a page's sheet holds its title too (and properties), the same room around them as a day's */
+.sheet.page > .page-head { margin-bottom: 24px; }
 .sheet .page-title::before { content: var(--title-ornament); color: var(--accent); font-style: normal; }
 .sheet .page-title a { color: inherit; text-decoration: none; }
 
@@ -160,8 +187,8 @@ body.side-hidden #histbar { padding-left: 62px; }
    note's dot, under its open children, and nothing else is drawn on it: the fold arrow sits left of
    the dot, clear of the line above it, on a laptop (on hover), and at the right end of the note's
    first line on phones and in narrow windows, so the lines and dots on the left stay clear. */
-.outline { position: relative; margin-left: -4px; background-image: var(--ruled); }
-.outline, .pins { --ind: 24px; --txt: 24px; }
+.outline { position: relative; margin-left: -4px; }
+.outline, .pins { --ind: var(--indent); --txt: 24px; }
 /* --bul-h: height of the note's first line, where the dot and the arrow are centred. A heading makes
    it taller: the editor sets --hf (how much bigger the heading is, e.g. .3 for ##); --h-grow is 0
    in looks whose lines have a fixed height */
@@ -184,26 +211,46 @@ body.side-hidden #histbar { padding-left: 62px; }
   content: ""; width: var(--bullet-w); height: var(--bullet-h); border-radius: var(--bullet-radius);
   background: var(--bullet); transform: rotate(var(--bullet-rotate));
 }
-.blk.has-kids.collapsed > .bul::after { box-shadow: 0 0 0 4px color-mix(in srgb, var(--bullet) 28%, transparent); }
-/* fold arrow: left of the dot, halfway between it and the line above (laptop: on hover) */
+.blk.has-kids.collapsed > .bul::after, .refnote > .kid.collapsed::before { box-shadow: 0 0 0 4px var(--bullet-ring); }
+/* the dot under the mouse (laptop): a soft round patch behind it and the dot a little bigger, as in
+   Logseq (its patch and the dot in the dot's own cell, ::before under ::after; the patch exists only
+   while hovered, so long pages carry nothing extra); quick, and still without motion if he asked his
+   computer for less of it */
+@media (hover: hover) and (pointer: fine) {
+  .bul::before { grid-area: 1 / 1; }
+  .bul::after { grid-area: 1 / 1; }
+  .bul:not(.num):hover::before { content: ""; width: var(--bullet-hover-size); height: var(--bullet-hover-size); border-radius: 50%; background: var(--bullet-hover-bg); }
+  .bul:not(.num):hover::after { transform: rotate(var(--bullet-rotate)) scale(1.2); }
+  @media (prefers-reduced-motion: no-preference) {
+    .bul::after { transition: transform .2s; }
+    .bul:not(.num):hover::before { animation: bul-patch .2s ease-out; }
+  }
+}
+@keyframes bul-patch { from { opacity: 0; transform: scale(.6); } }
+/* fold arrow: left of the dot, halfway between it and the line above (laptop: on hover); the same
+   for the notes under a linked reference (.refhit, app.js refTree) */
 .fold {
-  position: absolute; left: calc(var(--d, 0) * var(--ind) - 11px); top: calc(var(--bc-pad-y) + var(--lead, 0px)); width: 14px; height: var(--bul-h);
+  position: absolute; left: calc(var(--d, 0) * var(--ind) - var(--fold-x, 11px)); top: calc(var(--bc-pad-y) + var(--lead, 0px)); width: 14px; height: var(--bul-h);
   border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink-faint); opacity: 0; display: grid; place-items: center;
 }
 .fold::before { content: ""; width: 0; height: 0; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 6px solid currentColor; transition: transform .12s ease; }
-.blk.collapsed > .fold::before { transform: rotate(-90deg); }
-.blk.collapsed > .fold { opacity: .75; }
+.blk.collapsed > .fold::before, .refhit.collapsed > .fold::before { transform: rotate(-90deg); }
+.blk.collapsed > .fold, .refhit.collapsed > .fold { opacity: .75; }
 @media (hover: hover) {
-  .blk:hover > .fold { opacity: .75; }
+  .blk:hover > .fold, .refhit:hover > .fold { opacity: .75; }
   .fold:hover { opacity: 1 !important; color: var(--ink); }
 }
+.fold:focus-visible { opacity: 1; } /* (a reference's arrows take the keyboard; the outline's don't) */
 /* phones and narrow windows: at the right end of the note's first line, easy to reach with a thumb;
    the text of notes with children stops short of it */
 @media (max-width: 860px), (pointer: coarse) {
   .fold { left: auto; right: -10px; width: 40px; }
-  .blk.has-kids > .bc, .blk.has-kids > .ed { padding-right: 18px; }
+  .blk.has-kids > .bc, .blk.has-kids > .ed, .refhit.has-kids > .bc { padding-right: 18px; }
 }
 @media (pointer: coarse) { .fold { opacity: .4; } }
+@media (max-width: 860px), (pointer: coarse) { /* (a finger-sized target, clear of the date) */
+  .day-fold { left: auto; right: -12px; bottom: auto; top: -10px; width: 44px; height: 40px; opacity: .45; }
+}
 /* the parents of the note at the top of the screen, pinned there while scrolling (editor.js
    pinParents): one line each, at their own level, across the sheet; a tap goes to the note */
 .pins { position: sticky; top: 0; height: 0; z-index: 6; }
@@ -229,18 +276,29 @@ body.side-hidden #histbar { padding-left: 62px; }
 .bc { cursor: text; }
 .bc:empty::before { content: attr(data-ph); color: var(--ink-faint); }
 .ed { border: 0; outline: 0; resize: none; background: var(--edit-bg); overflow: hidden; }
-.blk.marker-done > .bc { color: var(--ink-faint); text-decoration: line-through; text-decoration-color: var(--line); }
-.blk.marker-done > .bc a { color: inherit; }
+/* a done or cancelled to-do (as Logseq): its words faded, a clear line through them in their own colour;
+   links stay link-coloured, faded the same; a heading (inline-block) gets the line too, its
+   properties box (inline-block across the note) doesn't */
+.blk.marker-done > .bc, .todo-item.marker-done .bc { color: var(--done-ink); text-decoration: line-through; text-decoration-color: var(--done-line); }
+.blk.marker-done > .bc a.pl, .blk.marker-done > .bc a.ext, .todo-item.marker-done .bc a.pl { color: color-mix(in srgb, var(--link) var(--done-fade), transparent); }
+.blk.marker-done > .bc .h { text-decoration: inherit; }
+.blk.marker-done > .bc > .props { display: inline-block; width: 100%; vertical-align: top; }
 .blk.hit > .bc { background: var(--accent-tint); transition: background 1.2s ease; }
 /* phones: a note swiped far enough to move in or out a level (editor.js) */
 .blk.swipe-in > .bc, .blk.swipe-out > .bc { background: var(--accent-tint); }
 
-.bc a.pl, .props a.pl { color: var(--link); text-decoration: none; border-bottom: 1px solid var(--link-line); }
+/* page links: underlined, colour only or with Logseq's [[ ]] (the look's own way, or Settings → Look →
+   Page links: --link-deco, --link-open/--link-close; a link with words of its own, [words]([[Page]]),
+   never shows brackets) */
+.bc a.pl, .props a.pl { color: var(--link); text-decoration: none; border-bottom: var(--link-deco); }
 .bc a.pl:hover { border-bottom-color: var(--link); }
+a.pl::before { content: var(--link-open); color: var(--link-bracket); }
+a.pl::after { content: var(--link-close); color: var(--link-bracket); }
+a.pl.lbl::before, a.pl.lbl::after { content: none; }
 a.tag {
   color: var(--tag-ink); background: var(--tag-bg); border: var(--tag-border); box-shadow: var(--tag-shadow);
   text-decoration: var(--tag-decoration); text-underline-offset: 3px;
-  border-radius: var(--tag-radius); padding: 0 7px; font-size: .86em; white-space: nowrap;
+  border-radius: var(--tag-radius); padding: var(--tag-pad); font-size: .86em; white-space: nowrap;
 }
 a.tag::before { content: var(--tag-before); }
 a.tag::after { content: var(--tag-after); }
@@ -251,6 +309,8 @@ a.tag .hash { display: var(--hash); }
 .bc pre code { background: none; padding: 0; }
 .bc mark { background: var(--mark-bg); color: inherit; border-radius: 3px; padding: 0 2px; }
 .bc .macro { font-family: var(--font-mono); font-size: .8em; color: var(--ink-faint); background: var(--surface-2); border-radius: 4px; padding: 1px 5px; }
+/* a flashcard's hidden words ({{cloze …}}; he reviews them in Anki): shown, marked */
+.bc .cloze { text-decoration: underline dashed color-mix(in srgb, var(--accent) 70%, transparent); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
 .bc .h { font-family: var(--font-title); font-weight: var(--title-weight); line-height: var(--lh); display: inline-block; }
 .bc .h1 { font-size: 1.5em; } .bc .h2 { font-size: 1.3em; } .bc .h3 { font-size: 1.15em; } .bc .h4, .bc .h5, .bc .h6 { font-size: 1.05em; }
 .todo {
@@ -268,8 +328,8 @@ a.tag .hash { display: var(--hash); }
 .date-chip.overdue { color: var(--danger); background: var(--danger-tint); border-color: transparent; }
 .bc .img { display: block; max-width: 100%; height: auto; border-radius: 8px; margin: 6px 0; cursor: zoom-in; }
 /* quotes, and coloured note boxes: a pale tint, a coloured bar on the left, a coloured title.
-   --callout-gap/--callout-pad: space around and inside a box (0 in looks with ruled lines, so the
-   words stay on the lines); a note that starts with one gets --lead (editor.viewEl) = that space,
+   --callout-gap/--callout-pad: space around and inside a box (0 would keep words on ruled lines,
+   in a look that has them); a note that starts with one gets --lead (editor.viewEl) = that space,
    which moves its dot, arrow and line down to the box's first line of words. */
 .bc blockquote { margin: var(--quote-gap) 0; padding: 0 0 0 12px; border-left: 3px solid var(--line); color: var(--ink-soft); }
 .callout { --c: var(--c-note); margin: var(--callout-gap) 0; padding: var(--callout-pad) 12px var(--callout-pad) 15px; border-radius: 8px; background: color-mix(in srgb, var(--c) var(--callout-tint), transparent); box-shadow: inset 4px 0 0 var(--c); }
@@ -307,42 +367,68 @@ a.tag .hash { display: var(--hash); }
 .m-vv { border-left: 3px double; border-right: 3px double; }
 .m-cb, .m-cases { border-left: 1.5px solid; border-radius: 8px 0 0 8px; }
 
-.props { display: flex; flex-wrap: wrap; gap: 0 12px; font-size: 13px; line-height: var(--props-lh); margin: 1px 0 3px; }
-.prop .pk { font-family: var(--font-label); color: var(--ink-faint); margin-right: 5px; cursor: pointer; }
+/* properties (key:: value), a note's and a page's: a pale rounded box, one per line (Logseq's; tokens
+   --props-*, so each look styles it: Paper pencils it round) */
+.props { display: block; font-size: var(--props-size); line-height: var(--props-lh); margin: var(--props-gap) 0; padding: var(--props-pad);
+  background: var(--props-bg); border: var(--props-border); border-radius: var(--props-radius); }
+.prop { display: block; overflow-wrap: anywhere; }
+.prop .pk { font-family: var(--props-key-font); font-weight: var(--props-key-weight); color: var(--props-key-ink); margin-right: 5px; cursor: pointer; }
 .prop .pk::after { content: ":"; }
-.prop .pv { color: var(--ink-soft); }
+.prop .pv { color: var(--props-val-ink); }
 .page-props { margin: 0 0 6px; cursor: text; }
-.page-props .props { font-size: 13.5px; }
-/* "+ properties" on a page without any: shows only when the pointer is over it (faint on touch screens) */
-.add-props { border: 0; background: none; padding: 0 0 2px; margin: 0; font: 500 12.5px "IBM Plex Sans", system-ui, sans-serif; color: var(--ink-faint); cursor: pointer; }
-.add-props:hover { color: var(--ink-soft); }
-@media (hover: hover) {
-  .add-props { opacity: 0; transition: opacity .15s; }
-  .page-props:hover .add-props, .add-props:focus-visible { opacity: 1; }
-}
-@media (hover: none) { .add-props { opacity: .6; } }
+/* (a page without properties shows nothing here: the ⋯ menu's "Add properties" opens the box) */
 .preamble-ed { width: 100%; font-family: var(--font-mono); font-size: 13px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--edit-bg); color: var(--ink); resize: vertical; min-height: 60px; margin-top: 8px; }
 
 /* ---------- references ---------- */
 .sec { margin-top: 34px; }
-.sec-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 0 0 12px; font-size: 15px; font-weight: 600; font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.4; }
+.sec-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 0 0 12px; font-size: 15px; font-weight: 600; font-family: var(--sec-font); line-height: 1.4; }
 .sec-h .n { font-weight: 400; color: var(--ink-faint); font-size: 13.5px; }
-.refgrp { border-left: 3px solid var(--accent-tint); padding: 2px 0 2px 14px; margin: 0 0 18px; }
-.refgrp h3 { font-size: 15px; margin: 0 0 4px; font-weight: 500; font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.4; }
+.refgrp { border-left: var(--ref-rule); padding: 2px 0 2px 14px; margin: 0 0 18px; }
+.refgrp h3 { font-size: 15px; margin: 0 0 4px; font-weight: 500; font-family: var(--sec-font); line-height: 1.4; }
 .refgrp h3 a { color: var(--ink); text-decoration: none; }
 .refgrp h3 a:hover { color: var(--link); }
+/* a page's references fold away from its heading, and open again, as nested notes do (App.refGroup) */
+.refgrp h3 { position: relative; }
+.grp-fold { position: absolute; left: -18px; top: 0; bottom: 0; width: 17px; display: grid; place-items: center; border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink-faint); opacity: 0; } /* (in the group's margin, so the name stays in line with its notes) */
+.grp-fold::before { content: ""; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 6px solid currentColor; transition: transform .12s ease; }
+.refgrp.folded .grp-fold::before { transform: rotate(-90deg); }
+.refgrp h3:hover .grp-fold, .grp-fold:focus-visible, .refgrp.folded .grp-fold { opacity: .75; }
+.grp-fold:hover { opacity: 1 !important; color: var(--ink); }
+.refgrp.folded > :not(h3) { display: none; }
+/* phones and narrow windows: at the right end of the heading, like the notes' arrows (clear of the rule) */
+@media (max-width: 860px), (pointer: coarse) { .refgrp h3 { padding-right: 22px; } .grp-fold { left: auto; right: -10px; width: 40px; } }
+@media (pointer: coarse) { .grp-fold { opacity: .45; } .grp-fold::after { content: ""; position: absolute; inset: -12px 0; } }
 .refhit { padding: 2px 0 2px calc(var(--d, 0) * 14px); cursor: pointer; border-radius: 6px; display: flex; gap: 8px; align-items: flex-start; }
 .refhit .bc { flex: 1; min-width: 0; }
 .refhit .linkit { flex: none; margin-top: 2px; }
 .refgrp { content-visibility: auto; contain-intrinsic-size: auto 80px; }
 .refhit:hover { background: var(--surface-2); }
 .refhit .bc { cursor: pointer; }
+/* a linked reference (app.js refTree): the notes it sits under as a small faint path, then the note
+   (as in other lists) and its sub-notes (.kid): the look's dot each (--d: its column, --ind apart;
+   smaller on narrow screens), a folded one ringed, the fold arrow as in the outline (the note's own:
+   left of its words); "… N more" opens the note */
+.refnote { --d: 0; --ind: 20px; --txt: 24px; --fold-x: 14px; }
+.refnote + .refnote { margin-top: 4px; }
+.refpath { font-size: 12.5px; line-height: 1.5; color: var(--ink-faint); margin: 6px 0 0; overflow-wrap: anywhere; }
+.refpath a { color: var(--ink-soft); text-decoration: none; }
+.refpath a:hover { color: var(--link); }
+.refnote > .refhit { padding: 0; }
+.refnote > .kid, .refnote > .has-kids { position: relative; --bul-h: calc(var(--line-box) * (1 + var(--hf, 0) * var(--h-grow))); }
+.refnote > .kid { padding-left: calc(var(--d) * var(--ind) + var(--txt)); --fold-x: calc(20.5px - var(--txt) / 2); }
+.refnote > .kid::before {
+  content: ""; position: absolute; left: calc(var(--d) * var(--ind) + var(--txt) / 2 - var(--bullet-w) / 2);
+  top: calc(var(--bc-pad-y) + var(--lead, 0px) + var(--bul-h) / 2 - var(--bullet-h) / 2);
+  width: var(--bullet-w); height: var(--bullet-h); border-radius: var(--bullet-radius); background: var(--bullet); transform: rotate(var(--bullet-rotate));
+}
+.refnote > .refmore::before { content: none; }
+.refmore .bc { color: var(--ink-faint); }
 .tagged { display: flex; flex-wrap: wrap; gap: 6px; }
 /* under a day in the Journals list: references to it (smaller headings), and today's due to-dos */
 .day-refs .sec, .day-sched .sched { margin-top: 18px; }
 .day-refs .sec-h { font-size: 14px; margin-bottom: 8px; }
 .day-refs .refgrp { margin-bottom: 12px; }
-.sched { border: 1px solid var(--line-soft); background: var(--surface-2); border-radius: 12px; padding: 10px 14px 6px; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+.sched { border: var(--box-border); background: var(--box-bg); border-radius: var(--box-radius); padding: 10px 14px 6px; font-family: var(--sec-font); }
 .sched-h { display: flex; align-items: baseline; gap: 8px; margin: 0 0 2px; font-size: 14px; font-weight: 600; line-height: 1.4; }
 .sched-grp h4 { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 2px; font-size: 13px; font-weight: 600; color: var(--ink-soft); line-height: 1.4; }
 .sched .n { font-weight: 400; font-size: 13px; color: var(--ink-faint); }
@@ -360,6 +446,30 @@ a.tag .hash { display: var(--hash); }
 .rows li.chosen a { background: var(--accent-tint); }
 .rows input[type="checkbox"] { margin: 0 2px 0 0; }
 .tree-rows li a, .tree li { padding-left: calc(var(--d, 0) * 18px + 4px); }
+/* All pages as a table (views.js pagesView), as Logseq's: the columns' heads sort it (again: the
+   other way round); a narrow side or a phone shows only the column it's sorted by */
+.pg-table { container-type: inline-size; --pg-cols: minmax(0, 1fr) 84px 128px 128px; }
+.pg-cols { display: grid; grid-template-columns: var(--pg-cols); column-gap: 10px; align-items: end; padding: 0 4px 3px; border-bottom: 1px solid var(--line); }
+.pg-col { font: inherit; font-size: 12.5px; border: 0; background: none; color: var(--ink-faint); padding: 4px; margin: 0 -4px; border-radius: 6px; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; justify-self: end; }
+.pg-col.c-name { justify-self: start; }
+.pg-col:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.pg-col[aria-pressed="true"] { color: var(--ink); font-weight: 600; }
+.pg-col:disabled { opacity: .55; }
+.pg-col .dir { color: var(--accent); }
+.pg-col .dir:empty { display: none; }
+.pg-rows a { display: grid; grid-template-columns: var(--pg-cols); column-gap: 10px; }
+.pg-rows .pg-name { min-width: 0; overflow-wrap: anywhere; }
+.pg-rows li.note { padding: 10px 4px; }
+@container (max-width: 560px) {
+  .pg-cols { display: flex; flex-wrap: wrap; align-items: center; gap: 0 2px; }
+  .pg-cols::before { content: "Sort by"; font-size: 12.5px; color: var(--ink-faint); margin-right: 4px; }
+  .pg-col { margin: 0; }
+  .pg-rows a { grid-template-columns: minmax(0, 1fr) auto; }
+  .pg-rows .meta { display: none; }
+  .pg-table[data-sort="name"] .meta.c-links, .pg-table[data-sort="links"] .meta.c-links,
+  .pg-table[data-sort="created"] .meta.c-created, .pg-table[data-sort="changed"] .meta.c-changed { display: block; }
+}
+@media (pointer: coarse) { .pg-col { min-height: 44px; padding: 0 8px; font-size: 13.5px; } }
 .tree { list-style: none; margin: 0; padding: 0; columns: 2 240px; }
 .tree li { padding-top: 2px; padding-bottom: 2px; }
 .list-tools { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
@@ -376,7 +486,6 @@ a.tag .hash { display: var(--hash); }
 .chips .chip { flex: none; white-space: nowrap; }
 .chips .chip-end { margin-left: auto; } /* a switch rather than a filter: at the far end when there's room */
 .chips.fade-end { mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); }
-.btn-row .sort { font: inherit; font-size: 13.5px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 4px 6px; }
 .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--ink-soft); }
 
 /* ---------- buttons: raised; pressed ones sink ---------- */
@@ -400,15 +509,27 @@ a.tag .hash { display: var(--hash); }
 .icon-btn.on svg { fill: currentColor; }
 .title-row { display: flex; align-items: center; gap: 4px; }
 .title-row .page-title { flex: 1; min-width: 0; }
+/* a click on a page's title renames it (app.js editTitle): the text cursor says so; while editing,
+   a line under the name */
+.page-title.renamable { cursor: text; }
+.page-title .pt-name[contenteditable] { outline: none; box-shadow: 0 2px 0 var(--line); border-radius: 2px; caret-color: var(--accent); }
 .ns-path { margin: 0 0 2px; font-size: 14.5px; color: var(--ink-faint); }
 .ns-path a { color: var(--ink-soft); text-decoration: none; }
-.view-tools { display: flex; justify-content: flex-end; margin: -8px 0 10px; }
-.onthisday { font-size: 13.5px; color: var(--ink-faint); margin: 12px 0 0; }
-.onthisday a { color: var(--ink-soft); }
 .disclose { font: inherit; font-weight: 600; border: 0; background: none; color: inherit; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .disclose::before { content: ""; border-left: 5px solid currentColor; border-top: 4.5px solid transparent; border-bottom: 4.5px solid transparent; transition: transform .12s; }
 .disclose[aria-expanded="true"]::before { transform: rotate(90deg); }
 .more { display: block; margin: 8px auto 0; }
+
+/* ---------- the hand: everything clickable shows it under the mouse ---------- */
+/* Links (page links, tags, web links, page names in references and lists, journal dates), buttons
+   (dots, fold arrows, chips, icon buttons, menus), tabs, choices. :where() adds nothing to the
+   rule's weight, so a part that says otherwise still wins: a note's words (the text cursor: a click
+   there edits them), Windows' own window buttons (the arrow, as in other apps), a picture (zoom). */
+:where(a[href], [data-page], button, [role="tab"], [role="button"], summary, select, .toggle, .radio label,
+  input[type="checkbox"], input[type="radio"], input[type="color"], input[type="range"]) { cursor: pointer; }
+:where(button:disabled, select:disabled, input:disabled) { cursor: default; }
+:where(input:not([type]), input[type="text"], input[type="search"], textarea) { cursor: auto; } /* (typing boxes inside a choice's label) */
+#histbar .tab { cursor: pointer; } /* (the strip's tabs; dragging one still works) */
 
 /* ---------- banners, toasts ---------- */
 .banner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: var(--danger-tint); color: var(--ink); border-radius: 10px; padding: 10px 12px; margin: 0 0 12px; font-size: 14px; line-height: 1.45; }
@@ -419,14 +540,54 @@ a.tag .hash { display: var(--hash); }
 .note { color: var(--ink-soft); font-size: 14px; line-height: 1.5; }
 .err { color: var(--danger); }
 
-/* ---------- search ---------- */
+/* ---------- search and the command list (search.js; one box, two modes) ---------- */
 #search { position: fixed; inset: 0; background: color-mix(in srgb, var(--ink) 28%, transparent); z-index: 50; display: flex; justify-content: center; align-items: flex-start; padding: 10vh 16px 16px; }
-.search-box { width: min(620px, 100%); background: var(--surface); border-radius: 14px; border: var(--sheet-border); box-shadow: 0 24px 60px -20px rgba(0,0,0,.45); overflow: hidden; line-height: 1.4; }
-.search-box input { width: 100%; border: 0; outline: 0; font: inherit; font-size: 18px; padding: 16px 18px; background: transparent; color: var(--ink); border-bottom: 1px solid var(--line-soft); }
-.results { max-height: 60vh; overflow-y: auto; list-style: none; margin: 0; padding: 6px; }
-.results li { padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+.search-box { width: min(640px, 100%); max-height: 100%; display: flex; flex-direction: column; background: var(--surface); border-radius: 14px; border: var(--sheet-border); box-shadow: 0 24px 60px -20px rgba(0,0,0,.45); overflow: hidden; line-height: 1.4; color: var(--ink); }
+.search-box input { flex: none; width: 100%; border: 0; outline: 0; font: inherit; font-size: 18px; padding: 16px 18px; background: transparent; color: var(--ink); border-bottom: 1px solid var(--line-soft); }
+.results { flex: 0 1 auto; min-height: 0; max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; list-style: none; margin: 0; padding: 6px; }
+.results li { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
 .results li[aria-selected="true"] { background: var(--accent-tint); }
-.results .snip { display: block; font-size: 13px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.results li > svg { width: 16px; height: 16px; flex: none; color: var(--ink-faint); }
+.results .r-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.results .r-hint { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-faint); font-size: 13px; }
+.results .r-keys { margin-left: auto; flex: none; display: flex; gap: 3px; padding-left: 10px; }
+.results kbd { font-size: 11px; color: var(--ink-soft); }
+/* group headings: Pages, Notes, Recent searches… (not picked; the arrows skip them) */
+.results .r-h { cursor: default; padding: 12px 12px 3px; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.results .r-h:first-child { padding-top: 5px; }
+.results .r-clear { margin-left: auto; border: 0; background: none; font: inherit; letter-spacing: 0; text-transform: none; font-weight: 500; color: var(--accent); cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.results .r-clear:hover { background: var(--surface-2); }
+.results .r-none { cursor: default; color: var(--ink-soft); font-size: 14px; }
+.results .r-new b { font-weight: 600; }
+/* a note, drawn as it looks (two lines at most), with its page under it */
+.results li.r-hit { display: block; }
+.results .r-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-size: 14.5px; }
+.results .r-text :is(pre, blockquote, .callout, div, p, ul, ol, li, table, .h) { display: inline; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; font-size: inherit; line-height: inherit; }
+.results .r-text .h { font-weight: 600; }
+.results .r-text a { pointer-events: none; } /* (a click picks the row) */
+.results .r-text a.pl { color: var(--link); text-decoration: none; border-bottom: 1px solid var(--link-line); }
+.results .r-text code { font-family: var(--font-mono); font-size: .9em; background: var(--surface-2); border-radius: 4px; padding: 0 3px; }
+.results .r-text mark:not(.hit) { background: var(--mark-bg); color: inherit; border-radius: 3px; }
+.results .r-where { margin-top: 1px; font-size: 12.5px; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the words found (in names, notes and commands); --hit-bg, if a look sets it, else find's colour;
+   ink-coloured (a link's colour on it is hard to read in the night looks) */
+.results mark.hit { background: var(--hit-bg, var(--find-bg)); color: var(--ink); font-weight: 600; border-radius: 3px; padding: 0 1px; margin: 0 -1px; }
+/* the other mode (Commands / Search) with its key */
+.sb-foot { flex: none; display: flex; justify-content: flex-end; border-top: 1px solid var(--line-soft); padding: 4px 6px; }
+.sb-mode { display: flex; align-items: center; gap: 7px; border: 0; background: none; font: inherit; font-size: 13px; color: var(--ink-soft); padding: 5px 8px; border-radius: 8px; cursor: pointer; }
+.sb-mode:hover { background: var(--surface-2); color: var(--ink); }
+.sb-mode svg { width: 15px; height: 15px; }
+.sb-mode kbd { font-size: 11px; }
+/* touch: no keys to show, rows easy to tap */
+@media (pointer: coarse) {
+  .results .r-keys, .sb-mode kbd { display: none; }
+  .results li:not(.r-h) { min-height: 44px; }
+  .sb-mode { min-height: 44px; padding: 0 14px; }
+  .results .r-clear { min-height: 44px; padding: 0 12px; margin: -10px -6px -10px auto; }
+}
+/* the menu's "Commands" (phones and narrow windows: the drawer; a laptop has Ctrl+Shift+P) */
+.nav .nav-btn.cmd-btn { display: none; }
+@media (max-width: 860px), (pointer: coarse) { .nav .nav-btn.cmd-btn { display: flex; } }
 
 /* ---------- find and replace on the page (find.js) ---------- */
 /* a small box at the top right, between the back/forward strip and the notes (phones: a strip under
@@ -478,24 +639,31 @@ a.tag .hash { display: var(--hash); }
 .menu button { display: block; width: 100%; text-align: left; border: 0; background: none; font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 8px; cursor: pointer; color: var(--ink); }
 .menu button:hover, .menu button:focus-visible { background: var(--accent-tint); outline: none; }
 .menu button.danger { color: var(--danger); }
+.menu .mhint { float: right; margin-left: 22px; color: var(--ink-faint); font-size: 12.5px; }
 .modal-back { position: fixed; inset: 0; z-index: 70; background: color-mix(in srgb, var(--ink) 32%, transparent); display: flex; align-items: flex-start; justify-content: center; padding: 14vh 16px 16px; }
 .modal { width: min(460px, 100%); background: var(--surface); border-radius: 14px; border: var(--sheet-border); box-shadow: 0 24px 60px -20px rgba(0,0,0,.45); padding: 18px 20px; line-height: 1.5; font-family: "IBM Plex Sans", system-ui, sans-serif; color: var(--ink); }
 .modal h2 { margin: 0 0 8px; font-size: 18px; }
-/* the clash screen (clash.js): both versions of the notes that differ, side by side, to choose from;
-   this device green, the other copy blue, "before both changes" grey */
-.modal-back.clash-back { padding: 4vh 16px; }
-.clash { --mine: var(--c-tip); --theirs: var(--c-note); --was: var(--ink-faint);
-  width: min(920px, 100%); max-height: 92vh; display: flex; flex-direction: column; background: var(--surface); color: var(--ink);
+/* a big dialog: a header, a part that scrolls, a footer; the whole screen on phones. The clash screen
+   (clash.js) and a page's History (history.js) */
+.modal-back.panel-back { padding: 4vh 16px; }
+.panel { width: min(920px, 100%); max-height: 92vh; display: flex; flex-direction: column; background: var(--surface); color: var(--ink);
   border-radius: 14px; border: var(--sheet-border); box-shadow: 0 24px 60px -20px rgba(0,0,0,.45); font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.45; }
-.cl-head { padding: 16px 20px 10px; border-bottom: 1px solid var(--line-soft); }
-.cl-head h2 { margin: 0 0 4px; font-size: 19px; }
-.cl-head .note { margin: 0; }
+.panel-head { padding: 16px 20px 10px; border-bottom: 1px solid var(--line-soft); }
+.panel-head h2 { margin: 0 0 4px; font-size: 19px; }
+.panel-head .note { margin: 0; }
+.panel-body { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding: 12px 20px; min-height: 0; }
+.panel-foot { padding: 10px 20px 14px; border-top: 1px solid var(--line-soft); }
+.panel-foot .note { margin: 0 0 8px; font-size: 12.5px; }
+.panel-foot .btn-row { justify-content: flex-end; }
+/* the clash screen: both versions of the notes that differ, side by side, to choose from;
+   this device green, the other copy blue, "before both changes" grey */
+.clash { --mine: var(--c-tip); --theirs: var(--c-note); --was: var(--ink-faint); }
 .cl-bar { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; color: var(--ink-soft); }
 .cl-key i, .cl-h i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 .cl-key i:not(:first-child) { margin-left: 10px; }
 .clash i.mine { background: var(--mine); } .clash i.theirs { background: var(--theirs); } .clash i.base { background: var(--was); }
 .cl-nav { display: flex; align-items: center; gap: 2px; }
-.cl-list { flex: 1 1 auto; overflow-y: auto; padding: 12px 20px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.cl-list { display: flex; flex-direction: column; gap: 12px; }
 .cl-item { border-radius: 12px; padding: 10px; background: var(--surface-2); scroll-margin: 12px; }
 .cl-item.cur { box-shadow: 0 0 0 2px var(--line); }
 .cl-what { margin: 0 0 6px; font-size: 13px; }
@@ -519,23 +687,45 @@ a.tag .hash { display: var(--hash); }
 .cl-props { margin: 0; font-size: 13px; white-space: pre-wrap; }
 .cl-base { margin-top: 8px; padding: 0 10px; }
 .cl-base .cl-notes { font-size: 13.5px; color: var(--ink-soft); }
-.cl-foot { padding: 10px 20px 14px; border-top: 1px solid var(--line-soft); }
-.cl-foot .note { margin: 0 0 8px; font-size: 12.5px; }
-.cl-foot .btn-row { justify-content: flex-end; }
 .cl-all { margin-right: auto; font-size: 13px; color: var(--ink-soft); }
 button.link { border: 0; background: none; padding: 0; font: inherit; color: var(--link); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+/* a page's History (history.js): its earlier versions (when; where from and how it differs from the
+   page now), and one drawn like the page, in the look's own fonts and sheet */
+.panel.hist { width: min(780px, 100%); }
+.hv-top { display: flex; align-items: flex-start; gap: 8px; }
+.hv-top h2 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.hv-top .icon-btn { margin: -6px -10px -4px 0; }
+.hv-list button { display: grid; grid-template-columns: 9.5em minmax(0, 1fr); gap: 1px 12px; align-items: baseline; width: 100%; padding: 9px 6px;
+  border: 0; border-radius: 8px; background: none; font: inherit; color: var(--ink); text-align: left; line-height: 1.4; cursor: pointer; }
+.hv-list button:hover { background: var(--surface-2); }
+.hv-when { grid-row: span 2; font-weight: 500; font-variant-numeric: tabular-nums; }
+.hv-from { overflow-wrap: anywhere; }
+.hv-diff { color: var(--ink-faint); font-size: 13px; }
+.hv-about { margin: 10px 0 12px; }
+.hv-sheet { margin: 0; font-family: var(--font-body); font-size: var(--body-size); line-height: var(--lh); color: var(--ink); }
+.hv-sheet .page-title { font-size: clamp(26px, 4.4vw, 34px); }
+@media (max-width: 480px) {
+  .hv-list button { grid-template-columns: minmax(0, 1fr); }
+  .hv-when { grid-row: auto; }
+}
 @media (max-width: 640px) {
-  .modal-back.clash-back { padding: 0; }
-  .clash { max-height: none; height: 100%; border-radius: 0; border: 0; }
+  .modal-back.panel-back { padding: 0; }
+  .panel { max-height: none; height: 100%; border-radius: 0; border: 0; }
+  .panel-head, .panel-body, .panel-foot { padding-left: 14px; padding-right: 14px; }
   .cl-cols { grid-template-columns: 1fr; }
-  .cl-head, .cl-list, .cl-foot { padding-left: 14px; padding-right: 14px; }
 }
 .modal .filter { margin: 12px 0 0; }
 .lightbox { align-items: center; padding: 16px; cursor: zoom-out; }
 .lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 20px 60px -20px rgba(0,0,0,.6); }
-.preview { width: min(420px, calc(100vw - 24px)); max-height: 340px; overflow: hidden; padding: 0 12px 6px; pointer-events: none; font-size: 14px; }
-.preview .pop-title { padding: 10px 0 4px; font-size: 14.5px; color: var(--ink); display: flex; align-items: center; gap: 10px; }
+/* the hover preview (popups.js Preview): the page's title, then all its notes in a box that scrolls
+   (drawn a part at a time as it's scrolled), then how many link to it */
+.preview { width: min(440px, calc(100vw - 24px)); max-height: min(460px, calc(100vh - 24px)); display: flex; flex-direction: column; overflow: hidden; padding: 0 0 2px; font-size: 14px; }
+.preview .pop-title { flex: none; padding: 10px 12px 4px; font-size: 14.5px; color: var(--ink); display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.preview .pv-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 2px; }
+.preview > .note { flex: none; padding: 0 12px; }
 .preview .pop-title > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* a laptop: until it's entered on purpose, clicks and the wheel go through it to the notes (Preview) */
+.preview.pv-wait { pointer-events: none; }
 /* phones: it stays open after the finger lifts and takes the next tap (closing it, or "Open") */
 .preview.touch { pointer-events: auto; }
 /* phones: holding a link shows the preview, so its words aren't selected and Android adds no menu */
@@ -580,11 +770,14 @@ button.link { border: 0; background: none; padding: 0; font: inherit; color: var
 .skin-card[aria-pressed="true"] { outline: 3px solid var(--accent); outline-offset: 2px; }
 .skin-card .stage { background-color: var(--bg); background-image: var(--page-image); background-size: var(--page-image-size); padding: 14px 14px 4px; height: 150px; overflow: hidden; }
 .skin-card .stage .sheet { zoom: .52; margin: 0; pointer-events: none; font-size: var(--body-size); line-height: var(--lh); font-family: var(--font-body); color: var(--ink); }
+.skin-card .stage .page-title { font-size: 34px; } /* (the date on one line in the small preview) */
 .skin-card .label { padding: 8px 12px 10px; background: var(--surface); border-top: 1px solid var(--line-soft); font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.35; }
 .skin-card .label b { display: block; font-size: 14.5px; }
 .skin-card .label span { font-size: 12.5px; color: var(--ink-soft); }
 .size-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 14px; font-size: 14px; }
 .size-row input { vertical-align: middle; width: 180px; accent-color: var(--accent); }
+.card .wide-row { display: flex; margin-top: 12px; font-size: 14px; color: var(--ink); } /* Settings → Look: wide mode */
+.wide-row input { accent-color: var(--accent); }
 /* link colour and fonts (Settings > Look) */
 .text-style { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; font-size: 14px; }
 .ts-row { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
@@ -595,6 +788,9 @@ button.link { border: 0; background: none; padding: 0; font: inherit; color: var
 .sw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
 .sw.pick { overflow: hidden; background: conic-gradient(#f44, #fd3, #4d4, #3cf, #45f, #e4e, #f44); }
 .sw.pick input { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.lk-opts { display: flex; flex-wrap: wrap; gap: 6px; } /* Page links: the look's own / underlined / colour only / [[ ]] */
+.lk-u { text-decoration: underline; text-underline-offset: 3px; }
+@media (pointer: coarse) { .lk-opts .chip { min-height: 44px; padding: 0 14px; } }
 .ts-row select { font: inherit; font-size: 13.5px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); max-width: 280px; }
 .card h3 { font-size: 15px; margin: 14px 0 2px; }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; color: var(--ink-soft); margin: 10px 0; }
@@ -624,25 +820,52 @@ pre.log { font-family: var(--font-mono); font-size: 12px; background: var(--surf
 .todo-item .bc { flex: 1; min-width: 0; padding: 0; margin: 0; cursor: pointer; }
 .todo-item .where { font-size: 12.5px; color: var(--ink-faint); margin-top: 1px; }
 .todo-item .where a { color: var(--ink-soft); text-decoration: none; }
-.todo-item.marker-done .bc { color: var(--ink-faint); text-decoration: line-through; }
 
-/* ---------- sidebar hidden (laptop) ---------- */
-.show-side { position: fixed; top: 7px; left: 12px; z-index: 35; display: none; background: var(--surface); border: 1px solid var(--line); } /* centred on #histbar's buttons */
-body.side-hidden #side { display: none; }
-body.side-hidden #app { grid-template-columns: minmax(0, 1fr); }
-body.side-hidden .show-side { display: inline-grid; }
+/* ---------- sidebar hidden, sliding and resizing (laptop) ---------- */
+/* Hidden: its column is 0 wide at once and it slides off to the left; while it slides (html.sliding,
+   App.slide) the notes slide over by transforms too, with the same timing, so nothing is laid out
+   again frame by frame. The strip above stays as it is. */
+body.side-hidden #app { --sw: 0px; }
+.side-grip, .split-grip, .side-more { display: none; }
+@media (min-width: 861px) {
+  #side { position: relative; z-index: 8; }
+  body.side-hidden #side { transform: translateX(-100%); visibility: hidden; }
+  html.sliding #side { transition: transform .2s cubic-bezier(.2, .7, .3, 1); }
+  html.sliding body.side-hidden #side { transition: transform .2s cubic-bezier(.2, .7, .3, 1), visibility 0s linear .2s; }
+  html.sliding, html.sliding .pane { overflow-x: hidden; } /* (no scroll bar for what slides in from the side) */
+  /* the handles: the sidebar's right edge, and the line between two sides (App.grip) */
+  .side-grip { display: block; grid-column: 1; grid-row: 2; justify-self: end; position: relative; z-index: 9; width: 8px; margin-right: -4px; cursor: col-resize; touch-action: none; }
+  body.side-hidden .side-grip { display: none; }
+  #col.split > .split-grip { display: block; position: absolute; top: 0; bottom: 0; left: calc(var(--split, .5) * 100% - 4px); width: 8px; z-index: 9; cursor: col-resize; touch-action: none; }
+  .side-grip::after, .split-grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; border-radius: 1px; background: transparent; transition: background .15s .15s; }
+  .side-grip:hover::after, .split-grip:hover::after, .side-grip:focus-visible::after, .split-grip:focus-visible::after { background: var(--accent); }
+  .side-grip:focus-visible, .split-grip:focus-visible { outline: none; }
+  body.resizing, body.resizing * { cursor: col-resize !important; -webkit-user-select: none; user-select: none; }
+  body.resizing .side-grip::after, body.resizing .split-grip::after { transition: none; }
+  /* the ⋯ beside the Favourites or Recent entry under the mouse (App.sideExtras); the entry's name
+     makes room for it */
+  .side-more { position: fixed; z-index: 30; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: var(--surface-2); color: var(--ink-soft); cursor: pointer; }
+  .side-more[hidden] { display: none; }
+  .side-more:hover { background: var(--line-soft); color: var(--ink); }
+  .side-more svg { width: 17px; height: 17px; pointer-events: none; }
+  #favs .side-list a:hover, #recent a:hover { padding-right: 30px; }
+}
+/* dragging a favourite to put it elsewhere in the list (App.dragFavourite) */
+#favs .side-list a.fav-drag { background: var(--accent-tint); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
+@media (pointer: coarse) { #favs .side-list a { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } }
 
 /* ---------- narrow screens ---------- */
 @media (max-width: 860px) {
-  #app { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 100%; }
-  #col { display: block; }
+  #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; height: auto; min-height: 100%; }
+  #col { display: block; grid-column: 1; grid-row: auto; }
   #main { overflow: visible; }
   /* the whole page scrolls: keep the block being edited clear of the top bar (it stays on screen)
      and of the phone's editing toolbar at the bottom */
   html { scroll-padding: 64px 0 60px; }
   #histbar { display: none; }
   body.side-hidden #side { display: flex; }
-  .show-side, body.side-hidden .show-side, .brand .hide-side { display: none; }
+  .brand .hide-side { display: none; }
   .tree { columns: 1; }
   #side {
     position: fixed; z-index: 45; left: 0; top: 0; bottom: 0; height: auto; width: min(300px, 86vw);
@@ -659,8 +882,9 @@ body.side-hidden .show-side { display: inline-grid; }
   #topbar button { flex: none; border: 0; background: none; width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; color: var(--ink-soft); }
   #topbar svg { width: 22px; height: 22px; }
   /* back and forward, like the laptop's; greyed out when there is nowhere to go */
-  #topbar [data-h], #topbar [data-a="home"] { width: 36px; }
-  #topbar [data-h] svg, #topbar [data-a="home"] svg { width: 21px; height: 21px; }
+  #topbar [data-h], #topbar [data-a="home"], #topbar [data-a="date"] { width: 36px; }
+  #topbar:not(.journals) [data-a="date"] { display: none; } /* (Journals only: a page's name keeps the room) */
+  #topbar [data-h] svg, #topbar [data-a="home"] svg, #topbar [data-a="date"] svg { width: 21px; height: 21px; }
   #topbar button:disabled { opacity: .3; cursor: default; }
   /* a very narrow Windows window also has the window buttons: Forward and Home make room for them
      (Journals is in the menu too) */
@@ -669,10 +893,16 @@ body.side-hidden .show-side { display: inline-grid; }
   #main { padding: 16px 14px 120px; }
   .sheet { padding-left: min(var(--sheet-pad-x), 18px); padding-right: min(var(--sheet-pad-x), 18px); margin-bottom: min(var(--sheet-gap), 20px); }
   .outline, .pins { --ind: 20px; --txt: 22px; }
+  .refnote { --ind: 14px; --txt: 22px; } /* (references are indented already; the arrows sit at the right) */
   .sheet { --sx: min(var(--sheet-pad-x), 18px); }
-  /* a day's page: the date at the size it has in the Journals list, so it fits next to its calendar
-     icon and the star and menu buttons */
-  .day-head .page-title { font-size: clamp(26px, 4.4vw, 34px); }
+  /* a day (in the Journals list and on its own page): the date a little bigger than other titles,
+     still fitting beside the star and menu buttons; days a little less roomy than on a laptop */
+  .day-head .page-title { font-size: clamp(26px, 8vw, 34px); } /* (the longest dates still fit on one line in most looks) */
+  .sheet.day, .sheet.page { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 12px); padding-bottom: calc(var(--sheet-pad-bottom) + 12px); }
+  .sheet.day { margin-bottom: min(var(--day-gap), 36px); min-height: 200px; }
+  .sheet.day.today { min-height: 300px; }
+  .day-body { margin-top: 18px; }
+  .sheet.page > .page-head { margin-bottom: 18px; }
   /* find: a strip under the top bar that stays with it; notes scrolled to stay clear of both */
   #findbar { position: sticky; top: 55px; z-index: 29; background: var(--bg); padding: 6px 8px; border-bottom: 1px solid var(--line-soft); align-items: stretch; }
   #findbar .fb-row { width: 100%; box-shadow: none; }
@@ -685,12 +915,14 @@ body.side-hidden .show-side { display: inline-grid; }
 
 /* ---------- printing / save as PDF: just the page ---------- */
 @media print {
-  #side, #topbar, #histbar, #findbar, .pins, #toolbar, .show-side, #toast, .view-tools, .title-row .icon-btn, .sec, .banner, .more, .fold, .add-props { display: none !important; }
+  #side, #topbar, #histbar, #findbar, .pins, #toolbar, .side-grip, .split-grip, .side-more, #toast, .title-row .icon-btn, .sec, .banner, .more, .fold, .day-fold { display: none !important; }
   .blk.has-kids > .bc { padding-right: 6px !important; } /* no room kept for the phone's fold arrow */
   #app, #col { display: block; height: auto; }
   #main { padding: 0; zoom: 1; overflow: visible; }
   body { background: #fff; color: #000; }
   .sheet { box-shadow: none !important; border: 0 !important; outline: none !important; background: #fff !important; padding: 0; }
+  .sheet.day, .sheet.day.today { padding: 0; min-height: 0; margin-bottom: 24px; } /* (the Journals list, printed with Ctrl+P) */
+  .sheet.page { padding: 0; }
   .view { max-width: none; }
   a { color: inherit; }
 }
@@ -737,3 +969,198 @@ body.side-hidden .show-side { display: inline-grid; }
 .pic.resizing > .img { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (hover: none), (pointer: coarse) { .pic-h { width: min(32px, 33%); height: min(32px, 33%); } .pic-h::after { right: 7px; bottom: 7px; width: 11px; height: 11px; opacity: .95; } }
 @media print { .pic-h { display: none; } }
+
+/* ---------- tabs and two pages side by side (tabs.js; wide windows only) ---------- */
+/* The strip sits in #histbar after Home, back and forward, its "+" after it (never scrolled away). With two
+   sides #histbar is two halves: each side's Home, arrows and tabs sit right above it and act on it.
+   #main2, the right side, scrolls like #main. Tokens only: fits every look. */
+.hb-h, .hb-nav { display: contents; }
+#histbar button { flex: none; } /* (very many tabs: they scroll sideways, the buttons keep their size) */
+#histbar .tabs { display: flex; align-items: center; gap: 2px; flex: 0 1 auto; min-width: 0; margin: 0 2px 0 8px; overflow-x: auto; scrollbar-width: none; align-self: center; }
+#histbar .tabs::-webkit-scrollbar { display: none; }
+.tab { position: relative; flex: 0 1 auto; min-width: 96px; max-width: 210px; height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 3px 0 10px;
+  border-radius: 9px; color: var(--ink-soft); font: 13px/1.2 "IBM Plex Sans", system-ui, sans-serif; white-space: nowrap; cursor: default; user-select: none; }
+.tab:hover { background: var(--surface-2); color: var(--ink); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tab.cur { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.tabs.act .tab.cur::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px; border-radius: 2px; background: var(--accent); }
+.tab-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tab .pg-ic { margin: 0; }
+.tab-ic { flex: none; display: grid; place-items: center; color: var(--ink-faint); }
+.tab-ic svg, #histbar .tab-ic svg { width: 15px; height: 15px; }
+#histbar .tab .tab-x { flex: none; width: 22px; height: 22px; border-radius: 6px; color: var(--ink-faint); opacity: 0; }
+.tab:hover .tab-x, .tab.cur .tab-x, .tab-x:focus-visible { opacity: 1 !important; }
+#histbar .tab-x svg { width: 13px; height: 13px; }
+#histbar .tab-new { align-self: center; width: 28px; height: 28px; border-radius: 8px; color: var(--ink-faint); }
+#histbar .tab-new svg { width: 16px; height: 16px; }
+/* dragging a tab: a copy follows the pointer; a bar shows where it goes in a strip, a tinted half of
+   the notes where it would show side by side */
+.tab.dragging { opacity: .35; }
+.tab.ghost { position: fixed; z-index: 70; pointer-events: none; padding-right: 12px; background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 10px 24px -10px rgba(0,0,0,.35); }
+.tab.ghost .tab-x, .tab.ghost::after { display: none; }
+.tab-drop { position: fixed; z-index: 69; pointer-events: none; border-radius: 2px; background: var(--accent); }
+.tab-drop.zone { display: grid; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--accent) 9%, transparent); box-shadow: inset 0 0 0 2px var(--accent);
+  color: var(--accent); font: 600 14px "IBM Plex Sans", system-ui, sans-serif; }
+/* the hidden box that takes what he types while a note waits for the other side to save (App.editAfterSave) */
+.ed-wait { position: fixed; z-index: -1; width: 2px; height: 1.2em; padding: 0; border: 0; opacity: 0; pointer-events: none; resize: none; overflow: hidden; }
+#main2 { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 28px 140px; min-width: 0; zoom: var(--text-scale, 1); scroll-padding: 8px 0 60px; }
+#main2:focus { outline: none; }
+@media (min-width: 861px) {
+  /* two sides: a column each (--split: the left one's share of the width; dragging the line between
+     them, App.grip), a hairline between them, the find bar above the active one */
+  #col.split { display: grid; grid-template-columns: minmax(0, calc(var(--split, .5) * 100%)) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  /* the strip (across the whole window) in two halves: the right one starts right above that line */
+  #app.split > #histbar { display: grid; grid-template-columns: calc(var(--sw) + var(--split, .5) * (100% - var(--sw))) minmax(0, 1fr); padding-left: 0; }
+  #app.split .hb-h { display: flex; align-items: center; align-self: stretch; gap: 0; min-width: 0; } /* (its empty part moves the window, like .drag) */
+  #app.split .hb-h:first-child { padding-left: 10px; }
+  #app.split .hb-h + .hb-h { padding-left: 8px; }
+  #col.split > #findbar { grid-row: 1; grid-column: 1; }
+  #col.split.act1 > #findbar { grid-column: 2; }
+  #col.split > .pane { grid-row: 1 / 3; } /* the active one starts below the find bar when it's open */
+  #col.split > .pane.act { grid-row: 2; }
+  #col.split > #main { grid-column: 1; }
+  #col.split > #main2 { grid-column: 2; border-left: 1px solid var(--line-soft); }
+  /* the other side's shown tab is quieter (the active side's has the accent line) */
+  #col.split .tabs:not(.act) .tab.cur { background: transparent; box-shadow: inset 0 0 0 1px var(--line-soft); color: var(--ink-soft); }
+  /* a narrow window with the sidebar showing: the right side's Go to date makes room for the window
+     buttons, which would be pushed off the edge (g d still opens it on that side) */
+  @media (max-width: 940px) { body:not(.side-hidden) #app.split .hb-nav[data-p="1"] [data-a="date"] { display: none; } }
+}
+/* narrow windows and phones: only the active side shows (the other stays as it was), scrolling with the page */
+@media (max-width: 860px) {
+  #main2 { overflow: visible; padding: 16px 14px 120px; }
+  #col > .pane:not(.act) { display: none; }
+}
+@media print {
+  #col.split { display: block; }
+  #col > .pane:not(.act) { display: none !important; }
+  #main2 { padding: 0; zoom: 1; overflow: visible; }
+}
+
+/* ---------- note colours, number lists, the note menu and moving notes by their dot (editor.js) ---------- */
+/* a note's background colour (Logseq's background-color::): a pale tint of it behind its words; an
+   older note's own colour (Logseq once wrote "#978626"…) as it is, with white words, as Logseq shows it */
+.bc[data-bg] { background: color-mix(in srgb, var(--hl) var(--hl-tint), transparent); }
+.bc[data-bg="yellow"] { --hl: var(--hl-yellow); } .bc[data-bg="red"] { --hl: var(--hl-red); } .bc[data-bg="pink"] { --hl: var(--hl-pink); }
+.bc[data-bg="green"] { --hl: var(--hl-green); } .bc[data-bg="blue"] { --hl: var(--hl-blue); } .bc[data-bg="purple"] { --hl: var(--hl-purple); }
+.bc[data-bg="gray"] { --hl: var(--hl-gray); }
+.bc[data-bg="own"] { background: var(--hl-own); color: #fff; }
+.bc[data-bg="own"] a { color: inherit; }
+/* a numbered note (Logseq's number list): its number (1. a. I.) in place of the dot, ending where the dot does */
+.bul.num { left: calc(var(--d, 0) * var(--ind) - 3px); width: 22px; place-items: center end; }
+.bul.num::after { content: attr(data-n); width: auto; height: auto; padding: 0 2px; border-radius: 4px; background: none; transform: none;
+  font: 500 .88em/1.25 var(--font-label); color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.blk.has-kids.collapsed > .bul.num::after { box-shadow: none; background: color-mix(in srgb, var(--bullet) 24%, transparent); }
+.bul { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* the note a menu is open for; a note lifted by holding its dot (phones); dragged notes, faded where they were */
+.blk.menu-on > .bc, .blk.lifted > .bc { background: var(--accent-tint); }
+.blk.lifted > .bul::after { transform: rotate(var(--bullet-rotate)) scale(1.7); transition: transform .12s ease; }
+.blk.lifted > .bul.num::after { transform: scale(1.15); }
+.blk.dragging { opacity: .35; }
+.outline.drag-on, .outline.drag-on .bc, .outline.drag-on .bul { cursor: grabbing; }
+/* the dragged note follows the pointer (on a phone just above the finger) */
+.drag-ghost { position: fixed; left: 0; top: 0; z-index: 75; pointer-events: none; display: flex; align-items: center; gap: 8px; max-width: min(420px, 80vw);
+  padding: 5px 12px 5px 9px; border-radius: 10px; background: var(--surface); color: var(--ink); white-space: nowrap;
+  box-shadow: 0 0 0 1px var(--line), 0 12px 28px -10px rgba(0,0,0,.45); font: 14px/1.4 var(--font-body); }
+.dg-dot { flex: none; width: 7px; height: 7px; border-radius: var(--bullet-radius); background: var(--accent); transform: rotate(var(--bullet-rotate)); }
+.dg-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dg-t .h { font-size: 1em; font-weight: 600; font-family: inherit; }
+.dg-t .pic { display: inline-block; vertical-align: -5px; margin: 0 3px; }
+.dg-t .pic > .img { width: auto; max-height: 20px; border-radius: 3px; }
+.dg-n { flex: none; font-size: 12px; color: var(--ink-faint); }
+/* where to, when it's another page (another day, the other side, a page in the sidebar), and "↗ reference"
+   with Alt held (move.js); with Alt the notes stay, so they don't fade */
+.dg-to { flex: none; max-width: 220px; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; font-weight: 500; color: var(--accent); }
+.dg-to:empty { display: none; }
+.drag-ghost.ref .dg-dot { background: none; box-shadow: inset 0 0 0 2px var(--accent); }
+.outline.drag-ref .blk.dragging { opacity: 1; }
+#side a.drop-to { background: var(--accent-tint); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--accent); }
+/* files dragged in from outside (Explorer): the note they'd be linked in (filedrop.js) */
+.blk.file-over > .bc { background: var(--accent-tint); box-shadow: inset 0 0 0 1.5px var(--accent); border-radius: 4px; }
+.outline.file-end { box-shadow: 0 3px 0 -1px var(--accent); } /* (a new note at the end) */
+/* where dragged notes would go: a line starting at the dot of that level */
+.drop-line { position: absolute; right: 0; height: 2px; margin-top: -1px; border-radius: 1px; background: var(--accent); pointer-events: none; z-index: 7; }
+.drop-line::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--accent); background: var(--sheet-bg); }
+/* the note menu (popups.js noteMenu): a row of colours, a row of headings, then actions */
+.note-menu { width: min(256px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; padding: 4px; }
+.nm-row { display: flex; justify-content: space-between; align-items: center; gap: 3px; padding: 3px 4px 4px; }
+.note-menu .nm-row button { display: grid; place-items: center; flex: none; padding: 0; border: 0; cursor: pointer; }
+.note-menu .nm-row button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.note-menu .nm-sw, .note-menu .nm-sw:hover, .note-menu .nm-sw:focus-visible { width: 20px; height: 20px; border-radius: 50%; background: var(--sw); box-shadow: inset 0 0 0 1px rgba(0,0,0,.14); }
+.note-menu .nm-sw[aria-checked="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink-soft); }
+.note-menu .nm-sw:hover { transform: scale(1.12); }
+.note-menu .nm-none, .note-menu .nm-none:hover, .note-menu .nm-none:focus-visible { position: relative; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--line); }
+.note-menu .nm-none[aria-checked="true"] { box-shadow: inset 0 0 0 1.5px var(--line), 0 0 0 2px var(--surface), 0 0 0 4px var(--ink-soft); }
+.note-menu .nm-none::after { content: ""; position: absolute; left: calc(50% - .75px); top: 3px; bottom: 3px; width: 1.5px; background: var(--ink-faint); transform: rotate(45deg); }
+.note-menu .nm-h { width: 26px; height: 23px; border-radius: 6px; font: 600 12px/1 "IBM Plex Sans", system-ui, sans-serif; color: var(--ink-soft); background: none; }
+.note-menu .nm-h small { font-size: .78em; font-weight: 600; }
+.note-menu .nm-h s { text-decoration-thickness: 1.5px; }
+.note-menu .nm-h:hover { background: var(--surface-2); color: var(--ink); }
+.note-menu .nm-h[aria-checked="true"] { background: var(--accent-tint); color: var(--ink); }
+.nm-sep { height: 1px; margin: 3px 6px; background: var(--line-soft); }
+/* a laptop: compact rows (a phone: finger-sized, below) */
+.note-menu .nm-item { display: flex; align-items: baseline; gap: 12px; padding: 4px 8px; font-size: 13.5px; line-height: 1.35; border-radius: 6px; }
+.nm-l { flex: 1; }
+.nm-item[aria-checked="true"] .nm-l::after { content: "  ✓"; white-space: pre; color: var(--accent); font-weight: 600; }
+.nm-hint { font-size: 11.5px; color: var(--ink-faint); text-align: right; }
+@media (pointer: coarse) { /* finger-sized */
+  .note-menu { width: min(340px, calc(100vw - 16px)); padding: 6px; }
+  .nm-row { gap: 4px; padding: 4px 4px 6px; }
+  .nm-sep { margin: 4px 6px; }
+  .note-menu .nm-sw, .note-menu .nm-sw:hover, .note-menu .nm-sw:focus-visible { width: 32px; height: 32px; }
+  .note-menu .nm-none::after { top: 4px; bottom: 4px; }
+  .note-menu .nm-h { width: 34px; height: 38px; font-size: 13.5px; border-radius: 7px; }
+  .note-menu .nm-item { min-height: 44px; align-items: center; padding: 8px 10px; font-size: 15.5px; line-height: 1.4; border-radius: 8px; }
+  .nm-hint { font-size: 12px; }
+}
+@media print { .drop-line, .drag-ghost { display: none; } }
+
+/* ---------- writing (Build 29): block references, underline, the "((" list, the phone's "+" and
+   toolbar menus, Copy page as text (export.js) ---------- */
+/* a block reference showing the note it names (App.blockRefs): its words, faintly underlined */
+.bc .bref[data-page], .pv-b .bref[data-page] { font-family: inherit; font-size: inherit; color: inherit; background: none; padding: 0; border-radius: 0; cursor: pointer;
+  border-bottom: 1px solid var(--bref-line, color-mix(in srgb, var(--accent) 50%, transparent)); }
+.bc .bref[data-page]:hover { background: var(--accent-tint); }
+.bc .bref .mk { font-size: .8em; }
+.bc ins { text-decoration: underline; text-underline-offset: 3px; }
+#ac .ac-note { color: var(--ink-faint); cursor: default; font-size: 13.5px; white-space: normal; }
+/* the "((" list: a note's words, its page under them */
+#ac li.ac-blk { display: flex; flex-direction: column; min-width: min(360px, calc(100vw - 48px)); }
+#ac .ac-w, #ac .ac-p { overflow: hidden; text-overflow: ellipsis; }
+#ac .ac-p { font-size: 12px; color: var(--ink-faint); }
+@media (pointer: coarse) { #ac li { padding-top: 12px; padding-bottom: 12px; min-height: 44px; box-sizing: border-box; } #ac li.ac-blk { padding-top: 6px; padding-bottom: 6px; } #ac { max-height: 300px; } } /* (finger-sized: the toolbar's "/" opens it) */
+/* phones: the round "+" that adds a note (App.addNote); not while typing (the toolbar is there). Shown
+   in narrow windows with a touch screen, and always on Android (.android: its emulator, and phones with
+   a mouse or keyboard attached, may not say they have a touch screen) */
+#addnote {
+  display: none; place-items: center; position: fixed; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 39;
+  width: 56px; height: 56px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  background: var(--fab-bg, var(--accent)); color: var(--fab-ink, var(--accent-ink));
+  box-shadow: var(--fab-shadow, 0 6px 16px -6px rgba(0,0,0,.45), 0 2px 4px rgba(0,0,0,.18));
+}
+#addnote svg { width: 28px; height: 28px; stroke-width: 2.2; }
+#addnote:active { transform: scale(.94); }
+@media (max-width: 860px) and (any-pointer: coarse) {
+  #addnote:not([hidden]) { display: grid; }
+  #addnote:not([hidden]) ~ #toast { bottom: 88px; } /* (messages above it) */
+}
+@media (max-width: 860px) {
+  #addnote.android:not([hidden]) { display: grid; }
+  #addnote.android:not([hidden]) ~ #toast { bottom: 88px; }
+}
+#toolbar:not([hidden]) ~ #addnote, body.drawer #addnote { display: none !important; }
+@media print { #addnote { display: none !important; } }
+/* the toolbar's date menu: finger-sized */
+@media (pointer: coarse) { .menu.tb-menu button { padding: 12px 14px; font-size: 15px; } }
+/* Copy page as text */
+.modal.export { width: min(560px, 100%); }
+.ex-kinds { display: flex; gap: 6px; margin: 6px 0 12px; }
+.ex-kinds .btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.ex-opts { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: 14px; }
+.ex-opts label { display: inline-flex; align-items: center; gap: 6px; }
+.ex-opts label[hidden] { display: none; }
+.ex-opts .note { font-size: 12.5px; }
+.ex-opts select { font: inherit; font-size: 13.5px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.ex-out { display: block; width: 100%; box-sizing: border-box; height: min(40vh, 320px); margin-top: 12px; padding: 8px 10px; resize: vertical; white-space: pre; tab-size: 4;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.45; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); color: var(--ink); }
+@media (pointer: coarse) { .ex-kinds .btn { min-height: 44px; padding: 0 18px; } .ex-opts label { min-height: 44px; } }

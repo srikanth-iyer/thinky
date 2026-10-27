@@ -25,9 +25,11 @@ on:
     paths-ignore: ['**.md', 'ci/baseline.json', 'dev/**', '.github/workflows/android-test.yml', 'scripts/android_test.sh', 'scripts/make_test_vault.py', 'scripts/ui_tap.py', 'scripts/android_cdp.mjs']
   workflow_dispatch:
 
+# a newer push to a wip branch stops that branch's older run (saves build minutes); main's runs
+# (releases) always finish
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -186,6 +188,28 @@ jobs:
           echo "::notice title=Capture box::shown after $shown ms (where the note goes: $where ms); $pass checks passed, $($fails.Count) failed"
           foreach ($f in $fails) { echo "::error title=Capture box::$f" }
           if ($p.ExitCode -ne 0 -or $fails.Count -gt 0 -or $shown -eq '?') { exit 1 }
+      # The shortcut key's helper (`--hotkey`, src-tauri/src/hotkey.rs) on a real Windows: a key
+      # pressed opens the box (the ms in the notice), its memory and CPU, a changed key, a key another
+      # program has, an older Start-menu shortcut's key moving to it (also with the real Start menu
+      # and Explorer here), and Remove stopping it. A fresh hotkey-selftest folder of its own, with a
+      # made-up notes folder and cache, and a Run entry of its own name.
+      - name: Shortcut key check
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $d = Join-Path $env:RUNNER_TEMP 'hotkey-selftest'
+          $p = Start-Process -FilePath 'target\release\lean-outliner.exe' -ArgumentList @('--hotkey-selftest', $env:RUNNER_TEMP) -PassThru -Wait
+          $lines = @(Get-Content (Join-Path $d 'result.txt') -Encoding utf8 -ErrorAction SilentlyContinue)
+          $lines | ForEach-Object { Write-Host $_ }
+          $num = { param($k) $m = $lines | Select-String "^$k=(\d+)" | Select-Object -First 1; if ($m) { $m.Matches[0].Groups[1].Value } else { '?' } }
+          $box = & $num 'box_ms'
+          $pass = @($lines | Where-Object { $_ -like 'PASS*' }).Count
+          $fails = @($lines | Where-Object { $_ -like 'FAIL*' })
+          echo "::notice title=Shortcut key::the box was on screen $box ms after the key (a new key: $(& $num 'box2_ms') ms; a key moved from the real Start menu: $(& $num 'start_menu_box_ms') ms); the helper: $(& $num 'helper_ws_kb') KB in RAM ($(& $num 'helper_after_box_ws_kb') KB after a box), $(& $num 'helper_private_kb') KB its own; saving a key took $(& $num 'on_ms') ms, moving one from the Start menu $(& $num 'start_menu_move_ms') ms; $pass checks passed, $($fails.Count) failed"
+          $notes = @($lines | Where-Object { $_ -like 'NOTE*' }) -join ' | '
+          if ($notes) { echo "::notice title=Shortcut key notes::$notes" }
+          foreach ($f in $fails) { echo "::error title=Shortcut key::$f" }
+          if ($p.ExitCode -ne 0 -or $fails.Count -gt 0 -or $box -eq '?') { exit 1 }
       - name: Keep the capture box pictures (wip builds; pushed by the capture-shots job)
         if: always() && startsWith(github.ref, 'refs/heads/wip/')
         uses: actions/upload-artifact@v4

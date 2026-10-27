@@ -65,6 +65,56 @@ fn edn_reads_and_rewrites_config() {
 }
 
 #[test]
+fn favourites_reorder_in_place() {
+    // only the items move: the spaces, commas, comments and #_ forms between them stay where they were
+    let text = "{:a 1\r\n :favorites [\"one\" ;; first\r\n   \"two \\\"q\\\"\",  #_\"old\" \"three\"]\r\n :b [\"x\" \"y\"]}";
+    let out = edn::reorder_items(text, "favorites", &[2, 0, 1]).unwrap();
+    assert_eq!(out, "{:a 1\r\n :favorites [\"three\" ;; first\r\n   \"one\",  #_\"old\" \"two \\\"q\\\"\"]\r\n :b [\"x\" \"y\"]}");
+    assert_eq!(Config::from_edn(&out).favorites, vec!["three", "one", "two \"q\""]);
+    // not a reordering of all of them, or not a sequence: nothing
+    for bad in [&[0, 1][..], &[0, 0, 1], &[0, 1, 3], &[]] {
+        assert!(edn::reorder_items(text, "favorites", bad).is_none(), "{bad:?}");
+    }
+    assert!(edn::reorder_items(text, "a", &[]).is_none());
+    assert!(edn::reorder_items(text, "missing", &[]).is_none());
+    assert_eq!(edn::reorder_items("{:favorites []}", "favorites", &[]).unwrap(), "{:favorites []}");
+
+    let v = tmp_vault("favorder");
+    let cfg = ";; mine\r\n{:meta/version 1\r\n :favorites [\"Writing notebook\"\r\n             \"to read\" ; later\r\n             \"Ünïcode ✓\"]\r\n :hidden []}\r\n";
+    std::fs::write(v.join("logseq/config.edn"), cfg).unwrap();
+    let mut app = App::open(&v).unwrap();
+    let order = |n: &[&str]| n.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    // names in any capitals, as the sidebar shows them
+    let favs = app.reorder_favorites(&order(&["ünïcode ✓", "writing notebook", "TO READ"])).unwrap();
+    assert_eq!(favs, vec!["Ünïcode ✓", "Writing notebook", "to read"]);
+    assert_eq!(
+        std::fs::read_to_string(v.join("logseq/config.edn")).unwrap(),
+        ";; mine\r\n{:meta/version 1\r\n :favorites [\"Ünïcode ✓\"\r\n             \"Writing notebook\" ; later\r\n             \"to read\"]\r\n :hidden []}\r\n"
+    );
+    // the same order again: the file isn't written
+    let before = std::fs::metadata(v.join("logseq/config.edn")).unwrap().modified().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    assert_eq!(app.reorder_favorites(&favs).unwrap(), favs);
+    assert_eq!(std::fs::metadata(v.join("logseq/config.edn")).unwrap().modified().unwrap(), before);
+    // changed elsewhere meanwhile (one added, one removed): those named take their places in the order
+    // asked, the new one keeps its own
+    std::fs::write(v.join("logseq/config.edn"), "{:favorites [\"Writing notebook\" \"new\" \"Ünïcode ✓\"]}").unwrap();
+    let favs = app.reorder_favorites(&order(&["to read", "Ünïcode ✓", "Writing notebook"])).unwrap();
+    assert_eq!(favs, vec!["Ünïcode ✓", "new", "Writing notebook"]);
+    assert_eq!(app.vault.config.favorites, favs);
+    // no config.edn, or none of them in it: nothing written, nothing breaks
+    std::fs::write(v.join("logseq/config.edn"), "{:a 1}").unwrap();
+    assert!(app.reorder_favorites(&order(&["x"])).unwrap().is_empty());
+    assert_eq!(std::fs::read_to_string(v.join("logseq/config.edn")).unwrap(), "{:a 1}");
+    std::fs::remove_file(v.join("logseq/config.edn")).unwrap();
+    assert!(app.reorder_favorites(&order(&["x"])).unwrap().is_empty());
+    assert!(!v.join("logseq/config.edn").exists());
+    std::fs::write(v.join("logseq/config.edn"), "{:favorites [\"a\" \"b\"").unwrap(); // unreadable: left alone
+    assert!(app.reorder_favorites(&order(&["b", "a"])).is_err());
+    let _ = std::fs::remove_dir_all(&v);
+}
+
+#[test]
 fn todos_parse_and_repeat() {
     let t = task::parse("TODO [#A] write the paper\nSCHEDULED: <2026-10-26 Mon 10:00 .+1d>\nDEADLINE: <2026-11-01 Sun>").unwrap();
     assert_eq!(t.marker, "TODO");
@@ -355,7 +405,8 @@ fn every_new_command_survives_bad_input() {
     let cmds = [
         "save_block", "tasks", "task_done", "unlinked", "link_mention", "rename", "delete", "recycled", "restore", "templates",
         "template", "save_asset", "set_favorite", "set_capture", "capture", "prop_values", "journal_dates", "errors", "page",
-        "unlinked_any", "clash", "save_look",
+        "unlinked_any", "clash", "save_look", "reorder_favorites", "rename_target", "merge_pages", "undo_merge", "page_file", "link",
+        "pages",
     ];
     for c in cmds {
         for args in [json!({}), json!({"name": 5, "line": "x", "names": "notalist", "data": "!!", "today": [2026, 13, 40]}), json!(null)] {

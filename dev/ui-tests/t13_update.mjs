@@ -296,6 +296,28 @@ check(await page.locator('.upd [data-a="update"]').count() === 0 && /get it from
 allErrors.push(...errors);
 await browser.close();
 
+console.log('About asks again when its answer is over a minute old: a build out since then shows at once');
+({ browser, page, errors } = await start({ latest: 'build-20', hash: '#/journals' }));
+await page.waitForFunction(() => localStorage.getItem('updateCheck'));
+check(await page.locator('#update').isHidden(), 'at start: nothing newer (the same build)');
+let asked = 0;
+await page.unroute('https://api.github.com/**');
+await page.route('https://api.github.com/**', (route) => { asked++; route.fulfill({ contentType: 'application/json', body: JSON.stringify({ tag_name: 'build-25', html_url: RELEASE, assets: [] }) }); });
+// a minute later he opens About: it asks GitHub again (a day-old answer no longer stands)
+await page.evaluate(() => { const c = JSON.parse(localStorage.getItem('updateCheck')); c.at -= 70e3; localStorage.setItem('updateCheck', JSON.stringify(c)); location.hash = '#/settings/about'; });
+await page.waitForSelector('.upd[data-stage]');
+await sleep(300);
+check(asked === 1 && await stage(page) === 'newer' && /Build 25/.test(await text(page)), 'the new build is offered at once', `${asked} · ${await text(page)}`);
+// opened again within the minute: that answer stands (GitHub isn't asked each time)
+await page.evaluate(() => { location.hash = '#/journals'; });
+await sleep(400);
+await page.evaluate(() => { location.hash = '#/settings/about'; });
+await page.waitForSelector('.upd[data-stage]');
+await sleep(300);
+check(asked === 1 && await stage(page) === 'newer', 'opened again soon after: not asked again', String(asked));
+allErrors.push(...errors);
+await browser.close();
+
 check(allErrors.length === 0, 'no script errors', allErrors.join(' | '));
 if (allErrors.length) console.log('script errors:', allErrors.join(' | '));
 console.log(failures() ? `${failures()} FAILED` : 'all ok');

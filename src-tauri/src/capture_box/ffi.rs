@@ -1,5 +1,6 @@
-//! The Windows functions, messages and structures the native capture box uses, declared by hand
-//! (like win.rs and watch.rs: no Windows crate). Handles are plain `isize`s. Functions that older
+//! The Windows functions, messages and structures the native capture box and its shortcut-key
+//! helper (hotkey.rs) use, declared by hand (like win.rs and watch.rs: no Windows crate). Handles
+//! are plain `isize`s. Functions that older
 //! Windows versions lack, or that live in libraries the box only sometimes needs (the file picker,
 //! the PNG encoder), are looked up when needed (`proc_addr`), so they never slow the app's start.
 #![allow(non_snake_case, clippy::upper_case_acronyms, dead_code)]
@@ -246,6 +247,54 @@ impl FILETIME {
     }
 }
 
+/// How a program is started (CreateProcessW).
+#[repr(C)]
+pub struct STARTUPINFOW {
+    pub cb: u32,
+    pub reserved: *mut u16,
+    pub desktop: *mut u16,
+    pub title: *mut u16,
+    pub x: u32,
+    pub y: u32,
+    pub x_size: u32,
+    pub y_size: u32,
+    pub x_chars: u32,
+    pub y_chars: u32,
+    pub fill: u32,
+    pub flags: u32,
+    pub show: u16,
+    pub reserved2_len: u16,
+    pub reserved2: *mut u8,
+    pub std_in: isize,
+    pub std_out: isize,
+    pub std_err: isize,
+}
+
+#[repr(C)]
+pub struct PROCESS_INFORMATION {
+    pub process: isize,
+    pub thread: isize,
+    pub pid: u32,
+    pub tid: u32,
+}
+
+/// A program's memory (K32GetProcessMemoryInfo): what it has in RAM now (working set) and
+/// what's its own (pagefile_usage, "private bytes").
+#[repr(C)]
+#[derive(Default)]
+pub struct PROCESS_MEMORY_COUNTERS {
+    pub cb: u32,
+    pub page_fault_count: u32,
+    pub peak_working_set: usize,
+    pub working_set: usize,
+    pub quota_peak_paged: usize,
+    pub quota_paged: usize,
+    pub quota_peak_nonpaged: usize,
+    pub quota_nonpaged: usize,
+    pub pagefile_usage: usize,
+    pub peak_pagefile_usage: usize,
+}
+
 // The structures must be exactly Windows' sizes (64-bit), or Windows reads past them.
 #[cfg(target_pointer_width = "64")]
 const _: () = {
@@ -264,6 +313,9 @@ const _: () = {
     assert!(size_of::<DROPFILES>() == 20);
     assert!(size_of::<OSVERSIONINFOW>() == 276);
     assert!(size_of::<COPYDATASTRUCT>() == 24);
+    assert!(size_of::<STARTUPINFOW>() == 104);
+    assert!(size_of::<PROCESS_INFORMATION>() == 24);
+    assert!(size_of::<PROCESS_MEMORY_COUNTERS>() == 72);
 };
 
 // messages
@@ -301,6 +353,7 @@ pub const WM_DROPFILES: u32 = 0x0233;
 pub const WM_MOUSELEAVE: u32 = 0x02A3;
 pub const WM_DPICHANGED: u32 = 0x02E0;
 pub const WM_PASTE: u32 = 0x0302;
+pub const WM_HOTKEY: u32 = 0x0312;
 pub const WM_APP: u32 = 0x8000;
 
 // edit controls
@@ -379,6 +432,36 @@ pub const KEYEVENTF_KEYUP: u32 = 0x0002;
 pub const SM_SWAPBUTTON: i32 = 23;
 pub const SM_CXSIZEFRAME: i32 = 32;
 pub const SM_CXPADDEDBORDER: i32 = 92;
+
+// the shortcut-key helper: its key, its hidden window, the programs it starts and waits for
+pub const MOD_NOREPEAT: u32 = 0x4000;
+pub const PM_REMOVE: u32 = 0x0001;
+pub const HWND_MESSAGE: isize = -3;
+pub const VK_LWIN: i32 = 0x5B;
+pub const ERROR_ACCESS_DENIED: u32 = 5;
+pub const ERROR_HOTKEY_ALREADY_REGISTERED: u32 = 1409;
+pub const WAIT_OBJECT_0: u32 = 0;
+pub const WAIT_ABANDONED: u32 = 0x80;
+pub const WAIT_TIMEOUT: u32 = 0x102;
+pub const INFINITE: u32 = 0xFFFF_FFFF;
+pub const SYNCHRONIZE: u32 = 0x0010_0000;
+pub const PROCESS_TERMINATE: u32 = 0x0001;
+pub const PROCESS_VM_READ: u32 = 0x0010;
+pub const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
+pub const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+pub const CREATE_SUSPENDED: u32 = 0x0000_0004;
+pub const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+pub const STILL_ACTIVE: u32 = 259;
+pub const SHCNE_CREATE: i32 = 0x0000_0002;
+pub const SHCNE_DELETE: i32 = 0x0000_0004;
+pub const SHCNE_UPDATEITEM: i32 = 0x0000_2000;
+pub const SHCNF_PATHW: u32 = 0x0005;
+pub const HKEY_CURRENT_USER: isize = 0x8000_0001u32 as i32 as isize;
+pub const KEY_WRITE: u32 = 0x20006;
+pub const REG_SZ: u32 = 1;
+pub const RRF_RT_REG_SZ: u32 = 2;
+pub const ERROR_FILE_NOT_FOUND: i32 = 2;
 
 // menus
 pub const MF_STRING: u32 = 0x0000;
@@ -510,6 +593,12 @@ extern "system" {
     pub fn FindWindowExW(parent: isize, after: isize, class: *const u16, title: *const u16) -> isize;
     pub fn CopyImage(h: isize, kind: u32, cx: i32, cy: i32, flags: u32) -> isize;
     pub fn IsWindowVisible(h: isize) -> i32;
+    pub fn RegisterHotKey(h: isize, id: i32, mods: u32, vk: u32) -> i32;
+    pub fn UnregisterHotKey(h: isize, id: i32) -> i32;
+    pub fn AllowSetForegroundWindow(pid: u32) -> i32;
+    pub fn VkKeyScanW(ch: u16) -> i16;
+    pub fn InternalGetWindowText(h: isize, s: *mut u16, n: i32) -> i32;
+    pub fn PeekMessageW(m: *mut MSG, h: isize, min: u32, max: u32, remove: u32) -> i32;
 }
 
 #[link(name = "gdi32")]
@@ -546,6 +635,32 @@ extern "system" {
     pub fn GetProcessTimes(p: isize, created: *mut FILETIME, exited: *mut FILETIME, kernel: *mut FILETIME, user: *mut FILETIME) -> i32;
     pub fn GetSystemTimePreciseAsFileTime(t: *mut FILETIME);
     pub fn GetTickCount64() -> u64;
+    pub fn GetLastError() -> u32;
+    /// (a pointer, as watch.rs and update.rs declare it)
+    pub fn CloseHandle(h: *mut c_void) -> i32;
+    pub fn CreateMutexW(sa: *const c_void, owner: i32, name: *const u16) -> isize;
+    pub fn ReleaseMutex(h: isize) -> i32;
+    pub fn WaitForSingleObject(h: isize, ms: u32) -> u32;
+    pub fn OpenProcess(access: u32, inherit: i32, pid: u32) -> isize;
+    pub fn GetExitCodeProcess(h: isize, code: *mut u32) -> i32;
+    pub fn TerminateProcess(h: isize, code: u32) -> i32;
+    pub fn CreateProcessW(app: *const u16, cmd: *mut u16, psa: *const c_void, tsa: *const c_void, inherit: i32, flags: u32, env: *const c_void, dir: *const u16, si: *const STARTUPINFOW, pi: *mut PROCESS_INFORMATION) -> i32;
+    pub fn ResumeThread(h: isize) -> u32;
+    pub fn GetSystemDirectoryW(buf: *mut u16, size: u32) -> u32;
+    pub fn SetCurrentDirectoryW(dir: *const u16) -> i32;
+    pub fn K32EmptyWorkingSet(p: isize) -> i32;
+    pub fn K32GetProcessMemoryInfo(p: isize, c: *mut PROCESS_MEMORY_COUNTERS, cb: u32) -> i32;
+    pub fn K32EnumProcessModules(p: isize, modules: *mut isize, cb: u32, needed: *mut u32) -> i32;
+    pub fn K32GetModuleBaseNameW(p: isize, module: isize, name: *mut u16, n: u32) -> u32;
+}
+
+#[link(name = "advapi32")]
+extern "system" {
+    pub fn RegCreateKeyExW(key: isize, sub: *const u16, res: u32, class: *const u16, opts: u32, sam: u32, sa: *const c_void, out: *mut isize, disp: *mut u32) -> i32;
+    pub fn RegSetValueExW(key: isize, name: *const u16, res: u32, kind: u32, data: *const u8, len: u32) -> i32;
+    pub fn RegGetValueW(key: isize, sub: *const u16, name: *const u16, flags: u32, kind: *mut u32, data: *mut c_void, len: *mut u32) -> i32;
+    pub fn RegDeleteKeyValueW(key: isize, sub: *const u16, name: *const u16) -> i32;
+    pub fn RegCloseKey(key: isize) -> i32;
 }
 
 #[link(name = "dwmapi")]
@@ -564,6 +679,7 @@ extern "system" {
     pub fn DragAcceptFiles(h: isize, accept: i32);
     pub fn DragQueryFileW(drop: isize, i: u32, s: *mut u16, n: u32) -> u32;
     pub fn DragFinish(drop: isize);
+    pub fn SHChangeNotify(event: i32, flags: u32, a: *const c_void, b: *const c_void);
 }
 
 #[link(name = "ole32")]

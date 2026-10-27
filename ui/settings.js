@@ -1,19 +1,19 @@
 // Settings, in tabs so nothing needs a long scroll: Notes (folder and its health check, with pictures
-// nothing uses; deleted pages; safety copies), Look (looks, text size, link colour and fonts), Capture
+// nothing uses; deleted pages; safety copies), Look (looks, text size, link colour, page links, fonts), Capture
 // (quick capture; on Windows also the browser button and the shortcut key), Shortcuts (keys), About
 // (problems log, version, updates). The tab shows in the address (#/settings/look) and the last one
 // is remembered.
 
 import { call, store, nowTime, isApp, isAndroid, assetUrl } from './api.js';
 import { esc } from './render.js';
-import { h, ICON } from './dom.js';
+import { h } from './dom.js';
 import { promptBox, confirmBox } from './popups.js';
 import { SKINS, accessCard } from './app.js';
 import { fitChips } from './views.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
-const TABS = [['notes', 'Notes'], ['look', 'Look'], ['capture', 'Capture'], ['keys', 'Shortcuts'], ['about', 'About']];
+export const TABS = [['notes', 'Notes'], ['look', 'Look'], ['capture', 'Capture'], ['keys', 'Shortcuts'], ['about', 'About']];
 
 export async function settingsView(app, view, want = null) {
   view.append(h('h1', 'page-title', app.vaultOpen ? 'Settings' : 'Welcome'));
@@ -39,7 +39,8 @@ export async function settingsView(app, view, want = null) {
   const bar = h('div', 'chips set-tabs');
   bar.setAttribute('role', 'tablist');
   bar.setAttribute('aria-label', 'Settings');
-  bar.innerHTML = tabs.map(([id, label]) => `<button class="chip" role="tab" id="st-${id}" data-tab="${id}" aria-controls="sp-${id}">${label}</button>`).join('');
+  const sfx = free('st-notes').slice(8); // (Settings open on both sides: ids of its own)
+  bar.innerHTML = tabs.map(([id, label]) => `<button class="chip" role="tab" id="st-${id}${sfx}" data-tab="${id}" aria-controls="sp-${id}${sfx}">${label}</button>`).join('');
   view.append(bar);
   fitChips(bar); // a hint (the end fades) if they still don't all fit
   const panels = {};
@@ -53,9 +54,9 @@ export async function settingsView(app, view, want = null) {
     for (const p of Object.values(panels)) p.hidden = true;
     if (!panels[id]) { // built the first time it's shown
       const p = h('div', 'set-panel');
-      p.id = 'sp-' + id;
+      p.id = 'sp-' + id + sfx;
       p.setAttribute('role', 'tabpanel');
-      p.setAttribute('aria-labelledby', 'st-' + id);
+      p.setAttribute('aria-labelledby', 'st-' + id + sfx);
       panels[id] = p;
       view.append(p);
       p.append(...await parts[id]());
@@ -63,10 +64,8 @@ export async function settingsView(app, view, want = null) {
     }
     panels[id].hidden = false;
     if (app.vaultOpen) store.set('settingsTab', id);
-    // the address names the tab (without adding a step for Back)
-    const hash = '#/settings/' + id;
-    if (location.hash !== hash) history.replaceState(history.state, '', hash);
-    app.prevHash = location.hash; // the page now open is this address (see App.route)
+    // the address names the tab (without adding a step for Back): the place shown here (tabs.js)
+    app.tabs.replace(view, '#/settings/' + id);
   };
   bar.addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b) show(b.dataset.tab); });
   bar.addEventListener('keydown', (e) => { // arrow keys move between the tabs
@@ -98,12 +97,14 @@ function folderCard(app) {
       const r = await call('check');
       const list = (items) => `<div class="path">${items.map(esc).join('<br>')}</div>`;
       let html = `<p class="note">${r.files} files read in ${r.load_ms} ms.</p>`;
+      // (one or many: "1 file looks…", "2 files look…")
+      const count = (items, one, many) => (items.length === 1 ? `1 ${one}` : `${items.length} ${many}`);
       html += r.roundtrip_failures.length
-        ? `<p class="err"><b>${r.roundtrip_failures.length} files would be reformatted if saved untouched:</b></p>${list(r.roundtrip_failures)}`
+        ? `<p class="err"><b>${count(r.roundtrip_failures, 'file would', 'files would')} be reformatted if saved untouched:</b></p>${list(r.roundtrip_failures)}`
         : '<p class="note">✓ Every file can be opened and saved without being reformatted.</p>';
-      if (r.conflict_copies.length) html += `<p class="note"><b>${r.conflict_copies.length} look like copies made by a sync conflict</b> (e.g. “Page (1).md” next to “Page.md”). Compare each with the original, keep what you need, then delete the copy:</p>${list(r.conflict_copies)}`;
-      if (r.duplicates.length) html += `<p class="note"><b>${r.duplicates.length} page names belong to more than one file.</b> The first file is the one shown:</p>${list(r.duplicates.map(([n, files]) => `${n}: ${files.join(', ')}`))}`;
-      if (r.non_utf8.length) html += `<p class="note"><b>${r.non_utf8.length} files aren’t plain text</b> (shown read-only, never changed):</p>${list(r.non_utf8)}`;
+      if (r.conflict_copies.length) html += `<p class="note"><b>${count(r.conflict_copies, 'file looks like a copy', 'files look like copies')} made by a sync conflict</b> (e.g. “Page (1).md” next to “Page.md”). Compare ${r.conflict_copies.length === 1 ? 'it' : 'each'} with the original, keep what you need, then delete the copy:</p>${list(r.conflict_copies)}`;
+      if (r.duplicates.length) html += `<p class="note"><b>${count(r.duplicates, 'page name belongs', 'page names belong')} to more than one file.</b> The first file is the one shown:</p>${list(r.duplicates.map(([n, files]) => `${n}: ${files.join(', ')}`))}`;
+      if (r.non_utf8.length) html += `<p class="note"><b>${count(r.non_utf8, 'file isn’t', 'files aren’t')} plain text</b> (shown read-only, never changed):</p>${list(r.non_utf8)}`;
       html += `<p class="note">Longest pages: ${r.biggest.map(([n, b]) => `${esc(n)} (${b} blocks)`).join(', ')}.<br>Most linked: ${r.most_linked.map(([n, c]) => `${esc(n)} (${c})`).join(', ')}.</p>`;
       out.innerHTML = html;
       out.append(picturesBox(app, r));
@@ -117,6 +118,13 @@ function folderCard(app) {
 /** "1.4 MB", "820 KB" (as Windows counts them). */
 const fileSize = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+/** An id (or, with taken, a radio group's name) that no other copy of Settings on screen uses: it can
+ *  be open on both sides, and two of the same would get in each other's way. */
+function free(base, taken = (id) => document.getElementById(id)) {
+  let k = 1;
+  while (taken(k === 1 ? base : `${base}-${k}`)) k++;
+  return k === 1 ? base : `${base}-${k}`;
+}
 
 /** Part of "Check this folder": the pictures in assets/ that nothing uses, each with a tick box (all
  *  ticked), and a button that moves the ticked ones to the bin (the app checks each one again first,
@@ -218,10 +226,14 @@ async function folderPicker(app, card, start) {
 }
 
 async function useVault(app, path) {
+  // the pages on screen (the other side too) belong to the folder open now: saved there first
+  if (!(await app.leaveAll())) return;
   store.set('vault', path);
   app.vaultError = null;
   await app.openVault();
-  app.go(app.vaultOpen ? 'journals' : 'settings');
+  // one side, one tab: the tabs were the other folder's pages
+  app.tabs.reset(app.vaultOpen ? '#/journals' : '#/settings');
+  app.draw(app.pane);
 }
 
 function lookCard(app) {
@@ -229,11 +241,11 @@ function lookCard(app) {
   const sc = h('div', 'card');
   sc.innerHTML = '<h2>Look</h2><p class="note">Pick how your notes look. Each card is a live preview.</p><div class="skin-cards"></div>';
   const cards = $('.skin-cards', sc);
-  const sample = `<div class="sheet"><div class="day-head"><span class="day-ic">${ICON.calendar}</span><p class="weekday">Sunday</p><div class="page-title">October 25th, 2026</div></div>
-    <div class="outline" style="margin-top:10px">
+  const sample = `<div class="sheet"><div class="day-head"><p class="weekday">Sunday</p><div class="page-title">October 25th, 2026</div></div>
+    <div class="outline day-body">
       <div class="blk" style="--d:0"><span class="bul"></span><div class="bc">Read <a class="pl">Marta Pell</a> on bread <a class="tag"><span class="hash">#</span>reading</a></div></div>
       <div class="blk" style="--d:1"><span class="bul"></span><div class="bc">cold-proving is the <mark>key idea</mark></div></div>
-      <div class="blk" style="--d:0"><span class="bul"></span><div class="bc"><input type="checkbox" class="todo" checked tabindex="-1">order more flour</div></div>
+      <div class="blk marker-done" style="--d:0"><span class="bul"></span><div class="bc"><input type="checkbox" class="todo" checked tabindex="-1">order more flour</div></div>
     </div></div>`;
   for (const s of SKINS) {
     const b = h('button', 'skin-card', `<div class="stage">${sample}</div><div class="label"><b>${s.name}</b><span>${s.note}</span></div>`);
@@ -248,13 +260,22 @@ function lookCard(app) {
   const r = $('input', size);
   r.oninput = () => { $('.v', size).textContent = Math.round(app.textSize(Number(r.value)) * 100) + '%'; };
   sc.append(size);
+  // wide mode (also t w, and a page's ⋯ menu): notes use the whole width instead of a reading width
+  if (!isAndroid) {
+    const wide = h('label', 'toggle wide-row', `<input type="checkbox"${app.wide ? ' checked' : ''}> Wide mode: notes use the whole width of the window <kbd>t w</kbd>`);
+    $('input', wide).onchange = (e) => app.setWide(e.target.checked, true);
+    sc.append(wide);
+  }
   sc.append(textStyle(app));
   return sc;
 }
 
-// Link colour and fonts, on top of whichever look is chosen. Fonts are ones that come with the
-// app or are already on the computer/phone, so nothing extra is downloaded or stored.
+// Link colour, how page links look, and fonts, on top of whichever look is chosen. Fonts are ones
+// that come with the app or are already on the computer/phone, so nothing extra is downloaded or stored.
 const LINK_COLOURS = ['#2F6BFF', '#7B5CFF', '#E0457B', '#E8590C', '#0F9D8A', '#D93636'];
+// Page links: the look's own way (Plain and Plain night: colour only, like Logseq; the others
+// underlined), or the same in every look (html[data-links], skins.css). Tags stay as they are.
+const LINK_STYLES = [['', 'Look’s own'], ['underline', '<span class="lk-u">Underlined</span>'], ['color', 'Colour only'], ['brackets', 'Show [[ ]]']];
 // Fonts that come with the app work everywhere; the rest are the device's own (Windows has many,
 // phones have their own sans-serif, serif, monospace and handwriting).
 const ON = isAndroid ? 'this phone' : 'this computer';
@@ -289,7 +310,9 @@ const FONTS = [
 
 function textStyle(app) {
   const box = h('div', 'text-style');
+  const fb = free('ts-body'), ft = free('ts-title');
   const link = store.get('linkColor', '');
+  const linkStyle = store.get('linkStyle', '');
   const opts = (cur) => {
     const known = FONTS.some(([v]) => v === cur);
     const custom = cur && !known ? `<option value="${esc(cur)}" selected>${esc(cur.split(',')[0].replace(/"/g, ''))}</option>` : '';
@@ -299,8 +322,10 @@ function textStyle(app) {
       <button type="button" class="sw own" data-c="" aria-pressed="${!link}">Look’s own</button>
       ${LINK_COLOURS.map((c) => `<button type="button" class="sw" data-c="${c}" style="--c:${c}" title="${c}" aria-label="Link colour ${c}" aria-pressed="${link.toLowerCase() === c.toLowerCase()}"></button>`).join('')}
       <label class="sw pick" title="Any colour" aria-pressed="${!!link && !LINK_COLOURS.some((c) => c.toLowerCase() === link.toLowerCase())}"><input type="color" value="${esc(link || '#4A3CB0')}" aria-label="Pick any colour"></label></div></div>
-    <div class="ts-row"><label class="ts-l" for="ts-body">Text font</label><select id="ts-body" data-k="fontBody">${opts(store.get('fontBody', ''))}</select></div>
-    <div class="ts-row"><label class="ts-l" for="ts-title">Titles</label><select id="ts-title" data-k="fontTitle">${opts(store.get('fontTitle', ''))}</select></div>`;
+    <div class="ts-row"><span class="ts-l">Page links</span><div class="lk-opts" role="group" aria-label="How page links look">
+      ${LINK_STYLES.map(([v, label]) => `<button type="button" class="chip" data-lk="${v}" aria-pressed="${linkStyle === v}">${label}</button>`).join('')}</div></div>
+    <div class="ts-row"><label class="ts-l" for="${fb}">Text font</label><select id="${fb}" data-k="fontBody">${opts(store.get('fontBody', ''))}</select></div>
+    <div class="ts-row"><label class="ts-l" for="${ft}">Titles</label><select id="${ft}" data-k="fontTitle">${opts(store.get('fontTitle', ''))}</select></div>`;
   const setLink = (c) => {
     store.set('linkColor', c);
     app.applyTextStyle();
@@ -311,6 +336,13 @@ function textStyle(app) {
     if (b) setLink(b.dataset.c || '');
   });
   box.querySelector('input[type=color]').addEventListener('input', (e) => setLink(e.target.value));
+  box.querySelector('.lk-opts').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-lk]');
+    if (!b) return;
+    store.set('linkStyle', b.dataset.lk);
+    app.applyTextStyle();
+    box.querySelectorAll('[data-lk]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  });
   box.querySelectorAll('select').forEach((sel) => {
     let before = sel.value;
     sel.onchange = async () => {
@@ -334,13 +366,14 @@ function textStyle(app) {
 function captureCard(app) {
   const c = app.summary.config;
   const card = h('div', 'card');
+  const where = free('where', (n) => document.querySelector(`[name="${n}"]`)); // (one choice per copy of Settings)
   card.innerHTML = `<h2>Quick capture</h2>
     <p class="note">What gets added when you share something to the app (phone share menu, the widget’s +, the browser button and shortcut key on the laptop). Same settings as Logseq’s, kept in <code>logseq/config.edn</code>, so Logseq uses them too.
     <br><code>{time}</code> = time, <code>{date}</code> = today’s date, <code>{text}</code> = what you shared or typed, <code>{url}</code> = its web address (or the picture).</p>
     <label class="field">Shared text and links<input data-f="text" value="${esc(c.capture_text)}"></label>
     <label class="field">Shared pictures<input data-f="media" value="${esc(c.capture_media)}"></label>
-    <div class="radio"><label><input type="radio" name="where" value="today" ${c.capture_today ? 'checked' : ''}> Add to today’s journal</label>
-      <label><input type="radio" name="where" value="page" ${c.capture_today ? '' : 'checked'}> Add to the page <input data-f="page" value="${esc(c.capture_page)}" class="inline"></label></div>
+    <div class="radio"><label><input type="radio" name="${where}" value="today" ${c.capture_today ? 'checked' : ''}> Add to today’s journal</label>
+      <label><input type="radio" name="${where}" value="page" ${c.capture_today ? '' : 'checked'}> Add to the page <input data-f="page" value="${esc(c.capture_page)}" class="inline"></label></div>
     ${window.LeanAndroid ? `<label class="toggle"><input type="checkbox" data-f="onetap" ${store.get('oneTap', false) ? 'checked' : ''}> Add shared things straight away (no pop-up)</label>` : ''}
     <p class="note preview"></p>
     <div class="btn-row"><button class="btn" data-a="save">Save</button><span class="note saved" hidden>Saved to config.edn</span></div>`;
@@ -354,7 +387,7 @@ function captureCard(app) {
   preview();
   $('[data-a="save"]', card).onclick = async () => {
     try {
-      const s = await call('set_capture', { text: f('text').value, media: f('media').value, today: $('[name="where"]:checked', card).value === 'today', page: f('page').value });
+      const s = await call('set_capture', { text: f('text').value, media: f('media').value, today: $('input[type=radio]:checked', card).value === 'today', page: f('page').value });
       app.summary.config = s.config;
       if (f('onetap')) store.set('oneTap', f('onetap').checked);
       app.sendCaptureConfig();
@@ -377,29 +410,84 @@ function windowsCard(app) {
       <button class="btn ghost" data-a="copy">Copy the code instead</button></div>
     <p class="note small">No bookmarks bar? In Chrome or Edge press Ctrl+Shift+B. If dragging doesn’t work: copy the code, right-click the bookmarks bar, choose “Add page…”, name it “Add to journal” and paste the code as the address.</p>
     <h3>With a shortcut key</h3>
-    <p class="note">Press a key combination (for example Ctrl+Alt+N) anywhere in Windows to open a small box that adds a note to your journal, pre-filled with what you last copied. It uses Windows’ own shortcut keys, so nothing of this app runs in the background.</p>
+    <p class="note">Press a key combination (for example Ctrl+Alt+N) anywhere in Windows to open a small box that adds a note to your journal, pre-filled with what you last copied.</p>
+    <p class="note key-how">The key works instantly because a tiny helper waits for it in the background (it starts with Windows and uses under 2 MB of memory). Remove the key to turn the helper off.</p>
     <div class="btn-row"><input class="filter key" readonly placeholder="Click here, then press keys" value="${esc(hk)}">
-      <button class="btn" data-a="setkey">Save</button><button class="btn ghost" data-a="clearkey" ${hk ? '' : 'hidden'}>Remove</button></div>`;
+      <button class="btn" data-a="setkey">Save</button><button class="btn ghost" data-a="clearkey" ${hk ? '' : 'hidden'}>Remove</button></div>
+    <div class="banner key-state" role="status" hidden><span></span><button class="btn ghost small" data-a="retrykey">Try again</button></div>`;
   $('.bookmarklet', card).onclick = (e) => { e.preventDefault(); app.toast('Drag this button to your browser’s bookmarks bar.'); };
   $('[data-a="copy"]', card).onclick = async () => { try { await navigator.clipboard.writeText(BOOKMARKLET); app.toast('Copied', 1200); } catch { app.toast('Couldn’t copy'); } };
   const key = $('.key', card);
+  // the key as the app has it now (the helper's, or the portable copy's Start-menu shortcut), which
+  // way this copy answers it, and whether it works right now: if the helper doesn't hold it (say,
+  // another program took the key when Windows started), a line says so, and why, with Try again
+  const keyState = $('.key-state', card);
+  let savedKey = '', waits = 0, timer = 0;
+  const showState = (st) => {
+    clearTimeout(timer);
+    const words = $('span', keyState), retry = $('[data-a="retrykey"]', keyState);
+    if (!st.helper || !st.key || st.running) { keyState.hidden = true; waits = 0; return; }
+    keyState.hidden = false;
+    if (st.starting && waits < 20) { // (a helper takes a few seconds at most)
+      words.textContent = `${st.key} is starting…`;
+      retry.hidden = true;
+      waits++;
+      timer = setTimeout(refresh, 1000);
+      return;
+    }
+    waits = 0;
+    retry.hidden = false;
+    words.textContent = st.fallback
+      ? `${st.key} still opens the box the slow way (the old Start-menu shortcut): its helper couldn’t take the key yet. ${st.why}`
+      : `${st.key} isn’t working right now. ${st.why || 'Its helper isn’t running.'}`;
+  };
+  const refresh = () => call('get_shortcut').then((st) => {
+    if (!card.isConnected) return;
+    savedKey = typeof st.key === 'string' ? st.key : '';
+    if (document.activeElement !== key) { // (not while he's choosing a new key)
+      key.value = savedKey;
+      store.set('captureKey', savedKey);
+      $('[data-a="clearkey"]', card).hidden = !key.value;
+    }
+    if (!st.helper) $('.key-how', card).textContent = 'This portable copy uses a Windows Start-menu shortcut for the key instead, which can take a few seconds to open the box.';
+    showState(st);
+  }).catch(() => {});
+  refresh();
+  $('[data-a="retrykey"]', keyState).onclick = async (ev) => {
+    const btn = ev.currentTarget;
+    if (btn.disabled || !savedKey) return;
+    btn.disabled = true;
+    $('span', keyState).textContent = `Trying ${savedKey} again…`;
+    try { await call('set_shortcut', { key: savedKey }); app.toast(`Done: press ${savedKey} anywhere to add a note.`, 4000); }
+    catch (e) { app.toast(String(e), 8000); }
+    finally { btn.disabled = false; refresh(); }
+  };
   key.onkeydown = (e) => {
     e.preventDefault();
     if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
-    const k = e.key.length === 1 ? e.key.toUpperCase() : (/^F\d+$/.test(e.key) ? e.key : null);
+    const k = e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : (/^F\d+$/.test(e.key) ? e.key : null);
     if (!k) return;
-    const mods = [e.ctrlKey && 'CTRL', e.altKey && 'ALT', e.shiftKey && 'SHIFT'].filter(Boolean);
+    const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift'].filter(Boolean);
     if (mods.length < 2 && !/^F\d+$/.test(k)) { app.toast('Use two of Ctrl, Alt and Shift with a key, e.g. Ctrl+Alt+N'); return; }
     key.value = [...mods, k].join('+');
   };
-  $('[data-a="setkey"]', card).onclick = async () => {
-    if (!key.value) return;
-    try { await call('set_shortcut', { key: key.value }); store.set('captureKey', key.value); $('[data-a="clearkey"]', card).hidden = false; app.toast(`Done: press ${key.value} anywhere to add a note.`, 4000); }
-    catch (e) { app.toast(String(e), 6000); }
+  $('[data-a="setkey"]', card).onclick = async (ev) => {
+    const btn = ev.currentTarget;
+    if (!key.value || btn.disabled) return;
+    btn.disabled = true; // (the helper takes a moment to start)
+    try {
+      const saved = await call('set_shortcut', { key: key.value });
+      if (typeof saved === 'string' && saved) key.value = saved;
+      store.set('captureKey', key.value); $('[data-a="clearkey"]', card).hidden = false;
+      app.toast(`Done: press ${key.value} anywhere to add a note.`, 4000);
+    }
+    catch (e) { app.toast(String(e), 8000); }
+    finally { btn.disabled = false; refresh(); }
   };
   $('[data-a="clearkey"]', card).onclick = async () => {
     try { await call('set_shortcut', { key: '' }); store.set('captureKey', ''); key.value = ''; $('[data-a="clearkey"]', card).hidden = true; }
     catch (e) { app.toast(String(e), 6000); }
+    refresh();
   };
   return card;
 }
@@ -520,10 +608,11 @@ function keysCard(app) {
   const rows = [
     ['Search', 'go/search'], ['Journals', 'go/journals'], ['All pages', 'go/all-pages'], ['To-dos', 'go/todos'],
     ['Go to a date', 'go/date'], ['Next / previous journal day', 'go/next-journal'], ['Back', 'go/backward'], ['Forward', 'go/forward'],
-    ['Hide or show the sidebar', 'ui/toggle-left-sidebar'], ['Move a block up', 'editor/move-block-up'], ['Move a block down', 'editor/move-block-down'],
+    ['Hide or show the sidebar', 'ui/toggle-left-sidebar'], ['Wide mode (notes use the whole width)', 'ui/toggle-wide-mode'], ['Move a block up', 'editor/move-block-up'], ['Move a block down', 'editor/move-block-down'],
     ['Fold or unfold all', 'editor/toggle-open-blocks'], ['Highlight', 'editor/highlight'], ['Bigger / smaller text', 'ui/text-bigger'],
+    ['Select the words, then the note, then its parent', 'editor/select-parent'], ['Select every note on the page', 'editor/select-all-blocks'],
   ];
-  card.innerHTML = `<h2>Keyboard shortcuts</h2><p class="note">Also: Enter new block · Shift+Enter new line · Tab / Shift+Tab indent · Ctrl+Enter to-do · Esc select block (then Shift+↑↓ to select more) · Ctrl+Z undo · / commands · [[ link · # tag · :: property. Change these in <code>logseq/config.edn</code> (<code>:shortcuts</code>), like in Logseq.</p>
+  card.innerHTML = `<h2>Keyboard shortcuts</h2><p class="note">Also: Enter new block · Shift+Enter new line · Tab / Shift+Tab indent · Ctrl+Enter to-do · Esc select block (then Shift+↑↓ to select more) · Ctrl+Z undo · / commands · [[ link · (( block reference · # tag · :: property · Ctrl+Shift+V paste as plain words. Change these in <code>logseq/config.edn</code> (<code>:shortcuts</code>), like in Logseq.</p>
     <table class="keys">${rows.map(([label, a]) => `<tr><td>${label}</td><td>${(app.keyMap[a] || []).map((k) => `<kbd>${esc(nice(k))}</kbd>`).join(' or ') || '<span class="note">none</span>'}</td></tr>`).join('')}</table>`;
   return card;
 }
@@ -599,7 +688,7 @@ async function updateBox(app) {
     if (a === 'update' && !job.busy && app.latest) updateNow(app, app.latest.tag);
   };
   if (job.busy || job.stage === 'confirm' || job.stage === 'error') job.show(job.stage, job.html);
-  else if (await app.checkUpdate()) offer();
+  else if (await app.checkUpdate(6e4)) offer(); // (a build that came out today shows here at once)
   else idle();
   return box;
 }

@@ -6,7 +6,7 @@ import { assetUrl, today } from './api.js';
 export const HIDDEN_PROPS = new Set(['id', 'collapsed', 'ls-type', 'hl-type', 'hl-page', 'hl-stamp', 'hl-color',
   'heading', 'created-at', 'updated-at', 'annotation-id', 'hid', 'card-last-interval', 'card-repeats',
   'card-ease-factor', 'card-next-schedule', 'card-last-reviewed', 'card-last-score', 'logseq.order-list-type',
-  'template-including-parent']);
+  'template-including-parent', 'background-color', 'background_color']);
 export const MARKERS = /^(TODO|DOING|DONE|LATER|NOW|WAITING|WAIT|CANCELED|CANCELLED|IN-PROGRESS|STARTED)(?=\s|$)/;
 export const PROP = /^\s*([\p{L}\p{N}_.\/-]+)::(?:\s(.*)|$)/u;
 const IMG = /\.(png|jpe?g|gif|webp|svg|bmp|avif|ico)(\?.*)?$/i;
@@ -16,7 +16,8 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 /** Only web, mail and phone links open; anything else (javascript:, file:, …) stays text. */
-export const safeHref = (u) => (/^(https?:|mailto:|tel:)/i.test(u.trim()) ? u.trim() : null);
+// (leanoutliner:// links open a page or a note of these notes: App.openLink)
+export const safeHref = (u) => (/^(https?:|mailto:|tel:|leanoutliner:)/i.test(u.trim()) ? u.trim() : null);
 
 const link = (name, label, cls = 'pl') =>
   `<a class="${cls}" data-page="${esc(name)}" href="#">${label ?? esc(name)}</a>`;
@@ -100,12 +101,18 @@ export function inline(s) {
     if (c === '`' && (m = rest.match(/^(`+)([\s\S]*?)\1/))) {
       out += `<code>${esc(m[2])}</code>`; i += m[0].length; prev = '`'; continue;
     }
+    if (rest.startsWith('{{cloze') && (m = rest.match(/^\{\{cloze\s+([\s\S]*?)\}\}/))) { // a flashcard's hidden words
+      out += `<span class="cloze">${inline(m[1])}</span>`; i += m[0].length; prev = '}'; continue;
+    }
     if (rest.startsWith('{{') && (m = rest.match(/^\{\{[\s\S]*?\}\}/))) {
       out += `<span class="macro">${esc(m[0])}</span>`; i += m[0].length; prev = '}'; continue;
     }
-    if (rest.startsWith('((') && (m = rest.match(/^\(\(([0-9a-f-]{36})\)\)/))) {
-      out += '<span class="macro" data-auto title="Block reference">↗ block</span>'; i += m[0].length; prev = ')'; continue;
+    if (rest.startsWith('((') && (m = rest.match(/^\(\(([0-9a-fA-F-]{36})\)\)/))) {
+      // the note it names shows here once found (App.blockRefs fills data-ref; a click goes to it)
+      out += `<span class="macro bref" data-auto data-ref="${m[1].toLowerCase()}" title="Block reference">↗ block</span>`; i += m[0].length; prev = ')'; continue;
     }
+    // underline, as Logseq's / menu writes it (<ins>…</ins>; <u> too)
+    if (c === '<' && (m = rest.match(/^<(ins|u)>([\s\S]*?)<\/\1>/i))) { out += `<ins>${inline(m[2])}</ins>`; i += m[0].length; prev = '>'; continue; }
     if (rest.startsWith('[[')) {
       const end = closeBrackets(s, i);
       if (end > 0) { out += link(s.slice(i + 2, end - 2).trim()); i = end; prev = ']'; continue; }
@@ -132,7 +139,7 @@ export function inline(s) {
         if (am) { attrs = am[1]; after = close + am[0].length; }
         const page = url.match(/^\[\[(.+)\]\]$/);
         if (c === '!') out += image(label, url, attrs, s.slice(i, close));
-        else if (page) out += link(page[1].trim(), inline(label) || esc(page[1]));
+        else if (page) out += link(page[1].trim(), inline(label) || esc(page[1]), 'pl lbl'); // (its own words: no [[ ]] shown)
         else {
           const href = safeHref(url);
           out += href ? `<a class="ext" href="${esc(href)}" target="_blank" rel="noopener">${inline(label) || esc(url)}</a>` : `<span class="ext-off" title="${esc(url)}">${inline(label) || esc(url)}</span>`;
@@ -140,7 +147,7 @@ export function inline(s) {
         i = after; prev = ')'; continue;
       }
     }
-    if (/[\s(]/.test(prev) && (m = rest.match(/^https?:\/\/[^\s<>]+/))) {
+    if (/[\s(]/.test(prev) && (m = rest.match(/^(?:https?|leanoutliner):\/\/[^\s<>]+/))) {
       let u = m[0];
       // trailing punctuation isn't part of the address; ')' only when unbalanced
       for (;;) {
@@ -264,13 +271,15 @@ function quote(lines) {
 
 // Full block: marker, priority, heading, properties, dates, drawers, code fences, display math,
 // #+BEGIN_… blocks, quotes and coloured boxes.
-// Returns { html, marker, priority, props, dates, heading } (props = the visible properties;
-// heading = 1–6 when the first line is a "#" heading, else 0).
-export function renderBlock(text) {
+// Returns { html, marker, priority, props, dates, heading, bg } (props = the visible properties;
+// heading = 1–6 when the first line is a "#" heading, or for Logseq's auto heading (heading:: true:
+// one size smaller than its level, at depth 0 a "##"), else 0; bg = its background-color:: value).
+export function renderBlock(text, depth = 0) {
   const lines = text.split('\n');
   const body = [];
   const props = [];
   const dates = [];
+  let auto = false, bg = '';
   let fence = null;
   let mathBlock = null;
   let drawer = false;
@@ -310,6 +319,8 @@ export function renderBlock(text) {
     if (pm) {
       const k = pm[1].toLowerCase();
       if (!HIDDEN_PROPS.has(k) && !k.startsWith('card-') && !k.startsWith('hl-')) props.push([k, pm[2] ?? '']);
+      else if (k === 'heading') auto = /^true$/i.test((pm[2] ?? '').trim());
+      else if (k === 'background-color' || k === 'background_color') bg = (pm[2] ?? '').trim();
       continue;
     }
     const q = line.match(/^\s*>\s?(.*)$/);
@@ -341,11 +352,13 @@ export function renderBlock(text) {
       if (pr) { priority = pr[1].toUpperCase(); t = t.replace(pr[0], ''); }
       const h = t.match(/^(#{1,6})\s+(.*)$/);
       if (h) { heading = h[1].length; html += `<span class="h h${heading}">${inline(h[2])}</span>`; return; }
+      // Logseq's auto heading (its "#"s win when it has both, as in Logseq)
+      if (auto) { heading = Math.min(depth + 2, 6); html += `<span class="h h${heading}">${inline(t)}</span>`; return; }
     }
     if (html && !html.endsWith('</pre>') && !html.endsWith('</div>') && !html.endsWith('</blockquote>')) html += '<br>';
     html += inline(t);
   });
-  return { html, marker, priority, props, dates, heading };
+  return { html, marker, priority, props, dates, heading, bg };
 }
 
 /** Drop bookkeeping properties (ids, fold state, flashcard and highlight data). */

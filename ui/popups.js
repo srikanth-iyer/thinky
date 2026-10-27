@@ -5,6 +5,8 @@ import { call, today, nowTime } from './api.js';
 import { esc, renderBlock, propsHtml, stampText } from './render.js';
 import { createCalendar } from './calendar.js';
 
+/** A note folded in its page (collapsed:: true on a line after its first; editor.js foldedIn). */
+const COLLAPSED = /\ncollapsed:: true(?=\n|$)/;
 const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
 
 /** Place a floating element under (or above) a rectangle, inside the window. */
@@ -36,14 +38,19 @@ export function caretRect(ta) {
 // ---------------------------------------------------------------------------
 // Suggestions while typing
 
-const SLASH = [
-  ['TODO', 'to-do'], ['DOING', 'to-do'], ['LATER', 'to-do'], ['NOW', 'to-do'], ['WAITING', 'to-do'], ['DONE', 'to-do'],
-  ['Scheduled date…', 'date', 'sched'], ['Deadline…', 'date', 'deadline'], ['Date…', 'link to a day', 'date'],
+// [label, hint, id (default: the label), more words it's found by (Logseq's names for it…)]
+export const SLASH = [
+  ['TODO', 'to-do'], ['DOING', 'to-do'], ['LATER', 'to-do'], ['NOW', 'to-do'], ['WAITING', 'to-do'], ['DONE', 'to-do'], ['CANCELED', 'to-do', 'CANCELED', 'cancelled'],
+  ['Scheduled date…', 'date', 'sched'], ['Deadline…', 'date', 'deadline'], ['Date…', 'link to a day', 'date', 'date picker'],
   ['Today', 'link', 'today'], ['Tomorrow', 'link', 'tomorrow'], ['Yesterday', 'link', 'yesterday'], ['Current time', 'insert', 'time'],
-  ['Page link', '[[ ]]', 'link'], ['Tag', '#', 'tag'], ['Template…', 'insert', 'template'], ['Image…', 'from a file', 'image'],
-  ['Bold', '**', 'bold'], ['Italic', '*', 'italic'], ['Highlight', '^^', 'mark'], ['Strikethrough', '~~', 'strike'],
-  ['Code', '`', 'code'], ['Code block', '```', 'codeblock'], ['Formula', '$ $', 'math'],
-  ['Heading 1', '#', 'h1'], ['Heading 2', '##', 'h2'], ['Heading 3', '###', 'h3'],
+  ['Page link', '[[ ]]', 'link', 'page reference'], ['Block reference', '(( ))', 'blockref', 'block ref'], ['Link…', 'address, label', 'weblink', 'url web http'],
+  ['Tag', '#', 'tag'], ['Template…', 'insert', 'template'], ['Image…', 'from a file', 'image', 'picture photo'], ['Image link…', 'a picture on the web', 'imagelink', 'picture url'],
+  ['Upload a file…', 'any file', 'upload', 'upload an asset attach pdf'],
+  ['Bold', '**', 'bold'], ['Italic', '*', 'italic'], ['Highlight', '^^', 'mark'], ['Strikethrough', '~~', 'strike'], ['Underline', '<ins>', 'underline'],
+  ['Code', '`', 'code'], ['Code block', '```', 'codeblock'], ['Formula', '$ $', 'math', 'latex math'],
+  ['Heading 1', '#', 'h1', 'h1'], ['Heading 2', '##', 'h2', 'h2'], ['Heading 3', '###', 'h3', 'h3'],
+  ['Heading 4', '####', 'h4', 'h4'], ['Heading 5', '#####', 'h5', 'h5'], ['Heading 6', '######', 'h6', 'h6'],
+  ['Number list', 'this note', 'numlist', 'numbered ordered'], ['Number children', 'its sub-notes', 'numkids', 'numbered ordered list'],
   ['Priority A', '[#A]', 'pa'], ['Priority B', '[#B]', 'pb'], ['Priority C', '[#C]', 'pc'],
 ];
 
@@ -73,9 +80,19 @@ export class Suggest {
     const before = ta.value.slice(0, c);
     const line = before.slice(before.lastIndexOf('\n') + 1);
     let m;
+    // the toolbar's "/" (Outline.openCommands): the list stays open while what follows it is a word
+    if (this.slashAt && this.slashAt.ta === ta) {
+      const at = this.slashAt.at;
+      if (c > at && ta.value[at] === '/' && /^(?!\s)[^/\n]{0,24}$/.test(before.slice(at + 1))) return this.slash(outline, at, before.slice(at + 1));
+      this.slashAt = null;
+    }
     if ((m = before.match(/\[\[([^[\]\n]*)$/))) return this.pages(outline, 'link', c - m[1].length, m[1]);
+    // "((" (not right after a letter or digit: f((x)) is maths) and words: a note to refer to
+    if ((m = before.match(/(?:^|[^\p{L}\p{N}])\(\(([^()\n]{0,80})$/u))) return this.blocks(outline, c - m[1].length, m[1]);
     if ((m = before.match(/(?:^|[\s(,])#([^\s#[\],;!?"'(){}<>`]*)$/))) return this.pages(outline, 'tag', c - m[1].length, m[1]);
-    if ((m = line.match(/(?:^|\s)\/([^\s/]{0,24})$/)) && !/https?:\/\/\S*$/.test(line)) return this.slash(outline, c - m[1].length - 1, m[1]);
+    // "/" after a space or at a line's start, and what follows it (spaces too, as in Logseq: "/block ref";
+    // the list closes when nothing matches)
+    if ((m = line.match(/(?:^|\s)\/((?!\s)[^/\n]{0,24})$/)) && !/https?:\/\/\S*$/.test(line)) return this.slash(outline, c - m[1].length - 1, m[1]);
     if ((m = line.match(/^\s*::([\p{L}\p{N}_.\/-]*)$/u))) return this.propKeys(outline, c - m[1].length - 2, m[1]);
     if ((m = line.match(/^\s*([\p{L}\p{N}_.\/-]+)::\s?(.*)$/u))) {
       const items = m[2].split(',');
@@ -103,10 +120,35 @@ export class Suggest {
 
   slash(outline, start, q) {
     const ql = q.toLowerCase();
-    const items = SLASH.filter(([label]) => !ql || label.toLowerCase().includes(ql) || label.toLowerCase().replace(/[^a-z]/g, '').startsWith(ql))
-      .slice(0, 12).map(([label, hint, id]) => ({ label, html: `${esc(label)}<span class="hint">${esc(hint)}</span>`, value: id || label }));
+    // (all of them: the list scrolls, as Logseq's does)
+    // the ones whose name starts with what's typed first, then a word of it ("/link": Link…, then Page link)
+    const rank = (label) => { const l = label.toLowerCase(); return l.startsWith(ql) ? 0 : l.split(/\s+/).some((w) => w.startsWith(ql)) ? 1 : 2; };
+    const items = SLASH.filter(([label, , , more = '']) => !ql || `${label} ${more}`.toLowerCase().includes(ql) || label.toLowerCase().replace(/[^a-z]/g, '').startsWith(ql))
+      .sort((a, b) => (ql ? rank(a[0]) - rank(b[0]) : 0))
+      .map(([label, hint, id]) => ({ label, html: `${esc(label)}<span class="hint">${esc(hint)}</span>`, value: id || label }));
     if (!items.length) return this.close();
     this.show(outline, 'slash', start, q, items);
+  }
+
+  /** "((" and words: notes holding them, to refer to one (Logseq's block search). Not the note being
+   *  typed in. Nothing typed yet: a line saying what to do. */
+  async blocks(outline, start, q) {
+    const seq = this.seq;
+    // (notes only from two letters on: one would find nearly all, and Enter would pick one by chance)
+    if ([...q.trim()].length < 2) return this.show(outline, 'block', start, q, [], 'Type words from the note to refer to');
+    let hits = [];
+    try { hits = await call('search_blocks', { q }); } catch { /* none */ }
+    if (seq !== this.seq || !outline.ta) return;
+    const self = outline.cur === null ? -1 : outline.lineOf(outline.cur);
+    const items = hits.filter((x) => !(x.page.toLowerCase() === outline.name.toLowerCase() && x.line === self)).slice(0, 10).map((x) => {
+      const first = x.text.split('\n')[0];
+      const r = renderBlock(first);
+      const t = document.createElement('template'); // (inert: its pictures don't load)
+      t.innerHTML = r.html;
+      const words = (r.marker ? r.marker + ' ' : '') + (t.content.textContent.trim() || first);
+      return { label: words, html: `<span class="ac-w">${esc(words)}</span><span class="ac-p">${esc(x.page)}</span>`, value: x, cls: 'ac-blk' };
+    });
+    this.show(outline, 'block', start, q, items, items.length ? '' : 'No note has these words');
   }
 
   async propKeys(outline, start, q) {
@@ -137,17 +179,25 @@ export class Suggest {
     this.show(outline, 'propval', start, q, list.map((v) => ({ label: v, html: esc(v), value: v })));
   }
 
-  show(outline, kind, start, q, items) {
+  /** note: a quiet line instead of choices (items empty: nothing to pick yet). */
+  show(outline, kind, start, q, items, note = '') {
     this.outline = outline; this.kind = kind; this.start = start; this.q = q; this.items = items; this.sel = 0;
-    this.el.innerHTML = items.map((it, k) => `<li role="option" data-k="${k}" aria-selected="${k === 0}">${it.html}</li>`).join('');
+    this.el.innerHTML = items.map((it, k) => `<li role="option" data-k="${k}" aria-selected="${k === 0}"${it.cls ? ` class="${it.cls}"` : ''}>${it.html}</li>`).join('')
+      + (note ? `<li class="ac-note">${esc(note)}</li>` : '');
     this.el.hidden = false;
     place(this.el, caretRect(outline.ta));
   }
 
-  close() { this.seq = (this.seq || 0) + 1; this.el.hidden = true; this.items = null; }
+  close() { this.seq = (this.seq || 0) + 1; this.el.hidden = true; this.items = null; this.slashAt = null; }
 
   handleKey(e) {
     if (!this.isOpen) return false;
+    if (!this.items.length) { // (only a note so far: Esc closes it, other keys go on as usual)
+      if (e.key !== 'Escape') return false;
+      e.preventDefault();
+      this.close();
+      return true;
+    }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       this.sel = (this.sel + (e.key === 'ArrowDown' ? 1 : -1) + this.items.length) % this.items.length;
@@ -181,6 +231,9 @@ export class Suggest {
       ta.setRangeText(it.value, this.start, c, 'end');
     } else if (kind === 'template') {
       o.insertTemplate(it.value);
+      return;
+    } else if (kind === 'block') {
+      o.referTo(it.value, this.start, c);
       return;
     } else if (kind === 'slash') {
       ta.setRangeText('', this.start, c, 'end'); // remove the "/command" typed
@@ -277,27 +330,168 @@ export function promptBox({ title, body = '', value = '', ok = 'OK', placeholder
   });
 }
 
-/** A short list of actions under a button. items: [{label, run, danger}] */
-export function menu(anchor, items) {
-  const box = h('ul', 'pop menu');
-  box.innerHTML = items.map((it, k) => `<li><button type="button" data-k="${k}" class="${it.danger ? 'danger' : ''}">${esc(it.label)}</button></li>`).join('');
+/** A small form: fields [{label, value, placeholder, type}] (text boxes, the first takes the
+ *  keyboard; Enter in the last one is OK). Resolves the values in order, or null. */
+export function formBox({ title, body = '', fields, ok = 'OK' }) {
+  return modal(`<h2>${esc(title)}</h2>${body ? `<div class="note">${body}</div>` : ''}
+    ${fields.map((f, k) => `<label class="field">${esc(f.label)}<input class="filter" data-f="${k}" type="${f.type || 'text'}" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}" autocomplete="off"></label>`).join('')}
+    <div class="btn-row end"><button class="btn ghost" data-v="0">Cancel</button><button class="btn" data-v="1">${esc(ok)}</button></div>`,
+  (box, done) => {
+    const inputs = [...box.querySelectorAll('input')];
+    const values = () => inputs.map((x) => x.value);
+    box.onclick = (e) => { const v = e.target.closest('[data-v]')?.dataset.v; if (v !== undefined) done(v === '1' ? values() : null); };
+    inputs.forEach((x, k) => { x.onkeydown = (e) => { if (e.key !== 'Enter') return; e.preventDefault(); if (k === inputs.length - 1) done(values()); else inputs[k + 1].focus(); }; });
+    inputs[0]?.focus();
+    inputs[0]?.select();
+  });
+}
+
+/** A short list of actions under a button (anchor: anything with getBoundingClientRect, such as a
+ *  point where he right-clicked). items: [{label, run, danger, hint}], '-' between groups; hint:
+ *  quiet words on the right, such as the keys that do the same. opts.keep: what has the keyboard
+ *  keeps it (the phone toolbar's menus: the editing box and its keyboard stay up); opts.cls: a class. */
+export function menu(anchor, items, opts = {}) {
+  const box = h('ul', 'pop menu' + (opts.cls ? ' ' + opts.cls : ''));
+  box.innerHTML = items.map((it, k) => it === '-' ? '<li class="nm-sep" role="separator"></li>' : `<li><button type="button" data-k="${k}" class="${it.danger ? 'danger' : ''}">${it.hint ? `<span class="mhint">${esc(it.hint)}</span>` : ''}${esc(it.label)}</button></li>`).join('');
+  if (opts.keep) box.addEventListener('pointerdown', (e) => e.preventDefault());
   document.body.append(box);
-  const close = () => { box.remove(); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); };
+  const close = () => { box.remove(); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); document.removeEventListener('beforeinput', close, true); };
   const onDown = (e) => { if (!box.contains(e.target)) close(); };
   const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+  if (opts.keep) document.addEventListener('beforeinput', close, true); // (typing goes on: the menu goes)
   box.onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) { close(); items[+b.dataset.k].run(); } };
   setTimeout(() => { document.addEventListener('pointerdown', onDown, true); document.addEventListener('keydown', onKey, true); }, 0);
   place(box, anchor.getBoundingClientRect());
-  box.querySelector('button')?.focus();
+  if (!opts.keep) box.querySelector('button')?.focus();
+}
+
+// ---------------------------------------------------------------------------
+// The note menu (Logseq's block menu: editor.js openMenu says what's in it and what each does)
+
+const COLOR_NAMES = { yellow: 'Yellow', red: 'Red', pink: 'Pink', green: 'Green', blue: 'Blue', purple: 'Purple', gray: 'Grey' };
+
+/**
+ * A menu for a note, by rectangle r: a row of background colours (o.colors, the one now o.color, ''
+ * for none), a row of headings (H1–H6, auto, none; the one now o.heading: 1–6, 'auto' or 0; null:
+ * no row), then o.items ({id, label, hint, danger, checked}, '-' between groups). o.pick(kind, value)
+ * runs a choice: ('color', name or ''), ('heading', 1–6, 'auto' or 0), ('item', id). Real buttons,
+ * finger-sized on phones; arrow keys move between them; Esc, Android's Back (App.closeTop) and a press
+ * outside close it (a tap outside does nothing else). o.focus: it takes the keyboard (else what had
+ * it keeps it: the editing box on a phone keeps its keyboard). o.touch: opened by a finger. o.closed(picked)
+ * when it closes.
+ */
+export function noteMenu(r, o) {
+  const box = h('div', 'pop menu note-menu');
+  box.setAttribute('role', 'menu');
+  box.setAttribute('aria-label', 'Note');
+  let html = '';
+  if (o.colors) {
+    html += `<div class="nm-row nm-colors" role="group" aria-label="Background colour">${o.colors.map((c) => `<button type="button" role="menuitemradio" class="nm-sw" data-c="${c}" style="--sw: var(--hl-${c})" aria-checked="${o.color === c}" aria-label="${COLOR_NAMES[c] || c}" title="${COLOR_NAMES[c] || c}"></button>`).join('')}`
+      + `<button type="button" role="menuitemradio" class="nm-sw nm-none" data-c="" aria-checked="${!o.colors.includes(o.color)}" aria-label="No colour" title="No colour"></button></div>`;
+  }
+  if (o.heading !== null && o.heading !== undefined) {
+    const hb = (v, label, text) => `<button type="button" role="menuitemradio" class="nm-h" data-h="${v}" aria-checked="${o.heading === v}" aria-label="${label}" title="${label}"><span>${text}</span></button>`;
+    html += `<div class="nm-row nm-heads" role="group" aria-label="Heading">${[1, 2, 3, 4, 5, 6].map((n) => hb(n, `Heading ${n}`, `H${n}`)).join('')}`
+      + hb('auto', 'Auto heading (its size follows its level)', 'H<small>a</small>') + hb(0, 'No heading', '<s>H</s>') + '</div>';
+  }
+  if (html) html += '<div class="nm-sep" role="separator"></div>';
+  html += o.items.map((it, k) => it === '-' ? '<div class="nm-sep" role="separator"></div>'
+    : `<button type="button" role="${it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" class="nm-item${it.danger ? ' danger' : ''}" data-k="${k}"${it.checked === undefined ? '' : ` aria-checked="${!!it.checked}"`}><span class="nm-l">${esc(it.label)}</span>${it.hint ? `<span class="nm-hint">${esc(it.hint)}</span>` : ''}</button>`).join('');
+  box.innerHTML = html;
+  document.body.append(box);
+  const before = document.activeElement;
+  let open = true;
+  const close = (picked = false) => {
+    if (!open) return;
+    open = false;
+    const had = box.contains(document.activeElement);
+    box.remove();
+    document.removeEventListener('pointerdown', onDown, true);
+    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('beforeinput', typed, true);
+    window.removeEventListener('hashchange', away);
+    if (had && !picked && before && before !== document.body && before.isConnected) before.focus?.({ preventScroll: true });
+    o.closed?.(picked);
+  };
+  const away = () => close(); // (another page: the note it's for has left the screen)
+  window.addEventListener('hashchange', away);
+  // typing goes on elsewhere (the editing box keeps the keyboard when a finger opens it): it closes
+  const typed = (e) => { if (!box.contains(e.target)) close(); };
+  document.addEventListener('beforeinput', typed, true);
+  // a press outside closes it; after a finger's, the tap doesn't also act on what's under it
+  const onDown = (e) => {
+    if (box.contains(e.target)) return;
+    if (e.pointerType !== 'mouse') {
+      const eat = (c) => { c.preventDefault(); c.stopPropagation(); };
+      document.addEventListener('click', eat, { capture: true, once: true });
+      setTimeout(() => document.removeEventListener('click', eat, true), 700);
+    }
+    close();
+  };
+  const buttons = () => [...box.querySelectorAll('button')];
+  const lineOf = (b) => (b.closest('.nm-row') ?? b); // (a row of swatches or headings is one line)
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+    // a key while the menu doesn't have the keyboard: it's for what does (the menu goes)
+    if (!box.contains(document.activeElement)) { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) close(); return; }
+    if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); close(); return; }
+    const all = buttons();
+    const cur = all.indexOf(document.activeElement);
+    const go = (b) => { if (b) { e.preventDefault(); e.stopPropagation(); b.focus(); } };
+    if (e.key === 'Home') return go(all[0]);
+    if (e.key === 'End') return go(all.at(-1));
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      if (cur < 0) return go(all[0]);
+      const row = all[cur].closest('.nm-row');
+      if (!row) return;
+      const rb = [...row.querySelectorAll('button')], k = rb.indexOf(all[cur]);
+      return go(rb[(k + (e.key === 'ArrowRight' ? 1 : rb.length - 1)) % rb.length]);
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (cur < 0) return go(e.key === 'ArrowDown' ? all[0] : all.at(-1));
+      const lines = [...new Set(all.map(lineOf))];
+      const l = lines.indexOf(lineOf(all[cur]));
+      const next = lines[(l + (e.key === 'ArrowDown' ? 1 : lines.length - 1)) % lines.length];
+      if (!next.matches('.nm-row')) return go(next);
+      // into a row: the same place along it (swatches and headings line up)
+      const col = all[cur].closest('.nm-row') ? [...all[cur].parentElement.children].indexOf(all[cur]) : 0;
+      const nb = [...next.querySelectorAll('button')];
+      return go(nb[Math.min(col, nb.length - 1)]);
+    }
+  };
+  // the buttons never take the focus from a mouse or a finger: the editing box keeps it (and a
+  // phone its keyboard); the keyboard still reaches them when the menu has the focus
+  box.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
+  const opened = Date.now();
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    // (opened by a finger let go: a click that comes with that finger, where the menu now is, isn't a choice)
+    if (!b || (o.touch && Date.now() - opened < 350)) return;
+    close(true);
+    if (b.dataset.c !== undefined) o.pick('color', b.dataset.c);
+    else if (b.dataset.h !== undefined) o.pick('heading', b.dataset.h === 'auto' ? 'auto' : +b.dataset.h);
+    else o.pick('item', o.items[+b.dataset.k].id);
+  });
+  // (it never opens during a press or a key's capture phase: right away is safe)
+  document.addEventListener('pointerdown', onDown, true);
+  document.addEventListener('keydown', onKey, true);
+  place(box, r);
+  if (o.focus) (box.querySelector('.nm-item') ?? box.querySelector('button'))?.focus({ preventScroll: true });
+  return close;
 }
 
 // ---------------------------------------------------------------------------
 // Link preview on hover (laptop only)
 
-/** A page's first notes in a small box: hovering a link or tag for a moment (laptop), or pressing
- *  and holding one (phone; a short tap still opens the page, and the box has an "Open" button). */
+/** A page's notes in a small box: hovering a link or tag for a moment (laptop), or pressing and
+ *  holding one (phone; a short tap still opens the page, and the box has an "Open" button). The box
+ *  shows the whole page (read-only, folded notes' sub-notes left out) and scrolls; long pages are drawn
+ *  a part at a time as it's scrolled (body). Laptop: the mouse can go into the box (to scroll it, or
+ *  click a link or the title to open that page); it closes a moment after the mouse leaves both the
+ *  link and the box. app: for opening a page (App.go, so Ctrl/Shift+click open a tab or the side). */
 export class Preview {
-  constructor() {
+  constructor(app = null) {
+    this.app = app;
     this.el = h('div', 'pop preview');
     this.el.hidden = true;
     document.body.append(this.el);
@@ -306,16 +500,61 @@ export class Preview {
       return a && a.closest('.bc, .refhit, .props, .tagged') && !a.closest('.pop') ? a : null;
     };
     if (matchMedia('(pointer: coarse)').matches) { this.touch(linkAt); return; }
+    // The box doesn't take the mouse at once (.pv-wait: clicks and the wheel go through to the notes
+    // under it), so moving down past it to click a note still clicks that note. It takes the mouse once
+    // it's entered on purpose: the pointer resting in it (300 ms), or the wheel turned over it (which
+    // then scrolls the box, not the page). Before that, the pointer going anywhere but the link or the
+    // box closes it quickly (120 ms); after, a moment after leaving both (300 ms).
+    let shownFor = null; // the link the box is showing
+    let dwell = 0;
+    const hideIn = (ms) => { clearTimeout(this.t); this.t = setTimeout(() => this.hide(), ms); };
+    const inBox = (x, y) => { const r = this.el.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; };
+    this.take = () => { clearTimeout(dwell); dwell = 0; this.el.classList.remove('pv-wait'); document.removeEventListener('wheel', wheel, { capture: true }); };
+    const wheel = (e) => {
+      if (this.el.hidden || !this.el.classList.contains('pv-wait') || !inBox(e.clientX, e.clientY)) return;
+      e.preventDefault();
+      this.take();
+      this.el.querySelector('.pv-body')?.scrollBy(0, e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY);
+    };
+    this.waiting = () => { this.el.classList.add('pv-wait'); document.addEventListener('wheel', wheel, { capture: true, passive: false }); };
+    this.stopWaiting = () => { clearTimeout(dwell); dwell = 0; document.removeEventListener('wheel', wheel, { capture: true }); };
+    document.addEventListener('mousemove', (e) => {
+      if (this.el.hidden || !this.el.classList.contains('pv-wait')) return;
+      if (inBox(e.clientX, e.clientY)) { clearTimeout(this.t); if (!dwell) dwell = setTimeout(this.take, 300); return; }
+      clearTimeout(dwell); dwell = 0;
+      if (shownFor?.isConnected && shownFor.contains(e.target)) clearTimeout(this.t); else hideIn(120);
+    }, { passive: true });
     document.addEventListener('mouseover', (e) => {
+      if (this.el.contains(e.target)) { clearTimeout(this.t); return; } // (into the box, once it takes the mouse: it stays)
       const a = linkAt(e.target);
-      if (!a) return;
+      if (a && a === shownFor && !this.el.hidden) { clearTimeout(this.t); return; } // (back on its link)
+      if (!a || (!this.el.hidden && this.el.classList.contains('pv-wait') && inBox(e.clientX, e.clientY))) return; // (a link under the box)
       clearTimeout(this.t);
-      this.t = setTimeout(() => this.show(a), 550);
+      this.t = setTimeout(() => { shownFor = a; this.show(a); }, 550);
     });
     document.addEventListener('mouseout', (e) => {
-      if (e.target.closest?.('a[data-page]')) { clearTimeout(this.t); this.hide(); }
+      const to = e.relatedTarget;
+      if (this.el.hidden) { if (e.target.closest?.('a[data-page]')) clearTimeout(this.t); return; } // (not shown yet: not now)
+      if (!to) { hideIn(300); return; } // (out of the window)
+      if (this.el.classList.contains('pv-wait')) return; // (the pointer's moves decide, above)
+      if (this.el.contains(to) || (shownFor && to.closest?.('a[data-page]') === shownFor)) return;
+      if (this.el.contains(e.target) || e.target.closest?.('a[data-page]') === shownFor) hideIn(300);
     });
-    document.addEventListener('pointerdown', () => { clearTimeout(this.t); this.hide(); }, true);
+    document.addEventListener('pointerdown', (e) => { if (this.el.contains(e.target)) return; clearTimeout(this.t); this.hide(); }, true);
+    // the title, or a link in the box: that page opens (the box's words are read-only)
+    this.el.addEventListener('click', (e) => {
+      const a = e.target.closest('a[data-page], .pop-title');
+      if (!a) return;
+      e.preventDefault();
+      const name = a.dataset.page ?? this.name;
+      this.hide();
+      if (name) this.open(name);
+    });
+    this.el.addEventListener('mousedown', (e) => { if (e.target.closest('a')) e.preventDefault(); }); // (the note being typed in keeps the keyboard)
+  }
+  open(name) {
+    if (this.app) this.app.go('page', name);
+    else location.hash = '#/page/' + encodeURIComponent(name);
   }
 
   touch(linkAt) {
@@ -353,29 +592,50 @@ export class Preview {
       const b = e.target.closest('[data-open], a[data-page]');
       this.hide();
       const name = b?.dataset.open ?? b?.dataset.page;
-      if (name) location.hash = '#/page/' + encodeURIComponent(name);
+      if (name) this.open(name);
     });
   }
 
   async show(a, touch = false) {
     const name = a.dataset.page;
+    const seq = this.seq = (this.seq || 0) + 1;
     let pv;
     try { pv = await call('page', { name }); } catch { return; }
-    if (!a.isConnected || (!touch && !a.matches(':hover'))) return;
-    const blocks = pv.doc.blocks.slice(0, 12);
-    const body = blocks.map((b) => {
+    if (seq !== this.seq || !a.isConnected || (!touch && !a.matches(':hover'))) return;
+    // the page's notes, without the sub-notes of folded ones (as the page shows them)
+    const blocks = [];
+    let cut = Infinity;
+    for (const b of pv.doc.blocks) {
+      if (b.depth > cut) continue;
+      cut = COLLAPSED.test(b.text) ? b.depth : Infinity;
+      blocks.push(b);
+    }
+    const row = (b) => {
       const r = renderBlock(b.text);
       return `<div class="pv-b" style="--d:${Math.min(b.depth, 5)}">${r.marker ? `<span class="mk">${esc(r.marker)}</span>` : ''}${r.html}${propsHtml(r.props)}</div>`;
-    }).join('');
+    };
     const refs = pv.refs.reduce((s, g) => s + g.hits.length, 0);
     const icon = (pv.info.props || []).find(([k]) => k === 'icon')?.[1]?.trim();
     const open = touch ? `<button type="button" class="btn small" data-open="${esc(pv.info.name)}">Open</button>` : '';
-    this.el.innerHTML = `<div class="pop-title"><span>${icon && [...icon].length <= 8 ? esc(icon) + ' ' : ''}${esc(pv.info.name)}</span>${open}</div><div class="pv-body">${body || '<p class="note">Nothing written on this page yet.</p>'}
-      ${pv.doc.blocks.length > 12 ? '<p class="note">…</p>' : ''}</div><p class="note">${refs} linked reference${refs === 1 ? '' : 's'}</p>`;
+    this.name = pv.info.name;
+    this.el.innerHTML = `<div class="pop-title" title="Open this page"><span>${icon && [...icon].length <= 8 ? esc(icon) + ' ' : ''}${esc(pv.info.name)}</span>${open}</div><div class="pv-body">${blocks.length ? '' : '<p class="note">Nothing written on this page yet.</p>'}</div><p class="note">${refs} linked reference${refs === 1 ? '' : 's'}</p>`;
+    // drawn a part at a time: the first notes now, more each time it's scrolled near the end
+    const body = this.el.querySelector('.pv-body');
+    let k = 0;
+    const more = () => {
+      const end = Math.min(blocks.length, k + (k ? 150 : 60));
+      const html = blocks.slice(k, end).map(row).join('');
+      body.insertAdjacentHTML('beforeend', html);
+      if (html.includes(' data-ref="')) this.app?.blockRefs?.(body); // ((block references)): the note's words
+      k = end;
+    };
+    more();
+    body.onscroll = () => { if (k < blocks.length && body.scrollTop + body.clientHeight > body.scrollHeight - 400) more(); };
+    if (!touch) this.waiting?.(); // (laptop: it takes the mouse only once entered on purpose)
     this.el.hidden = false;
     place(this.el, a.getBoundingClientRect());
   }
-  hide() { this.el.hidden = true; }
+  hide() { this.el.hidden = true; this.seq = (this.seq || 0) + 1; this.stopWaiting?.(); }
 }
 
 export { nowTime };

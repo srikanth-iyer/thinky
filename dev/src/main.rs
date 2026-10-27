@@ -133,6 +133,9 @@ fn handle(sv: &Server, stream: TcpStream) {
                 let paths: Vec<String> = serde_json::from_value(args.get("paths").cloned().unwrap_or_default()).unwrap_or_default();
                 app.bin_pictures_at(&paths, now).map(|r| serde_json::to_value(r).unwrap_or_default())
             }
+            // the Windows app's shell answers this one (src-tauri links.rs: a link it was started
+            // with); the dev server never is
+            ("start_link", _, _) => Ok(serde_json::Value::Null),
             _ => dispatch(&mut state, cmd, args),
         }));
         drop(state);

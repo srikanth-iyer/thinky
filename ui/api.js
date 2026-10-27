@@ -13,6 +13,10 @@ export async function call(cmd, args = {}, opts = {}) {
 }
 
 export const isApp = !!T;
+
+/** Links that open the app right at a page or a note (outline_core::link reads them back). */
+export const pageLinkUrl = (name) => 'leanoutliner://page/' + encodeURIComponent(name.trim());
+export const noteLinkUrl = (id) => 'leanoutliner://note/' + encodeURIComponent(id.trim().toLowerCase());
 export const isAndroid = !!window.LeanAndroid;
 
 /** Listen to an app event (file changes, window closing). No-op under the dev server. */

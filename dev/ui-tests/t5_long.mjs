@@ -4,7 +4,8 @@ let big = '';
 for (let i = 0; i < 3000; i++) big += `${i % 5 ? '\t' : ''}- block ${i} with [[link ${i % 40}]] and **bold** text, #tag${i % 9}\n`;
 write('pages/Big page.md', big);
 let refs = '';
-for (let i = 0; i < 450; i++) refs += `- mention ${i} of [[card]] in a reference list\n`;
+// each with notes under it (shown under each reference since Build 28): 4 open, 8 deeper ones folded
+for (let i = 0; i < 450; i++) refs += `- mention ${i} of [[card]] in a reference list\n` + [0, 1, 2, 3].map((k) => `\t- note ${k} under mention ${i}\n\t\t- deeper a\n\t\t- deeper b\n`).join('');
 write('pages/Many refs.md', refs);
 const { browser, page, errors } = await open();
 await page.evaluate(() => window.dispatchEvent(new Event('focus')));
@@ -29,6 +30,7 @@ for (const [name, hash, title] of [['3,000 blocks', '#/page/Big%20page', 'Big pa
   const t = runs.reduce((a, b) => (b.first < a.first ? b : a));
   console.log(`  ${name}: first paint ${t.first.toFixed(0)} ms (of ${runs.map((x) => x.first.toFixed(0)).join(', ')}); ${t.blocks} blocks, ${t.refs} references drawn`);
   check(t.first < 400, `${name} shows within 400 ms`, t.first);
+  if (name === '450 references') check(t.refs >= 450 * 5 && t.refs < 450 * 5 + 50, 'then all 450 references are drawn, each with its 4 open notes (the folded ones only when opened)', t.refs);
 }
 // typing on the long page stays quick
 await page.evaluate(() => { location.hash = '#/page/Big%20page'; });

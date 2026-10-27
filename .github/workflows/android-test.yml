@@ -11,6 +11,11 @@ on:
 jobs:
   emulator:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[android-test]')
+    # a newer phone test of the same branch stops the older one (saves build minutes); set on the job,
+    # so a push that doesn't ask for a phone test (the job is skipped) never stops one that's running
+    concurrency:
+      group: android-test-${{ github.ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:

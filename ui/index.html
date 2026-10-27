@@ -12,12 +12,13 @@
 </head>
 <body>
   <div id="app">
+    <nav id="histbar" aria-label="Back, forward and tabs"></nav>
     <aside id="side" aria-label="Navigation"></aside>
     <div id="col">
-      <nav id="histbar" aria-label="Back and forward"></nav>
       <header id="topbar"></header>
       <div id="findbar" hidden></div>
-      <main id="main"><div class="view"><p class="note">Opening your notes…</p></div></main>
+      <main id="main" class="pane act"><div class="view"><p class="note">Opening your notes…</p></div></main>
+      <section id="main2" class="pane" aria-label="The page on the right" hidden></section>
     </div>
   </div>
   <div id="toolbar" hidden></div>
@@ -25,6 +26,7 @@
     <div class="search-box" role="dialog" aria-label="Search">
       <input type="search" placeholder="Search pages and notes" aria-label="Search">
       <ul class="results" role="listbox"></ul>
+      <div class="sb-foot"></div>
     </div>
   </div>
   <script type="module" src="app.js"></script>

@@ -1,7 +1,7 @@
 //! Speed check on a large made-up vault (930 pages + 600 journals, ~3.6 MB):
 //! `cargo run --release -p outline_core --example bench [dir]`. Prints readable timings and a
 //! last line `BENCH {json}` that CI compares with ci/baseline.json.
-use outline_core::app::{set_cache_dir, App};
+use outline_core::app::{set_cache_dir, set_data_dir, App};
 use std::time::Instant;
 
 fn ms(t: Instant) -> f64 {
@@ -51,7 +51,7 @@ fn main() {
     let mut app = App::open(&root).unwrap();
     let open_warm = ms(t);
     let t = Instant::now();
-    let pages = app.vault.all_pages().len();
+    let pages = app.pages().len(); // (All pages: with each file's times, as the app asks for it)
     let list = ms(t);
     let t = Instant::now();
     let refs = app.vault.linked_refs("Page 42").len();
@@ -61,11 +61,23 @@ fn main() {
     let long_page = ms(t);
     // the app sends answers to its window as JSON: a long page and the page list
     let t = Instant::now();
-    let json_bytes = serde_json::to_string(&pv).map(|j| j.len()).unwrap_or(0) + serde_json::to_string(&app.vault.all_pages()).map(|j| j.len()).unwrap_or(0);
+    let json_bytes = serde_json::to_string(&pv).map(|j| j.len()).unwrap_or(0) + serde_json::to_string(&app.pages()).map(|j| j.len()).unwrap_or(0);
     let json = ms(t);
+    // search (each keystroke in the Ctrl+K box): the first one also makes the notes' searchable copy
+    let t = Instant::now();
+    app.search("words");
+    let search_first = ms(t);
     let t = Instant::now();
     let hits = app.search("words").len();
     let search = ms(t);
+    // several words in any order, matching thousands of notes (all ranked)
+    let t = Instant::now();
+    let many = app.search("here words some").len();
+    let search_words = ms(t);
+    // a typo: no name has "pagge", so every name is checked letter by letter
+    let t = Instant::now();
+    let typo = app.search("pagge 42").len();
+    let search_typo = ms(t);
     let t = Instant::now();
     let (un, _) = app.vault.unlinked_refs("Page 42", 300);
     let unlinked = ms(t);
@@ -108,13 +120,32 @@ fn main() {
     let copied = plan.paths().len();
     let _ = plan.run(&base.join("data"));
     let safety = ms(t);
-    println!("{pages} pages; open {open_cold} ms (first time) / {open_warm} ms (with cache)");
+    // a start after 20 notes were changed elsewhere while the app was closed: their earlier texts go
+    // into a safety copy first, then the index cache is written (what start_safety_copy does before
+    // the background copy). Only on the sample vault: it changes notes.
+    let mut open_changed = 0.0;
+    if generated {
+        set_data_dir(base.join("data"));
+        app.persist();
+        drop(app);
+        for i in 0..20 {
+            let p = root.join("pages").join(format!("Page {i}.md"));
+            let text = std::fs::read_to_string(&p).unwrap();
+            std::fs::write(&p, format!("{text}- changed elsewhere\n")).unwrap();
+        }
+        let t = Instant::now();
+        let mut app = App::open(&root).unwrap();
+        app.persist();
+        open_changed = ms(t);
+    }
+    println!("{pages} pages; open {open_cold} ms (first time) / {open_warm} ms (with cache) / {open_changed} ms (20 notes changed elsewhere: their earlier texts kept first)");
     println!("all pages {list} ms · linked refs ({refs} pages) {linked} ms · long page ({} blocks) {long_page} ms", pv.doc.blocks.len());
-    println!("search ({hits} hits) {search} ms · unlinked refs ({} pages) {unlinked} ms · to-dos ({tasks}) {todos} ms", un.len());
+    println!("search: first {search_first} ms (makes the notes' searchable copy) · then ({hits} hits) {search} ms · 3 words in any order ({many} hits) {search_words} ms · with a typo ({typo} hits) {search_typo} ms");
+    println!("unlinked refs ({} pages) {unlinked} ms · to-dos ({tasks}) {todos} ms", un.len());
     println!("journals: any unlinked references for 5 days ({any} have some) {day_unlinked} ms");
     println!("save {save} ms · rescan {rescan} ms · JSON for the window ({json_bytes} bytes) {json} ms");
     println!("pictures nothing uses ({} of {}) {pictures} ms · safety copy ({copied} notes, in the background) {safety} ms", pics.unused.len(), pics.pictures);
     println!(
-        "BENCH {{\"open_cold_ms\":{open_cold},\"open_warm_ms\":{open_warm},\"pages_ms\":{list},\"linked_ms\":{linked},\"page_ms\":{long_page},\"search_ms\":{search},\"unlinked_ms\":{unlinked},\"todos_ms\":{todos},\"day_unlinked_ms\":{day_unlinked},\"save_ms\":{save},\"rescan_ms\":{rescan},\"json_ms\":{json},\"pictures_ms\":{pictures},\"safety_copy_ms\":{safety}}}"
+        "BENCH {{\"open_cold_ms\":{open_cold},\"open_warm_ms\":{open_warm},\"pages_ms\":{list},\"linked_ms\":{linked},\"page_ms\":{long_page},\"search_ms\":{search},\"search_first_ms\":{search_first},\"search_words_ms\":{search_words},\"search_typo_ms\":{search_typo},\"unlinked_ms\":{unlinked},\"todos_ms\":{todos},\"day_unlinked_ms\":{day_unlinked},\"save_ms\":{save},\"rescan_ms\":{rescan},\"json_ms\":{json},\"pictures_ms\":{pictures},\"safety_copy_ms\":{safety},\"open_changed_ms\":{open_changed}}}"
     );
 }

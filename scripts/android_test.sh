@@ -86,6 +86,33 @@ log "today's file after typing:"
 run adb shell "cat '/sdcard/vault/Diary/$TODAY.md'"
 
 ensure_app
+# 3b. the round "+" (phones): a new note at the end of today's journal, the keyboard up, typing goes in
+if [ -n "$SOCK" ]; then
+  run $CDP eval "(async () => { const a = window.leanApp; a.outlines.forEach((o) => { o.stopEdit(); o.clearSel(); }); document.activeElement?.blur(); a.updateToolbar(); a.go('journals'); await new Promise(r => setTimeout(r, 1500)); window.scrollTo(0, 0); return { plus: !!document.querySelector('#addnote:not([hidden])') }; })()"
+  sleep 2 # (the keyboard goes down meanwhile; to the top again after that, then where the + is, in page pixels)
+  PLUSAT=$($CDP eval "(async () => { window.scrollTo(0, 0); await new Promise(r => setTimeout(r, 500)); window.scrollTo(0, 0); const b = document.querySelector('#addnote'), r = b.getBoundingClientRect(); return { shown: getComputedStyle(b).display !== 'none', x: r.left + r.width / 2, y: r.top + r.height / 2, dpr: devicePixelRatio, top: scrollY }; })()" | tr -d '\r')
+  log "the + on the page: $PLUSAT"
+  sleep 1
+  # by its name; else by its place (the page's pixels, from the web view's place on the screen)
+  python3 scripts/ui_tap.py "add a note" --exact 2>&1 | tee -a $OUT/log.txt | grep -q tapped || python3 - "$PLUSAT" <<'PY' 2>&1 | tee -a $OUT/log.txt
+import json, re, subprocess, sys
+p = json.loads(sys.argv[1])
+subprocess.run(["adb", "shell", "uiautomator", "dump", "/sdcard/ui.xml"], capture_output=True)
+xml = subprocess.run(["adb", "shell", "cat", "/sdcard/ui.xml"], capture_output=True, text=True).stdout
+m = re.search(r'class="android\.webkit\.WebView"[^>]*bounds="\[(\d+),(\d+)\]', xml)
+x0, y0 = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+x, y = round(x0 + p["x"] * p["dpr"]), round(y0 + p["y"] * p["dpr"])
+subprocess.run(["adb", "shell", "input", "tap", str(x), str(y)])
+print(f"tapped the + by its place at {x},{y} (web view from {x0},{y0}; shown: {p['shown']})")
+PY
+  sleep 2
+  PLUSKB=$(adb shell dumpsys input_method | tr -d '\r' | grep -m1 -o -E 'mInputShown=[a-z]+')
+  log "keyboard after the +: $PLUSKB"
+  run adb shell input text "from%sthe%splus"
+  sleep 3; shot 05b-plus-button
+fi
+
+ensure_app
 # 4. a page with linked references, in another look
 if [ -n "$SOCK" ]; then
   run $CDP eval "(async () => { const a = window.leanApp; a.setSkin('grimoire'); a.go('page', 'Sourdough Bread'); await new Promise(r => setTimeout(r, 2000)); return { title: document.querySelector('h1.page-title')?.textContent, refs: document.querySelectorAll('.refgrp').length, blocks: document.querySelectorAll('.outline .blk').length }; })()"
@@ -265,6 +292,12 @@ if [ -n "$SOCK" ]; then
   log "after the Search shortcut: $SC_SEARCH"
   KEYBOARD=$(adb shell dumpsys input_method | tr -d '\r' | grep -m1 -o -E 'mInputShown=[a-z]+')
   log "keyboard: $KEYBOARD"
+  # 13d. a leanoutliner://page/… link (the app's "Copy link"), opened from elsewhere while the app is
+  #      open: Android hands it to the app (the manifest's VIEW filter), which shows that page
+  run adb shell "am start -W -a android.intent.action.VIEW -d 'leanoutliner://page/Sourdough%20Bread'"
+  sleep 4; connect; shot 20b-page-link
+  SC_LINK=$($CDP eval "decodeURIComponent(location.hash)" | tr -d '\r')
+  log "after the page link: $SC_LINK"
 fi
 # 13c. "Add note": the pop-up for a new note (as from the widget's +); Back twice closes keyboard and pop-up
 shortcut "Add note"
@@ -310,6 +343,7 @@ result "the app didn't crash" "! adb logcat -b crash -d | grep -q '$PKG'"
 result "nothing in the app's problems log" "! adb shell \"run-as $PKG sh -c 'cat cache/problems.log 2>/dev/null'\" | grep -v 'update (Android)' | grep -q ."
 result "choosing the folder opened the notes" "grep -q '\"hash\": \"#/journals\"' $OUT/log.txt"
 result "typing on the phone was saved" "dev '/sdcard/vault/Diary/$TODAY.md' | grep -q 'typed on android'"
+result "the + button adds a note to today, the keyboard up, and what's typed is saved" "[ '$PLUSKB' = 'mInputShown=true' ] && dev '/sdcard/vault/Diary/$TODAY.md' | grep -q '^- from the plus'"
 result "a page with linked references opened" "grep -q '\"title\": \"Sourdough Bread\"' $OUT/log.txt"
 result "text shared from another app was added" "{ dev '/sdcard/vault/Diary/$TODAY.md'; dev '/sdcard/vault/pages/quick capture.md'; } | grep -q 'Shared from another app'"
 result "a shared picture was saved and linked" "adb shell ls /sdcard/vault/assets | grep -q . && { dev '/sdcard/vault/Diary/$TODAY.md'; dev '/sdcard/vault/pages/quick capture.md'; } | grep -q 'assets/'"
@@ -337,6 +371,7 @@ result "pressing and holding the app icon shows them" "menu_shown"
 result "the Today shortcut opens today's journal page (app open)" "[ '$SC_TODAY' = '\"#/page/$TODAY\"' ]"
 result "the Search shortcut starts the app with the search box open" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if d[\"open\"] and d[\"focused\"] else 1)' '$SC_SEARCH'"
 result "the keyboard comes up for the search" "[ '$KEYBOARD' = 'mInputShown=true' ]"
+result "a leanoutliner://page/… link opens that page in the open app" "[ '$SC_LINK' = '\"#/page/Sourdough Bread\"' ]"
 result "the Add note shortcut opens the pop-up" "echo '$SC_ADD' | grep -q QuickCaptureActivity"
 result "the Add note tile is offered in Quick Settings" "echo '$QS' | grep -q AddNoteTile"
 result "tapping the tile opens the pop-up and closes the shade" "echo '$TILE_TOP' | grep -q QuickCaptureActivity && echo '$TILE_FOCUS' | grep -q QuickCaptureActivity"

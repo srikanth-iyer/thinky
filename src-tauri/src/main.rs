@@ -32,6 +32,23 @@ fn open_box(prefill: Option<(String, String)>) {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let arg = |i: usize| args.get(i).cloned().unwrap_or_default();
+    // `--hotkey`: the shortcut key's helper (hotkey.rs), started with Windows: it waits for the
+    // capture box's key and starts `--capture-box` when it's pressed. First, before anything of
+    // Tauri or the web engine: it stays running, so it must stay small.
+    if arg(1) == "--hotkey" {
+        if let Some(d) = cache_dir() {
+            outline_core::app::set_cache_dir(d);
+        }
+        std::process::exit(lean_outliner_lib::hotkey::helper_main());
+    }
+    // `--hotkey-selftest <folder>`: CI's check of the helper, in a fresh folder of its own inside
+    // <folder> (hotkey/selftest.rs); the exit code counts the failures.
+    if arg(1) == "--hotkey-selftest" {
+        if arg(2).is_empty() {
+            std::process::exit(2);
+        }
+        std::process::exit(lean_outliner_lib::hotkey::selftest(std::path::Path::new(&arg(2))));
+    }
     // `--capture-box-selftest <folder>`: CI's check of the native box, with a made-up notes folder
     // and cache inside <folder> (see capture_box/selftest.rs); the exit code counts the failures.
     if arg(1) == "--capture-box-selftest" {
@@ -69,7 +86,8 @@ fn main() {
         }
         return;
     }
-    // `--capture-box`: the small window (opened by the Start-menu shortcut key).
+    // `--capture-box`: the small window (opened by the shortcut key's helper, or the portable
+    // copy's Start-menu shortcut key).
     if arg(1) == "--capture-box" {
         if let Some(d) = cache_dir() {
             outline_core::app::set_cache_dir(d);
@@ -77,15 +95,27 @@ fn main() {
         open_box(None);
         return;
     }
-    // `leanoutliner://capture?…` from the browser bookmarklet.
-    if let Some((text, url, boxed)) = lean_outliner_lib::win::parse_link(&arg(1)) {
-        if boxed || capture(&text, &url).is_err() {
-            if let Some(d) = cache_dir() {
-                outline_core::app::set_cache_dir(d);
+    use outline_core::link::Link;
+    match outline_core::link::parse(&arg(1)) {
+        // `leanoutliner://capture?…` from the browser bookmarklet.
+        Some(Link::Capture { text, url, boxed }) => {
+            if boxed || capture(&text, &url).is_err() {
+                if let Some(d) = cache_dir() {
+                    outline_core::app::set_cache_dir(d);
+                }
+                open_box(Some((text, url)));
             }
-            open_box(Some((text, url)));
+            return;
         }
-        return;
+        // `leanoutliner://page/<name>`, `…/note/<id>`: to the open app if there is one (links.rs),
+        // else the app starts and shows it
+        Some(_) => {
+            if lean_outliner_lib::links::send_to_running(&arg(1)) {
+                return;
+            }
+            lean_outliner_lib::links::set_start(&arg(1));
+        }
+        None => {}
     }
     lean_outliner_lib::run()
 }

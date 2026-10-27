@@ -14,6 +14,10 @@ pub struct Block {
     pub refs: Vec<String>,
     /// To-do details when the block starts with a marker (TODO, DONE, …).
     pub task: Option<crate::task::Task>,
+    /// Written as Logseq writes notes: a `- ` bullet. Not a plain paragraph before the first bullet
+    /// or a `* `/`+ ` bullet (Obsidian…), which the editor writes as `- ` once that note changes.
+    #[serde(skip)]
+    pub dash: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -45,7 +49,12 @@ pub fn parse_page(content: &str, comma_props: &[String]) -> ParsedPage {
     let lines = crate::doc::block_lines(&doc);
     let mut props_only_first = false;
     for (n, db) in doc.blocks.iter().enumerate() {
-        let mut b = Block { line: lines[n], depth: db.depth, text: db.text.clone(), props: vec![], refs: vec![], task: None };
+        let dash = !db.plain
+            && db.raw.as_deref().is_some_and(|r| {
+                let l = r.trim_start_matches([' ', '\t']);
+                l.starts_with("- ") || l == "-" || l.starts_with("-\n") || l.starts_with("-\r")
+            });
+        let mut b = Block { line: lines[n], depth: db.depth, text: db.text.clone(), props: vec![], refs: vec![], task: None, dash };
         let mut in_fence = false;
         let mut kept: Vec<&str> = vec![];
         for l in db.text.split('\n') {
@@ -99,7 +108,7 @@ pub fn parse_page(content: &str, comma_props: &[String]) -> ParsedPage {
 
 /// Minimal YAML front matter reader: `key: value`, `key: [a, b]`, and `key:` followed by
 /// `- item` lines. Values become comma-separated text, like Logseq property values.
-fn yaml_props(lines: &[&str]) -> Vec<(String, String)> {
+pub(crate) fn yaml_props(lines: &[&str]) -> Vec<(String, String)> {
     fn unquote(v: &str) -> &str {
         let v = v.trim();
         for q in ['"', '\''] {

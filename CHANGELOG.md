@@ -5,6 +5,18 @@ each one the code exactly as it was released at its last build. Later releases a
 the top. (Until Build 32 the app was called Lean Outliner; its downloads and hidden id keep that
 name, so updates install over older builds.)
 
+## Milestone 4 — Builds 27 to 31 (October 27, 2026)
+
+- Tabs, and two pages side by side on the laptop.
+- Roomier journal days, Go to date, Undo across days.
+- Linked references show the notes under them, as in Logseq.
+- History for every page: its earlier versions, and one tap to put one back.
+- A menu on each note's dot, and moving notes by dragging them, even to other pages; files dropped from Explorer.
+- A shortcut key that opens the Add to journal box at once.
+- The Logseq feel: Plain looks like Logseq, smarter search with recent searches, a command list (Ctrl+Shift+P), block references, typing pairs, formatted paste, Copy page as text, a sliding sidebar, drag handles, wide mode and folding.
+- All pages as a table, renaming by the title, merging pages, `leanoutliner://` links to pages and notes.
+- The Inter font bundled for the Plain looks.
+
 ## Milestone 3 — Builds 23 to 26 (October 26, 2026)
 
 - Reading and writing: coloured note boxes and quotes, page icons, easier links, find and replace, press and hold to preview a link, pinned parent notes, swipes on the phone.

@@ -1,6 +1,7 @@
 //! Windows-only helpers for capturing notes from anywhere: the `leanoutliner://` link
-//! (for the browser bookmarklet), the clipboard, the local time, and a Start-menu shortcut
-//! with a key combination that opens the capture box. Nothing here runs in the background.
+//! (for the browser bookmarklet), the clipboard, the local time, and the Start-menu shortcut
+//! with a key combination that opens the capture box (the portable copy's way; the installed
+//! copy's key is answered by its helper, hotkey.rs).
 
 #[cfg(windows)]
 mod imp {
@@ -116,25 +117,26 @@ mod imp {
         set(&format!("{KEY}\\shell\\open\\command"), "", &cmd);
     }
 
-    /// Start-menu shortcut that opens the capture box, with a key combination such as
-    /// "CTRL+ALT+N" (Windows' own shortcut keys: nothing of ours runs in the background).
-    /// An empty key removes the shortcut.
-    pub fn set_capture_shortcut(hotkey: &str) -> Result<(), String> {
+    /// The Start-menu shortcut "Lean Outliner capture": the portable copy's shortcut key, and the
+    /// installed copy's older one (hotkey.rs moves its key to the helper and removes it).
+    pub fn capture_shortcut_path() -> Option<std::path::PathBuf> {
+        let appdata = std::env::var_os("APPDATA")?;
+        Some(std::path::PathBuf::from(appdata).join(r"Microsoft\Windows\Start Menu\Programs\Lean Outliner capture.lnk"))
+    }
+
+    /// A Windows shortcut at `lnk` that starts `target args`, opened by the key combination
+    /// `hotkey` (Windows' words, "CTRL+ALT+N"; empty: none), made with WScript.Shell (PowerShell).
+    pub fn make_shortcut(lnk: &std::path::Path, target: &std::path::Path, args: &str, hotkey: &str, what: &str) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
-        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
-        let lnk = format!("{appdata}\\Microsoft\\Windows\\Start Menu\\Programs\\Lean Outliner capture.lnk");
         let q = |s: &str| s.replace('\'', "''");
-        let script = if hotkey.is_empty() {
-            format!("Remove-Item -LiteralPath '{}' -ErrorAction SilentlyContinue", q(&lnk))
-        } else {
-            format!(
-                "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}');$s.TargetPath='{}';$s.Arguments='--capture-box';$s.Hotkey='{}';$s.Description='Add a note to today''s journal';$s.Save()",
-                q(&lnk),
-                q(&exe.display().to_string()),
-                q(hotkey)
-            )
-        };
+        let script = format!(
+            "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}');$s.TargetPath='{}';$s.Arguments='{}';$s.Hotkey='{}';$s.Description='{}';$s.Save()",
+            q(&lnk.display().to_string()),
+            q(&target.display().to_string()),
+            q(args),
+            q(hotkey),
+            q(what)
+        );
         let out = std::process::Command::new("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command", &script])
             .creation_flags(0x0800_0000) // no console window
@@ -145,6 +147,21 @@ mod imp {
         } else {
             Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
         }
+    }
+
+    /// The portable copy's shortcut key: a Start-menu shortcut that opens the capture box, with a
+    /// key combination such as "CTRL+ALT+N" (Windows' own shortcut keys, which can take a few
+    /// seconds; the installed copy uses its helper instead, hotkey.rs). An empty key removes it.
+    pub fn set_capture_shortcut(hotkey: &str) -> Result<(), String> {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let lnk = capture_shortcut_path().ok_or("Windows didn't say where the Start menu is.")?;
+        if hotkey.is_empty() {
+            return match std::fs::remove_file(&lnk) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+                _ => Ok(()),
+            };
+        }
+        make_shortcut(&lnk, &exe, "--capture-box", hotkey, "Add a note to today's journal")
     }
 }
 
@@ -159,6 +176,9 @@ mod imp {
         String::new()
     }
     pub fn register_link_handler() {}
+    pub fn capture_shortcut_path() -> Option<std::path::PathBuf> {
+        None
+    }
     pub fn set_capture_shortcut(_hotkey: &str) -> Result<(), String> {
         Err("Shortcut keys are only for Windows.".into())
     }
@@ -166,46 +186,4 @@ mod imp {
 
 pub use imp::*;
 
-/// Decode `%xx` and `+` in a link's query value.
-fn unescape(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        match b[i] {
-            b'+' => out.push(b' '),
-            b'%' if i + 2 < b.len() => {
-                match std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
-                    Some(v) => {
-                        out.push(v);
-                        i += 2;
-                    }
-                    None => out.push(b'%'),
-                }
-            }
-            c => out.push(c),
-        }
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-/// `leanoutliner://capture?text=…&url=…&title=…` → (text, url, open the box?)
-pub fn parse_link(link: &str) -> Option<(String, String, bool)> {
-    let rest = link.strip_prefix("leanoutliner:")?.trim_start_matches('/');
-    let query = rest.split_once('?').map_or("", |(_, q)| q);
-    let (mut text, mut url, mut title, mut boxed) = (String::new(), String::new(), String::new(), false);
-    for pair in query.split('&') {
-        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-        match k {
-            "text" => text = unescape(v),
-            "url" => url = unescape(v),
-            "title" => title = unescape(v),
-            "box" => boxed = v != "0",
-            _ => {}
-        }
-    }
-    // a selection is the note; without one, the page title is
-    let text = if text.trim().is_empty() { title } else { text };
-    Some((text, url, boxed))
-}
+// (`leanoutliner://` links are read by outline_core::link, used by main.rs)

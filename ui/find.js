@@ -1,4 +1,5 @@
-// Find and replace on the page that's open (Ctrl+F, Ctrl+H; on phones: the page's "…" menu).
+// Find and replace on the page that's open (Ctrl+F, Ctrl+H; on phones: the page's "…" menu); with two
+// pages side by side, on the active one.
 // Looks through the notes' own text (what the file holds, so replacing changes exactly that),
 // highlights what it finds on screen without touching the page (CSS highlights) and replaces
 // through the editor, so Undo works and saving merges with changes made elsewhere as usual.
@@ -14,7 +15,8 @@ const hiddenKey = (k) => HIDDEN_PROPS.has(k) || k.startsWith('card-') || k.start
 /** The parts of a note's text that aren't shown as typed (so find never matches, and Replace never
  *  changes, what can't be seen): hidden properties (id::, collapsed::, heading::…, on any line),
  *  SCHEDULED/DEADLINE lines (shown as date chips), :LOGBOOK: drawers, #+BEGIN_/#+END_ lines, the ">"
- *  and [!KIND] of quotes, link addresses, block references and {{macros}}. [from, to) pairs. */
+ *  and [!KIND] of quotes, link addresses, block references and {{macros}} (a {{cloze …}}'s words show).
+ *  [from, to) pairs. */
 function hiddenSpans(text) {
   const out = [];
   let pos = 0, drawer = false, fence = false, math = false, first = true, box = null;
@@ -43,7 +45,10 @@ function hiddenSpans(text) {
     else {
       const q = l.match(/^\s*>\s?(\[![\w-]+\][+-]?\s*)?/);
       if (q) out.push([pos, pos + q[0].length]);
-      for (const m of l.matchAll(/!\[[^\]\n]*\]\([^)\n]*\)|\]\([^)\n]*\)|\(\([0-9a-f-]{36}\)\)|\{\{[^}]*\}\}/g)) out.push([pos + m.index, pos + m.index + m[0].length]);
+      for (const m of l.matchAll(/!\[[^\]\n]*\]\([^)\n]*\)|\]\([^)\n]*\)|\(\([0-9a-fA-F-]{36}\)\)|\{\{[^}]*\}\}|<\/?(?:ins|u)>/gi)) { // (<ins>: underline's tags)
+        const a = pos + m.index, b = a + m[0].length, cz = m[0].match(/^\{\{cloze\s+/); // ({{cloze words}}: the words show)
+        if (cz) out.push([a, a + cz[0].length], [b - 2, b]); else out.push([a, b]);
+      }
       for (const f of findMath(l)) out.push([pos + f.start, pos + f.end]); // $…$ formulas (render.js inline)
     }
     pos = end + 1;
@@ -112,7 +117,7 @@ export class Find {
   /** Open the bar (or go back to it), starting with the words selected on the page, if any. */
   open(replace = false) {
     if (!this.q) this.build();
-    const o = this.app.outlines.find((x) => x.ta && x.cur !== null);
+    const o = this.app.pane.outlines.find((x) => x.ta && x.cur !== null);
     let sel = o && o.ta.selectionStart !== o.ta.selectionEnd ? o.ta.value.slice(o.ta.selectionStart, o.ta.selectionEnd) : String(window.getSelection() || '');
     if (sel.includes('\n') || sel.length > 120) sel = '';
     o?.stopEdit(); // what was being edited shows as text again, so it can be highlighted
@@ -149,7 +154,7 @@ export class Find {
     const out = [];
     if (this.q?.value) {
       const re = this.re();
-      this.app.outlines.forEach((o, n) => {
+      this.app.pane.outlines.forEach((o, n) => {
         for (let i = o.start; i < o.end; i++) {
           const text = o.textOf(i);
           re.lastIndex = 0;
@@ -180,7 +185,7 @@ export class Find {
   /** Where the notes show from on screen: below the top bar, this bar and any pinned parents. */
   viewTop() {
     let top = Math.max(this.app.scroller().top, this.el.hidden ? 0 : this.el.getBoundingClientRect().bottom);
-    for (const o of this.app.outlines) if (o.pins && !o.pins.hidden) top = Math.max(top, o.pins.firstChild.getBoundingClientRect().bottom); // the rows (.pins itself is 0 px tall)
+    for (const o of this.app.pane.outlines) if (o.pins && !o.pins.hidden) top = Math.max(top, o.pins.firstChild.getBoundingClientRect().bottom); // the rows (.pins itself is 0 px tall)
     return top;
   }
 
@@ -202,6 +207,7 @@ export class Find {
     this.unreveal();
     const m = this.matches[k];
     if (m) {
+      this.app.unfoldFor?.(m.o); // (in a day folded in the Journals list: it opens)
       m.o.ensureDrawn(m.i);
       const div = m.o.blockDiv(m.i);
       if (div?.hidden) { div.hidden = false; this.shown.push([m.o, m.i]); } // inside a folded note
@@ -342,6 +348,7 @@ export class Find {
     for (const [o, step] of list) {
       if (!this.app.outlines.includes(o) || o.undoStack.at(-1) !== step) continue; // gone, or edited since
       o.undo();
+      this.app.unstep(o);
       n++;
     }
     if (!n && list.length) this.app.toast('That page was changed since, so use Undo in the page itself.', 3500);

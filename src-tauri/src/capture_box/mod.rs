@@ -10,7 +10,7 @@
 //! Re-entrancy: Windows calls back into `wndproc` from inside many calls (moving a window, setting
 //! text, focus). The box's state is borrowed only briefly and never across such a call.
 
-mod ffi;
+pub(crate) mod ffi;
 mod files;
 mod selftest;
 pub use selftest::selftest;

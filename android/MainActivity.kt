@@ -4,7 +4,8 @@
 // settings, printing, the look's colours for the status and navigation bars, leaving
 // the app (Android's Back at the start; the app handles Back itself, see App.onBack), and
 // one-click updates (update / installUpdate, with UpdateReceiver at the end of this file);
-// and the long-press shortcuts on the app icon (Today, Add note, Search).
+// and the long-press shortcuts on the app icon (Today, Add note, Search); leanoutliner://page/… and
+// …/note/… links (the manifest's VIEW filter, scripts/android_overlay.py) open the app at that page.
 
 import android.annotation.SuppressLint
 import android.annotation.TargetApi
@@ -87,6 +88,12 @@ class MainActivity : TauriActivity() {
   }
 
   private fun takeIntent(i: Intent?): Boolean {
+    // a leanoutliner://page/… or …/note/… link (the manifest's VIEW filter): the page opens it
+    // (App.openShortcut → App.openLink), kept the same way as a shortcut's pick
+    if (i != null && i.action == Intent.ACTION_VIEW && i.data?.scheme.equals("leanoutliner", ignoreCase = true)) {
+      shortcut.set(i.dataString ?: return false)
+      return true
+    }
     val kind = i?.getStringExtra(OPEN) ?: return false
     shortcut.set(kind)
     return true

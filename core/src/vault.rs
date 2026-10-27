@@ -2,15 +2,20 @@
 
 use crate::config::Config;
 use crate::date::Date;
-use crate::parse::{dedup_ci, parse_page, ParsedPage};
+use crate::parse::{dedup_ci, parse_page, Block, ParsedPage};
 use crate::task::Task;
 use crate::key;
 use serde::Serialize;
-use std::collections::HashMap;
+use crate::search;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
+use std::sync::OnceLock;
 
 /// Marks a reference made by page-level properties rather than a block.
 const PAGE_LEVEL: usize = usize::MAX;
+
+/// At most this many sub-notes come with a linked reference (the rest: "… N more" in the app).
+pub const REF_KIDS: usize = 50;
 
 
 #[derive(Debug, Clone)]
@@ -19,6 +24,15 @@ struct Page {
     path: String,
     journal: Option<Date>,
     parsed: ParsedPage,
+    /// Its notes' words as search reads them (`search::fold_note`), made by the first search after
+    /// the file was read (so opening the folder never waits for it).
+    folded: OnceLock<Vec<Box<str>>>,
+}
+
+impl Page {
+    fn folded(&self) -> &[Box<str>] {
+        self.folded.get_or_init(|| self.parsed.blocks.iter().map(|b| search::fold_note(&b.text)).collect())
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -39,6 +53,93 @@ pub struct RefHit {
     pub depth: usize,
     pub text: String,
     pub props: Vec<(String, String)>,
+    /// Linked references only (`with_context`): the notes it sits under, outermost first, each with
+    /// its first line only (the faint path above it)…
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub parents: Vec<RefNote>,
+    /// …its sub-notes, in page order (at most `REF_KIDS`)…
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub kids: Vec<RefNote>,
+    /// …and how many sub-notes were left out.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub more: usize,
+}
+
+/// A note of the page next to a linked reference (one it sits under, or one of its sub-notes).
+#[derive(Debug, Clone, Serialize)]
+pub struct RefNote {
+    pub line: usize,
+    /// As in its page (0 = not indented).
+    pub depth: usize,
+    pub text: String,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
+}
+
+impl RefHit {
+    /// A note on its own.
+    fn of(b: &Block) -> Self {
+        RefHit { line: Some(b.line), depth: b.depth, text: b.text.clone(), props: b.props.clone(), parents: vec![], kids: vec![], more: 0 }
+    }
+
+    /// A page's own properties.
+    fn page(props: &[(String, String)]) -> Self {
+        RefHit { line: None, depth: 0, text: String::new(), props: props.to_vec(), parents: vec![], kids: vec![], more: 0 }
+    }
+
+    /// Note `i` of a page with the notes around it, as Logseq shows a linked reference: the notes it
+    /// sits under, and its sub-notes. More than `REF_KIDS` sub-notes: the levels nearest it come first,
+    /// whole (so the levels that start open are complete), then the first ones of the next level.
+    fn with_context(blocks: &[Block], i: usize) -> Self {
+        let b = &blocks[i];
+        let mut hit = RefHit::of(b);
+        let mut d = b.depth;
+        for p in blocks[..i].iter().rev() {
+            if d == 0 {
+                break;
+            }
+            if p.depth < d {
+                d = p.depth;
+                hit.parents.push(RefNote { line: p.line, depth: p.depth, text: p.text.lines().next().unwrap_or("").to_string() });
+            }
+        }
+        hit.parents.reverse();
+        let end = blocks[i + 1..].iter().position(|c| c.depth <= b.depth).map_or(blocks.len(), |n| i + 1 + n);
+        let sub = &blocks[i + 1..end];
+        // which ones: every sub-note down to depth `whole`, and the first `room` at depth `cut`
+        let (mut whole, mut cut, mut room) = (usize::MAX, usize::MAX, 0);
+        if sub.len() > REF_KIDS {
+            let mut per: BTreeMap<usize, usize> = BTreeMap::new(); // how many at each depth
+            for c in sub {
+                *per.entry(c.depth).or_default() += 1;
+            }
+            let mut left = REF_KIDS;
+            whole = b.depth;
+            for (depth, n) in per {
+                if n > left {
+                    (cut, room) = (depth, left);
+                    break;
+                }
+                left -= n;
+                whole = depth;
+            }
+        }
+        for c in sub {
+            if c.depth == cut {
+                if room == 0 {
+                    continue;
+                }
+                room -= 1;
+            } else if c.depth > whole {
+                continue;
+            }
+            hit.kids.push(RefNote { line: c.line, depth: c.depth, text: c.text.clone() });
+        }
+        hit.more = sub.len() - hit.kids.len();
+        hit
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -72,6 +173,14 @@ pub struct PageEntry {
     /// The page's `icon::` (an emoji, shown before its name), if it has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    /// Its file (`App::pages` reads its times by it).
+    #[serde(skip)]
+    pub path: Option<String>,
+    /// When its file last changed and when it was made, in seconds since 1970 (`App::pages`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changed: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<u64>,
 }
 
 /// A page's `icon::` property: short (an emoji or two), else none.
@@ -87,11 +196,31 @@ pub struct TemplateInfo {
     pub line: usize,
 }
 
+/// One result of `Vault::search`: a page (`line` None) or a note in it.
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchHit {
     pub page: String,
     pub line: Option<usize>,
-    pub snippet: String,
+    /// A page found by one of its aliases (`alias::`): that name (the marks are in it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+    /// A page: where the search's words are in its name (or alias), as (start, end) in chars.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub marks: Vec<(usize, usize)>,
+    /// A note: its text (`search::note_excerpt`: all of it, or the lines around the words).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub text: String,
+}
+
+/// At most this many pages come first in a search's results; notes fill the rest.
+pub const SEARCH_PAGES: usize = 10;
+/// A note, for block references (`((id))`): its page, the file line of its bullet and its words
+/// (property lines included, as the editor has them).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct BlockHit {
+    pub page: String,
+    pub line: usize,
+    pub text: String,
 }
 
 #[derive(Default)]
@@ -226,7 +355,7 @@ impl Vault {
             }
             self.display.insert(k.clone(), name.clone());
             self.by_path.insert(rel.clone(), k.clone());
-            self.pages.insert(k, Page { name, path: rel, journal, parsed });
+            self.pages.insert(k, Page { name, path: rel, journal, parsed, folded: OnceLock::new() });
         }
         // the name this file had before may be free now
         if let Some(ok) = old_key {
@@ -328,6 +457,12 @@ impl Vault {
         (2..).map(|k| format!("{stem} ({k}).md")).find(|r| !taken(r)).unwrap_or_default()
     }
 
+    /// Is the page name (any capitals) also claimed by another file than the one that owns it?
+    pub fn has_duplicate(&self, name: &str) -> bool {
+        let k = crate::key(name);
+        self.shadowed.values().any(|(sk, _)| *sk == k)
+    }
+
     /// Page names claimed by more than one file: (name, [owning file, other files…]).
     pub fn duplicates(&self) -> Vec<(String, Vec<String>)> {
         let mut by_key: HashMap<&str, Vec<String>> = HashMap::new();
@@ -415,8 +550,10 @@ impl Vault {
         v
     }
 
-    /// Linked references: every block (or page-property line) in other pages that mentions this page.
-    /// Journals newest first, then other pages alphabetically.
+    /// Linked references: every block (or page-property line) in other pages that mentions this page,
+    /// with the notes around it (`RefHit::with_context`). A note that shows among the sub-notes of
+    /// another one above it isn't listed again, as in Logseq. Journals newest first, then other
+    /// pages alphabetically.
     pub fn linked_refs(&self, name: &str) -> Vec<RefGroup> {
         let k = self.resolve(name);
         let mut by_src: HashMap<&str, Vec<usize>> = HashMap::new();
@@ -435,15 +572,19 @@ impl Vault {
                 let p = self.pages.get(src)?;
                 idxs.sort();
                 idxs.dedup();
+                let mut shown: HashSet<usize> = HashSet::new(); // lines of the sub-notes listed so far
                 let hits = idxs
                     .into_iter()
                     .filter_map(|i| {
                         if i == PAGE_LEVEL {
-                            Some(RefHit { line: None, depth: 0, text: String::new(), props: p.parsed.props.clone() })
-                        } else {
-                            let b = p.parsed.blocks.get(i)?;
-                            Some(RefHit { line: Some(b.line), depth: b.depth, text: b.text.clone(), props: b.props.clone() })
+                            return Some(RefHit::page(&p.parsed.props));
                         }
+                        if shown.contains(&p.parsed.blocks.get(i)?.line) {
+                            return None;
+                        }
+                        let hit = RefHit::with_context(&p.parsed.blocks, i);
+                        shown.extend(hit.kids.iter().map(|k| k.line));
+                        Some(hit)
                     })
                     .collect::<Vec<_>>();
                 if hits.is_empty() {
@@ -485,11 +626,11 @@ impl Vault {
         for p in self.pages.values() {
             let mut hits = vec![];
             if matches(&p.parsed.props) {
-                hits.push(RefHit { line: None, depth: 0, text: String::new(), props: p.parsed.props.clone() });
+                hits.push(RefHit::page(&p.parsed.props));
             }
             for b in &p.parsed.blocks {
                 if matches(&b.props) {
-                    hits.push(RefHit { line: Some(b.line), depth: b.depth, text: b.text.clone(), props: b.props.clone() });
+                    hits.push(RefHit::of(b));
                 }
             }
             if !hits.is_empty() {
@@ -500,28 +641,140 @@ impl Vault {
         groups
     }
 
-    /// Page names (existing files first by match quality), then text matches inside blocks.
+    /// Search (the Ctrl+K box; rules in `search.rs`): pages whose name or alias has every word, in
+    /// any order (a letter or two off forgiven in longer words), best first, at most `SEARCH_PAGES`;
+    /// then notes with every word, the words together first, newer journal days before older ones,
+    /// then other pages A–Z, up to `limit` results in all.
     pub fn search(&self, q: &str, limit: usize) -> Vec<SearchHit> {
-        let ql = q.trim().to_lowercase();
-        if ql.is_empty() {
+        let words = search::query_words(q);
+        if words.is_empty() || limit == 0 {
             return vec![];
         }
-        let mut names: Vec<(u8, &str)> = self
-            .display
-            .iter()
-            .filter(|(k, _)| k.contains(&ql))
-            .map(|(k, d)| (if k == &ql { 0 } else if k.starts_with(&ql) { 1 } else { 2 }, d.as_str()))
-            .collect();
-        names.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.len().cmp(&b.1.len())));
-        let mut out: Vec<SearchHit> =
-            names.into_iter().take(limit).map(|(_, d)| SearchHit { page: d.to_string(), line: None, snippet: String::new() }).collect();
-        'outer: for p in self.pages.values() {
-            for b in &p.parsed.blocks {
-                if out.len() >= limit {
-                    break 'outer;
+        let phrase = words.join(" ");
+        // pages: each by its name or, if better, an alias; then names only linked to so far
+        type Found<'a> = (search::NameRank, bool, &'a str, Option<&'a str>, Vec<(usize, usize)>);
+        let mut found: Vec<Found> = vec![];
+        for p in self.pages.values() {
+            let mut best = search::match_name(&p.name, &words, &phrase).map(|(r, m)| (r, None, m));
+            for a in &p.parsed.aliases {
+                if let Some((r, m)) = search::match_name(a, &words, &phrase) {
+                    if best.as_ref().map_or(true, |b| r < b.0) {
+                        best = Some((r, Some(a.as_str()), m));
+                    }
                 }
-                if b.text.to_lowercase().contains(&ql) {
-                    out.push(SearchHit { page: p.name.clone(), line: Some(b.line), snippet: snippet(&b.text, &ql) });
+            }
+            if let Some((r, a, m)) = best {
+                found.push((r, true, &p.name, a, m));
+            }
+        }
+        for (k, d) in &self.display {
+            if self.pages.contains_key(k) || self.alias.contains_key(k) {
+                continue;
+            }
+            if let Some((r, m)) = search::match_name(d, &words, &phrase) {
+                found.push((r, false, d, None, m));
+            }
+        }
+        let len = |f: &Found| f.3.unwrap_or(f.2).chars().count();
+        found.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)).then(len(a).cmp(&len(b))).then_with(|| a.2.to_lowercase().cmp(&b.2.to_lowercase())));
+        let mut out: Vec<SearchHit> = found
+            .into_iter()
+            .take(SEARCH_PAGES.min(limit))
+            .map(|(_, _, name, alias, marks)| SearchHit { page: name.to_string(), line: None, alias: alias.map(str::to_string), marks, text: String::new() })
+            .collect();
+        // notes
+        let room = limit - out.len();
+        if room == 0 {
+            return out;
+        }
+        // (score, journal day, the page's name in small letters, note, page)
+        let mut notes: Vec<(u32, Option<Date>, &str, usize, &Page)> = vec![];
+        for (k, p) in &self.pages {
+            for (i, f) in p.folded().iter().enumerate() {
+                if let Some(score) = search::note_score(f, &words, &phrase) {
+                    notes.push((score, p.journal, k, i, p));
+                }
+            }
+        }
+        type Note<'a> = (u32, Option<Date>, &'a str, usize, &'a Page);
+        let order = |a: &Note, b: &Note| b.0.cmp(&a.0).then(b.1.cmp(&a.1)).then(a.2.cmp(b.2)).then(a.3.cmp(&b.3));
+        if notes.len() > room {
+            notes.select_nth_unstable_by(room - 1, order);
+            notes.truncate(room);
+        }
+        notes.sort_by(order);
+        out.extend(notes.into_iter().map(|(_, _, _, i, p)| {
+            let b = &p.parsed.blocks[i];
+            SearchHit { page: p.name.clone(), line: Some(b.line), alias: None, marks: vec![], text: search::note_excerpt(&b.text, &words) }
+        }));
+        out
+    }
+
+    /// Notes whose words (not their property lines) hold every word of q, any capitals, to pick one
+    /// for a block reference: the ones starting with q first, then the shorter ones; at most `limit`.
+    /// Only `- ` notes: giving a plain paragraph or a `* ` bullet its id:: would rewrite it (and the
+    /// paragraphs after it) as `- ` bullets, in a file he isn't looking at.
+    pub fn search_blocks(&self, q: &str, limit: usize) -> Vec<BlockHit> {
+        let words: Vec<String> = q.split_whitespace().map(str::to_lowercase).collect();
+        if words.is_empty() {
+            return vec![];
+        }
+        let ql = words.join(" ");
+        let mut found: Vec<(u8, usize, BlockHit)> = vec![];
+        for p in self.pages.values() {
+            for b in p.parsed.blocks.iter().filter(|b| b.dash) {
+                let shown: String = b
+                    .text
+                    .lines()
+                    .enumerate()
+                    .filter(|(k, l)| *k == 0 || crate::parse::property(l.trim()).is_none())
+                    .map(|(_, l)| l)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+                    .to_lowercase();
+                if !words.iter().all(|w| shown.contains(w.as_str())) {
+                    continue;
+                }
+                let rank = if shown.starts_with(&ql) { 0 } else if shown.contains(&ql) { 1 } else { 2 };
+                found.push((rank, shown.len(), BlockHit { page: p.name.clone(), line: b.line, text: b.text.clone() }));
+                if found.len() >= 2000 {
+                    break; // (enough to choose from)
+                }
+            }
+        }
+        found.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.page.cmp(&b.2.page)).then(a.2.line.cmp(&b.2.line)));
+        found.into_iter().take(limit).map(|(_, _, h)| h).collect()
+    }
+
+    /// The notes holding these ids (`id::`, any capitals), in the same order; None: no note has it.
+    /// One pass over the notes, however many ids.
+    pub fn blocks_by_id(&self, ids: &[String]) -> Vec<Option<BlockHit>> {
+        let want: HashMap<String, usize> = ids.iter().enumerate().map(|(k, id)| (id.trim().to_lowercase(), k)).collect();
+        let mut out: Vec<Option<BlockHit>> = vec![None; ids.len()];
+        let mut left = want.len();
+        'all: for p in self.pages.values() {
+            for b in &p.parsed.blocks {
+                for (k, v) in &b.props {
+                    if k != "id" {
+                        continue;
+                    }
+                    if let Some(&n) = want.get(&v.to_lowercase()) {
+                        if out[n].is_none() {
+                            out[n] = Some(BlockHit { page: p.name.clone(), line: b.line, text: b.text.clone() });
+                            left -= 1;
+                            if left == 0 {
+                                break 'all;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // the same id asked for twice: each place gets it
+        for (k, id) in ids.iter().enumerate() {
+            if out[k].is_none() {
+                if let Some(&n) = want.get(&id.trim().to_lowercase()) {
+                    out[k] = out[n].clone();
                 }
             }
         }
@@ -548,8 +801,8 @@ impl Vault {
             .filter(|(k, _)| !self.alias.contains_key(*k) || self.pages.contains_key(*k))
             .filter(|(k, _)| self.pages.contains_key(*k) || self.incoming.get(*k).is_some_and(|v| !v.is_empty()))
             .map(|(k, d)| match self.pages.get(k) {
-                Some(p) => PageEntry { name: p.name.clone(), journal: p.journal, exists: true, refs: count(k), icon: page_icon(&p.parsed.props) },
-                None => PageEntry { name: d.clone(), journal: self.config.journal_from_title(d), exists: false, refs: count(k), icon: None },
+                Some(p) => PageEntry { name: p.name.clone(), journal: p.journal, exists: true, refs: count(k), icon: page_icon(&p.parsed.props), path: Some(p.path.clone()), changed: None, created: None },
+                None => PageEntry { name: d.clone(), journal: self.config.journal_from_title(d), exists: false, refs: count(k), icon: None, path: None, changed: None, created: None },
             })
             .collect();
         v.sort_by_key(|x| x.name.to_lowercase());
@@ -624,7 +877,7 @@ impl Vault {
                         break;
                     }
                     total += 1;
-                    hits.push(RefHit { line: Some(b.line), depth: b.depth, text: b.text.clone(), props: b.props.clone() });
+                    hits.push(RefHit::of(b));
                 }
             }
             if !hits.is_empty() {
@@ -831,14 +1084,4 @@ pub fn file_stem_for(name: &str) -> String {
         t.push('/');
     }
     t.replace("___", "%5F%5F%5F").replace("_/", "%5F/").replace("/_", "/%5F").replace('/', "___")
-}
-
-fn snippet(text: &str, ql: &str) -> String {
-    let lower = text.to_lowercase();
-    let pos = lower.find(ql).unwrap_or(0);
-    // char-safe window around the match
-    let start = text.char_indices().map(|(i, _)| i).filter(|&i| i <= pos).rev().nth(40).unwrap_or(0);
-    let s: String = text[start..].chars().take(120).collect();
-    let s = s.replace('\n', " ");
-    if start > 0 { format!("…{s}") } else { s }
 }

@@ -151,6 +151,32 @@ check(read('pages/Marta Pell.md') === good, 'put back the same way', read('pages
 const kept2 = fs.readdirSync(bak).map((f) => fs.readFileSync(bak + '/' + f, 'utf8'));
 check(kept2.includes('- damaged later\n'), 'the text it replaced kept in logseq/bak first', JSON.stringify(kept2));
 
+console.log('Check this folder: one of a kind is said as one ("1 file looks like a copy"), several as several');
+const say = async (one) => {
+  await page.unroute('**/api/check');
+  await page.route('**/api/check', async (route) => {
+    const r = await (await route.fetch()).json();
+    const k = one ? 1 : 2;
+    Object.assign(r, {
+      conflict_copies: ['Diary/October 15th, 2026 (conflict 2026-10-26-17-05-48).md', 'pages/A (1).md'].slice(0, k),
+      duplicates: [['Larder', ['pages/Larder .md', 'pages/Larder.md']], ['B', ['pages/B.md', 'pages/b .md']]].slice(0, k),
+      non_utf8: ['pages/odd.md', 'pages/odd2.md'].slice(0, k),
+      roundtrip_failures: ['pages/x.md', 'pages/y.md'].slice(0, k),
+    });
+    await route.fulfill({ json: r });
+  });
+  await go(page, '#/settings/notes');
+  await page.locator('[data-a="check"]').click();
+  await page.waitForSelector('.pics-box', { timeout: 5000 });
+  return (await page.locator('.check-out').textContent()).replace(/\s+/g, ' ');
+};
+let words = await say(true);
+check(words.includes('1 file would be reformatted') && words.includes('1 file looks like a copy made by a sync conflict') && words.includes('Compare it with the original')
+  && words.includes('1 page name belongs to more than one file') && words.includes('1 file isn’t plain text'), 'one of each: said as one', words);
+words = await say(false);
+check(words.includes('2 files would be reformatted') && words.includes('2 files look like copies made by a sync conflict') && words.includes('Compare each with the original')
+  && words.includes('2 page names belong to more than one file') && words.includes('2 files aren’t plain text'), 'two of each: said as several', words);
+
 check(!errors.length, 'no script errors', errors.join(' | '));
 await browser.close();
 process.exit(failures() ? 1 : 0);

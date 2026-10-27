@@ -121,6 +121,9 @@ check(await page.locator('.clash').isVisible(), 'the clash screen opens');
 await page.locator('.clash [data-c="later"]').click();
 await sleep(200);
 check(await page.locator('.banner:not([hidden]) [data-a="choose"]').count() === 1, '"Decide later": a banner');
+// (Home is greyed while today is in view: scrolled down a little, it takes him back up to today)
+await page.evaluate(() => { document.querySelector('#main').scrollTop = 300; });
+await sleep(300);
 await page.locator('#histbar [data-a="home"]').click();
 await sleep(800);
 check(await page.locator('.banner:not([hidden]) [data-a="choose"]').count() === 1 && await page.evaluate(() => location.hash) === '#/journals', 'Home keeps the page and its choice', await page.evaluate(() => location.hash));

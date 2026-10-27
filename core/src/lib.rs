@@ -4,8 +4,9 @@
 //! Supported syntax: `- ` bullets (tab or 2-space indent), `[[Page]]`, `#tag`,
 //! `#[[multi word]]`, `key:: value` properties (page-level and block-level),
 //! `tags::` / `alias::` page properties, to-do markers with scheduled/deadline dates.
-//! Code fences and inline code are ignored. Not supported on purpose: block references,
-//! queries, graph.
+//! Code fences and inline code are ignored. Block references (`((id))`) aren't links in the index:
+//! the notes they name are found by their `id::` when shown (`Vault::blocks_by_id`). Not supported
+//! on purpose: queries, graph.
 
 pub mod app;
 pub mod capture;
@@ -14,18 +15,21 @@ mod config;
 mod doc;
 pub mod date;
 pub mod edn;
+pub mod hotkey;
+pub mod link;
 pub mod log;
 pub mod merge;
 mod parse;
 pub mod task;
 pub mod text;
 pub mod update;
+pub mod search;
 mod vault;
 
 pub use parse::{parse_page, Block, ParsedPage};
 pub use config::Config;
 pub use doc::{block_lines, content_hash, join_doc, split_doc, Doc, DocBlock};
-pub use vault::{file_stem_for, page_name_from_stem, PageInfo, RefGroup, RefHit, SearchHit, TaskHit, Vault};
+pub use vault::{file_stem_for, page_name_from_stem, BlockHit, PageInfo, RefGroup, RefHit, RefNote, SearchHit, TaskHit, Vault, REF_KIDS, SEARCH_PAGES};
 
 /// Lowercased lookup key for a page name (Logseq page names are case-insensitive).
 pub fn key(name: &str) -> String {

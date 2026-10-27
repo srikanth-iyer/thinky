@@ -8,7 +8,8 @@
 //! paths plus `list.json` (each file's time and size, and the notes left out, with why).
 //! A copy also keeps the earlier texts of notes changed (or removed) somewhere else, numbered 1, 2…
 //! in the copy ("before" entries in the list, files in `.before/<n>/<path>`): at start-up, what the
-//! index cache still holds of a file that changed while the app was closed; while it's open, each text
+//! index cache still holds of a file that changed while the app was closed (kept right away, before
+//! the cache is written over: `start_safety_copy`); while it's open, each text
 //! a change made elsewhere replaced (`App::replaced`, every one, not just the first per note; written
 //! into a copy of its own whenever the index cache is written, so an old text is always kept
 //! somewhere: in the cache, or in a copy). That covers a note untouched for months that gets
@@ -185,8 +186,8 @@ fn id_ok(id: &str) -> bool {
 }
 
 /// A note's path in the notes folder (or a copy): relative, "/"-separated, no "..", a `.md` file,
-/// not in `logseq/` (settings, backups, the bin).
-fn rel_ok(rel: &str) -> bool {
+/// not in `logseq/` (settings, backups, the bin). (Also a page's History: history.rs.)
+pub(super) fn rel_ok(rel: &str) -> bool {
     let parts: Vec<&str> = rel.split('/').collect();
     rel.ends_with(".md")
         && !parts[0].eq_ignore_ascii_case("logseq")
@@ -350,6 +351,12 @@ fn now_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
+/// The app's data folder is inside the notes folder: then no copies are made (Drive would sync them).
+fn inside(data: &Path, root: &Path) -> bool {
+    let abs = |p: &Path| std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
+    abs(data).starts_with(abs(root))
+}
+
 impl SafetyPlan {
     /// Put one note in (its text, or None when it isn't plain text), or on the list of the ones left
     /// out, with why.
@@ -401,8 +408,7 @@ impl SafetyPlan {
         if self.is_empty() {
             return Ok(None);
         }
-        let abs = |p: &Path| std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
-        if abs(data).starts_with(abs(&self.root)) {
+        if inside(data, &self.root) {
             return Err("the app’s data folder is inside the notes folder, so no copies are made".into());
         }
         let dir = vault_folder(data, &self.root);
@@ -480,13 +486,18 @@ impl App {
         plan
     }
 
-    /// Each time a notes folder opens (not for `--check`): make a safety copy in the background, so
-    /// opening isn't slower; it also takes the earlier texts found at start-up. Problems go to the
-    /// problems log.
+    /// Each time a notes folder opens (not for `--check`). First, right away, the earlier texts found
+    /// at start-up (what the index cache held of files changed while the app was closed) go into a
+    /// copy of their own, and only then is the index cache written (`write_cache`; `load` left it as
+    /// it was, the one place that still had them): a crash at any point leaves each earlier text in
+    /// the old cache or in a copy. Then the copy of the notes changed lately, in the background, so
+    /// opening isn't slower. With no earlier texts, only that. Problems go to the problems log.
     pub fn start_safety_copy(&mut self) {
+        if !self.replaced.is_empty() {
+            self.write_cache();
+        }
         let Some(data) = super::data_dir() else { return };
-        let plan = self.safety_plan(now_secs());
-        self.replaced.clear();
+        let plan = self.safety_plan(now_secs()); // (with the earlier texts too, if they couldn't be kept)
         if plan.is_empty() {
             return;
         }
@@ -497,17 +508,28 @@ impl App {
         });
     }
 
-    /// The earlier texts that changes made elsewhere replaced while the app was open, into a copy of
-    /// their own (called when the index cache is written, which forgets them; small, so right away).
-    pub(super) fn keep_replaced(&mut self) {
+    /// The earlier texts that changes made elsewhere replaced (`replaced`) into a copy of their own,
+    /// right away (they're small): called before the index cache, which forgets them, is written.
+    /// False when the copy couldn't be made: they stay here, the cache isn't written (the one on disk
+    /// still has them), and it's tried again the next time. (Where no copies are kept, there's
+    /// nothing to wait for.)
+    pub(super) fn keep_replaced(&mut self) -> bool {
         if self.replaced.is_empty() {
-            return;
+            return true;
         }
-        let plan = self.before_plan(now_secs());
-        self.replaced.clear();
-        let Some(data) = super::data_dir() else { return };
-        if let Err(e) = plan.run(&data) {
-            crate::log::record(&format!("safety copy (earlier texts): {e}"));
+        let Some(data) = super::data_dir().filter(|d| !inside(d, &self.root)) else {
+            self.replaced.clear();
+            return true;
+        };
+        match self.before_plan(now_secs()).run(&data) {
+            Ok(_) => {
+                self.replaced.clear();
+                true
+            }
+            Err(e) => {
+                crate::log::record(&format!("safety copy (earlier texts): {e}"));
+                false
+            }
         }
     }
 
@@ -520,6 +542,24 @@ impl App {
                 CopyInfo { id, when: l.when, notes: l.files.len() - before, before, skipped: l.skipped.len(), bytes: l.files.iter().map(|e| e.size).sum() }
             })
             .collect()
+    }
+
+    /// The copies' texts of note `rel`, for its History (history.rs): (copy id, `before`, when, the
+    /// file holding it), newest copy first. When: the copy's time for the note as copied, an earlier
+    /// text's own file time. Only entries a copy's list names, read from inside that copy.
+    pub(super) fn copies_of(&self, data: &Path, rel: &str) -> Vec<(String, u32, u64, PathBuf)> {
+        if !rel_ok(rel) {
+            return vec![];
+        }
+        let dir = vault_folder(data, &self.root);
+        let mut v = vec![];
+        for (id, l) in copies_in(&dir) {
+            for e in l.files.iter().filter(|e| e.path == rel) {
+                let when = if e.before > 0 { e.mtime_ns / 1_000_000_000 } else { l.when };
+                v.push((id.clone(), e.before, when, file_in(&dir.join(&id), rel, e.before)));
+            }
+        }
+        v
     }
 
     /// One of this folder's copies, by its id.

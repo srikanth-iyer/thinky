@@ -114,21 +114,21 @@ export async function openClash(o) {
   if (!whole) noTwice(c, items, mineWords);
   o.stopEdit(); // a note clicked while comparing: typing must not go on under the screen
 
-  const back = h('div', 'modal-back clash-back');
-  const box = h('div', 'clash');
+  const back = h('div', 'modal-back panel-back clash-back');
+  const box = h('div', 'panel clash');
   box.setAttribute('role', 'dialog');
   box.setAttribute('aria-modal', 'true');
   box.setAttribute('aria-labelledby', 'cl-title');
   const n = items.length;
-  box.innerHTML = `<header class="cl-head">
+  box.innerHTML = `<header class="panel-head cl-head">
       <h2 id="cl-title">Changed in two places</h2>
-      <p class="note">“${esc(o.name)}” was changed here and somewhere else (your phone, Claude or another app) in the same ${whole ? 'page' : n === 1 ? 'note' : 'notes'}. ${whole ? 'It’s too long to compare note by note: choose which version to keep.' : `Choose which version to keep for ${n === 1 ? 'it' : 'each'}.`}</p>
+      <p class="note">“${esc(o.name)}” was changed here and ${o.elsewhere()} in the same ${whole ? 'page' : n === 1 ? 'note' : 'notes'}. ${whole ? 'It’s too long to compare note by note: choose which version to keep.' : `Choose which version to keep for ${n === 1 ? 'it' : 'each'}.`}</p>
       <div class="cl-bar">
         <span class="cl-key"><i class="mine"></i>This device <i class="theirs"></i>Other copy <i class="base"></i>Before both changes</span>
         ${n > 1 ? `<span class="cl-nav"><span class="cl-n" aria-live="polite">1 of ${n}</span><button type="button" class="icon-btn" data-c="prev" aria-label="Previous difference">${ICON.up}</button><button type="button" class="icon-btn" data-c="next" aria-label="Next difference">${ICON.down}</button></span>` : ''}
       </div>
     </header>
-    <div class="cl-list">${whole ? '' : items.map((it, k) => `<section class="cl-item" data-k="${k}">
+    <div class="panel-body cl-list">${whole ? '' : items.map((it, k) => `<section class="cl-item" data-k="${k}">
       ${it.props ? '<h3 class="cl-what">Page properties</h3>' : ''}
       <div class="cl-cols" role="radiogroup" aria-label="Version to keep">
         ${['mine', 'theirs'].map((side) => `<label class="cl-col ${side}">
@@ -143,7 +143,7 @@ export async function openClash(o) {
       </div>
       <div class="cl-base"><span class="cl-h"><i class="base"></i>Before both changes</span><div class="cl-notes">${it.props ? propsHtml(it.base) : it.base.length ? notesHtml(it.base) : '<p class="cl-none">(not there yet)</p>'}</div></div>
     </section>`).join('')}</div>
-    <footer class="cl-foot">
+    <footer class="panel-foot cl-foot">
       <p class="note">The version you don’t keep is saved as a backup copy in <code>logseq/bak</code>, so nothing is lost.</p>
       <div class="btn-row">
         <button type="button" class="btn ghost" data-c="later">Decide later</button>
@@ -256,7 +256,7 @@ async function keep(o, c, asked, wholeSide, items, picks, sides, close = () => {
  *  before the clash screen, a whole version each, on the page's banner. */
 function wholeChoice(o, err) {
   if (err) o.app.toast('Couldn’t compare the two versions: ' + err, 6000);
-  o.showBanner(`<span>This page was also changed somewhere else (your phone, Claude or another app), and the two versions couldn’t be compared note by note. Nothing on this page is saved until you choose. The version you don’t keep is saved as a backup copy in <code>logseq/bak</code>.</span>
+  o.showBanner(`<span>This page was also changed ${o.elsewhere()}, and the two versions couldn’t be compared note by note. Nothing on this page is saved until you choose. The version you don’t keep is saved as a backup copy in <code>logseq/bak</code>.</span>
     <span class="btn-row"><button class="btn" data-a="choose">Try again</button><button class="btn ghost" data-a="theirs">Use the other version</button><button class="btn" data-a="mine">Keep mine</button></span>`);
   o.banner.onclick = async (e) => {
     const a = e.target.closest('[data-a]')?.dataset.a;
