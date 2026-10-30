@@ -9,7 +9,7 @@ write('pages/Look test.md', '- [[Marta Pell]] wrote [the book]([[Notes on Wild Y
   + '- DONE ## a finished heading\n- DONE a done note with [[Rosa Penhallow]]\n  status:: closed\n'
   + '- a note with properties\n  type:: book\n  author:: [[Marta Pell]]\n\t- its child\n');
 
-const LOOKS = ['plain', 'plainnight', 'calm', 'calmplain', 'night', 'paper', 'sticker', 'stickernight', 'grimoire', 'automaton', 'azulejo'];
+const LOOKS = ['plain', 'plainnight', 'calm', 'calmplain', 'night', 'paper', 'sticker', 'stickernight', 'automaton', 'azulejo'];
 const { browser, page, errors } = await open();
 const look = async (id, hash = '#/journals') => {
   await page.evaluate((l) => localStorage.setItem('skin', JSON.stringify(l)), id);
@@ -77,7 +77,9 @@ check(m.link === 'rgb(27, 104, 152)' && m.under === '0px', 'Plain: links in Logs
 check(m.dot === '6px' && m.hair.includes('rgb(219, 219, 219)') && m.title === '500', 'Plain: small dots, a thin grey line between days, a regular-weight date', JSON.stringify(m));
 await page.screenshot({ path: SHOTS + '/t15-plain.png' });
 await look('plainnight');
-check(await css('body', 'backgroundColor') === 'rgb(0, 43, 54)' && await css('.sheet.today .bc a.pl', 'color') === 'rgb(155, 211, 212)', 'Plain night: Logseq’s dark look (deep blue-green, pale teal links)');
+check(await css('body', 'backgroundColor') === 'rgb(20, 20, 20)' && await css('.sheet.today .bc a.pl', 'color') === 'rgb(138, 180, 248)', 'Plain night: near-black, soft blue links');
+await look('plainteal');
+check(await css('body', 'backgroundColor') === 'rgb(0, 43, 54)' && await css('.sheet.today .bc a.pl', 'color') === 'rgb(155, 211, 212)', 'Plain teal: Logseq’s dark look (deep blue-green, pale teal links)');
 await page.screenshot({ path: SHOTS + '/t15-plainnight.png' });
 
 // ---- spacing: other looks tighter than before (34.8px), Paper keeps its rhythm ----

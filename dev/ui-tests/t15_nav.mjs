@@ -567,7 +567,7 @@ await sleep(700);
 await touch('touchEnd');
 await page.waitForSelector('.note-menu', { timeout: 3000 }).catch(() => {});
 const pitem = await page.evaluate(() => Math.round(Math.min(...[...document.querySelectorAll('.note-menu .nm-item')].map((b) => b.getBoundingClientRect().height))));
-check(pitem >= 44, 'the note menu stays finger-sized on a phone', pitem);
+check(pitem >= 32, 'the note menu stays easy to tap on a phone (32px rows since Build 32, as he asked)', pitem);
 await page.keyboard.press('Escape');
 allErrors.push(...errors);
 console.log(allErrors.length ? 'script errors:\n' + allErrors.join('\n') : 'no script errors');

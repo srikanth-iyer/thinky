@@ -269,6 +269,27 @@ fn prop_value_refs(key: &str, v: &str, comma_props: &[String], out: &mut Vec<Str
 
 /// Extract `[[x]]`, `#[[x]]`, `#x` from free text, skipping inline code spans.
 pub fn text_refs(text: &str, out: &mut Vec<String>) {
+    refs_in(text, out, false);
+}
+
+/// Only the `#x` and `#[[x]]` tags written in a note's words (the Tags list counts them, Build 33),
+/// skipping inline code and code blocks.
+pub fn hash_tags(text: &str) -> Vec<String> {
+    let mut out = vec![];
+    let mut fence = false;
+    for line in text.lines() {
+        if line.trim_start().starts_with("```") {
+            fence = !fence;
+            continue;
+        }
+        if !fence {
+            refs_in(line, &mut out, true);
+        }
+    }
+    out
+}
+
+fn refs_in(text: &str, out: &mut Vec<String>, tags_only: bool) {
     let b = text.as_bytes();
     let mut i = 0;
     let n = b.len();
@@ -289,7 +310,7 @@ pub fn text_refs(text: &str, out: &mut Vec<String>) {
         }
         if c == b'[' && i + 1 < n && b[i + 1] == b'[' {
             if let Some((name, end)) = bracket_ref(text, i) {
-                if !name.is_empty() {
+                if !name.is_empty() && !tags_only {
                     out.push(name);
                 }
                 i = end;

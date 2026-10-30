@@ -7,10 +7,6 @@ use outline_core::capture_box::png_len;
 use std::ffi::c_void;
 use std::path::PathBuf;
 
-pub fn clipboard_text() -> String {
-    crate::win::clipboard_text()
-}
-
 /// What pasting brings.
 pub enum Clip {
     /// text: the text box pastes it itself
@@ -48,6 +44,24 @@ unsafe fn global_bytes(h: *mut c_void) -> Option<Vec<u8>> {
     let v = std::slice::from_raw_parts(p, n).to_vec();
     GlobalUnlock(h);
     Some(v)
+}
+
+/// The web page the clipboard's text was copied from, when a browser said so (the "HTML Format"
+/// header's SourceURL; outline_core::capture::html_source_url). None for anything else.
+pub fn clipboard_source(owner: isize) -> Option<String> {
+    unsafe {
+        let name = wide("HTML Format");
+        let fmt = RegisterClipboardFormatW(name.as_ptr());
+        if fmt == 0 || IsClipboardFormatAvailable(fmt) == 0 || !open_clipboard(owner) {
+            return None;
+        }
+        let bytes = global_bytes(GetClipboardData(fmt));
+        CloseClipboard();
+        // (the header is plain ASCII at the start; a few KB is plenty)
+        let head = bytes?;
+        let head = &head[..head.len().min(4096)];
+        outline_core::capture::html_source_url(&String::from_utf8_lossy(head))
+    }
 }
 
 /// The files in a list of dropped or copied files.
@@ -231,6 +245,33 @@ pub fn set_clipboard(owner: isize, text: Option<&str>, bitmap: isize) -> bool {
         }
         if bitmap != 0 {
             ok &= !SetClipboardData(CF_BITMAP, bitmap as *mut c_void).is_null();
+        }
+        CloseClipboard();
+        ok
+    }
+}
+
+/// The self-test's copy from a web page: words, and the "HTML Format" a browser adds with the page's
+/// address in its header.
+pub fn set_clipboard_html(owner: isize, text: &str, url: &str) -> bool {
+    if !set_clipboard(owner, Some(text), 0) {
+        return false;
+    }
+    let html = format!("Version:0.9\r\nStartHTML:-1\r\nEndHTML:-1\r\nSourceURL:{url}\r\n<html><body>{text}</body></html>");
+    unsafe {
+        let name = wide("HTML Format");
+        let fmt = RegisterClipboardFormatW(name.as_ptr());
+        if fmt == 0 || !open_clipboard(owner) {
+            return false;
+        }
+        let g = GlobalAlloc(GMEM_MOVEABLE, html.len() + 1);
+        let p = GlobalLock(g) as *mut u8;
+        let mut ok = !p.is_null();
+        if ok {
+            std::ptr::copy_nonoverlapping(html.as_ptr(), p, html.len());
+            *p.add(html.len()) = 0;
+            GlobalUnlock(g);
+            ok = !SetClipboardData(fmt, g).is_null();
         }
         CloseClipboard();
         ok

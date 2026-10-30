@@ -1900,6 +1900,7 @@ dependencies = [
 name = "lean-outliner"
 version = "0.1.0"
 dependencies = [
+ "jni",
  "libc",
  "outline_core",
  "serde_json",

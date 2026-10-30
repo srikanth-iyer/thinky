@@ -188,6 +188,17 @@ fn sample_vault(tag: &str) -> (PathBuf, App) {
     (v, app)
 }
 
+/// The app's own save of a note added at the end of a page (as the editor sends it), made from
+/// the page's file as it is on disk now.
+fn save_added(app: &mut App, name: &str, line: &str) -> Result<(), String> {
+    let rel = app.vault.page_info(name).path.ok_or("no file")?;
+    let text = std::fs::read_to_string(app.root.join(&rel)).map_err(|e| e.to_string())?;
+    let mut doc = split_doc(&text);
+    doc.blocks.push(DocBlock { depth: 0, text: line.into(), raw: None, plain: false });
+    let req = json!({"name": name, "doc": doc, "base_hash": content_hash(&text), "path": rel});
+    app.save(serde_json::from_value(req).map_err(|e| e.to_string())?).map(|_| ())
+}
+
 #[test]
 fn unlinked_tasks_templates_and_props() {
     let (v, mut app) = sample_vault("unlinked");
@@ -314,7 +325,7 @@ fn capture_never_overwrites_a_file_it_could_not_read() {
     let journal = v.join("journals/2026_10_27.md");
     std::fs::create_dir_all(&journal).unwrap();
     std::fs::write(journal.join("keep.md"), "- precious\n").unwrap();
-    let err = capture::capture_to_vault(&v, "a capture", "", (2026, 10, 27), "09:00").unwrap_err();
+    let err = capture::capture_to_usual(&v, "a capture", "", false, (2026, 10, 27), "09:00").unwrap_err();
     assert!(err.contains("Couldn't read"), "{err}");
     assert_eq!(std::fs::read_to_string(journal.join("keep.md")).unwrap(), "- precious\n");
     // an unreadable config.edn stops the capture too (instead of guessing the target)
@@ -322,7 +333,7 @@ fn capture_never_overwrites_a_file_it_could_not_read() {
     let saved = std::fs::read(&cfg).unwrap();
     std::fs::remove_file(&cfg).unwrap();
     std::fs::create_dir_all(&cfg).unwrap();
-    let err = capture::capture_to_vault(&v, "a capture", "", (2026, 10, 28), "09:00").unwrap_err();
+    let err = capture::capture_to_usual(&v, "a capture", "", false, (2026, 10, 28), "09:00").unwrap_err();
     assert!(err.contains("config.edn"), "{err}");
     assert!(!v.join("journals/2026_10_28.md").exists());
     std::fs::remove_dir_all(&cfg).unwrap();
@@ -332,19 +343,18 @@ fn capture_never_overwrites_a_file_it_could_not_read() {
 #[test]
 fn capture_follows_the_template() {
     let (v, mut app) = sample_vault("capture");
-    let page = app.capture("Great article https://example.org/a?b=1 ", "", false, (2026, 10, 26), "14:05").unwrap();
-    assert_eq!(page, "Oct 26th, 2026");
+    let add = |text: &str, day, time| capture::capture_to_usual(&v, text, "", false, day, time);
+    assert_eq!(add("Great article https://example.org/a?b=1 ", (2026, 10, 26), "14:05").unwrap(), "journals/2026_10_26.md");
     assert_eq!(
         std::fs::read_to_string(v.join("journals/2026_10_26.md")).unwrap(),
-        "- **14:05** [[quick capture]]: #inbox Great article https://example.org/a?b=1\n"
+        "- **14:05** [[quick capture]]: #inbox Great article [example.org](https://example.org/a?b=1)\n"
     );
-    app.capture("just text", "", false, (2026, 10, 26), "14:06").unwrap();
+    add("just text", (2026, 10, 26), "14:06").unwrap();
     assert!(std::fs::read_to_string(v.join("journals/2026_10_26.md")).unwrap().ends_with("- **14:06** [[quick capture]]: #inbox just text\n"));
-    // the Windows command does the same without loading the index
-    capture::capture_to_vault(&v, "from the browser", "https://x.org", (2026, 10, 26), "15:00").unwrap();
-    assert!(std::fs::read_to_string(v.join("journals/2026_10_26.md")).unwrap().ends_with("#inbox from the browser https://x.org\n"));
+    capture::capture_to_usual(&v, "from the browser", "https://x.org", false, (2026, 10, 26), "15:00").unwrap();
+    assert!(std::fs::read_to_string(v.join("journals/2026_10_26.md")).unwrap().ends_with("#inbox from the browser [x.org](https://x.org)\n"));
     // CRLF journals stay CRLF
-    app.capture("crlf", "", false, (2026, 10, 25), "16:00").unwrap();
+    add("crlf", (2026, 10, 25), "16:00").unwrap();
     assert!(std::fs::read_to_string(v.join("journals/2026_10_25.md")).unwrap().ends_with("tag\r\n- **16:00** [[quick capture]]: #inbox crlf\r\n"));
     // settings are written back to config.edn without disturbing the rest
     app.set_capture("{text} ({time})", "{url}", false, "Inbox").unwrap();
@@ -352,7 +362,7 @@ fn capture_follows_the_template() {
     assert!(cfg.starts_with(";; my settings\n{:meta/version 1\n :preferred-workflow :todo"));
     assert!(cfg.contains(":quick-capture-templates {:text \"{text} ({time})\" :media \"{url}\"}"));
     // "Inbox" is already known as "inbox" (from the #inbox tags): names ignore case
-    assert_eq!(app.capture("to the inbox page", "", false, (2026, 10, 26), "17:00").unwrap(), "inbox");
+    assert_eq!(add("to the inbox page", (2026, 10, 26), "17:00").unwrap(), "pages/inbox.md");
     assert_eq!(std::fs::read_to_string(v.join("pages/inbox.md")).unwrap(), "- to the inbox page (17:00)\n");
     let favs = app.set_favorite("Notes", true).unwrap();
     assert_eq!(favs, vec!["writing notebook", "to read", "Notes"]);
@@ -390,7 +400,7 @@ fn rescan_ignores_files_the_app_saved_meanwhile() {
     // another program changes Notes; the app saves Templates in the meantime
     std::fs::write(v.join("pages/Notes.md"), "- changed outside\n").unwrap();
     let changes = app::collect_changes(plan);
-    app.append_to("pages/Notes.md", "added by the app").unwrap();
+    save_added(&mut app, "Notes", "added by the app").unwrap();
     let changed = app.apply_changes(changes);
     assert!(!changed.contains(&"pages/Notes.md".to_string()), "the app's newer state wins");
     assert_eq!(app.vault.page_info("Notes").exists, true);
@@ -404,7 +414,7 @@ fn every_new_command_survives_bad_input() {
     let mut st = Some(app);
     let cmds = [
         "save_block", "tasks", "task_done", "unlinked", "link_mention", "rename", "delete", "recycled", "restore", "templates",
-        "template", "save_asset", "set_favorite", "set_capture", "capture", "prop_values", "journal_dates", "errors", "page",
+        "template", "save_asset", "set_favorite", "set_capture", "prop_values", "errors", "page",
         "unlinked_any", "clash", "save_look", "reorder_favorites", "rename_target", "merge_pages", "undo_merge", "page_file", "link",
         "pages",
     ];
@@ -484,7 +494,6 @@ fn unreadable_files_are_never_overwritten() {
     assert!(pv["error"].is_string());
     let doc = json!({"preamble": "", "blocks": [{"depth": 0, "text": "a quick note"}], "indent": "\t", "crlf": false});
     assert!(dispatch(&mut st, "save", json!({"name": "Blocked", "doc": doc, "base_hash": ""})).is_err());
-    assert!(st.as_mut().unwrap().append_to("pages/Blocked.md", "x").is_err());
     let _ = std::fs::remove_dir_all(&v);
 }
 

@@ -1,6 +1,10 @@
 // Apply the saved look before anything paints (a plain script in <head>; the app's
 // security policy allows no inline scripts).
-try { document.documentElement.dataset.skin = JSON.parse(localStorage.getItem('skin')) || 'calm'; } catch (e) {}
+// (a look that was taken out: the one App.setSkin falls back to, so the first picture is already it)
+try {
+  var skin = JSON.parse(localStorage.getItem('skin')) || 'thinky'; // (the default look since Build 33, he asked)
+  document.documentElement.dataset.skin = { grimoire: 'calm', screenplay: 'plain' }[skin] || skin;
+} catch (e) {}
 // link colour and fonts picked in Settings (see App.applyTextStyle)
 try {
   var st = document.documentElement.style, get = function (k) { return JSON.parse(localStorage.getItem(k) || '""'); };

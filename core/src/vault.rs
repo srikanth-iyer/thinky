@@ -8,7 +8,6 @@ use crate::key;
 use serde::Serialize;
 use crate::search;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::Path;
 use std::sync::OnceLock;
 
 /// Marks a reference made by page-level properties rather than a block.
@@ -147,6 +146,16 @@ pub struct RefGroup {
     pub page: String,
     pub journal: Option<Date>,
     pub hits: Vec<RefHit>,
+    /// Its page's file (`App::page` reads its time by it)…
+    #[serde(skip)]
+    pub path: Option<String>,
+    /// …and when that file last changed, in seconds since 1970 (linked references only, `App::page`:
+    /// the "Last changed" order he can pick above them).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changed: Option<u64>,
+    /// When its file was made (`App::born`, seconds), for sorting by date created.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -181,6 +190,11 @@ pub struct PageEntry {
     pub changed: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<u64>,
+    /// Its other names (`alias::`) that lead to it: each counts as the page, as in Logseq (the `[[`
+    /// suggestions show "SB → Sourdough Bread", never "New page: SB"). Not one that's a page of its
+    /// own, nor one another page claims.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
 }
 
 /// A page's `icon::` property: short (an emoji or two), else none.
@@ -282,44 +296,6 @@ impl Vault {
         (page_name_from_stem(stem), None)
     }
 
-    /// Read `logseq/config.edn` (if present) then every page and journal file.
-    pub fn open(root: &Path) -> std::io::Result<Self> {
-        let cfg = std::fs::read_to_string(root.join("logseq").join("config.edn"))
-            .map(|t| Config::from_edn(&t))
-            .unwrap_or_default();
-        let mut v = Vault::with_config(cfg);
-        v.load_dir(root)?;
-        Ok(v)
-    }
-
-    /// Load every `.md` under `pages/` and `journals/`. Returns the number of files read.
-    pub fn load_dir(&mut self, root: &Path) -> std::io::Result<usize> {
-        let mut n = 0;
-        for sub in [self.config.pages_dir.clone(), self.config.journals_dir.clone()] {
-            let dir = root.join(&sub);
-            if !dir.is_dir() {
-                continue;
-            }
-            let mut stack = vec![dir];
-            while let Some(d) = stack.pop() {
-                for e in std::fs::read_dir(&d)? {
-                    let e = e?;
-                    let p = e.path();
-                    if e.file_type()?.is_dir() {
-                        stack.push(p);
-                    } else if p.extension().is_some_and(|x| x == "md") {
-                        let rel = p.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/");
-                        let text = std::fs::read_to_string(&p).unwrap_or_default();
-                        self.upsert(&rel, &text);
-                        n += 1;
-                    }
-                }
-            }
-        }
-        Ok(n)
-    }
-
-    /// Add or replace one file. Cheap enough to call on every save.
     /// Add or replace one file. Cheap enough to call on every save.
     /// A file that already owns its page name keeps it (another file with the same name
     /// never takes over just because this one was re-read).
@@ -590,7 +566,7 @@ impl Vault {
                 if hits.is_empty() {
                     return None;
                 }
-                Some(RefGroup { page: p.name.clone(), journal: p.journal, hits })
+                Some(RefGroup { page: p.name.clone(), journal: p.journal, hits, path: Some(p.path.clone()), changed: None, created: None })
             })
             .collect();
         groups.sort_by(|a, b| match (a.journal, b.journal) {
@@ -615,12 +591,17 @@ impl Vault {
         v
     }
 
-    /// Every block or page that has property `key`, optionally whose value contains `value`.
+    /// Notes (and pages) with property `prop` (any property when it's empty, then a value is needed)
+    /// whose value contains `value` (any value when none), page by page A to Z.
     pub fn with_property(&self, prop: &str, value: Option<&str>) -> Vec<RefGroup> {
         let pk = prop.to_lowercase();
         let val = value.map(|v| v.to_lowercase());
+        // no key: any property whose value has the words (the Properties list's search; never every property)
+        if pk.is_empty() && val.as_deref().map_or(true, |v| v.trim().is_empty()) {
+            return vec![];
+        }
         let matches = |props: &[(String, String)]| {
-            props.iter().any(|(k, v)| k == &pk && val.as_ref().map_or(true, |x| v.to_lowercase().contains(x)))
+            props.iter().any(|(k, v)| (pk.is_empty() || k == &pk) && val.as_ref().map_or(true, |x| v.to_lowercase().contains(x)))
         };
         let mut groups: Vec<RefGroup> = vec![];
         for p in self.pages.values() {
@@ -634,18 +615,17 @@ impl Vault {
                 }
             }
             if !hits.is_empty() {
-                groups.push(RefGroup { page: p.name.clone(), journal: p.journal, hits });
+                groups.push(RefGroup { page: p.name.clone(), journal: p.journal, hits, path: Some(p.path.clone()), changed: None, created: None });
             }
         }
         groups.sort_by_key(|g| g.page.to_lowercase());
         groups
     }
 
-    /// Search (the Ctrl+K box; rules in `search.rs`): pages whose name or alias has every word, in
-    /// any order (a letter or two off forgiven in longer words), best first, at most `SEARCH_PAGES`;
-    /// then notes with every word, the words together first, newer journal days before older ones,
-    /// then other pages A–Z, up to `limit` results in all.
-    pub fn search(&self, q: &str, limit: usize) -> Vec<SearchHit> {
+    /// Pages for what's typed (the Ctrl+K box, and the `[[`/`#` list): each whose name or, if
+    /// better, an alias has every word, in any order (a letter or two off forgiven in longer
+    /// words; `search::match_name`), then names only linked to so far; best first, at most `limit`.
+    pub fn search_pages(&self, q: &str, limit: usize) -> Vec<SearchHit> {
         let words = search::query_words(q);
         if words.is_empty() || limit == 0 {
             return vec![];
@@ -654,9 +634,10 @@ impl Vault {
         // pages: each by its name or, if better, an alias; then names only linked to so far
         type Found<'a> = (search::NameRank, bool, &'a str, Option<&'a str>, Vec<(usize, usize)>);
         let mut found: Vec<Found> = vec![];
-        for p in self.pages.values() {
+        for (k, p) in &self.pages {
             let mut best = search::match_name(&p.name, &words, &phrase).map(|(r, m)| (r, None, m));
-            for a in &p.parsed.aliases {
+            // only its own aliases, as `all_pages` lists them (not a page of its own, nor another page's)
+            for a in p.parsed.aliases.iter().filter(|a| self.alias.get(&key(a)).is_some_and(|t| t == k) && !self.pages.contains_key(&key(a))) {
                 if let Some((r, m)) = search::match_name(a, &words, &phrase) {
                     if best.as_ref().map_or(true, |b| r < b.0) {
                         best = Some((r, Some(a.as_str()), m));
@@ -677,11 +658,23 @@ impl Vault {
         }
         let len = |f: &Found| f.3.unwrap_or(f.2).chars().count();
         found.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)).then(len(a).cmp(&len(b))).then_with(|| a.2.to_lowercase().cmp(&b.2.to_lowercase())));
-        let mut out: Vec<SearchHit> = found
+        found
             .into_iter()
-            .take(SEARCH_PAGES.min(limit))
+            .take(limit)
             .map(|(_, _, name, alias, marks)| SearchHit { page: name.to_string(), line: None, alias: alias.map(str::to_string), marks, text: String::new() })
-            .collect();
+            .collect()
+    }
+
+    /// Search (the Ctrl+K box; rules in `search.rs`): pages (`search_pages`), at most
+    /// `SEARCH_PAGES`; then notes with every word, the words together first, newer journal days
+    /// before older ones, then other pages A–Z, up to `limit` results in all.
+    pub fn search(&self, q: &str, limit: usize) -> Vec<SearchHit> {
+        let words = search::query_words(q);
+        if words.is_empty() || limit == 0 {
+            return vec![];
+        }
+        let phrase = words.join(" ");
+        let mut out = self.search_pages(q, SEARCH_PAGES.min(limit));
         // notes
         let room = limit - out.len();
         if room == 0 {
@@ -710,40 +703,42 @@ impl Vault {
         out
     }
 
-    /// Notes whose words (not their property lines) hold every word of q, any capitals, to pick one
-    /// for a block reference: the ones starting with q first, then the shorter ones; at most `limit`.
+    /// Notes holding every word of q, found as the search box finds notes (`Page::folded`: any
+    /// capitals, accents, not `id::`/`collapsed::` lines), to pick one for a block reference: the
+    /// ones starting with q first, then the better matches (`note_score`), then the shorter ones;
+    /// at most `limit`.
     /// Only `- ` notes: giving a plain paragraph or a `* ` bullet its id:: would rewrite it (and the
     /// paragraphs after it) as `- ` bullets, in a file he isn't looking at.
     pub fn search_blocks(&self, q: &str, limit: usize) -> Vec<BlockHit> {
-        let words: Vec<String> = q.split_whitespace().map(str::to_lowercase).collect();
-        if words.is_empty() {
+        let words = search::query_words(q);
+        if words.is_empty() || limit == 0 {
             return vec![];
         }
-        let ql = words.join(" ");
-        let mut found: Vec<(u8, usize, BlockHit)> = vec![];
+        let phrase = words.join(" ");
+        // as the search box finds notes (folded words, `note_score`): (starts with the words,
+        // score, length, page, note)
+        type Found<'a> = (bool, u32, usize, &'a Page, usize);
+        let mut found: Vec<Found> = vec![];
         for p in self.pages.values() {
-            for b in p.parsed.blocks.iter().filter(|b| b.dash) {
-                let shown: String = b
-                    .text
-                    .lines()
-                    .enumerate()
-                    .filter(|(k, l)| *k == 0 || crate::parse::property(l.trim()).is_none())
-                    .map(|(_, l)| l)
-                    .collect::<Vec<_>>()
-                    .join("\n")
-                    .to_lowercase();
-                if !words.iter().all(|w| shown.contains(w.as_str())) {
-                    continue;
-                }
-                let rank = if shown.starts_with(&ql) { 0 } else if shown.contains(&ql) { 1 } else { 2 };
-                found.push((rank, shown.len(), BlockHit { page: p.name.clone(), line: b.line, text: b.text.clone() }));
-                if found.len() >= 2000 {
-                    break; // (enough to choose from)
+            for (i, (b, f)) in p.parsed.blocks.iter().zip(p.folded()).enumerate() {
+                if let Some(score) = search::note_score(f, &words, &phrase).filter(|_| b.dash) {
+                    found.push((f.starts_with(&phrase), score, f.len(), p, i));
                 }
             }
         }
-        found.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.page.cmp(&b.2.page)).then(a.2.line.cmp(&b.2.line)));
-        found.into_iter().take(limit).map(|(_, _, h)| h).collect()
+        let order = |a: &Found, b: &Found| b.0.cmp(&a.0).then(b.1.cmp(&a.1)).then(a.2.cmp(&b.2)).then_with(|| a.3.name.cmp(&b.3.name)).then(a.4.cmp(&b.4));
+        if found.len() > limit {
+            found.select_nth_unstable_by(limit - 1, order);
+            found.truncate(limit);
+        }
+        found.sort_by(order);
+        found
+            .into_iter()
+            .map(|(_, _, _, p, i)| {
+                let b = &p.parsed.blocks[i];
+                BlockHit { page: p.name.clone(), line: b.line, text: b.text.clone() }
+            })
+            .collect()
     }
 
     /// The notes holding these ids (`id::`, any capitals), in the same order; None: no note has it.
@@ -801,11 +796,28 @@ impl Vault {
             .filter(|(k, _)| !self.alias.contains_key(*k) || self.pages.contains_key(*k))
             .filter(|(k, _)| self.pages.contains_key(*k) || self.incoming.get(*k).is_some_and(|v| !v.is_empty()))
             .map(|(k, d)| match self.pages.get(k) {
-                Some(p) => PageEntry { name: p.name.clone(), journal: p.journal, exists: true, refs: count(k), icon: page_icon(&p.parsed.props), path: Some(p.path.clone()), changed: None, created: None },
-                None => PageEntry { name: d.clone(), journal: self.config.journal_from_title(d), exists: false, refs: count(k), icon: None, path: None, changed: None, created: None },
+                Some(p) => {
+                    let aliases = p.parsed.aliases.iter().filter(|a| self.alias.get(&key(a)).is_some_and(|t| t == k) && !self.pages.contains_key(&key(a))).cloned().collect();
+                    PageEntry { name: p.name.clone(), journal: p.journal, exists: true, refs: count(k), icon: page_icon(&p.parsed.props), path: Some(p.path.clone()), changed: None, created: None, aliases }
+                }
+                None => PageEntry { name: d.clone(), journal: self.config.journal_from_title(d), exists: false, refs: count(k), icon: None, path: None, changed: None, created: None, aliases: vec![] },
             })
             .collect();
         v.sort_by_key(|x| x.name.to_lowercase());
+        v
+    }
+
+    /// Dates of journal days that other pages link to (their linked references), with or without a
+    /// file: the Journals list shows them even with no notes of their own, as Logseq does.
+    pub fn linked_journal_dates(&self) -> Vec<Date> {
+        let mut v: Vec<Date> = self
+            .incoming
+            .iter()
+            .filter(|(k, srcs)| srcs.iter().any(|(s, _)| s != *k))
+            .filter_map(|(k, _)| self.config.journal_from_title(self.display.get(k).map_or(k.as_str(), |d| d.as_str())))
+            .collect();
+        v.sort();
+        v.dedup();
         v
     }
 
@@ -881,7 +893,7 @@ impl Vault {
                 }
             }
             if !hits.is_empty() {
-                groups.push(RefGroup { page: p.name.clone(), journal: p.journal, hits });
+                groups.push(RefGroup { page: p.name.clone(), journal: p.journal, hits, path: Some(p.path.clone()), changed: None, created: None });
             }
         }
         groups.sort_by(|a, b| match (a.journal, b.journal) {
@@ -1020,16 +1032,36 @@ impl Vault {
         v
     }
 
+    /// Pages whose own (page-level) properties include `prop`: (name, value), in no set order.
+    /// The browser extension finds an article's page by its `source::` with it (`clip`).
+    pub fn pages_with_page_prop(&self, prop: &str) -> Vec<(String, String)> {
+        let pk = prop.to_lowercase();
+        self.pages.values().filter_map(|p| p.parsed.props.iter().find(|(k, _)| *k == pk).map(|(_, v)| (p.name.clone(), v.clone()))).collect()
+    }
+
     /// Tag name → number of pages tagged with it via `tags::`.
-    pub fn all_tags(&self) -> Vec<(String, usize)> {
-        let mut m: HashMap<String, (String, usize)> = HashMap::new();
+    pub fn all_tags(&self) -> Vec<(String, usize, usize)> {
+        // each tag: the pages that carry it in `tags::`, and the notes that write it as `#tag` (he asked,
+        // Oct 30: count those too); a tag's name as first seen, most used first
+        let mut m: HashMap<String, (String, usize, usize)> = HashMap::new();
         for p in self.pages.values() {
             for t in &p.parsed.tags {
-                m.entry(key(t)).or_insert_with(|| (t.clone(), 0)).1 += 1;
+                m.entry(key(t)).or_insert_with(|| (t.clone(), 0, 0)).1 += 1;
+            }
+            for b in &p.parsed.blocks {
+                let mut seen: Vec<String> = vec![];
+                for t in crate::parse::hash_tags(&b.text) {
+                    let k = key(&t);
+                    if seen.contains(&k) {
+                        continue;
+                    }
+                    m.entry(k.clone()).or_insert_with(|| (t.clone(), 0, 0)).2 += 1;
+                    seen.push(k);
+                }
             }
         }
-        let mut v: Vec<(String, usize)> = m.into_values().collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.to_lowercase().cmp(&b.0.to_lowercase())));
+        let mut v: Vec<(String, usize, usize)> = m.into_values().collect();
+        v.sort_by(|a, b| (b.1 + b.2).cmp(&(a.1 + a.2)).then(a.0.to_lowercase().cmp(&b.0.to_lowercase())));
         v
     }
 

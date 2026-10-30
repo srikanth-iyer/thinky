@@ -1,0 +1,28 @@
+/* thinky's website: one reading column, a warm serif, light and dark (follows the system). No web fonts. */
+:root { --bg:#faf8f3; --text:#23201b; --muted:#6b645a; --line:#e3ddd1; --link:#9a2f1a; --note:#f1ece1; --btn:#1d1a2e; --btn-ink:#faf8f3; }
+@media (prefers-color-scheme: dark) { :root { --bg:#16140f; --text:#ebe6dc; --muted:#a39b8d; --line:#332f27; --link:#f0987e; --note:#211e17; --btn:#ebe6dc; --btn-ink:#16140f; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:17px/1.65 Georgia, "Iowan Old Style", "Times New Roman", serif; }
+main { max-width:660px; margin:0 auto; padding:48px 16px 40px; }
+header.top { display:flex; align-items:center; gap:12px; margin:0 0 6px; }
+header.top img { width:48px; height:48px; border-radius:11px; }
+h1 { font-size:1.9rem; line-height:1.2; margin:0; font-weight:600; }
+h2 { font-size:1.15rem; margin:36px 0 8px; font-weight:600; }
+p, li { margin:0 0 12px; }
+ul { padding-left:1.2em; }
+a { color:var(--link); }
+.sub { color:var(--muted); margin:6px 0 28px; font-style:italic; }
+.note { background:var(--note); border-left:3px solid var(--link); padding:14px 16px; margin:24px 0; }
+.note p:last-child { margin-bottom:0; }
+code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:0.85em; }
+.buttons { display:flex; flex-wrap:wrap; gap:10px; margin:18px 0 8px; }
+.btn { display:inline-block; background:var(--btn); color:var(--btn-ink); text-decoration:none; padding:10px 16px; border-radius:8px; font-size:0.95rem; }
+.btn.ghost { background:none; color:var(--link); border:1px solid var(--line); }
+.small { color:var(--muted); font-size:0.9rem; }
+figure { margin:24px 0; }
+figure img { width:100%; height:auto; border:1px solid var(--line); border-radius:8px; display:block; }
+figcaption { color:var(--muted); font-size:0.9rem; margin-top:6px; }
+.pair { display:grid; grid-template-columns: 1fr 200px; gap:16px; align-items:start; }
+@media (max-width:560px) { .pair { grid-template-columns: 1fr; } .pair figure:last-child { max-width:260px; } }
+footer { max-width:660px; margin:0 auto; padding:20px 16px 48px; border-top:1px solid var(--line); color:var(--muted); font-size:0.9rem; }
+footer p { margin:0 0 6px; }

@@ -1,5 +1,6 @@
-// Home-screen widget showing today's journal (and to-dos due today), plus quick capture
-// helpers shared with QuickCaptureActivity. The package line is added by scripts/android_overlay.py.
+// Home-screen widget showing today's journal (and to-dos due today), plus the settings the app
+// sends, which QuickCaptureActivity reads too (it adds notes through the app's own code, LeanCore).
+// The package line is added by scripts/android_overlay.py.
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -29,8 +30,6 @@ object Journal {
   private val DAYS = arrayOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
   private val TOKENS = listOf("yyyy", "yy", "MMMM", "MMM", "MM", "M", "do", "dd", "d", "EEEE", "EEE", "EE", "E")
   private val PROP = Regex("^[\\w.\\-/]+::")
-  const val DEFAULT_TEXT = "[[quick capture]] **{time}**: {text} from {url}"
-  const val DEFAULT_MEDIA = "[[quick capture]] **{time}**: {url}"
 
   /** One line of the widget: a note of today's journal, a to-do due today, or a small heading. */
   data class Item(val depth: Int, var text: String, val kind: Int = NOTE)
@@ -57,8 +56,8 @@ object Journal {
   fun saveColors(ctx: Context, bg: String, ink: String, faint: String, accent: String) {
     fun parse(c: String, def: Int) = try { android.graphics.Color.parseColor(c.trim()) } catch (e: Exception) { def }
     prefs(ctx).edit()
-      .putInt("c_bg", parse(bg, 0xFFFFFFFF.toInt())).putInt("c_ink", parse(ink, 0xFF1A2130.toInt()))
-      .putInt("c_faint", parse(faint, 0xFF8A93A2.toInt())).putInt("c_accent", parse(accent, 0xFF0B7B66.toInt()))
+      .putInt("c_bg", parse(bg, 0xFFFFFFFF.toInt())).putInt("c_ink", parse(ink, 0xFF1D1A2E.toInt()))
+      .putInt("c_faint", parse(faint, 0xFF7A7383.toInt())).putInt("c_accent", parse(accent, 0xFFC2331A.toInt()))
       .apply()
   }
   fun color(ctx: Context, key: String, def: Int) = prefs(ctx).getInt(key, def)
@@ -76,40 +75,13 @@ object Journal {
   fun todayTitle(ctx: Context): String =
     format(prefs(ctx).getString("title", "MMM do, yyyy") ?: "MMM do, yyyy", Calendar.getInstance())
 
-  /** Where captures go: today's journal, or the capture page (:quick-capture-options). */
-  fun captureTarget(ctx: Context): Pair<File, String>? {
+  /** The pop-up's "to …" line until the app's own code says (LeanCore "where"): today's journal or
+   *  the quick capture page, as the app last sent them (setCaptureConfig). Only shown, never used to
+   *  find a file: adding goes through the app's own code (LeanCore.capture). */
+  fun captureWhere(ctx: Context): String {
     val c = capture(ctx)
-    if (c.optBoolean("today", false)) { val f = todayFile(ctx) ?: return null; return f to todayTitle(ctx) }
-    val vault = vault(ctx) ?: return null
-    val page = c.optString("page", "quick capture").ifBlank { "quick capture" }
-    val dir = File(vault, c.optString("pagesDir", "pages"))
-    val stem = fileStem(page)
-    // reuse a file whose name differs only in capitals
-    val existing = dir.listFiles()?.firstOrNull { it.name.endsWith(".md") && it.name.removeSuffix(".md").equals(stem, ignoreCase = true) }
-    return (existing ?: File(dir, "$stem.md")) to page
+    return if (c.optBoolean("today", false)) todayTitle(ctx) else c.optString("page", "quick capture").ifBlank { "quick capture" }
   }
-
-  /** Logseq's file name for a page (same rules as outline_core::file_stem_for). */
-  fun fileStem(name: String): String {
-    var s = name.removePrefix("/").removeSuffix("/")
-    val sb = StringBuilder()
-    var i = 0
-    while (i < s.length) {
-      val c = s[i]
-      if (c == '%' && i + 2 < s.length && s[i + 1].isHex() && s[i + 2].isHex()) sb.append("%25")
-      else if (":*?\"<>|#\\".indexOf(c) >= 0) sb.append(String.format(Locale.US, "%%%02X", c.code))
-      else sb.append(c)
-      i++
-    }
-    s = sb.toString()
-    if (s.startsWith(".")) s = "%2E" + s.substring(1)
-    val reserved = setOf("CON", "PRN", "AUX", "NUL") + (1..9).flatMap { listOf("COM$it", "LPT$it") }
-    // Windows' reserved names in any capitals (con, Nul…), as Logseq and the app do
-    val upper = s.map { if (it in 'a'..'z') it - 32 else it }.joinToString("")
-    if (upper in reserved || s.endsWith(".")) s += "/"
-    return s.replace("___", "%5F%5F%5F").replace("_/", "%5F/").replace("/_", "/%5F").replace("/", "___")
-  }
-  private fun Char.isHex() = this in '0'..'9' || this in 'a'..'f' || this in 'A'..'F'
 
   private fun ordinal(d: Int): String {
     val suf = if (d % 100 in 11..13) "th" else when (d % 10) { 1 -> "st"; 2 -> "nd"; 3 -> "rd"; else -> "th" }
@@ -267,145 +239,71 @@ object Journal {
       ch(android.graphics.Color.green(a), android.graphics.Color.green(b)), ch(android.graphics.Color.blue(a), android.graphics.Color.blue(b)))
   }
 
-  /** First web address in the text, and the rest without it (as outline_core::capture::split_url). */
+  /** First web address in the text (bare, or a Markdown link to one, `[name](https://…)`), and the
+   *  rest without it (as outline_core::capture::split_url). */
   fun splitUrl(s: String): Pair<String, String> {
-    val i = listOf(s.indexOf("https://"), s.indexOf("http://")).filter { it >= 0 }.minOrNull() ?: return s.trim() to ""
+    val bare = listOf(s.indexOf("https://"), s.indexOf("http://")).filter { it >= 0 }.minOrNull()
+    val md = mdLinkAt(s)
+    if (md != null && (bare == null || md.first < bare)) {
+      return tidyRest(s.substring(0, md.first) + s.substring(md.second)) to s.substring(md.first, md.second)
+    }
+    val i = bare ?: return s.trim() to ""
     var end = i
     while (end < s.length && !s[end].isWhitespace()) end++
     val url = s.substring(i, end).trimEnd('.', ',', ';', ')', '"', '\'')
-    val rest = (s.substring(0, i) + s.substring(i + url.length)).trim().trimEnd(':', '-', '—', '|').trim()
-    return rest to url
+    return tidyRest(s.substring(0, i) + s.substring(i + url.length)) to url
   }
 
-  /** Words that only join a value to the text before it ("… from {url}"): dropped with an empty value. */
-  private val JOINERS = listOf("from", "via", "at", "on", "-", "–", "—", "|", "·")
+  private fun tidyRest(r: String) = r.trim().trimEnd(':', '-', '—', '|').trim()
 
-  /** Fill a capture template: {time} {date} {text} {url}; empty values take a space (and a
-   *  joining word in front) with them. Same rules as outline_core::capture::fill. */
-  fun fill(template: String, text: String, url: String, date: String): String {
-    val c = Calendar.getInstance()
-    val time = String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))
-    val values = mapOf("{time}" to time, "{date}" to date, "{text}" to text.trim(), "{url}" to url.trim())
-    var t = template
-    for ((k, v) in values) if (v.isEmpty()) {
-      for (j in JOINERS) t = t.replace(" $j $k", "")
-      t = t.replace(" $k", "").replace("$k ", "").replace(k, "")
-    }
-    val sb = StringBuilder()
-    var i = 0
-    while (i < t.length) {
-      val hit = if (t[i] == '{') values.keys.firstOrNull { t.startsWith(it, i) } else null
-      if (hit != null) { sb.append(values[hit]); i += hit.length } else { sb.append(t[i]); i++ }
-    }
-    return sb.toString().trim()
-  }
-
-  /** A capture that couldn't be added, with a reason to show. */
-  class CaptureError(message: String) : Exception(message)
-
-  /** Shared or typed text → a bullet in the quick capture format. Returns where it went. */
-  fun captureText(ctx: Context, text: String): String {
-    val c = capture(ctx)
-    val (t, u) = splitUrl(text)
-    return add(ctx, fill(c.optString("text", DEFAULT_TEXT).ifBlank { DEFAULT_TEXT }, t, u, todayTitle(ctx)))
-  }
-
-  /** A shared picture (already copied into assets) → a bullet in the media format. */
-  fun captureMedia(ctx: Context, link: String): String {
-    val c = capture(ctx)
-    return add(ctx, fill(c.optString("media", DEFAULT_MEDIA).ifBlank { DEFAULT_MEDIA }, "", link, todayTitle(ctx)))
-  }
-
-  private fun add(ctx: Context, line: String): String {
-    if (line.isBlank()) throw CaptureError("Nothing to add")
-    val (f, name) = captureTarget(ctx) ?: throw CaptureError("Open Lean Outliner once and choose your notes folder first")
-    append(f, line)
-    refresh(ctx)
-    return name
-  }
-
-  /** Same rules as outline_core::append_bullet: keeps CRLF, a byte-order mark and a missing final
-   *  line break (a new file gets one). Written to a hidden temp file in the same folder, flushed to
-   *  disk, then renamed over the original, and only if the file didn't change in between (a sync
-   *  app may be writing it right then). */
-  fun append(f: File, text: String) {
-    val dir = f.parentFile ?: throw CaptureError("Couldn't find the folder for ${f.name}")
-    dir.mkdirs()
-    for (attempt in 1..3) {
-      val stampBefore = f.lastModified() to f.length() // (0, 0) when the file isn't there yet
-      var cur = readUtf8(f) ?: throw CaptureError("${f.name} isn't plain UTF-8 text, so nothing was added")
-      val bom = if (cur.startsWith("\uFEFF")) "\uFEFF" else ""
-      cur = cur.removePrefix("\uFEFF")
-      val nl = if (cur.contains("\r\n")) "\r\n" else "\n"
-      val finalNl = cur.isEmpty() || cur.endsWith("\n")
-      // drop trailing line breaks and blank last lines, nothing else
-      while (true) {
-        val t = cur.trimEnd('\n', '\r')
-        val last = t.substring(t.lastIndexOf('\n') + 1)
-        if (t.isNotEmpty() && last.isBlank()) cur = t.substring(0, t.length - last.length) else { cur = t; break }
+  /** Where the first `[name](http…)` link in s is (start, end), as outline_core's md_link_at. */
+  private fun mdLinkAt(s: String): Pair<Int, Int>? {
+    var from = 0
+    while (true) {
+      val a = s.indexOf('[', from)
+      if (a < 0) return null
+      val c = s.indexOf("](", a)
+      if (c >= 0) {
+        val label = s.substring(a + 1, c)
+        val tail = s.substring(c + 2)
+        if (label.none { it == '[' || it == ']' || it == '\n' } && (tail.startsWith("https://") || tail.startsWith("http://"))) {
+          var depth = 0
+          for ((i, ch) in tail.withIndex()) {
+            if (ch.isWhitespace()) break
+            if (ch == '(') depth++
+            else if (ch == ')') { if (depth == 0) return a to (c + 2 + i + 1); depth-- }
+          }
+        }
       }
-      if (cur.trim() == "-") cur = ""
-      val sb = StringBuilder(cur)
-      if (sb.isNotEmpty()) sb.append(nl)
-      val lines = text.replace("\r\n", "\n").trimEnd('\n').split('\n')
-      sb.append("- ").append(lines[0])
-      for (l in lines.drop(1)) { sb.append(nl); if (l.isNotEmpty()) sb.append("  ").append(l) }
-      if (finalNl) sb.append(nl)
-      val out = (bom + sb.toString()).toByteArray(Charsets.UTF_8)
-      val tmp = File.createTempFile(".capture-", ".tmp", dir) // hidden name: the app ignores it
-      try {
-        java.io.FileOutputStream(tmp).use { os -> os.write(out); os.fd.sync() }
-        if ((f.lastModified() to f.length()) != stampBefore) { tmp.delete(); continue } // changed meanwhile: start over
-        if (!tmp.renameTo(f)) throw CaptureError("Couldn't save ${f.name}")
-        return
-      } catch (e: CaptureError) {
-        tmp.delete(); throw e
-      } catch (e: Exception) {
-        tmp.delete(); throw CaptureError("Couldn't save ${f.name}: ${e.message ?: e.javaClass.simpleName}")
+      from = a + 1
+    }
+  }
+
+  /** The site's address without https://, www., a port or a path (as outline_core's host). */
+  fun host(url: String): String {
+    val rest = url.substringAfter("://", url)
+    var h = rest.split('/', '?', '#').first()
+    h = h.substringAfterLast('@').substringBefore(':')
+    return h.removePrefix("www.").lowercase()
+  }
+
+  /** A neat Markdown link, "[Title · site](url)", or "[site](url)" with no title (as outline_core's
+   *  md_link, for a shared page: Android gives its title, not the site's own name). */
+  fun mdLink(url: String, title: String): String {
+    val u = url.trim()
+    if (u.isEmpty()) return ""
+    val place = host(u)
+    var t = title.split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
+    for (sep in listOf(" | ", " - ", " – ", " — ", " · ", " : ", " :: ", " / ")) {
+      val i = t.lastIndexOf(sep)
+      if (i > 0) {
+        val tail = t.substring(i + sep.length).trim().lowercase()
+        if (tail == place || tail.replace(" ", "") == place.substringBefore('.')) { t = t.substring(0, i).trim(); break }
       }
     }
-    throw CaptureError("${f.name} kept changing (is it syncing?). Try again in a moment")
-  }
-
-  /** Copy a shared file into the vault's assets folder. Returns the link path (../assets/…).
-   *  Named as outline_core::app::asset_file_name names files: its own extension (at most 10
-   *  letters or digits), else the one of its type as Android reports it (a picture's jpg or png),
-   *  else none; never a made-up one. */
-  fun saveAsset(ctx: Context, uri: Uri, name: String): String {
-    val vault = vault(ctx) ?: throw CaptureError("Open Lean Outliner once and choose your notes folder first")
-    val dir = File(vault, "assets").apply { mkdirs() }
-    val dot = name.lastIndexOf('.')
-    val own = if (dot > 0) name.substring(dot + 1) else ""
-    val hasExt = own.isNotEmpty() && own.length <= 10 && own.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' }
-    val stem = (if (hasExt) name.substring(0, dot) else name).map { if (it.isLetterOrDigit() || it == '-' || it == '_') it else '_' }
-      .joinToString("").trim('_').take(60).ifEmpty { "image" }
-    val typeExt = try {
-      ctx.contentResolver.getType(uri)?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
-    } catch (e: Exception) { null }
-    val ext = if (hasExt) own.lowercase(Locale.US) else (typeExt ?: "").lowercase(Locale.US).filter { it in 'a'..'z' || it in '0'..'9' }.take(10)
-    // never over another file: a name already taken moves to the next millisecond (as
-    // outline_core::app::save_asset_file does); createNewFile claims the name in one step
-    var ms = System.currentTimeMillis()
-    var file = File(dir, if (ext.isEmpty()) "${stem}_$ms" else "${stem}_$ms.$ext")
-    var tries = 0
-    try {
-      while (!file.createNewFile()) {
-        if (++tries > 1000) throw CaptureError("Couldn't find a free file name in assets")
-        ms++
-        file = File(dir, if (ext.isEmpty()) "${stem}_$ms" else "${stem}_$ms.$ext")
-      }
-    } catch (e: java.io.IOException) {
-      throw CaptureError("Couldn't copy the picture: ${e.message ?: e.javaClass.simpleName}")
-    }
-    try {
-      val input = ctx.contentResolver.openInputStream(uri) ?: throw CaptureError("Couldn't open the picture")
-      input.use { i -> file.outputStream().use { i.copyTo(it) } }
-      return "../assets/${file.name}"
-    } catch (e: CaptureError) {
-      file.delete(); throw e
-    } catch (e: Exception) {
-      file.delete(); throw CaptureError("Couldn't copy the picture: ${e.message ?: e.javaClass.simpleName}")
-    }
+    val name = (if (t.isEmpty() || t.equals(place, ignoreCase = true)) place else "$t · $place").ifEmpty { u }
+      .replace('[', '(').replace(']', ')').replace('\n', ' ')
+    return "[$name](${u.replace(" ", "%20").replace("(", "%28").replace(")", "%29")})"
   }
 
   fun refresh(ctx: Context) {
@@ -425,14 +323,20 @@ class JournalWidget : AppWidgetProvider() {
   }
 
   companion object {
+    /** The app's look on the widget (the colours it sent last, setWidgetColors); the system rounds
+     *  the corners of @android:id/background. (Also what the emulator test checks:
+     *  MainActivity's testWidgetColors.) */
+    fun paint(ctx: Context, rv: RemoteViews) {
+      rv.setInt(android.R.id.background, "setBackgroundColor", Journal.color(ctx, "c_bg", 0xFFFFFFFF.toInt()))
+      rv.setTextColor(R.id.widget_title, Journal.color(ctx, "c_ink", 0xFF1D1A2E.toInt()))
+      rv.setTextColor(R.id.widget_empty, Journal.color(ctx, "c_faint", 0xFF7A7383.toInt()))
+      rv.setTextColor(R.id.widget_add, Journal.color(ctx, "c_accent", 0xFFC2331A.toInt()))
+    }
+
     fun update(ctx: Context, mgr: AppWidgetManager, id: Int) {
       val rv = RemoteViews(ctx.packageName, R.layout.widget_journal)
       rv.setTextViewText(R.id.widget_title, Journal.todayTitle(ctx))
-      // follow the app's look; the system rounds the corners of @android:id/background
-      rv.setInt(android.R.id.background, "setBackgroundColor", Journal.color(ctx, "c_bg", 0xFFFFFFFF.toInt()))
-      rv.setTextColor(R.id.widget_title, Journal.color(ctx, "c_ink", 0xFF1A2130.toInt()))
-      rv.setTextColor(R.id.widget_empty, Journal.color(ctx, "c_faint", 0xFF8A93A2.toInt()))
-      rv.setTextColor(R.id.widget_add, Journal.color(ctx, "c_accent", 0xFF0B7B66.toInt()))
+      paint(ctx, rv)
       val svc = Intent(ctx, JournalWidgetService::class.java)
       svc.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
       svc.data = Uri.parse(svc.toUri(Intent.URI_INTENT_SCHEME))
@@ -441,7 +345,9 @@ class JournalWidget : AppWidgetProvider() {
       val immutable = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
       val mutable = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
       val openApp = Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-      rv.setOnClickPendingIntent(R.id.widget_title, PendingIntent.getActivity(ctx, 0, openApp, immutable))
+      val openPi = PendingIntent.getActivity(ctx, 0, openApp, immutable)
+      rv.setOnClickPendingIntent(R.id.widget_title, openPi)
+      rv.setOnClickPendingIntent(R.id.widget_logo, openPi) // (thinky's icon before the day)
       rv.setPendingIntentTemplate(R.id.widget_list, PendingIntent.getActivity(ctx, 2, openApp, mutable))
       val add = Intent(ctx, QuickCaptureActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       val addPi = PendingIntent.getActivity(ctx, 1, add, immutable)
@@ -457,8 +363,8 @@ class JournalWidgetService : RemoteViewsService() {
 
   class Factory(private val ctx: Context) : RemoteViewsFactory {
     private var items: List<Journal.Item> = emptyList()
-    private var ink = 0xFF1A2130.toInt()
-    private var faint = 0xFF8A93A2.toInt()
+    private var ink = 0xFF1D1A2E.toInt()
+    private var faint = 0xFF7A7383.toInt()
     override fun onCreate() {}
     override fun onDataSetChanged() {
       items = try { Journal.items(ctx) } catch (e: Exception) { emptyList() }
@@ -500,11 +406,16 @@ class QuickAddWidget : AppWidgetProvider() {
   }
 
   companion object {
+    /** The look's accent colour on the circle, the plus in white or near-black to read on it. */
+    fun paint(ctx: Context, rv: RemoteViews) {
+      val accent = Journal.color(ctx, "c_accent", 0xFFC2331A.toInt())
+      rv.setInt(R.id.qa_circle, "setColorFilter", accent)
+      rv.setInt(R.id.qa_plus, "setColorFilter", Journal.onColor(accent))
+    }
+
     fun update(ctx: Context, mgr: AppWidgetManager, id: Int) {
       val rv = RemoteViews(ctx.packageName, R.layout.widget_quick_add)
-      val accent = Journal.color(ctx, "c_accent", 0xFF0B7B66.toInt())
-      rv.setInt(R.id.qa_circle, "setColorFilter", accent) // the look's colour
-      rv.setInt(R.id.qa_plus, "setColorFilter", Journal.onColor(accent))
+      paint(ctx, rv)
       val add = Intent(ctx, QuickCaptureActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       rv.setOnClickPendingIntent(R.id.qa_root, PendingIntent.getActivity(ctx, 3, add, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
       mgr.updateAppWidget(id, rv)

@@ -1,23 +1,25 @@
 // Settings, in tabs so nothing needs a long scroll: Notes (folder and its health check, with pictures
 // nothing uses; deleted pages; safety copies), Look (looks, text size, link colour, page links, fonts), Capture
 // (quick capture; on Windows also the browser button and the shortcut key), Shortcuts (keys), About
-// (problems log, version, updates). The tab shows in the address (#/settings/look) and the last one
+// (send feedback, problems log, version, updates). The tab shows in the address (#/settings/look) and the last one
 // is remembered.
 
-import { call, store, nowTime, isApp, isAndroid, assetUrl } from './api.js';
+import { call, store, nowTime, isApp, isAndroid, assetUrl, today } from './api.js';
 import { esc } from './render.js';
-import { h } from './dom.js';
+import { h, ICON, BRAND, plural } from './dom.js';
 import { promptBox, confirmBox } from './popups.js';
-import { SKINS, accessCard } from './app.js';
+import { SKINS, accessCard, lookName } from './app.js';
 import { fitChips } from './views.js';
+import { madeBy } from './history.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
 export const TABS = [['notes', 'Notes'], ['look', 'Look'], ['capture', 'Capture'], ['keys', 'Shortcuts'], ['about', 'About']];
 
 export async function settingsView(app, view, want = null) {
-  view.append(h('h1', 'page-title', app.vaultOpen ? 'Settings' : 'Welcome'));
-  if (!app.vaultOpen) view.append(h('p', 'note', 'Choose the folder that holds your notes (the Logseq folder with <code>pages</code> and journals inside). Nothing is changed until you edit a page.'));
+  const failed = !app.vaultOpen && app.vaultError && store.get('vault', ''); // (chosen, but it couldn't be opened just now)
+  view.append(h('h1', 'page-title', app.vaultOpen || failed ? 'Settings' : 'Welcome'));
+  if (!app.vaultOpen && !failed) view.append(h('p', 'note', 'Choose the folder that holds your notes (the Logseq folder with <code>pages</code> and journals inside), or start a new one: any folder can become a notes folder. Nothing is changed until you edit a page.'));
 
   // Android: file access first (without it a folder opens with no notes in it)
   if (window.LeanAndroid && !window.LeanAndroid.hasAllFilesAccess()) view.append(accessCard('Allow access to your files'));
@@ -28,9 +30,9 @@ export async function settingsView(app, view, want = null) {
   const parts = {
     notes: async () => [folderCard(app), ...(app.vaultOpen ? [binCard(app), safetyCard(app)] : [])],
     look: async () => [lookCard(app)],
-    capture: async () => [captureCard(app), ...(platform === 'windows' ? [windowsCard(app)] : [])],
+    capture: async () => [captureCard(app), ...(platform === 'windows' ? [browserCard(app), windowsCard(app)] : [])],
     keys: async () => [keysCard(app)],
-    about: async () => [problemsCard(), await aboutCard(app)],
+    about: async () => [feedbackCard(app), problemsCard(), await aboutCard(app)],
   };
   // (no Shortcuts on phones: they're for a keyboard, and five tabs don't fit a narrow screen)
   const tabs = TABS.filter(([id]) => (app.vaultOpen || !['capture', 'keys'].includes(id)) && !(isAndroid && id === 'keys'));
@@ -80,19 +82,28 @@ export async function settingsView(app, view, want = null) {
 function folderCard(app) {
   const vc = h('div', 'card');
   const path = store.get('vault', '');
+  const retry = path && app.vaultError && !app.vaultOpen; // (chosen, but it couldn't be opened just now)
   vc.innerHTML = `<h2>Notes folder</h2>
     ${path ? `<div class="path">${esc(path)}</div>` : '<p class="note">No folder chosen yet.</p>'}
     ${app.vaultError ? `<p class="err">${esc(app.vaultError)}</p>` : ''}
     ${app.vaultOpen ? `<p class="note">${app.summary.pages} pages · journals in <code>${esc(app.summary.config.journals_dir)}</code> · journal titles like “${esc(app.summary.today)}”</p>` : ''}
-    <div class="btn-row"><button class="btn" data-a="pick">${path ? 'Choose another folder' : 'Choose folder'}</button>
+    <div class="btn-row${retry ? ' retry' : ''}">${retry ? '<button class="btn" data-a="again">Try again</button>' : ''}<button class="btn${retry ? ' ghost' : ''}" data-a="pick">${path ? 'Choose another folder' : 'Choose folder'}</button>
     ${app.vaultOpen ? '<button class="btn ghost" data-a="check">Check this folder</button>' : ''}</div>
     <div class="check-out"></div>`;
   $('[data-a="pick"]', vc).onclick = () => folderPicker(app, vc, path);
+  // the folder couldn't be opened just now (its settings, config.edn, couldn't be read): opened again
+  // as at a start (a fresh page: the tabs as they were kept come back too)
+  const again = $('[data-a="again"]', vc);
+  if (again) again.onclick = () => {
+    again.disabled = true;
+    history.replaceState(null, '', location.pathname + location.search);
+    location.reload();
+  };
   const chk = $('[data-a="check"]', vc);
   if (chk) chk.onclick = async () => {
     chk.disabled = true;
     const out = $('.check-out', vc);
-    out.innerHTML = '<p class="note">Reading every page…</p>';
+    out.innerHTML = BRAND.wait('Reading every page…');
     try {
       const r = await call('check');
       const list = (items) => `<div class="path">${items.map(esc).join('<br>')}</div>`;
@@ -117,7 +128,6 @@ function folderCard(app) {
 
 /** "1.4 MB", "820 KB" (as Windows counts them). */
 const fileSize = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 /** An id (or, with taken, a radio group's name) that no other copy of Settings on screen uses: it can
  *  be open on both sides, and two of the same would get in each other's way. */
 function free(base, taken = (id) => document.getElementById(id)) {
@@ -140,14 +150,14 @@ function picturesBox(app, r) {
   const pics = r.unused_pictures;
   const recent = r.pictures_recent || 0;
   const checked = r.pictures - recent;
-  const newer = recent ? ` ${recent} added in the last 3 days ${recent === 1 ? 'isn’t' : 'aren’t'} listed (a note using ${recent === 1 ? 'it' : 'them'} may still be on its way).` : '';
+  const newer = recent ? ` ${recent === 1 ? 'One picture was' : `${recent} pictures were`} added in the last 3 days, so ${recent === 1 ? 'it was' : 'they were'} left out of this check: a new picture can arrive before the note that uses it.` : '';
   if (!r.pictures) return box;
   if (!checked) {
     box.innerHTML = `<p class="note">The ${plural(recent, 'picture')} in <code>assets</code> ${recent === 1 ? 'was' : 'were'} added in the last 3 days, so ${recent === 1 ? 'it isn’t' : 'they aren’t'} checked yet (a note using ${recent === 1 ? 'it' : 'them'} may still be on its way).</p>`;
     return box;
   }
   if (!pics.length) {
-    box.innerHTML = `<p class="note">✓ Every picture in <code>assets</code> is used by a note (${plural(checked, 'picture')}).${newer}</p>`;
+    box.innerHTML = `<p class="note">✓ Nothing to clean up: each of the ${plural(checked, 'picture')} in <code>assets</code> is used by a note.${newer}</p>`;
     return box;
   }
   const n = pics.length;
@@ -193,46 +203,164 @@ function picturesBox(app, r) {
 
 /** Android without "all files access": folders show, but the notes in them can't be read. */
 const noAccess = () => !!window.LeanAndroid && !window.LeanAndroid.hasAllFilesAccess();
-
-async function folderPicker(app, card, start) {
-  let box = $('.picker', card);
-  if (!box) { box = h('div', 'picker'); card.append(box); }
-  const roots = await call('roots');
-  let cur = start || roots[0];
-  const show = async (p) => {
-    let list;
-    try { list = await call('list_dir', { path: p }); }
-    catch (e) {
-      box.innerHTML = `<div class="crumbs">${roots.map((r) => `<button data-p="${esc(r)}">${esc(r)}</button>`).join('')}</div>
-        <p class="err" style="padding:10px">${esc(e)}</p>`;
-      box.onclick = (ev) => { const b = ev.target.closest('[data-p]'); if (b) show(b.dataset.p); };
-      return;
-    }
-    cur = list.path;
-    box.innerHTML = `<div class="crumbs">${roots.map((r) => `<button data-p="${esc(r)}">${esc(r)}</button>`).join('')}
-        ${list.parent ? `<button data-p="${esc(list.parent)}">↑ Up</button>` : ''}</div>
-      <div class="path" style="margin:8px 10px">${esc(list.path)}</div>
-      <ul>${list.dirs.map((d) => `<li><button data-p="${esc(d.path)}">${esc(d.name)}${d.vault ? '<span class="badge">notes folder</span>' : ''}</button></li>`).join('')
-        || '<li class="note" style="padding:10px 12px">No folders here.</li>'}</ul>
-      <div class="foot"><button class="btn" data-use ${list.vault && !noAccess() ? '' : 'disabled'}>Use this folder</button>
-        <span class="note">${noAccess() ? 'First allow access to your files (above).' : list.vault ? 'This looks like a notes folder.' : 'Open the folder that contains <code>pages</code>.'}</span></div>`;
-    box.onclick = (ev) => {
-      const b = ev.target.closest('[data-p]');
-      if (b) return show(b.dataset.p);
-      if (ev.target.closest('[data-use]')) useVault(app, cur);
-    };
-  };
-  await show(cur);
+/** A refusal's words (the app's answers are words; the dev server's come in an Error). */
+const said = (e) => String(e?.message ?? e);
+/** A name for a new folder that isn't taken in the folder listed: "Notes", else "Notes 2"… */
+function freeName(list, base) {
+  const taken = new Set(list.dirs.map((d) => d.name.toLowerCase()));
+  for (let k = 1; ; k++) { const n = k === 1 ? base : `${base} ${k}`; if (!taken.has(n.toLowerCase())) return n; }
 }
 
-async function useVault(app, path) {
+/**
+ * The folder picker (Settings → Notes folder, and the welcome screen): folders to step through, from
+ * the places `roots` gives (home and drives; Android: the phone's storage). opts.mode:
+ * - 'open' (default): "Use this folder" takes any folder: a notes folder opens as it is; one inside a
+ *   notes folder offers that one; any other is set up as a new notes folder once he says so
+ *   (`useHere`: plainly for an empty one, with a warning for one holding other things). "New
+ *   folder" makes a folder in the one shown and steps into it.
+ * - 'new' (the welcome screen's "Create a new notes folder"): a name and "Create notes folder": a new
+ *   folder in the one shown, set up as a notes folder, with the tour if ticked. Starts in Documents
+ *   when home has one.
+ * Nothing is ever made in a notes folder or inside one (the core refuses too, start.rs).
+ */
+export async function folderPicker(app, card, start, opts = {}) {
+  const mode = opts.mode || 'open';
+  let box = $('.picker', card);
+  if (!box) { box = h('div', 'picker'); card.append(box); }
+  box.dataset.mode = mode;
+  const roots = await call('roots');
+  let list = null;
+  let name = null; // ('new': the name he typed, kept while he steps through folders; else a free one)
+  let tour = true;
+  let busy = false;
+  const crumbs = (parent) => `<div class="crumbs">${roots.map((r) => `<button data-p="${esc(r)}">${esc(r)}</button>`).join('')}
+    ${parent ? `<button data-p="${esc(parent)}">↑ Up</button>` : ''}</div>`;
+  const show = async (p, first = false) => {
+    let l;
+    try { l = await call('list_dir', { path: p }); }
+    catch (e) {
+      box.innerHTML = `${crumbs(null)}<p class="err" style="padding:10px">${esc(e)}</p>`;
+      return;
+    }
+    // (a new notes folder: Documents is a better first place than home itself)
+    const docs = first && mode === 'new' && l.dirs.find((d) => d.name.toLowerCase() === 'documents');
+    if (docs) return show(docs.path);
+    list = l;
+    const empty = !l.files && !l.dirs.length;
+    let foot;
+    if (mode === 'new') {
+      const blocked = noAccess() ? 'First allow access to your files (above).' : l.vault ? 'This is a notes folder: choose a place outside it.' : l.inside ? 'This is inside a notes folder: choose a place outside it.' : '';
+      foot = `<div class="foot pk-make">
+        <label class="pk-name"><span>Name</span><input type="text" value="${esc(name ?? freeName(l, 'Notes'))}" autocomplete="off" spellcheck="false" aria-label="Name of the new notes folder"></label>
+        <label class="toggle pk-tour"><input type="checkbox"${tour ? ' checked' : ''}> Add the short tour (4 pages)</label>
+        <div class="btn-row"><button class="btn" data-create${blocked ? ' disabled' : ''}>Create notes folder</button>
+        <span class="note pk-msg">${blocked || 'It’s made inside the folder shown above.'}</span></div></div>`;
+    } else {
+      const why = noAccess() ? 'First allow access to your files (above).'
+        : l.vault ? 'This is a notes folder.'
+          : l.inside ? `This folder is inside the notes folder <code>${esc(l.inside)}</code>.`
+            : empty ? 'A new notes folder can start here.'
+              : 'No notes here yet: open the folder that holds <code>pages</code>, or start a new one.';
+      const off = noAccess() ? ' disabled' : '';
+      foot = `<div class="foot"><button class="btn" data-use${off}>Use this folder</button><button class="btn ghost pk-new" data-new${off}>${ICON.plus}New folder</button>
+        <span class="note pk-msg">${why}</span></div>`;
+    }
+    box.innerHTML = `${crumbs(l.parent)}
+      <div class="path" style="margin:8px 10px">${esc(l.path)}</div>
+      <ul>${l.dirs.map((d) => `<li><button data-p="${esc(d.path)}">${esc(d.name)}${d.vault ? '<span class="badge">notes folder</span>' : ''}</button></li>`).join('')
+        || `<li class="note" style="padding:10px 12px">${empty ? 'This folder is empty.' : 'No folders here.'}</li>`}</ul>${foot}`;
+  };
+  box.onclick = async (ev) => {
+    const b = ev.target.closest('[data-p]');
+    if (b) return show(b.dataset.p);
+    if (busy || !list) return;
+    const act = ev.target.closest('[data-use], [data-new], [data-create]');
+    if (!act || act.disabled) return;
+    busy = true;
+    try {
+      if (act.matches('[data-use]')) await useHere(app, list);
+      else if (act.matches('[data-new]')) { const p = await newFolder(list); if (p) await show(p); }
+      else await create();
+    } finally { busy = false; }
+  };
+  box.oninput = (ev) => {
+    if (ev.target.matches('.pk-name input')) name = ev.target.value;
+    if (ev.target.matches('.pk-tour input')) tour = ev.target.checked;
+  };
+  box.onkeydown = (ev) => { if (ev.key === 'Enter' && ev.target.matches('.pk-name input')) { ev.preventDefault(); $('[data-create]', box)?.click(); } };
+  // 'new': a folder of that name in the one shown, set up as a notes folder
+  const create = async () => {
+    const msg = $('.pk-msg', box);
+    const btn = $('[data-create]', box);
+    btn.disabled = true;
+    let p;
+    try { p = await call('new_folder', { path: list.path, name: name ?? freeName(list, 'Notes') }); }
+    catch (e) { msg.innerHTML = `<span class="err">${esc(said(e))}</span>`; btn.disabled = false; return; }
+    if (!(await startNotes(app, p, tour))) btn.disabled = false;
+  };
+  await show(start || roots[0], true);
+}
+
+/** "New folder": asks for a name (again with the reason, if it can't be used) and makes it in the
+ *  folder listed. Its path, or null. */
+async function newFolder(list) {
+  let value = freeName(list, 'New folder');
+  let err = '';
+  for (;;) {
+    const v = await promptBox({ title: 'New folder', body: `In <code>${esc(list.path)}</code>${err ? `<br><span class="err">${esc(err)}</span>` : ''}`, value, ok: 'Make folder' });
+    if (v === null) return null;
+    try { return await call('new_folder', { path: list.path, name: v }); }
+    catch (e) { err = said(e); value = v; }
+  }
+}
+
+/** "Use this folder": a notes folder opens; inside one, that one is offered; any other folder can be
+ *  started as a new notes folder (startHere). */
+async function useHere(app, list) {
+  if (list.vault) return useVault(app, list.path);
+  if (list.inside) {
+    const ok = await confirmBox({ title: 'This folder is inside a notes folder', body: `It’s part of the notes folder <code>${esc(list.inside)}</code>. Open that one?`, ok: 'Open it' });
+    if (ok) await useVault(app, list.inside);
+    return;
+  }
+  const empty = !list.files && !list.dirs.length;
+  const nm = `“${esc(list.path.split(/[\\/]/).filter(Boolean).pop() || list.path)}”`; // (its name; the path is above)
+  const things = [list.files && plural(list.files, 'file'), list.dirs.length && plural(list.dirs.length, 'folder')].filter(Boolean).join(' and ');
+  const ask = confirmBox({
+    title: empty ? 'Start a new notes folder here?' : 'Start a notes folder among other things?',
+    body: (empty
+      ? `${nm} is empty. It gets the folders <code>pages</code> and <code>journals</code> and a small settings file, <code>logseq/config.edn</code>: the layout Logseq uses, so Logseq can open it too.`
+      : `${nm} already holds ${things}, but no notes. The folders <code>pages</code>, <code>journals</code> and <code>logseq</code> would be added beside them; nothing that’s there is changed. <b>A folder of its own</b> keeps notes apart from everything else: Cancel, then <b>New folder</b>.`)
+      + '<label class="toggle pk-tour"><input type="checkbox" checked> Add the short tour (4 pages)</label>',
+    ok: empty ? 'Start here' : 'Start here anyway',
+  });
+  const tick = document.querySelector('.modal .pk-tour input'); // (read once it's answered)
+  if (await ask) await startNotes(app, list.path, tick ? tick.checked : true);
+}
+
+/** Set up `path` as a new notes folder (start.rs; with the tour: its first page opens) and open it.
+ *  False (and why, in a message) if it couldn't be. */
+async function startNotes(app, path, demo) {
+  let r;
+  try { r = await call('start_notes', { path, today: today(), demo }); }
+  catch (e) { app.toast(said(e), 7000); return false; }
+  await useVault(app, path, r.start ? '#/page/' + encodeURIComponent(r.start) : '#/journals');
+  if (app.vaultOpen && !r.start) app.toast('Your new notes folder is ready.', 3500); // (the tour's page says so itself)
+  return true;
+}
+
+/** Open the notes folder at path, at `place` (default: the Journals). */
+export async function useVault(app, path, place = '#/journals') {
   // the pages on screen (the other side too) belong to the folder open now: saved there first
   if (!(await app.leaveAll())) return;
   store.set('vault', path);
   app.vaultError = null;
+  // (a big folder takes a moment the first time: say so where the page will be)
+  const v = h('div', 'view'); v.innerHTML = BRAND.wait('Opening your notes…');
+  app.pane.el.replaceChildren(v);
   await app.openVault();
   // one side, one tab: the tabs were the other folder's pages
-  app.tabs.reset(app.vaultOpen ? '#/journals' : '#/settings');
+  app.tabs.reset(app.vaultOpen ? place : '#/settings');
   app.draw(app.pane);
 }
 
@@ -248,7 +376,7 @@ function lookCard(app) {
       <div class="blk marker-done" style="--d:0"><span class="bul"></span><div class="bc"><input type="checkbox" class="todo" checked tabindex="-1">order more flour</div></div>
     </div></div>`;
   for (const s of SKINS) {
-    const b = h('button', 'skin-card', `<div class="stage">${sample}</div><div class="label"><b>${s.name}</b><span>${s.note}</span></div>`);
+    const b = h('button', 'skin-card', `<div class="stage">${sample}</div><div class="label"><b>${lookName(s)}</b><span>${s.note}</span></div>`);
     b.dataset.skin = s.id;
     b.setAttribute('aria-pressed', document.documentElement.dataset.skin === s.id);
     b.onclick = () => { app.setSkin(s.id); cards.querySelectorAll('.skin-card').forEach((x) => x.setAttribute('aria-pressed', x === b)); };
@@ -329,6 +457,7 @@ function textStyle(app) {
   const setLink = (c) => {
     store.set('linkColor', c);
     app.applyTextStyle();
+    app.setSkin(document.documentElement.dataset.skin); // (Plain's accent is its link colour: the widget, bars and capture box follow)
     box.querySelectorAll('.sw').forEach((b) => b.setAttribute('aria-pressed', String(b.classList.contains('pick') ? !!c && !LINK_COLOURS.includes(c) : (b.dataset.c || '') === c)));
   };
   box.querySelector('.swatches').addEventListener('click', (e) => {
@@ -398,14 +527,57 @@ function captureCard(app) {
   return card;
 }
 
-const BOOKMARKLET = "javascript:(function(){var s=String(getSelection()),u='leanoutliner://capture?url='+encodeURIComponent(location.href)+'&title='+encodeURIComponent(document.title)+'&text='+encodeURIComponent(s);location.href=u;var d=document.createElement('div');d.textContent='Sent to Lean Outliner';d.style.cssText='position:fixed;z-index:2147483647;top:16px;right:16px;background:#1a2130;color:#fff;padding:10px 14px;border-radius:10px;font:14px system-ui';document.body.appendChild(d);setTimeout(function(){d.remove()},2200)})();";
+// the page's address (with a selection: an address that opens the page at it, a text fragment
+// `#:~:text=first words,last words`), its title and the site's name (core link.rs makes the neat link)
+const BOOKMARKLET = "javascript:(function(){var s=String(getSelection()).trim(),h=location.href.split('#')[0],u=h,e=function(x){return encodeURIComponent(x).replace(/-/g,'%2D')};if(s){var w=s.split(/\\s+/);u=h+'#:~:text='+(w.length>8?e(w.slice(0,4).join(' '))+','+e(w.slice(-4).join(' ')):e(w.join(' ')))}var m=document.querySelector('meta[property=\"og:site_name\"]');location.href='leanoutliner://capture?url='+encodeURIComponent(u)+'&title='+encodeURIComponent(document.title)+'&site='+encodeURIComponent(m?m.content:'')+'&text='+encodeURIComponent(s);var d=document.createElement('div');d.textContent='Sent to thinky';d.style.cssText='position:fixed;z-index:2147483647;top:16px;right:16px;background:#1a2130;color:#fff;padding:10px 14px;border-radius:10px;font:14px system-ui';document.body.appendChild(d);setTimeout(function(){d.remove()},2200)})();";
+
+// The Edge extension (browser/ in the repo; native_host.rs in the app): set up here, then loaded in
+// Edge once by hand ("Load unpacked": an extension that isn't from the add-ons store).
+function browserCard(app) {
+  const card = h('div', 'card');
+  card.innerHTML = `<h2>Highlights from Edge</h2>
+    <p class="note">With the ${BRAND.word} extension in Edge you highlight passages as you read, then send them all at once to the article’s own page in your notes (one page per article, the day’s highlights under the date, each linked to its place in the article).</p>
+    <ul class="note how">
+      <li>Highlight: select text, then right-click → <b>Highlight for thinky</b>, or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd>.</li>
+      <li>Send: click the extension’s button next to Edge’s address bar (or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd>), then <b>Send</b>.</li>
+      <li>One passage to today’s journal: right-click → <b>Send to today’s journal</b>, or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>.</li>
+    </ul>
+    <p class="note ext-state" role="status" hidden></p>
+    <div class="btn-row"><button class="btn" data-a="setup">Set up</button></div>
+    <ol class="note steps" hidden>
+      <li>In Edge, open <code>edge://extensions</code> <button class="btn ghost small" data-a="copyext">Copy address</button></li>
+      <li>Turn on <b>Developer mode</b> (on the left, near the bottom).</li>
+      <li>Click <b>Load unpacked</b> and choose the folder that just opened in Explorer: <code class="ext-folder"></code> <button class="btn ghost small" data-a="copyfolder">Copy</button></li>
+      <li>Click the puzzle-piece button next to Edge’s address bar and pin <b>thinky highlights</b>, so its button stays in view.</li>
+    </ol>`;
+  const state = $('.ext-state', card), steps = $('.steps', card), btn = $('[data-a="setup"]', card);
+  const show = (st) => {
+    if (st.folder) $('.ext-folder', card).textContent = st.folder;
+    if (st.set_up) {
+      state.hidden = false;
+      state.textContent = 'Set up. After thinky updates, restart Edge to get the newest extension.';
+      btn.textContent = 'Show the steps again';
+    }
+  };
+  call('browser_status').then(show).catch(() => {});
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try { show({ ...(await call('browser_setup')), set_up: true }); steps.hidden = false; }
+    catch (e) { app.toast(String(e), 8000); }
+    finally { btn.disabled = false; }
+  };
+  const copy = async (t) => { try { await navigator.clipboard.writeText(t); app.toast('Copied', 1200); } catch { app.toast('Couldn’t copy'); } };
+  $('[data-a="copyext"]', card).onclick = () => copy('edge://extensions');
+  $('[data-a="copyfolder"]', card).onclick = () => copy($('.ext-folder', card).textContent);
+  return card;
+}
 
 function windowsCard(app) {
   const card = h('div', 'card');
   const hk = store.get('captureKey', '');
   card.innerHTML = `<h2>Capture from anywhere on the laptop</h2>
-    <h3>From the browser</h3>
-    <p class="note">Drag this button onto your browser’s bookmarks bar. Then on any web page, click it to add the page (and any text you selected) to your journal, using the quick capture format above. The first time, the browser asks to open Lean Outliner: tick “Always allow”.</p>
+    <h3>A bookmark button (without the extension)</h3>
+    <p class="note">Drag this button onto your browser’s bookmarks bar. Then on any web page, click it to add the page (and any text you selected) to your journal, using the quick capture format above. The first time, the browser asks to open ${BRAND.word}: tick “Always allow”.</p>
     <div class="btn-row"><a class="btn bookmarklet" href="${esc(BOOKMARKLET)}" draggable="true" title="Drag me to the bookmarks bar">＋ Add to journal</a>
       <button class="btn ghost" data-a="copy">Copy the code instead</button></div>
     <p class="note small">No bookmarks bar? In Chrome or Edge press Ctrl+Shift+B. If dragging doesn’t work: copy the code, right-click the bookmarks bar, choose “Add page…”, name it “Add to journal” and paste the code as the address.</p>
@@ -531,12 +703,13 @@ function binCard(app) {
 }
 
 /** Safety copies (core/src/app/safety.rs): the notes changed in the last 3 days, copied each time the
- *  folder opens, and a note's earlier text when it was changed or removed somewhere else. Open a
- *  copy, then a note, to read it as it was and put that version back. */
+ *  folder opens, and a note's earlier text when it was changed or removed somewhere else; kept in the
+ *  notes folder (logseq/.safety-<device>), so both devices' show, each saying who made it. Open a copy, then a
+ *  note, to read it as it was and put that version back. */
 function safetyCard(app) {
   const card = h('div', 'card');
   card.innerHTML = `<h2>Safety copies</h2>
-    <p class="note">Each time your notes folder opens, the app keeps a copy of the notes changed in the last 3 days. When a note is changed or removed somewhere else (your ${isAndroid ? 'computer' : 'phone'}, Claude, another app), the app also keeps its text from before. The copies stay on this ${isAndroid ? 'phone' : 'computer'}, outside your notes folder: the newest 15, one a day for the last week, and every earlier text from the last week, at most about 100 MB in all (the oldest go first). If a note gets damaged or overwritten, open a copy and put the earlier version back.</p>
+    <p class="note">Each time your notes folder opens, the app keeps a copy of the notes changed in the last 3 days. When a note is changed or removed somewhere else (your ${isAndroid ? 'computer' : 'phone'}, Claude, another app), the app also keeps its text from before. The copies are kept in your notes folder, in hidden folders in <code>logseq</code> (<code>.safety-computer-…</code>, <code>.safety-phone-…</code>, which Logseq leaves alone), so Google Drive keeps them in the cloud too, and your computer’s and your phone’s both show here. Each keeps its newest 15, one a day for the last week, and every earlier text from the last week; all of them together at most about 100 MB (the oldest go first). If a note gets damaged or overwritten, open a copy and put the earlier version back.</p>
     <div class="sc"></div>`;
   const body = $('.sc', card);
   const when = (s) => new Date(s * 1000).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -548,8 +721,8 @@ function safetyCard(app) {
     let items = [];
     try { items = await call('safety_copies'); } catch { /* none */ }
     body.innerHTML = items.length
-      ? `<ul class="rows sc-list">${items.map((c) => row(`data-id="${esc(c.id)}"`, when(c.when), holds(c))).join('')}</ul>`
-      : '<p class="note">No copies yet. One is made the next time the folder opens, if a note changed in the last 3 days.</p>';
+      ? `<ul class="rows sc-list">${items.map((c) => row(`data-id="${esc(c.id)}"`, when(c.when), `${holds(c)} · ${madeBy(c)}`)).join('')}</ul>`
+      : BRAND.empty('No copies yet. One is made the next time the folder opens, if a note changed in the last 3 days.');
     body.onclick = (e) => { const b = e.target.closest('[data-id]'); if (b) copy(b.dataset.id); };
   };
   const copy = async (id) => {
@@ -559,7 +732,7 @@ function safetyCard(app) {
     const label = (x) => (x.before ? `${x.name} — before a change made elsewhere` : x.name);
     const meta = (x) => (x.before && x.now !== 'same' ? `as of ${when(x.changed)}` : NOW[x.now] || '');
     body.innerHTML = `<button type="button" class="btn ghost small" data-back>‹ All copies</button>
-      <h3>Copy from ${esc(when(c.when))}</h3>
+      <h3>Copy from ${esc(when(c.when))}${c.mine ? '' : ` <span class="meta">made by ${esc(madeBy(c))}</span>`}</h3>
       <ul class="rows sc-list">${c.notes.map((x) => row(`data-p="${esc(x.path)}" data-before="${x.before || 0}"`, label(x), meta(x))).join('')}</ul>
       ${c.skipped.length ? `<p class="note small">Left out of this copy: ${c.skipped.map(([p, why]) => `${esc(p)} (${esc(why)})`).join(', ')}.</p>` : ''}`;
     body.onclick = (e) => {
@@ -617,6 +790,36 @@ function keysCard(app) {
   return card;
 }
 
+// "Send feedback": opens a new issue on the public GitHub repo in the browser, with the words
+// typed here and the app's version filled in. The app itself sends nothing: the person sees it all
+// on GitHub, can change it, and sends it there (it is public). Needs a GitHub account.
+export const FEEDBACK_URL = 'https://github.com/srikanth-iyer/thinky/issues/new';
+
+// The address of a new issue with this message and the app's details (version and system only).
+export function feedbackUrl(text, details) {
+  const title = text.split('\n')[0].slice(0, 80); // the first line, short, as the issue's title
+  const body = `${text}\n\n---\n${details}`; // the message, then the details under a line
+  return `${FEEDBACK_URL}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+}
+
+function feedbackCard(app) {
+  const card = h('div', 'card fb');
+  card.innerHTML = `<h2>Send feedback</h2><p class="note">Tell the app’s maker what works, what doesn’t, or what you’d like. This opens a new issue on GitHub in your browser, with your words and the app’s version filled in. You can read and change it there before you send it; issues are public, and you’ll need a GitHub account.</p>
+    <label class="field">Message<textarea class="fb-msg" rows="4" placeholder="What happened, or what would you like?"></textarea></label>
+    <div class="btn-row"><button class="btn" data-a="send">Open on GitHub</button></div><p class="note fb-out" role="status"></p>`;
+  const msg = $('.fb-msg', card), out = $('.fb-out', card), btn = $('[data-a="send"]', card);
+  btn.onclick = async () => {
+    const text = msg.value.trim();
+    if (!text) { out.textContent = 'Write a message first.'; msg.focus(); return; }
+    let ver = '';
+    try { ver = await window.__TAURI__?.app?.getVersion?.(); } catch {}
+    const where = isAndroid ? 'Android' : isApp ? await call('platform').catch(() => 'app') : 'browser';
+    app.openUrl(feedbackUrl(text, `thinky ${ver || '(preview)'} · ${where}`));
+    out.innerHTML = '<i class="spark-mark" aria-hidden="true"></i>Opened in your browser. Thank you!';
+  };
+  return card;
+}
+
 function problemsCard() {
   const card = h('div', 'card');
   card.innerHTML = `<h2>Problems log</h2><p class="note">If something goes wrong, the details are noted here. Copy them and send them to Claude to fix.</p>
@@ -636,7 +839,7 @@ async function aboutCard(app) {
   const card = h('div', 'card');
   let ver = '';
   try { ver = await window.__TAURI__?.app?.getVersion?.(); } catch {}
-  card.innerHTML = `<h2>About</h2><p class="note">Lean Outliner ${esc(ver || '(preview)')}. Your notes stay as plain Markdown files in your folder.</p>`;
+  card.innerHTML = `<h2>About ${BRAND.word}</h2><p class="note">${BRAND.word} ${esc(ver || '(preview)')}. Your notes stay as plain Markdown files in your folder.</p>`;
   if (isApp) card.append(await updateBox(app));
   return card;
 }
@@ -659,7 +862,8 @@ async function updateBox(app) {
   const page = () => (app.latest?.url ? ` <a href="${esc(app.latest.url)}" data-ext>the downloads page</a>` : ' the downloads page');
   const draw = (stage, html, button = '') => {
     box.dataset.stage = stage;
-    box.innerHTML = `<p class="note upd-out" role="status">${html}</p>${button ? `<div class="btn-row">${button}</div>` : ''}`;
+    const busy = ['checking', 'download', 'check', 'save'].includes(stage); // (waiting: the scribble turns)
+    box.innerHTML = `<p class="note upd-out" role="status">${busy ? BRAND.spin : ''}${html}</p>${button ? `<div class="btn-row">${button}</div>` : ''}`;
     box.querySelector('[data-ext]')?.addEventListener('click', (e) => { e.preventDefault(); app.openUrl(app.latest.url); });
   };
   const idle = (msg = '') => draw('idle', msg, '<button class="btn ghost" data-a="check">Check for a newer version</button>');
@@ -669,7 +873,7 @@ async function updateBox(app) {
     // how much it downloads (on the phone he may want to wait for Wi-Fi)
     const bytes = app.latest.sizes?.[isAndroid ? 'LeanOutliner.apk' : 'LeanOutliner-setup.exe'];
     const size = bytes ? `about ${Math.max(1, Math.round(bytes / 1e6))} MB` : isAndroid ? 'about 8 MB' : 'about 2 MB';
-    draw('newer', `A newer version (${name}) is ready. <b>Update now</b> downloads it (${size}), checks it’s genuine and installs it${isAndroid ? '' : ', then restarts Lean Outliner'}. Your notes are saved first. You can also get it from${page()}.`,
+    draw('newer', `A newer version (${name}) is ready. <b>Update now</b> downloads it (${size}), checks it’s genuine and installs it${isAndroid ? '' : `, then restarts ${BRAND.word}`}. Your notes are saved first. You can also get it from${page()}.`,
       '<button class="btn" data-a="update">Update now</button>');
   };
   // how the update is going, in this box (the newest one shown)
@@ -707,8 +911,8 @@ async function updateNow(app, tag) {
       // everything is saved: from here on nothing more can be typed (it couldn't be saved before
       // the installer closes the app)
       document.body.inert = true;
-      say('install', 'Installing: Lean Outliner will restart in a moment.');
-      if (!document.querySelector('.upd')) app.toast('Installing the update: Lean Outliner will restart in a moment.', 60000); // (About was left)
+      say('install', `Installing: ${BRAND.word} will restart in a moment.`);
+      if (!document.querySelector('.upd')) app.toast('Installing the update: thinky will restart in a moment.', 60000); // (About was left)
       await call('update_install'); // the installer closes the app, updates it and starts it again
     }
     job.busy = false;
@@ -740,16 +944,16 @@ function androidUpdate(app, tag) {
   }));
   return new Promise((resolve, reject) => {
     job.android = async ({ stage, msg = '' }) => {
-      if (stage === 'permission') say(stage, 'Android asks first: turn on <b>Allow from this source</b> for Lean Outliner, then come back here.');
+      if (stage === 'permission') say(stage, `Android asks first: turn on <b>Allow from this source</b> for ${BRAND.word}, then come back here.`);
       else if (stage === 'download') say(stage, `Downloading… ${esc(msg)}`);
       else if (stage === 'check') say(stage, 'Checking it’s genuine…');
       else if (stage === 'ready') {
         try { await saveFirst(app); } catch (err) { job.android = null; return reject(err); }
         await shown(); // Android only shows its installer over the app while it's on screen
-        say('install', 'Installing: open Lean Outliner again when Android has finished.');
+        say('install', `Installing: open ${BRAND.word} again when Android has finished.`);
         window.LeanAndroid.installUpdate();
       } else if (stage === 'confirm') {
-        say(stage, 'Tap <b>Update</b> in Android’s box. When Android has finished, open Lean Outliner again.');
+        say(stage, `Tap <b>Update</b> in Android’s box. When Android has finished, open ${BRAND.word} again.`);
         job.android = null; // the rest is Android's (its answer goes to androidSaid)
         resolve();
       } else if (stage === 'error' || stage === 'done') {
@@ -762,7 +966,7 @@ function androidUpdate(app, tag) {
   });
 }
 function androidSaid({ stage, msg = '' }) {
-  if (stage === 'done') return say(stage, 'Updated: open Lean Outliner again.');
+  if (stage === 'done') return say(stage, `Updated: open ${BRAND.word} again.`);
   if (stage !== 'error') return;
   call('log', { msg: 'update (Android): ' + msg }).catch(() => {});
   fail(job.app, msg);

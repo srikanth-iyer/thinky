@@ -66,8 +66,18 @@ const want = ['Block reference', 'Link…', 'Image link…', 'Upload a file…',
 check(want.every((w) => all.includes(w)) && all.length > 30, 'they are all there, the whole list (it scrolls)', JSON.stringify(all));
 const scrolls = await ac.evaluate((el) => el.scrollHeight > el.clientHeight);
 check(scrolls, 'the list scrolls rather than stopping at 12');
+const kws = all.filter((l) => /^[A-Z-]+$/.test(l));
+check(JSON.stringify(kws) === JSON.stringify(['TODO', 'DOING', 'DONE', 'CANCELED']), 'its to-do words: only TODO, DOING, DONE and CANCELED (he asked, Oct 29)', JSON.stringify(kws));
 await page.keyboard.press('Escape');
 await page.keyboard.press('Backspace');
+for (const q of ['later', 'now', 'waiting']) {
+  await page.keyboard.type('/' + q, { delay: 10 });
+  await sleep(150);
+  const got = await acItems();
+  check(!got.some((l) => /^(LATER|NOW|WAITING)$/.test(l)), `“/${q}” doesn’t offer ${q.toUpperCase()}`, JSON.stringify(got));
+  if (got.length) await page.keyboard.press('Escape');
+  for (let k = 0; k <= q.length; k++) await page.keyboard.press('Backspace');
+}
 for (const [q, label] of [['image', 'Image…'], ['h4', 'Heading 4'], ['canc', 'CANCELED'], ['number ch', 'Number children'], ['block ref', 'Block reference'], ['url', 'Link…'], ['asset', 'Upload a file…'], ['date picker', 'Date…']]) {
   await page.keyboard.type('/' + q, { delay: 10 });
   await sleep(150);
@@ -598,6 +608,11 @@ for (const lk of ['calm', 'plain', 'plainnight', 'paper']) {
   await page.keyboard.press('Escape');
   await sleep(150);
 }
+console.log('to-do words the "/" list no longer offers still work in notes');
+await fresh('pages/Old words.md', '- LATER read the menus\n- NOW call Rosa\n- WAITING for the pies\n');
+const mks = await page.$$eval('.outline .blk .mk', (ms) => ms.map((m) => m.textContent));
+check(JSON.stringify(mks) === JSON.stringify(['LATER', 'NOW', 'WAITING']), 'LATER, NOW and WAITING notes show their word as before', JSON.stringify(mks));
+check(read('pages/Old words.md') === '- LATER read the menus\n- NOW call Rosa\n- WAITING for the pies\n', 'and the file is untouched');
 await page.evaluate(() => window.leanApp.setSkin('calm'));
 check(errors.length === 0, 'no script errors (laptop)', errors.join('\n'));
 await browser.close();
@@ -651,7 +666,7 @@ await p.locator('#toolbar [data-t="slash"]').tap();
 await sleep(250);
 check(await p.locator('textarea.ed').inputValue() === '/' && await p.locator('#ac').isVisible() && (await p.locator('#ac li').count()) > 30, 'the toolbar’s "/" opens the command list', await p.locator('textarea.ed').inputValue());
 const rowH = await p.evaluate(() => Math.round(document.querySelector('#ac li').getBoundingClientRect().height));
-check(rowH >= 44, 'its rows are finger-sized', rowH);
+check(rowH >= 32, 'its rows are easy to tap (32px since Build 32: closer together, as he asked)', rowH);
 await p.keyboard.type('h2', { delay: 20 });
 await sleep(150);
 await p.locator('#ac li', { hasText: 'Heading 2' }).tap();
@@ -661,7 +676,8 @@ await p.keyboard.type('Plans ');
 await p.locator('#toolbar [data-t="date"]').tap();
 await sleep(250);
 const dm = await p.evaluate(() => ({ items: [...document.querySelectorAll('.pop.menu.tb-menu button')].map((b) => b.textContent), focus: document.activeElement?.matches('textarea.ed'), h: Math.round(document.querySelector('.pop.menu.tb-menu button')?.getBoundingClientRect().height ?? 0) }));
-check(dm.items.join('|') === 'linkToday|linkTomorrow|linkYesterday|linkAnother day…|to-do dateScheduled…|Deadline…' && dm.focus && dm.h >= 44, 'the date button: a link to today, tomorrow, yesterday or another day, or the scheduled date / deadline (finger-sized; the keyboard stays)', JSON.stringify(dm));
+dm.heads = await p.$$eval('.pop.menu.tb-menu .m-head', (hs) => hs.map((x) => x.textContent));
+check(dm.items.join('|') === 'Today|Tomorrow|Yesterday|Another day…|Scheduled…|Deadline…' && dm.heads.join('|') === 'Link to a day|To-do date' && dm.focus && dm.h >= 32, 'the date button: under “Link to a day” today, tomorrow, yesterday or another day; under “To-do date” the scheduled date / deadline (rows 32px, easy to tap; the keyboard stays)', JSON.stringify(dm));
 await p.screenshot({ path: SHOTS + '/edit-phone-datemenu.png' });
 await p.locator('.pop.menu.tb-menu button', { hasText: 'Tomorrow' }).tap();
 await sleep(400);

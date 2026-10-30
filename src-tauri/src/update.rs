@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 /// The key update signatures are checked against: base64 of the P-256 point X‖Y, built in by CI
-/// (LEAN_UPDATE_KEY, from the key kept locked in ci/update-key.pem). Without it (a build made
+/// (LEAN_UPDATE_KEY, the public half in ci/update-key.pub). Without it (a build made
 /// anywhere else) the app can't update itself, and About shows the downloads page instead.
 const KEY: Option<&str> = option_env!("LEAN_UPDATE_KEY");
 
@@ -84,7 +84,7 @@ pub fn command(cmd: &str, tag: &str, own: &str) -> Result<Value, String> {
 /// The installer closes every running copy of the program (Windows' Restart Manager), and a copy
 /// closed that way can't save first: so the update waits until he has closed the others. The
 /// shortcut key's helper doesn't count (it has nothing to save; `install` asks it to quit).
-const OTHER_COPIES: &str = "Lean Outliner is also open in another window, or the Add to journal box is open. Close it, then press Update now again.";
+const OTHER_COPIES: &str = "thinky is also open in another window, or the Add to journal box is open. Close it, then press Update now again.";
 
 fn own_version(own: &str) -> Result<rules::Version, String> {
     rules::parse_version(own).ok_or_else(|| format!("This app’s version ({own}) can’t be read."))
@@ -95,7 +95,7 @@ fn download(tag: &str, own: &str) -> Result<(), String> {
     if let Some((_, msg)) = why_not() {
         return Err(msg.into());
     }
-    let n = rules::build_number(tag).ok_or("That isn’t a build of Lean Outliner.")?;
+    let n = rules::build_number(tag).ok_or("That isn’t a build of thinky.")?;
     if n <= own_version(own)?.2 {
         return Err("You already have this version (or a newer one).".into());
     }
@@ -206,7 +206,7 @@ fn verify_bytes(bytes: &[u8], sig: &Path, n: u32, own: Option<rules::Version>) -
     if imp::verify(&key, &imp::sha256(text.as_bytes())?, &sig.sig)? {
         Ok(())
     } else {
-        Err("its signature isn’t from Lean Outliner’s key".into())
+        Err("its signature isn’t from thinky’s key".into())
     }
 }
 

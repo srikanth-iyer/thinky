@@ -3,12 +3,10 @@
 // words), to the clipboard or saved as a file where the platform has a save dialog (not Android).
 // Loaded the first time it's used (app.js pageMenu).
 
-import { esc, renderBlock, stampText, PROP, HIDDEN_PROPS } from './render.js';
+import { esc, renderBlock, stampText, PROP, hiddenKey } from './render.js';
 import { store, isAndroid } from './api.js';
 import { h } from './dom.js';
 
-// Logseq's bookkeeping properties (ids, folding, colours, number lists…): never copied
-const hiddenKey = (k) => HIDDEN_PROPS.has(k) || k.startsWith('card-') || k.startsWith('hl-');
 const KINDS = { text: 'Text', opml: 'OPML', html: 'HTML' };
 
 /** Each note of the page as {depth (from 0), lines, mark ("1." for a numbered note, else null)},

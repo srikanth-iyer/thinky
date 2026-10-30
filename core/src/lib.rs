@@ -11,6 +11,7 @@
 pub mod app;
 pub mod capture;
 pub mod capture_box;
+pub mod clip;
 mod config;
 mod doc;
 pub mod date;
@@ -24,6 +25,7 @@ pub mod task;
 pub mod text;
 pub mod update;
 pub mod search;
+pub mod start;
 mod vault;
 
 pub use parse::{parse_page, Block, ParsedPage};

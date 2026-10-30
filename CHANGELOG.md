@@ -5,6 +5,18 @@ each one the code exactly as it was released at its last build. Later releases a
 the top. (Until Build 32 the app was called Lean Outliner; its downloads and hidden id keep that
 name, so updates install over older builds.)
 
+## Milestone 5 — Builds 32 and 33 (October 29 and 30, 2026)
+
+- The app is now called **thinky**, with its own logo, and a new look of the same name.
+- Highlights from Edge: highlight passages while reading and send them to one page per article.
+- Neat web links in quick captures.
+- Safety copies kept in the notes folder (so a synced folder keeps them too); an alias counts as its page.
+- A welcome screen that can start a new notes folder with a short tour.
+- Quieter phone menus and bars.
+- Edit linked references right where they are; `#tags` counted in Tags; simpler to-do filters; a sort menu for references.
+- A faint "+" after the last note, and a calm start-up.
+- Send feedback (Settings › About) opens a new issue on GitHub, with nothing personal added.
+
 ## Milestone 4 — Builds 27 to 31 (October 27, 2026)
 
 - Tabs, and two pages side by side on the laptop.

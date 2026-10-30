@@ -86,11 +86,20 @@ fn main() {
     let t = Instant::now();
     let any = app.vault.has_unlinked(&days).iter().filter(|x| **x).count();
     let day_unlinked = ms(t);
+    // the journals list's next 5 days (days other pages link to count too)
+    let t = Instant::now();
+    let shown = app.journals((2026, 10, 26), 5, true).len();
+    let journals = ms(t);
     let t = Instant::now();
     let tasks = app.vault.tasks(false).len();
     let todos = ms(t);
+    // the editor's save of a note added to a journal day
+    let day = app.journal_name((2026, 10, 26));
+    let mut pv = app.page(&day, None);
+    pv.doc.blocks.push(outline_core::DocBlock { depth: 0, text: "bench note".into(), raw: None, plain: false });
+    let req = serde_json::json!({"name": day, "doc": pv.doc, "base_hash": pv.hash});
     let t = Instant::now();
-    app.append_journal((2026, 10, 26), "bench note").unwrap();
+    app.save(serde_json::from_value(req).unwrap()).unwrap();
     let save = ms(t);
     let t = Instant::now();
     app.rescan();
@@ -142,10 +151,11 @@ fn main() {
     println!("all pages {list} ms · linked refs ({refs} pages) {linked} ms · long page ({} blocks) {long_page} ms", pv.doc.blocks.len());
     println!("search: first {search_first} ms (makes the notes' searchable copy) · then ({hits} hits) {search} ms · 3 words in any order ({many} hits) {search_words} ms · with a typo ({typo} hits) {search_typo} ms");
     println!("unlinked refs ({} pages) {unlinked} ms · to-dos ({tasks}) {todos} ms", un.len());
+    println!("journals: the next {shown} days {journals} ms");
     println!("journals: any unlinked references for 5 days ({any} have some) {day_unlinked} ms");
     println!("save {save} ms · rescan {rescan} ms · JSON for the window ({json_bytes} bytes) {json} ms");
     println!("pictures nothing uses ({} of {}) {pictures} ms · safety copy ({copied} notes, in the background) {safety} ms", pics.unused.len(), pics.pictures);
     println!(
-        "BENCH {{\"open_cold_ms\":{open_cold},\"open_warm_ms\":{open_warm},\"pages_ms\":{list},\"linked_ms\":{linked},\"page_ms\":{long_page},\"search_ms\":{search},\"search_first_ms\":{search_first},\"search_words_ms\":{search_words},\"search_typo_ms\":{search_typo},\"unlinked_ms\":{unlinked},\"todos_ms\":{todos},\"day_unlinked_ms\":{day_unlinked},\"save_ms\":{save},\"rescan_ms\":{rescan},\"json_ms\":{json},\"pictures_ms\":{pictures},\"safety_copy_ms\":{safety},\"open_changed_ms\":{open_changed}}}"
+        "BENCH {{\"open_cold_ms\":{open_cold},\"open_warm_ms\":{open_warm},\"pages_ms\":{list},\"linked_ms\":{linked},\"page_ms\":{long_page},\"search_ms\":{search},\"search_first_ms\":{search_first},\"search_words_ms\":{search_words},\"search_typo_ms\":{search_typo},\"unlinked_ms\":{unlinked},\"todos_ms\":{todos},\"day_unlinked_ms\":{day_unlinked},\"journals_ms\":{journals},\"save_ms\":{save},\"rescan_ms\":{rescan},\"json_ms\":{json},\"pictures_ms\":{pictures},\"safety_copy_ms\":{safety},\"open_changed_ms\":{open_changed}}}"
     );
 }

@@ -6,7 +6,7 @@
 
 import { call, store } from './api.js';
 import { renderBlock, esc } from './render.js';
-import { h, ICON } from './dom.js';
+import { h, ICON, BRAND } from './dom.js';
 import { commandList, keyHtml, keyOf, editingNow, editAgain } from './commands.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -206,7 +206,11 @@ export class SearchBox {
     if (this.mode === 'commands') return this.draw(this.commandRows(q));
     if (!q) return this.draw(this.emptyRows());
     let hits = [];
-    try { hits = await call('search', { q }); } catch { /* no notes folder open */ }
+    // the first search after opening reads every note once (later ones are quick): if it takes a
+    // moment, the scribble turns in the list meanwhile
+    const slow = !this.app.searched && setTimeout(() => { if (seq === this.seq && this.isOpen) this.draw([{ kind: 'note', html: BRAND.wait('Searching your notes…', 'span') }]); }, 250);
+    try { hits = await call('search', { q }); this.app.searched = true; } catch { /* no notes folder open */ }
+    clearTimeout(slow);
     if (seq !== this.seq || !this.isOpen || this.mode !== 'search') return; // (typing went on)
     this.draw(this.resultRows(q, hits));
   }
@@ -240,7 +244,7 @@ export class SearchBox {
     if (!exact && this.app.vaultOpen) rows.push({ kind: 'new', page: q });
     if (notes.length) rows.push({ kind: 'h', html: 'Notes' });
     for (const x of notes) rows.push({ kind: 'hit', page: x.page, line: x.line, text: x.text, words });
-    if (!rows.length) rows.push({ kind: 'note', html: 'Nothing found.' });
+    if (!rows.length) rows.push({ kind: 'note', html: BRAND.empty('Nothing found.', 'span') });
     return rows;
   }
   commandRows(q) {

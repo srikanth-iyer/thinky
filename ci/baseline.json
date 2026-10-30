@@ -19,6 +19,7 @@
     "unlinked_ms": 25,
     "todos_ms": 8,
     "day_unlinked_ms": 25,
+    "journals_ms": 10,
     "save_ms": 2,
     "rescan_ms": 10,
     "json_ms": 8,

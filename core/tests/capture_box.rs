@@ -173,7 +173,7 @@ fn links_to_saved_files_are_swapped_in_one_go() {
 fn the_box_is_sized_like_the_web_box() {
     let m = Metrics { scale: 1.0, line_h: 27, lines: 1, pill_w: 0, rows: 0, list_line_h: 19, foot_h: 17 };
     let l = layout(&m);
-    assert_eq!((l.w, l.h), (640, 98), "one line: 640 × 98, as the web box");
+    assert_eq!((l.w, l.h), (640, 98), "one line: 640 × 98");
     assert_eq!(l.tile, Rect::new(16, 15, 48, 47));
     assert_eq!((l.note.l, l.note.r), (61, 622), "the text starts 13 px after the + button");
     assert!(l.note.t > l.tile.t && l.note.b < l.tile.b, "the first line sits level with the + button");
@@ -223,6 +223,10 @@ fn the_page_list_puts_the_best_match_first() {
     assert_eq!(names("project", 10), ["Project", "Project ideas", "projector manual", "Old projects", "Ideas/Projects"]);
     assert_eq!(names("PROJ IDE", 10), ["Project ideas", "Ideas/Projects"], "every word, any case");
     assert_eq!(names("café", 10), ["Café notes"]);
+    // as the Ctrl+K search finds pages: accents, word order, a typo
+    assert_eq!(names("cafe", 10), ["Café notes"], "without the accent");
+    assert_eq!(names("list reading", 10), ["Reading list"], "words in any order");
+    assert_eq!(names("readng", 10), ["Reading list"], "a letter off");
     assert_eq!(names("zzz", 10), Vec::<&str>::new());
     assert_eq!(names("o", 2).len(), 2, "no more than asked");
 }
@@ -285,7 +289,7 @@ fn notes_go_to_another_page_as_written_by_logseq() {
     assert_eq!(std::fs::read_to_string(v.join(&rel)).unwrap(), "\u{feff}- first idea\r\n- second\r\n- [[quick capture]] **09:15**: a third\r\n");
     // a to-do: the workflow's marker at the very start of the note
     app.capture_to_page("Project ideas", "call Ana", "https://x.org", true, (2026, 10, 26), "09:16").unwrap();
-    assert!(std::fs::read_to_string(v.join(&rel)).unwrap().ends_with("- TODO [[quick capture]] **09:16**: call Ana from https://x.org\r\n"));
+    assert!(std::fs::read_to_string(v.join(&rel)).unwrap().ends_with("- TODO [[quick capture]] **09:16**: call Ana from [x.org](https://x.org)\r\n"));
     // a page that doesn't exist yet gets a Logseq-style file; a name a file can't hold gets title::
     assert_eq!(app.capture_to_page("Books/2026", "Dune", "", false, (2026, 10, 26), "10:00").unwrap(), "pages/Books___2026.md");
     assert_eq!(std::fs::read_to_string(v.join("pages/Books___2026.md")).unwrap(), "- [[quick capture]] **10:00**: Dune\n");
@@ -587,8 +591,8 @@ fn an_unreadable_config_is_never_guessed() {
     let err = App::open_read_only(&v).err().expect("refused");
     assert!(err.contains("config.edn"), "{err}");
     assert!(capture_to_usual(&v, "x", "", false, (2026, 10, 26), "09:00").is_err());
-    // the app itself still opens (with Logseq's defaults), as before
-    assert!(App::open(&v).is_ok());
+    // nor does the app itself open with guessed settings (core/tests/elsewhere.rs)
+    assert!(App::open(&v).is_err());
     assert!(!v.join("pages/October 20th, 2026.md").exists() && std::fs::read_dir(v.join("journals")).unwrap().count() == 0);
     let _ = std::fs::remove_dir_all(&v);
 }
@@ -664,9 +668,9 @@ fn the_usual_capture_page_is_found_as_the_app_finds_it() {
     assert_eq!(capture_to_usual(&v, "via the box", "", false, at, "09:00").unwrap(), "pages/Inbox (2).md");
     assert_eq!(std::fs::read_to_string(v.join("pages/inbox.md")).unwrap(), "title:: Mail\n- mail\n", "Mail's file untouched");
     assert_eq!(std::fs::read_to_string(v.join("pages/Inbox (2).md")).unwrap(), "title:: Inbox\n- via the box\n");
-    // the app's own quick capture, and the next note from the box, go to that same page
+    // adding to the page by name (the box's other-page path), and the next note from the box, go to that same page
     let mut app = App::open(&v).unwrap();
-    assert_eq!(app.capture("from the app", "", false, at, "09:01").unwrap(), "Inbox");
+    assert_eq!(app.capture_to_page("Inbox", "from the app", "", false, at, "09:01").unwrap(), "pages/Inbox (2).md");
     assert_eq!(capture_to_usual(&v, "again", "", true, at, "09:02").unwrap(), "pages/Inbox (2).md");
     assert_eq!(std::fs::read_to_string(v.join("pages/Inbox (2).md")).unwrap(), "title:: Inbox\n- via the box\n- from the app\n- TODO again\n");
     let _ = std::fs::remove_dir_all(&v);
@@ -685,4 +689,65 @@ fn the_usual_capture_page_is_found_as_the_app_finds_it() {
     assert_eq!(capture_to_usual(&v, "z", "", false, at, "09:05").unwrap(), "pages/Inbox.md");
     assert_eq!(std::fs::read_to_string(v.join("pages/Inbox.md")).unwrap(), "- z\n");
     let _ = std::fs::remove_dir_all(&v);
+}
+
+#[test]
+fn shared_pictures_go_where_notes_go_in_the_media_template() {
+    // Android's "Add to journal" for a picture: copied into assets/, then its Markdown added with
+    // the media template, to the place found exactly as for notes (the same code, through JNI)
+    const INBOX: &str = r#"{:quick-capture-options {:insert-today? false :default-page "Inbox"}
+ :quick-capture-templates {:text "{text}" :media "**{time}** {url}"}}"#;
+    let at = (2026, 10, 26);
+    let v = vault("media-page", INBOX);
+    std::fs::write(v.join("pages/inbox.md"), "title:: Mail\r\n- mail").unwrap();
+    let rel = save_asset_file_at(&v, "IMG 1.jpg", b"jpeg", 1761487200000).unwrap();
+    let md = asset_markdown("IMG 1.jpg", &rel);
+    assert_eq!(md, "![IMG 1](../assets/IMG_1_1761487200000.jpg)");
+    assert_eq!(capture::capture_media_to_usual(&v, &md, at, "09:00").unwrap(), "pages/Inbox (2).md");
+    assert_eq!(std::fs::read_to_string(v.join("pages/inbox.md")).unwrap(), "title:: Mail\r\n- mail", "Mail's file untouched");
+    assert_eq!(std::fs::read_to_string(v.join("pages/Inbox (2).md")).unwrap(), "title:: Inbox\n- **09:00** ![IMG 1](../assets/IMG_1_1761487200000.jpg)\n");
+    // a page with the alias Inbox is the capture page
+    std::fs::remove_file(v.join("pages/Inbox (2).md")).unwrap();
+    std::fs::write(v.join("pages/Collected.md"), "alias:: Inbox\n\n- earlier").unwrap();
+    assert_eq!(capture::capture_media_to_usual(&v, "[a.pdf](../assets/a.pdf)", at, "09:01").unwrap(), "pages/Collected.md");
+    assert_eq!(std::fs::read_to_string(v.join("pages/Collected.md")).unwrap(), "alias:: Inbox\n\n- earlier\n- **09:01** [a.pdf](../assets/a.pdf)");
+    let _ = std::fs::remove_dir_all(&v);
+    // today's journal, Logseq's default media template
+    let v = vault("media-today", r#"{:quick-capture-options {:insert-today? true} :journal/page-title-format "MMMM do, yyyy"}"#);
+    assert_eq!(capture::capture_media_to_usual(&v, "![p](../assets/p_1.png)", at, "09:02").unwrap(), "journals/2026_10_26.md");
+    assert_eq!(std::fs::read_to_string(v.join("journals/2026_10_26.md")).unwrap(), "- [[quick capture]] **09:02**: ![p](../assets/p_1.png)\n");
+    let _ = std::fs::remove_dir_all(&v);
+}
+
+/// The app's icon in the capture box's strip (Canvas::logo): the cream tile, the ink scribble and
+/// the red spark where the SVG has them, nothing outside its square, at the sizes the box uses.
+#[test]
+fn the_logo_is_drawn_in_its_square() {
+    let (w, h) = (84, 84);
+    let mut px = vec![0x777777u32; (w * h) as usize];
+    let mut c = Canvas { px: &mut px, w, h };
+    c.logo(10.0, 10.0, 64.0);
+    let at = |x: i32, y: i32| px[(y * w + x) as usize];
+    for y in 0..h {
+        for x in 0..w {
+            if !(10..74).contains(&x) || !(10..74).contains(&y) {
+                assert_eq!(at(x, y), 0x777777, "nothing outside the square: ({x}, {y})");
+            }
+        }
+    }
+    assert_eq!(at(10 + 6, 10 + 32), LOGO_TILE, "the tile's left edge is cream");
+    assert_eq!(at(10 + 50, 10 + 58), LOGO_TILE, "and its lower right");
+    assert_eq!(at(10 + 50, 10 + 15), LOGO_SPARK, "the spark's middle is red");
+    assert_ne!(at(10 + 50 + 7, 10 + 15 + 7), LOGO_SPARK, "between its points it isn't (four points, not a disc)");
+    assert_ne!(at(10 + 50 + 11, 10 + 15), 0x777777, "its right point reaches out");
+    let ink = px.iter().filter(|&&p| p == LOGO_INK).count();
+    assert!(ink > 120, "the scribble is drawn in the ink: {ink} pixels");
+    // the sizes the box uses (16 px at 100%, up to 40 at 250%): no panic, some of each colour
+    for size in [16.0f32, 20.0, 40.0] {
+        let n = size.ceil() as i32 + 2;
+        let mut px = vec![0xFFFFFFu32; (n * n) as usize];
+        Canvas { px: &mut px, w: n, h: n }.logo(1.0, 1.0, size);
+        assert!(px.contains(&LOGO_TILE), "{size}: the tile");
+        assert!(px.iter().any(|&p| (p >> 16) > 0xE0 && (p & 0xFF) < 0x90), "{size}: the spark (red, maybe softened at its edges)");
+    }
 }

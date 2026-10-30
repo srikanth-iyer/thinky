@@ -9,10 +9,13 @@ use std::sync::{Mutex, MutexGuard};
 use tauri::{Emitter, Manager};
 
 pub mod update;
+// Android's "Add a note" pop-up adds through the core (JNI; the tests run everywhere)
+pub mod android_capture;
 #[cfg(windows)]
 pub mod capture_box;
 pub mod hotkey;
 pub mod links;
+pub mod native_host;
 mod watch;
 pub mod win;
 
@@ -21,8 +24,6 @@ struct State(Mutex<Option<App>>);
 /// The open notes folder, for showing its images (kept apart from the app, so pictures
 /// never wait behind a slow request).
 static ROOT: Mutex<Option<PathBuf>> = Mutex::new(None);
-/// Text handed to the capture box (from a browser link or the clipboard).
-static PREFILL: Mutex<Option<(String, String)>> = Mutex::new(None);
 /// The files last dropped on the window from Explorer (its drag-drop event): `save_asset_path`
 /// copies only these, so the page can never ask for any other file on the computer.
 static DROPPED: Mutex<Vec<std::path::PathBuf>> = Mutex::new(Vec::new());
@@ -54,7 +55,13 @@ fn call(app: tauri::AppHandle, state: tauri::State<'_, State>, cmd: String, args
         "rescan" => {
             let plan = lock(&state).as_ref().map(|a| a.scan_plan()).ok_or("no vault open")?;
             let ch = collect_changes(plan);
-            Ok(json!(lock(&state).as_mut().map(|a| a.apply_changes(ch)).unwrap_or_default()))
+            let mut st = lock(&state);
+            let changed = st.as_mut().map(|a| a.apply_changes(ch)).unwrap_or_default();
+            // the settings changed (config.edn): the journals folder may be another one now
+            if let Some(a) = st.as_ref().filter(|_| changed.iter().any(|c| c == outline_core::app::CONFIG_REL)) {
+                watch_notes(&app, a);
+            }
+            Ok(json!(changed))
         }
         "quit" => {
             if let Some(a) = lock(&state).as_mut() {
@@ -75,14 +82,6 @@ fn call(app: tauri::AppHandle, state: tauri::State<'_, State>, cmd: String, args
             let (path, md) = outline_core::app::save_dropped_file(&root, &file)?;
             Ok(json!({ "path": path, "md": md }))
         }
-        "clipboard" => Ok(json!(win::clipboard_text())),
-        "prefill" => {
-            let p = PREFILL.lock().unwrap_or_else(|p| p.into_inner()).clone();
-            Ok(match p {
-                Some((text, url)) => json!({ "text": text, "url": url, "from": "link" }),
-                None => json!({ "text": win::clipboard_text(), "url": "", "from": "clipboard" }),
-            })
-        }
         // a leanoutliner://page/… or …/note/… link the app was started with (links.rs), once
         "start_link" => Ok(json!(links::take_start())),
         // the page ⋯ menu's "Show in Explorer": its file, selected in a File Explorer window
@@ -91,17 +90,17 @@ fn call(app: tauri::AppHandle, state: tauri::State<'_, State>, cmd: String, args
             tauri_plugin_opener::reveal_item_in_dir(&file).map_err(|e| format!("Couldn’t show the file: {e}"))?;
             Ok(json!(true))
         }
+        // the browser extension (native_host.rs): set it up (its files, the receiver for Edge),
+        // then show its folder in Explorer for Edge's "Load unpacked"
+        "browser_setup" => {
+            let dir = native_host::setup()?;
+            let _ = tauri_plugin_opener::reveal_item_in_dir(&dir);
+            Ok(json!({ "folder": dir.display().to_string() }))
+        }
+        "browser_status" => Ok(json!({ "set_up": native_host::is_set_up(), "folder": native_host::folder().map(|d| d.display().to_string()) })),
         // the capture box's shortcut key (hotkey.rs): the key as saved, or what's set now
         "set_shortcut" => Ok(json!(hotkey::set(&s("key"))?)),
         "get_shortcut" => Ok(hotkey::state()),
-        // the capture box says where a note will go: today's journal or the quick capture page
-        "capture_where" => {
-            let root = outline_core::app::last_vault_or_why()?;
-            // the same rule as adding the note: only a missing config.edn means Logseq's defaults
-            let cfg = outline_core::capture::read_config(&root).map_err(|e| format!("Couldn't read logseq/config.edn ({e})."))?;
-            let (today, page) = outline_core::capture::default_place(&cfg, win::local_now().0);
-            Ok(json!({ "today": today, "page": page }))
-        }
         // one-click updates (update.rs); the page passes only the build it saw ("build-24")
         "update_status" | "update_download" | "update_check" => update::command(&cmd, &s("tag"), &app.package_info().version.to_string()),
         "update_install" => {
@@ -112,28 +111,28 @@ fn call(app: tauri::AppHandle, state: tauri::State<'_, State>, cmd: String, args
             app.exit(0);
             Ok(json!(true))
         }
-        // the capture box: add to the notes folder last opened, without loading it
-        "quick_capture" => {
-            let root = outline_core::app::last_vault_or_why()?;
-            let (today, time) = win::local_now();
-            Ok(json!(outline_core::capture::capture_to_vault(&root, &s("text"), &s("url"), today, &time)?))
-        }
         _ => {
             let r = dispatch(&mut lock(&state), &cmd, args.clone());
             if cmd == "open" && r.is_ok() {
                 if let Some(a) = lock(&state).as_ref() {
-                    *ROOT.lock().unwrap_or_else(|p| p.into_inner()) = Some(a.root.clone());
-                    let cfg = &a.vault.config;
-                    let dirs = vec![a.root.join(&cfg.pages_dir), a.root.join(&cfg.journals_dir)];
-                    let h = app.clone();
-                    watch::start(a.root.clone(), dirs, move || {
-                        let _ = h.emit("lean-files", ());
-                    });
+                    watch_notes(&app, a);
                 }
             }
             r
         }
     })
+}
+
+/// Pictures come from the open notes folder, and its pages and journals folders are watched for
+/// changes made elsewhere (`lean-files` → the page rescans).
+fn watch_notes(app: &tauri::AppHandle, a: &App) {
+    *ROOT.lock().unwrap_or_else(|p| p.into_inner()) = Some(a.root.clone());
+    let cfg = &a.vault.config;
+    let dirs = vec![a.root.join(&cfg.pages_dir), a.root.join(&cfg.journals_dir)];
+    let h = app.clone();
+    watch::start(a.root.clone(), dirs, move || {
+        let _ = h.emit("lean-files", ());
+    });
 }
 
 /// `%20` etc. in a URL path.
@@ -181,18 +180,16 @@ fn builder() -> tauri::Builder<tauri::Wry> {
             if let Ok(dir) = app.path().app_cache_dir() {
                 outline_core::app::set_cache_dir(dir);
             }
-            // safety copies: not the cache (Android may clear it), not the notes folder
+            // the safety copies' name for this device (they live in the notes folder's logseq/.safety-<device>),
+            // and copies kept while the notes folder can't be written: not the cache (Android may clear it)
             if let Ok(dir) = app.path().app_local_data_dir() {
                 outline_core::app::set_data_dir(dir);
             }
             std::thread::spawn(win::register_link_handler);
-            if let Some(w) = app.get_webview_window("capture") {
-                place_capture_box(&w);
-            } else {
-                std::thread::spawn(update::tidy); // the last update's installer, once it has run
-                std::thread::spawn(hotkey::at_start); // the shortcut key's helper runs
-                links::listen(app.handle().clone()); // page and note links clicked while it's open
-            }
+            std::thread::spawn(update::tidy); // the last update's installer, once it has run
+            std::thread::spawn(hotkey::at_start); // the shortcut key's helper runs
+            std::thread::spawn(native_host::refresh); // the browser extension's files, once set up
+            links::listen(app.handle().clone()); // page and note links clicked while it's open
             Ok(())
         })
         // pictures in notes: vault://localhost/assets/x.png → <notes folder>/assets/x.png
@@ -244,44 +241,4 @@ fn context() -> tauri::Context<tauri::Wry> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     builder().run(context()).expect("error while running the app");
-}
-
-/// The web version of the small "Add to journal" box (Windows shortcut key, browser link with
-/// `box=1`), like a launcher (Spotlight, Raycast): no title bar, one wide line to type in that
-/// grows with the text (capture.js), a little above the middle of the screen, on top, not in the
-/// taskbar. Windows 11 gives it rounded corners and a shadow (`shadow`). On Windows the native
-/// box (capture_box) is used instead; this one is the fallback when that can't be made.
-pub fn run_capture_box(prefill: Option<(String, String)>) {
-    *PREFILL.lock().unwrap_or_else(|p| p.into_inner()) = prefill;
-    let mut ctx = context();
-    if let Some(w) = ctx.config_mut().app.windows.first_mut() {
-        w.label = "capture".into();
-        w.url = tauri::WebviewUrl::App("capture.html".into());
-        w.title = "Add to journal".into();
-        w.decorations = false;
-        w.shadow = true;
-        w.width = 640.0;
-        w.height = 98.0; // one line; capture.js grows it with the text
-        w.min_width = None;
-        w.min_height = None;
-        w.resizable = false;
-        w.always_on_top = true;
-        w.skip_taskbar = true;
-        w.focus = true;
-        w.visible = false; // shown once it's in place (place_capture_box)
-    }
-    builder().run(ctx).expect("error while running the capture box");
-}
-
-/// Centre the capture box across the screen, a quarter of the way down, then show it.
-fn place_capture_box(w: &tauri::WebviewWindow) {
-    let monitor = w.current_monitor().ok().flatten().or_else(|| w.primary_monitor().ok().flatten());
-    if let (Some(m), Ok(size)) = (monitor, w.outer_size()) {
-        let (mp, ms) = (m.position(), m.size());
-        let x = mp.x + (ms.width as i32 - size.width as i32) / 2;
-        let y = mp.y + ms.height as i32 / 4;
-        let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
-    }
-    let _ = w.show();
-    let _ = w.set_focus();
 }

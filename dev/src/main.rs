@@ -169,11 +169,23 @@ fn handle(sv: &Server, stream: TcpStream) {
 }
 
 fn main() {
+    // Started by a browser as the extension's receiver (native messaging, for testing browser/
+    // on Linux): the same code as the Windows app's, with the notes folder in $LEAN_CLIP_VAULT.
+    if std::env::args().nth(1).is_some_and(|a| a.starts_with("chrome-extension://")) {
+        let root = || std::env::var_os("LEAN_CLIP_VAULT").map(PathBuf::from).ok_or_else(|| "No notes folder (LEAN_CLIP_VAULT).".to_string());
+        let now = || {
+            let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()) as i64;
+            let t = secs.rem_euclid(86400);
+            (outline_core::date::civil_from_days(secs.div_euclid(86400)), format!("{:02}:{:02}", t / 3600, t / 60 % 60))
+        };
+        outline_core::clip::serve(&mut std::io::stdin().lock(), &mut std::io::stdout().lock(), root, now);
+        return;
+    }
     let vault = std::env::args().nth(1).expect("usage: devserver <vault> [port]");
     let port = std::env::args().nth(2).unwrap_or("8765".into());
     let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // safety copies (core/src/app/safety.rs): $LEAN_DATA_DIR (the UI tests use a fresh one per test),
-    // else a folder in the system's temp folder
+    // the app's data folder (safety copies' device name, core/src/app/safety.rs): $LEAN_DATA_DIR (the
+    // UI tests use a fresh one per test), else a folder in the system's temp folder
     let data = std::env::var_os("LEAN_DATA_DIR").map(PathBuf::from).unwrap_or_else(|| std::env::temp_dir().join("lean-outliner-dev-data"));
     outline_core::app::set_data_dir(data);
     let app = App::open(std::path::Path::new(&vault)).expect("open vault");

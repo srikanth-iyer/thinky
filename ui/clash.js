@@ -11,6 +11,7 @@
 import { call } from './api.js';
 import { renderBlock, esc } from './render.js';
 import { h, ICON } from './dom.js';
+import { docKey } from './editor.js';
 
 const words = (bs) => bs.map((b) => b.text).join('\n');
 /** the words without pictures' sizes ({:height …, :width …} right after a link) */
@@ -91,9 +92,6 @@ function pageBlocks(c, picks) {
   }
   return blocks;
 }
-
-/** What a page says (properties, and each note's level and words). */
-const docKey = (d) => JSON.stringify([d.preamble, d.blocks.map((b) => [b.depth, b.text])]);
 
 /** Show the clash screen for outline o (its page clashed while saving). Resolves when he chose
  *  (true) or put it off (false). */

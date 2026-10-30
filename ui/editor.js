@@ -4,7 +4,7 @@
 // the user chooses (the other version is kept as a backup copy).
 
 import { call, today, nowTime, noteLinkUrl } from './api.js';
-import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, HIDDEN_PROPS, parseStamp, stampText, withPictureSize } from './render.js';
+import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, hiddenKey, parseStamp, stampText, withPictureSize } from './render.js';
 import { pickDate, caretRect, noteMenu, menu, formBox } from './popups.js';
 import { openClash } from './clash.js';
 
@@ -273,6 +273,9 @@ export class Outline {
     this.app = app;
     this.host = host;
     this.preview = !!opts.preview;
+    // opts.embed: a note shown and edited inside another page's linked references (App.editRef): no
+    // path above it (the reference shows its own), no pinned parents, no "+" at its end
+    this.embed = !!opts.embed;
     this.zoomLine = opts.zoomLine ?? null;
     this.banner = document.createElement('div');
     this.banner.hidden = true;
@@ -288,6 +291,18 @@ export class Outline {
     this.pins.innerHTML = '<div class="pins-in"></div>';
     this.pinned = '';
     host.append(this.banner, this.crumbs, this.pins, this.el);
+    // a faint "+" after the last note: a click adds a note there (he asked, Oct 30, as Logseq has);
+    // not in an earlier version (History), nor where nothing can be written or the page is still empty
+    if (!this.preview && !this.embed) {
+      this.addEnd = document.createElement('button');
+      this.addEnd.type = 'button';
+      this.addEnd.className = 'add-end';
+      this.addEnd.setAttribute('aria-label', 'Add a note');
+      this.addEnd.title = 'Add a note';
+      this.addEnd.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v11M2.5 8h11"/></svg>'; // (drawn: a font's "+" sits off centre)
+      this.addEnd.onclick = () => { this.addAtEnd(); this.ta?.scrollIntoView({ block: 'nearest' }); };
+      host.append(this.addEnd);
+    }
     this.cur = null; // index of the block being edited
     this.ta = null;
     this.sel = null; // selected blocks {a, b} (anchor, head)
@@ -370,8 +385,14 @@ export class Outline {
     this.el.replaceChildren();
     this.drawMore(CHUNK);
     this.renderCrumbs();
+    this.endPlus();
     this.pinned = null; // notes moved: the pinned ones are worked out again
     this.app.pinSoon?.();
+  }
+  /** The faint "+" after the last note: hidden where nothing can be written, and while the page's
+   *  only note is still empty (its "Click to write…" does that job). */
+  endPlus() {
+    if (this.addEnd) this.addEnd.hidden = this.readonly || (this.end - this.start === 1 && !this.textOf(this.start).trim());
   }
   drawMore(n) {
     const frag = document.createDocumentFragment();
@@ -407,7 +428,13 @@ export class Outline {
     div.className = 'blk';
     div.dataset.i = i;
     this.divs[i] = div;
-    div.style.setProperty('--d', b.depth - this.baseDepth);
+    const d = b.depth - this.baseDepth;
+    div.style.setProperty('--d', d);
+    // the last row of a branch: the pale lines of the levels from the next shown note's down to this
+    // one end here, a little above its bottom (app.css .blk::before)
+    const next = this.isCollapsed(i) ? this.subtreeEnd(i) : i + 1;
+    const e = next < this.end ? this.blocks[next].depth - this.baseDepth : 0;
+    if (e < d) div.style.setProperty('--e', Math.max(e, 0));
     if (this.hidden.has(i)) div.hidden = true;
     if (this.hasKids(i)) {
       div.classList.add('has-kids');
@@ -471,7 +498,7 @@ export class Outline {
     if (!this.readonly && html.includes('class="pic"')) {
       for (const p of bc.querySelectorAll('.pic')) p.insertAdjacentHTML('beforeend', '<span class="pic-h" title="Drag to change the size (double-click: the usual size)"></span>');
     }
-    if (!b.text.trim()) bc.dataset.ph = i === this.start && this.end - this.start === 1 && !this.readonly ? 'Click to write…' : '';
+    if (!b.text.trim()) bc.dataset.ph = i === this.start && this.end - this.start === 1 && !this.readonly ? (matchMedia('(pointer: coarse)').matches ? 'Tap to write…' : 'Click to write…') : '';
     const doneCls = r.marker === 'DONE' || (r.marker || '').startsWith('CANCEL');
     const { hf, lead } = lineLook(r); // a heading's taller line, a box or quote first (app.css)
     queueMicrotask(() => {
@@ -556,7 +583,7 @@ export class Outline {
   }
 
   renderCrumbs() {
-    if (this.root === null) { this.crumbs.hidden = true; return; }
+    if (this.root === null || this.embed) { this.crumbs.hidden = true; return; }
     const chain = [];
     for (let j = this.parentOf(this.root); j >= 0; j = this.parentOf(j)) chain.unshift(j);
     const label = (k) => esc(renderBlock(this.blocks[k].text.split('\n')[0]).html.replace(/<[^>]+>/g, '').slice(0, 40) || '…');
@@ -1078,7 +1105,7 @@ export class Outline {
     const rw = !this.readonly;
     const now = t0.match(MARKERS)?.[1] ?? null;
     const items = [];
-    if (rw && !inSel) items.push({ id: 'select', label: 'Select', hint: opts.touch ? 'then hold more dots to add them' : '' });
+    if (rw && !inSel) items.push({ id: 'select', label: 'Select', hint: opts.touch ? 'hold more dots to add' : '' });
     if (rw && !(this.root !== null && lo <= this.root)) items.push({ id: 'cut', label: 'Cut' }, { id: 'delete', label: 'Delete', danger: true });
     items.push({ id: 'copy', label: 'Copy' }, { id: 'copytext', label: 'Copy as text', hint: 'plain Markdown' });
     // a leanoutliner://note/<id> link that opens the app right at this note (it gets an id:: if needed)
@@ -1676,7 +1703,7 @@ export class Outline {
    *  notes as "1." */
   blocksText(lo, hi, plain = false) {
     const min = Math.min(...this.blocks.slice(lo, hi).map((b) => b.depth));
-    const hiddenProp = (l) => { const k = propKey(l); return !!k && (HIDDEN_PROPS.has(k) || k.startsWith('card-') || k.startsWith('hl-')); };
+    const hiddenProp = (l) => { const k = propKey(l); return !!k && hiddenKey(k); };
     const out = [];
     for (let j = lo; j < hi; j++) {
       const b = this.blocks[j];
@@ -2218,10 +2245,11 @@ export class Outline {
     if (i === null) return;
     const items = [];
     if (this.cur !== null) {
-      items.push({ label: 'Today', hint: 'link', run: () => this.command('today') }, { label: 'Tomorrow', hint: 'link', run: () => this.command('tomorrow') },
-        { label: 'Yesterday', hint: 'link', run: () => this.command('yesterday') }, { label: 'Another day…', hint: 'link', run: () => this.command('date') }, '-');
+      items.push({ head: 'Link to a day' }, { label: 'Today', run: () => this.command('today') }, { label: 'Tomorrow', run: () => this.command('tomorrow') },
+        { label: 'Yesterday', run: () => this.command('yesterday') }, { label: 'Another day…', run: () => this.command('date') }, '-');
     }
-    items.push({ label: 'Scheduled…', hint: 'to-do date', run: () => this.editDate(i, 'scheduled') }, { label: 'Deadline…', run: () => this.editDate(i, 'deadline') });
+    // (one column, a small heading over each group: he picked this, Oct 29)
+    items.push({ head: 'To-do date' }, { label: 'Scheduled…', run: () => this.editDate(i, 'scheduled') }, { label: 'Deadline…', run: () => this.editDate(i, 'deadline') });
     menu(anchor, items, { keep: true, cls: 'tb-menu' });
   }
 
@@ -2280,21 +2308,24 @@ export class Outline {
     this.threadEl = null;
     this.el.classList.toggle('on-thread', a !== null);
     if (a === null) return;
-    const top = this.blockDiv(a)?.querySelector(':scope > .bul');
+    const row = this.blockDiv(a);
+    const top = row?.querySelector(':scope > .bul');
     const last = this.lastShownUnder(a);
-    const bottom = last < 0 ? null : this.blockDiv(last)?.getBoundingClientRect().bottom ?? null;
-    if (!top || bottom === null) return;
+    const end = last < 0 ? null : this.blockDiv(last)?.getBoundingClientRect().bottom ?? null;
+    if (!top || end === null) return;
     const host = this.el.getBoundingClientRect();
     const z = zoomOf(this.el, host); // rects are on screen; the line's own sizes get zoomed again
     const b = top.getBoundingClientRect();
-    // starts where the pale line does: just below the dot (see .blk::after in app.css)
-    const dot = parseFloat(getComputedStyle(top, '::after').height) || 6;
-    const y0 = (b.top + b.height / 2 - host.top) / z + dot / 2 + 4;
+    // from where the pale line starts (--guide-gap under the dot) to where it stops (a little above the
+    // end of the last note under it): --guide-gap / --guide-end, see .blk::before/::after in app.css
+    const cs = getComputedStyle(row);
+    const y0 = (b.top + b.height / 2 - host.top) / z + (parseFloat(cs.getPropertyValue('--bullet-h')) || 0) / 2 + (parseFloat(cs.getPropertyValue('--guide-gap')) || 0);
+    const y1 = (end - host.top) / z - (parseFloat(cs.getPropertyValue('--guide-end')) || 0);
     const line = document.createElement('div');
     line.className = 'thread-hl';
     line.style.left = `${(b.left + b.width / 2 - host.left) / z - 1}px`;
     line.style.top = `${y0}px`;
-    line.style.height = `${Math.max(0, (bottom - host.top) / z - y0)}px`;
+    line.style.height = `${Math.max(0, y1 - y0)}px`;
     this.el.append(line);
     this.threadEl = line;
   }
@@ -2363,6 +2394,7 @@ export class Outline {
    *  by the app while scrolling. top: where the notes start on screen; stick: the pinned rows'
    *  place for position: sticky (that, or 0 when #main scrolls); hide: show none (editing on a phone). */
   pinParents(top, stick, hide = false) {
+    if (this.embed) hide = true; // (a note in a reference: its path is shown above it already)
     const r = this.el.getBoundingClientRect();
     const rowH = PIN_H * zoomOf(this.el, r);
     let pins = [];
@@ -2422,7 +2454,7 @@ export class Outline {
   }
 
   // ---------- saving ----------
-  markDirty() { this.dirty = true; this.flushSoon(800); }
+  markDirty() { this.dirty = true; this.endPlus(); this.flushSoon(800); }
   flushSoon(ms) { clearTimeout(this.timer); this.timer = setTimeout(() => this.save(), ms); }
 
   /** Resolves once everything typed so far is saved (or a conflict is waiting for the user). */

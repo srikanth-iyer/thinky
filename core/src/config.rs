@@ -4,7 +4,7 @@ use crate::date::{self, Date};
 use crate::edn;
 use serde::Serialize;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Config {
     pub pages_dir: String,
     pub journals_dir: String,

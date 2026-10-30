@@ -7,8 +7,21 @@ const today = new Date();
 const yday = new Date(today); yday.setDate(today.getDate() - 1);
 write('pages/Refs.md', `- planning for [[${title(today)}]] with the group\n- I wrote on ${title(yday)} about the bakery walk\n- another link to [[${title(today)}]] here\n`);
 
+// two older days with nothing written: one another page links to (shown, as in Logseq), one not
+const d3 = new Date(today); d3.setDate(today.getDate() - 3);
+const d4 = new Date(today); d4.setDate(today.getDate() - 4);
+write(`Diary/${title(d3)}.md`, '-\n');
+write(`Diary/${title(d4)}.md`, '-\n');
+write('pages/Trip.md', `- left for the trip on [[${title(d3)}]]\n`);
+
 const { browser, page, errors } = await open();
 await sleep(1500);
+{
+  const shown = await page.evaluate(() => [...document.querySelectorAll('.sheet.day .page-title')].map((x) => x.textContent));
+  check(shown.includes(title(d3)) && !shown.includes(title(d4)), 'a day with no notes shows when another page links to it; an empty one with no links doesn’t', JSON.stringify(shown));
+  const refs = await page.locator('.sheet.day', { has: page.locator('.page-title', { hasText: title(d3) }) }).textContent();
+  check(refs.includes('Linked references') && refs.includes('left for the trip'), '…with its linked references', refs.slice(0, 200));
+}
 const sheets = page.locator('.sheet');
 const todaySheet = sheets.first();
 
@@ -55,10 +68,14 @@ await sleep(300);
 console.log('references under each day, only when there are some');
 const linked = todaySheet.locator('.day-refs .sec:not(.unlinked)');
 check(await linked.count() === 1 && (await linked.locator('.n').textContent()).trim() === '2', 'today: "Linked references" with the 2 links to it');
-check(await linked.locator('.refgrp h3').textContent() === 'Refs', 'grouped by the page they’re in');
-await linked.locator('.refhit', { hasText: 'planning for' }).click();
+check(await linked.locator('.refgrp h3 a').textContent() === 'Refs' && await linked.locator('.refgrp h3 .grp-n').textContent() === '2 notes', 'grouped by the page they’re in, with how many notes');
+await linked.locator('.refhit', { hasText: 'planning for' }).locator('.bc').click({ position: { x: 4, y: 6 } });
 await sleep(700);
-check(decodeURIComponent(await page.evaluate(() => location.hash)) === '#/page/Refs', 'clicking one opens it where it’s written');
+check(await linked.locator('.refnote.live textarea.ed').count() === 1 && decodeURIComponent(await page.evaluate(() => location.hash)) === '#/journals', 'clicking one edits it right there (Build 33)');
+await page.keyboard.press('Escape');
+await linked.locator('.refgrp h3 a').click();
+await sleep(700);
+check(decodeURIComponent(await page.evaluate(() => location.hash)) === '#/page/Refs', 'its page\'s name opens it where it’s written');
 await go(page, '#/journals');
 await sleep(1500);
 const ydaySheet = sheets.nth(1);
@@ -71,7 +88,7 @@ await sleep(600);
 check(await un.locator('.refhit', { hasText: 'I wrote on' }).count() === 1 && await un.locator('.linkit').count() === 1, 'opening it lists the mention, with a Link button');
 check(await todaySheet.locator('.day-refs .unlinked').count() === 0, 'a day only linked to (no plain mentions) has no "Unlinked references"');
 const n3 = await sheets.count();
-const bare = await page.evaluate(() => [...document.querySelectorAll('.sheet')].slice(2).map((s) => s.querySelectorAll('.day-refs > *').length));
+const bare = await page.evaluate((t3) => [...document.querySelectorAll('.sheet')].slice(2).filter((s) => s.querySelector('.page-title')?.textContent !== t3).map((s) => s.querySelectorAll('.day-refs > *').length), title(d3)); // (not the trip's day)
 check(n3 >= 3 && bare.every((x) => x === 0), 'days without references show neither', JSON.stringify(bare));
 await un.locator('.linkit').click();
 await sleep(700);

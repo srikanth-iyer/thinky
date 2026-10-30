@@ -13,10 +13,18 @@ def nodes():
         b = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', n)
         if label and b:
             yield label, names, tuple(map(int, b.groups()))
+# the screen's height: an element cut off by its bottom edge is scrolled into view first
+size = re.search(r"(\d+)x(\d+)", subprocess.run(["adb", "shell", "wm", "size"], capture_output=True, text=True).stdout)
+H = int(size.group(2)) if size else 0
 for attempt in range(6):
     hits = [(label, box) for label, names, box in nodes() if ((want == label or want in names) if exact else (want in label))]
     if hits:
         label, (x1, y1, x2, y2) = hits[-1] if last else hits[0]
+        if H and (y2 >= H - 8 or x2 <= x1 or y2 <= y1) and attempt < 5: # (below the screen: reported as an empty box)
+            # cut off at the bottom, or below it (tapping there would hit the system's gesture area): scroll up a bit
+            subprocess.run(["adb", "shell", "input", "swipe", str((x1 + x2) // 2), str(H * 7 // 10), str((x1 + x2) // 2), str(H * 4 // 10), "400"])
+            time.sleep(1.5)
+            continue
         x, y = (x1 + x2) // 2, (y1 + y2) // 2
         subprocess.run(["adb", "shell", "input", "swipe", str(x), str(y), str(x), str(y), "1200"] if hold else ["adb", "shell", "input", "tap", str(x), str(y)])
         print(f"{'held' if hold else 'tapped'} '{label}' at {x},{y}")

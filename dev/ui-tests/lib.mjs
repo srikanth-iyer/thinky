@@ -29,11 +29,15 @@ export async function open(opts = {}) {
   let t0 = Date.now();
   await page.goto(BASE + '/');
   if (Date.now() - t0 > 3000) console.log('  (slow first load: ' + (Date.now() - t0) + ' ms)');
-  await page.evaluate((p) => { localStorage.clear(); localStorage.setItem('vault', JSON.stringify(p)); }, VAULT);
+  // Calm unless a test asks for another (thinky is the app's own default since Build 33; the tests were
+  // written in Calm, and t6_looks checks the default)
+  await page.evaluate(([p, l]) => { localStorage.clear(); localStorage.setItem('vault', JSON.stringify(p)); if (l) localStorage.setItem('skin', JSON.stringify(l)); }, [VAULT, opts.look === undefined ? 'calm' : opts.look]);
   await page.goto(BASE + '/?t=' + Date.now() + '#/journals');
   await page.waitForSelector('.sheet .outline');
   return { browser, page, errors };
 }
+/** Every look's id, as the app lists them (app.js SKINS), so tests never keep a copy of the list. */
+export const lookIds = (page) => page.evaluate(async () => (await import('/app.js')).SKINS.map((s) => s.id));
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export async function go(page, hash) {
   await page.evaluate((h) => { location.hash = h; }, hash);

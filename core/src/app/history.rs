@@ -6,13 +6,14 @@
 //!   older Logseq) and this app's ("2026-10-24_02_00_00.md", "…-2.md": `App::backup`, made when a
 //!   clash shows or is settled, or a version is put back), dated by their names (UTC), another name
 //!   by its file time;
-//! - this device's safety copies holding its text (safety.rs `copies_of`): the page as copied, dated
-//!   by the copy, and its texts from before changes made elsewhere, dated by their own file times.
+//! - the safety copies holding its text, this device's and the other one's (safety.rs `copies_of`,
+//!   in `logseq/.safety-<device>`): the page as copied, dated by the copy, and its texts from before changes
+//!   made elsewhere, dated by their own file times; each says which device made it (`made`).
 //!
 //! Newest first. A version that reads exactly like the page now isn't listed, and one that reads
 //! exactly like the one listed just before it neither (a run of the same text shows once: the
 //! newest). Each says how it differs from the page now (notes more, fewer, changed; properties).
-//! A version is named by where the listing found it ("bak:<file name>", "copy:<copy id>:<n>") and
+//! A version is named by where the listing found it ("bak:<file name>", "copy:<device>/<copy id>:<n>") and
 //! only one the listing names is ever read (`version`: listed again, then found by that name), so a
 //! name can't lead anywhere else ("..", another folder, another page's backups).
 //!
@@ -24,7 +25,6 @@
 use super::{read_text, safety, App, ReadErr};
 use crate::{split_doc, Doc};
 use serde::Serialize;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -36,8 +36,8 @@ const MAX_BYTES: u64 = 25 * 1024 * 1024;
 /// One earlier version in the list.
 #[derive(Serialize, Debug)]
 pub struct Version {
-    /// Where the listing found it: "bak:<file name>" or "copy:<copy id>:<n>" (n: 0 the page as
-    /// copied, 1, 2… a text from before a change made elsewhere).
+    /// Where the listing found it: "bak:<file name>" or "copy:<device>/<copy id>:<n>" (n: 0 the page
+    /// as copied, 1, 2… a text from before a change made elsewhere).
     pub id: String,
     /// When (seconds since 1970): the backup's or copy's time; an earlier text's own file time.
     pub when: u64,
@@ -52,6 +52,9 @@ pub struct Version {
     pub fewer: usize,
     pub changed: usize,
     pub props: bool,
+    /// A safety copy's: which device made it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub made: Option<safety::Made>,
 }
 
 /// One version, to show it drawn like a page.
@@ -88,6 +91,37 @@ struct Source {
     n: u32,
     from: &'static str,
     file: PathBuf,
+    /// In a safety copy's file: [where its text starts, length]; None: the whole file (a backup).
+    span: Option<[u64; 2]>,
+    made: Option<safety::Made>,
+}
+
+impl Source {
+    /// Its text (None: gone, or not UTF-8 text).
+    fn read(&self) -> Option<String> {
+        match self.span {
+            Some(sp) => safety::read_span(&self.file, sp),
+            None => read_text(&self.file).ok().flatten(),
+        }
+    }
+}
+
+/// Every source's text at once (a backup or copy synced from the phone may first have to come
+/// from Google Drive, which answers many requests at once much faster), in the same order.
+fn read_all(sources: &[Source]) -> Vec<Option<String>> {
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let out = std::sync::Mutex::new(vec![None; sources.len()]);
+    std::thread::scope(|s| {
+        for _ in 0..sources.len().clamp(1, 8) {
+            s.spawn(|| loop {
+                let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let Some(src) = sources.get(i) else { break };
+                let t = src.read();
+                out.lock().unwrap_or_else(|p| p.into_inner())[i] = t;
+            });
+        }
+    });
+    out.into_inner().unwrap_or_else(|p| p.into_inner())
 }
 
 /// A file in a backup folder that can be a version: a ".md" file by a name of its own (not a hidden
@@ -206,12 +240,12 @@ impl App {
                 continue;
             }
             let (ms, n, from) = bak_name(&name).unwrap_or_else(|| (mtime_ms(&md), 0, "bak"));
-            v.push(Source { id: format!("bak:{name}"), ms, n, from, file: dir.join(&name) });
+            v.push(Source { id: format!("bak:{name}"), ms, n, from, file: dir.join(&name), span: None, made: None });
         }
         if let Some(data) = data {
-            for (id, before, when, file) in self.copies_of(data, rel) {
-                let from = if before > 0 { "before" } else { "copy" };
-                v.push(Source { id: format!("copy:{id}:{before}"), ms: when.saturating_mul(1000), n: 0, from, file });
+            for c in self.copies_of(data, rel) {
+                let from = if c.before > 0 { "before" } else { "copy" };
+                v.push(Source { id: format!("copy:{}:{}", c.id, c.before), ms: c.when.saturating_mul(1000), n: 0, from, file: c.file, span: Some(c.span), made: Some(c.made) });
             }
         }
         v.sort_by(|a, b| (b.ms, b.n, &b.id).cmp(&(a.ms, a.n, &a.id)));
@@ -222,7 +256,7 @@ impl App {
     /// One version by its name: only one the listing names, read from where it found it.
     fn version(&self, data: Option<&Path>, rel: &str, id: &str) -> Result<(Source, String), String> {
         let s = self.sources(data, rel).into_iter().find(|s| s.id == id).ok_or("That version isn’t in this page’s history (any more).")?;
-        let text = read_text(&s.file).ok().flatten().ok_or("That version is gone, or isn’t plain text.")?;
+        let text = s.read().ok_or("That version is gone, or isn’t plain text.")?;
         Ok((s, text))
     }
 
@@ -233,20 +267,18 @@ impl App {
         let now = self.text_now(&rel)?;
         let now_doc = split_doc(&now);
         let sources = self.sources(data, &rel);
-        // all read at once: a backup synced from the phone may first have to come from Google Drive
-        let files: Vec<PathBuf> = sources.iter().map(|s| s.file.clone()).collect();
-        let texts: HashMap<PathBuf, String> = super::read_parallel(Path::new(""), &files).into_iter().filter(|r| r.2).map(|(f, t, _)| (f, t)).collect();
+        let texts = read_all(&sources);
         let mut out = vec![];
         let mut last: Option<&String> = None; // the text listed just before
-        for s in sources {
-            let Some(text) = texts.get(&s.file) else { continue }; // gone meanwhile, or not plain text
+        for (s, text) in sources.into_iter().zip(&texts) {
+            let Some(text) = text else { continue }; // gone meanwhile, or not plain text
             if *text == now || last == Some(text) {
                 continue;
             }
             let doc = split_doc(text);
             let (more, fewer, changed) = differ(&doc, &now_doc);
             let props = norm(&doc.preamble) != norm(&now_doc.preamble);
-            out.push(Version { id: s.id, when: s.ms / 1000, from: s.from, more, fewer, changed, props });
+            out.push(Version { id: s.id, when: s.ms / 1000, from: s.from, more, fewer, changed, props, made: s.made });
             last = Some(text);
         }
         Ok(out)

@@ -79,7 +79,7 @@ allErrors.push(...errors);
 
 console.log('a shortcut before a notes folder was chosen: ignored');
 ({ browser, page, errors } = await start('search', null));
-check((await hashNow(page)).startsWith('#/settings') && await page.locator('#search').isHidden() && await page.evaluate(() => window.__shortcut) === null, 'Settings shows (to choose the folder); the shortcut is used up', await hashNow(page));
+check((await hashNow(page)) === '#/welcome' && await page.locator('#search').isHidden() && await page.evaluate(() => window.__shortcut) === null, 'the welcome screen shows (to choose or make a notes folder; Build 32, before: Settings); the shortcut is used up', await hashNow(page));
 await browser.close();
 allErrors.push(...errors);
 

@@ -96,7 +96,8 @@ async function start({ update = {}, version = '0.1.20', latest = 'build-24', and
 }
 const allErrors = [];
 const stage = (page) => page.evaluate(() => document.querySelector('.upd')?.dataset.stage || null);
-const text = (page) => page.evaluate(() => document.querySelector('.upd-out')?.textContent || '');
+// (the name is drawn as the wordmark: read as its aria-label)
+const text = (page) => page.evaluate(() => { const e = document.querySelector('.upd-out')?.cloneNode(true); if (!e) return ''; e.querySelectorAll('svg[aria-label]').forEach((s) => s.replaceWith(s.getAttribute('aria-label'))); return e.textContent; });
 const calls = (page) => page.evaluate(() => window.__calls.map((c) => c[0]));
 /** The stages the box went through since the last call, once it reaches `last` (or a problem). */
 async function stages(page, last, ms = 6000) {
@@ -108,7 +109,7 @@ async function stages(page, last, ms = 6000) {
 console.log('the installed app on the laptop: one click downloads, checks, saves and installs');
 let { browser, page, errors } = await start({ update: { slow: 400 } });
 check(await stage(page) === 'newer', 'a newer build found: offered', await stage(page));
-check(/A newer version \(Build 24\) is ready\. Update now downloads it \(about 2 MB\), checks it’s genuine and installs it, then restarts Lean Outliner\. Your notes are saved first/.test(await text(page)), 'said in plain words, with how much it downloads', await text(page));
+check(/A newer version \(Build 24\) is ready\. Update now downloads it \(about 2 MB\), checks it’s genuine and installs it, then restarts thinky\. Your notes are saved first/.test(await text(page)), 'said in plain words, with how much it downloads', await text(page));
 check(await page.locator('.upd [data-a="update"]').isEnabled(), 'with an “Update now” button');
 check(await page.locator('#update').isVisible(), 'and the sidebar says “A newer version is ready”');
 await page.screenshot({ path: SHOTS + '/update-offer.png' });
@@ -116,7 +117,7 @@ await page.evaluate(() => window.__stages.splice(0));
 await page.locator('.upd [data-a="update"]').click();
 const seen = await stages(page, 'install');
 check(seen.join(' ') === 'download check save install', 'downloading, checking it’s genuine, saving, installing', seen.join(' '));
-check(await text(page) === 'Installing: Lean Outliner will restart in a moment.', 'it says the app will restart', await text(page));
+check(await text(page) === 'Installing: thinky will restart in a moment.', 'it says the app will restart', await text(page));
 check(await page.locator('.upd [data-a="update"]').isDisabled(), 'the button can’t be pressed twice meanwhile');
 let c = (await calls(page)).filter((x) => x.startsWith('update_'));
 check(c.join(' ') === 'update_status update_download update_check update_install', 'the app was asked for exactly that, in order', c.join(' '));
@@ -142,7 +143,7 @@ const atInstall = read('pages/Rosa Penhallow.md');
 check(atInstall.includes('[[Apron club]] typed while it downloaded'), 'the page was saved before the installer started', atInstall);
 check(await page.evaluate(() => window.__inertAtInstall === true), 'after that last save nothing more can be typed (it couldn’t be saved)');
 const installing = await page.evaluate(() => document.querySelector('#toast:not([hidden])')?.textContent || '');
-check(installing === 'Installing the update: Lean Outliner will restart in a moment.', 'About isn’t on screen: a message at the bottom says it’s installing', installing);
+check(installing === 'Installing the update: thinky will restart in a moment.', 'About isn’t on screen: a message at the bottom says it’s installing', installing);
 c = await calls(page);
 check(c.lastIndexOf('save') >= 0 && c.lastIndexOf('save') < c.indexOf('update_install'), 'saved, then installed', c.slice(-6).join(' '));
 check(c.includes('persist') && c.lastIndexOf('persist') < c.indexOf('update_install'), 'and the index kept, as when closing', c.slice(-6).join(' '));
@@ -185,7 +186,7 @@ allErrors.push(...errors);
 await browser.close();
 
 console.log('another window of the app is open: not installed, he’s told to close it; the page works again');
-const OTHER = 'Lean Outliner is also open in another window, or the Add to journal box is open. Close it, then press Update now again.';
+const OTHER = 'thinky is also open in another window, or the Add to journal box is open. Close it, then press Update now again.';
 ({ browser, page, errors } = await start({ update: { installError: OTHER } }));
 await page.evaluate(() => window.__stages.splice(0));
 await page.locator('.upd [data-a="update"]').click();
@@ -225,7 +226,7 @@ allErrors.push(...errors);
 await browser.close();
 
 console.log('a download that isn’t genuine is never installed');
-const notGenuine = 'The download didn’t pass the check that it’s genuine (its signature isn’t from Lean Outliner’s key), so it was deleted and nothing was installed.';
+const notGenuine = 'The download didn’t pass the check that it’s genuine (its signature isn’t from thinky’s key), so it was deleted and nothing was installed.';
 ({ browser, page, errors } = await start({ update: { checkError: notGenuine } }));
 await page.evaluate(() => window.__stages.splice(0));
 await page.locator('.upd [data-a="update"]').click();
@@ -260,12 +261,12 @@ check(await stage(page) === 'newer' && /downloads it \(about 8 MB\), checks it�
 await page.evaluate(() => window.__stages.splice(0));
 await page.locator('.upd [data-a="update"]').click();
 check((await stages(page, 'permission')).pop() === 'permission', 'Android asks first');
-check(/turn on Allow from this source for Lean Outliner, then come back here/.test(await text(page)), 'and he’s told what to do there', await text(page));
+check(/turn on Allow from this source for thinky, then come back here/.test(await text(page)), 'and he’s told what to do there', await text(page));
 await page.screenshot({ path: SHOTS + '/update-android-permission.png' });
 await page.evaluate(() => window.__back());
 const seenA = await stages(page, 'confirm');
 check(seenA.join(' ') === 'download check save install confirm', 'downloading, checking, saving, installing, Android asking', seenA.join(' '));
-check(/Tap Update in Android’s box\. When Android has finished, open Lean Outliner again\./.test(await text(page)), 'he’s told to confirm and open the app again', await text(page));
+check(/Tap Update in Android’s box\. When Android has finished, open thinky again\./.test(await text(page)), 'he’s told to confirm and open the app again', await text(page));
 c = await calls(page);
 check(c.filter((x) => x === 'android.update').length === 1 && c.indexOf('android.installUpdate') > c.lastIndexOf('persist'), 'saved before Android’s installer took over', c.slice(-5).join(' '));
 check(await page.evaluate(() => window.__calls.find((x) => x[0] === 'android.update')[1]) === 'build-24', 'only the build is passed');

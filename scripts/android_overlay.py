@@ -2,12 +2,15 @@
 
 Run from the repo root after init. Idempotent. Touches only src-tauri/gen/android.
 - MainActivity.kt: replaced by android/MainActivity.kt (keeps the generated package + imports)
-- android/kotlin/*.kt and android/res: widgets, quick capture pop-up, Quick Settings tile
+- android/kotlin/*.kt and android/res: widgets, quick capture pop-up (LeanCore.kt: the Rust
+  library's name filled in, the JNI name checked), Quick Settings tile
 - AndroidManifest.xml: storage permissions for the Drive Sync folder; the widgets, the pop-up
   and the tile (COMPONENTS); one-click updates (permission to install apps, UpdateReceiver);
   leanoutliner:// links (a VIEW filter on MainActivity). The app icon's shortcuts need nothing
   here (MainActivity sets them)
 - launcher icons: copied from src-tauri/icons/android
+- the start-up screen (themes): the brand's cream from the first moment, no icon on Android's own
+  splash (the app's start-up drawing comes right after it), so nothing dark flashes first
 """
 import glob, os, re, shutil, sys
 
@@ -33,11 +36,25 @@ open(acts[0], "w").write(f"package {pkg}\n\n" + "\n".join(imports) + "\n\n" + bo
 print("MainActivity ->", acts[0], "package", pkg)
 
 # --- extra Kotlin (widget, quick capture): same package as MainActivity
+# LeanCore.kt loads the app's Rust library (its [lib] name in src-tauri/Cargo.toml, which Tauri
+# builds as lib<name>.so) and calls src-tauri/src/android_capture.rs, whose JNI function's name
+# carries the package and class: they must match, or the "Add a note" pop-up couldn't add anything.
+lib = re.search(r'^\[lib\][^\[]*?^name\s*=\s*"([\w-]+)"', open("src-tauri/Cargo.toml").read(), re.M | re.S).group(1)
+jni = "Java_" + pkg.replace("_", "_1").replace(".", "_") + "_LeanCore_capture"
+if jni not in open("src-tauri/src/android_capture.rs").read():
+    sys.exit(f"src-tauri/src/android_capture.rs has no {jni}: the package is {pkg}")
 src_dir = os.path.dirname(acts[0])
 for kt in glob.glob("android/kotlin/*.kt"):
-    code = open(kt).read()
+    code = open(kt).read().replace("__RUST_LIB__", lib)
     open(os.path.join(src_dir, os.path.basename(kt)), "w").write(f"package {pkg}\n\n{code}")
     print("Kotlin ->", os.path.basename(kt))
+print("Rust library for the pop-up:", lib, "JNI:", jni)
+# release builds shrink the Kotlin code (R8): keep LeanCore's native method and its name
+pro = f"{GEN}/app/proguard-rules.pro"
+keep = f"-keep class {pkg}.LeanCore {{ *; }}"
+if keep not in (open(pro).read() if os.path.exists(pro) else ""):
+    with open(pro, "a") as f:
+        f.write(f"\n# the \"Add a note\" pop-up calls the app's Rust code through this (android_capture.rs)\n{keep}\n")
 
 # --- extra resources (layouts, widget info, drawables)
 for f in glob.glob("android/res/**/*", recursive=True):
@@ -136,3 +153,38 @@ for d in glob.glob("src-tauri/icons/android/*"):
     for f in glob.glob(f"{d}/*"):
         shutil.copy(f, dst)
 print("Icons copied")
+
+# --- Start-up colours (Build 33, he asked: no dark screen, then cream, then the drawing; straight to
+# the logo on cream). Android's own splash (12+) and the window behind the app are the brand's cream
+# #F4EEE3 with no icon on them (lean_blank), so the page's #splash, which draws the scribble on the
+# same cream, follows without a jump. Every app theme in values*/themes.xml gets the items.
+os.makedirs(f"{res}/values", exist_ok=True)
+open(f"{res}/values/lean_start.xml", "w").write('''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="lean_start">#F4EEE3</color>
+</resources>
+''')
+os.makedirs(f"{res}/drawable", exist_ok=True)
+open(f"{res}/drawable/lean_blank.xml", "w").write('''<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <size android:width="1dp" android:height="1dp" />
+</shape>
+''')
+START_ITEMS = ('<item name="android:windowBackground">@color/lean_start</item>'
+               '<item name="android:windowSplashScreenBackground">@color/lean_start</item>'
+               '<item name="android:windowSplashScreenAnimatedIcon">@drawable/lean_blank</item>')
+patched = 0
+for f in glob.glob(f"{res}/values*/themes.xml"):
+    xml = open(f).read()
+    if "lean_start" in xml:
+        patched += 1
+        continue
+    # each app theme (not the pop-up's dialog theme, which comes from AppCompat itself)
+    new, n = re.subn(r'(<style\s+name="Theme\.[^"]*"[^>]*>)', lambda m: m.group(1) + START_ITEMS, xml)
+    if n:
+        open(f, "w").write(new)
+        patched += n
+        print("Start-up colours ->", f, n)
+if not patched:
+    sys.exit("no app theme found in values*/themes.xml for the start-up colours")

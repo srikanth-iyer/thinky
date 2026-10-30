@@ -29,7 +29,7 @@ const names = await page.locator('.pics .nm').allTextContents();
 check(names.join(',') === 'Screenshot (2).png,keep.png,photo_2024.png,unused.png', 'lists only the pictures nothing uses (not the one in a page, the one on a whiteboard, the PDF or the one from the last 3 days)', names.join(','));
 const said = await page.locator('.pics-box').textContent();
 check(/4 of the 6 pictures/.test(said) && /\d KB in total/.test(said), 'with how many pictures were checked, and the total size', said);
-check(said.includes('1 added in the last 3 days isn’t listed'), 'and how many new ones were left out', said);
+check(said.includes('One picture was added in the last 3 days, so it was left out of this check'), 'and how many new ones were left out, and why', said);
 const shows = await page.waitForFunction(() => { const i = document.querySelector('.pics img'); return i && i.complete && i.naturalWidth === 40; }, null, { timeout: 3000 }).then(() => true, () => false);
 check(shows, 'a small picture of each shows');
 check(await page.locator('.pics input[type="checkbox"]:checked').count() === 4, 'each has a tick box, all ticked');
@@ -89,7 +89,7 @@ write('pages/Marta Pell.md', '- oops, overwritten\n');
 await page.goto(BASE + '/?t=' + Date.now() + '#/settings');
 await page.waitForSelector('.card h2');
 check(await copiesShown(2), 'starting again with a changed note makes another, newest first');
-check(/\d+ notes$/.test((await rows.first().textContent()).trim()), 'each says when it was made and how many notes it has', await rows.first().textContent());
+check(/\d+ notes · this computer$/.test((await rows.first().textContent()).trim()), 'each says when it was made, how many notes it has and which device made it', await rows.first().textContent());
 await rows.nth(1).click(); // the older one, from before the note was overwritten
 await sleep(400);
 const noteRow = card.locator('.sc-list [data-p="pages/Marta Pell.md"]');

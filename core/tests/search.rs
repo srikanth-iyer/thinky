@@ -140,6 +140,23 @@ fn alias_finds_its_page() {
     assert_eq!(v.search("model", 40).iter().filter(|h| h.line.is_none() && h.page == "Dumplings recipe").count(), 1);
 }
 
+/// The `[[`/`#` list asks for pages only (`search_pages`), by the same rules: "[[cremerie" finds
+/// "Crémerie…", "[[recipe dumplings" the Dumplings recipe; an alias that's a page of its own isn't
+/// offered as another page's.
+#[test]
+fn page_list_finds_pages_as_the_search_box() {
+    let mut v = sample();
+    v.upsert("pages/Bistro Crémerie Centrale.md", "- BCC\n");
+    v.upsert("pages/Hartley.md", "alias:: Edith Hartley, Sourdough Bread\n- pastry chef\n");
+    let names = |q: &str| v.search_pages(q, 8).into_iter().map(|h| (h.page, h.alias)).collect::<Vec<_>>();
+    assert_eq!(names("cremerie"), [("Bistro Crémerie Centrale".to_string(), None)]);
+    assert_eq!(names("recipe dumplings")[0], ("Dumplings recipe".to_string(), None));
+    assert_eq!(names("edith"), [("Hartley".to_string(), Some("Edith Hartley".to_string()))]);
+    assert_eq!(names("sourdough bread"), [("Sourdough Bread".to_string(), None)], "its own page, not “→ Hartley”");
+    assert!(v.search_pages("model", 2).len() == 2 && v.search_pages("  ", 8).is_empty());
+    assert!(v.search_pages("model", 8).iter().all(|h| h.line.is_none()), "pages only");
+}
+
 #[test]
 fn notes_any_order_together_first() {
     let v = sample();

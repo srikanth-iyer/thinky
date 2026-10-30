@@ -22,7 +22,7 @@
 //! Speed: one pass over each text (and its URL-decoded form) finds all the names at once: at each
 //! ".png" (".jpg"…) the text just before it is looked up among the names of each length.
 
-use super::{collect_changes, read_parallel, App, Changes};
+use super::{collect_changes, now_secs, read_parallel, App, Changes};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -92,10 +92,6 @@ fn changed_secs(md: &std::fs::Metadata) -> u64 {
     secs(md.modified()).max(secs(md.created()))
 }
 
-fn now_secs() -> u64 {
-    std::time::SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
-}
-
 /// Walk the notes folder once. Hidden files and folders (.git, .obsidian, our temp files) and links
 /// are skipped; from `logseq/` only the settings and the pages in the bin count.
 fn walk(root: &Path) -> Found {
@@ -161,13 +157,8 @@ impl App {
         (got.into_iter().map(|(_, t, _)| t).collect(), unreadable)
     }
 
-    /// Pictures in assets/ that nothing in the notes folder mentions ("Check this folder").
-    pub fn picture_check(&self) -> PictureCheck {
-        self.picture_check_at(now_secs())
-    }
-
-    /// `picture_check` as at `now` (seconds since 1970): pictures changed since 3 days before are
-    /// only counted.
+    /// Pictures in assets/ that nothing in the notes folder mentions ("Check this folder"), as at
+    /// `now` (seconds since 1970): pictures changed since 3 days before are only counted.
     pub fn picture_check_at(&self, now: u64) -> PictureCheck {
         let found = walk(&self.root);
         let mut out = PictureCheck { pictures: found.pictures.len(), ..Default::default() };

@@ -76,17 +76,15 @@ fn cached(v: &Path) -> HashMap<String, String> {
     HashMap::new()
 }
 
-/// This notes folder's safety copies folder (found by what its copies' lists say).
+/// This device's folder of safety copies in notes folder `v` (`logseq/.safety-<device>`).
 fn copies_folder(v: &Path) -> PathBuf {
-    for e in std::fs::read_dir(base().join("data/safety-copies")).unwrap().flatten() {
-        for c in std::fs::read_dir(e.path()).into_iter().flatten().flatten() {
-            let list: Value = serde_json::from_slice(&std::fs::read(c.path().join("list.json")).unwrap_or_default()).unwrap_or_default();
-            if list["root"] == json!(v.display().to_string()) {
-                return e.path();
-            }
-        }
-    }
-    panic!("no copies for {}", v.display());
+    let dev = std::fs::read_to_string(base().join("data/safety-device.txt")).unwrap();
+    v.join("logseq").join(format!(".safety-{}", dev.trim()))
+}
+
+/// Where this device would keep notes folder `v`'s copies if it couldn't write them there.
+fn local_folder(v: &Path) -> PathBuf {
+    base().join("data/safety-copies").join(format!("vault-{}", outline_core::content_hash(&v.display().to_string())))
 }
 
 /// (path, an earlier text?, now) of each note in a copy.
@@ -254,8 +252,8 @@ fn at_start_up_an_earlier_text_is_always_in_the_old_cache_or_in_a_copy() {
     assert_eq!(call(&mut st, "safety_note", json!({ "id": c[0]["id"], "path": "pages/Note.md", "before": 1 }))["text"], json!("- the good text\n"));
     assert_eq!(cached(&v)["pages/Note.md"], "- oops\n", "and then the cache");
     // changed elsewhere while open; the copy can't be made when the app is put away (here a file is
-    // in the way of this folder's copies): the cache isn't written, so it still has the text that
-    // change replaced; next time it works
+    // in the way of this device's copies in the notes folder, and of its folder for them on this
+    // device): the cache isn't written, so it still has the text that change replaced; next time it works
     put(&v, "pages/Note.md", "- oops again\n");
     age(&v, "pages/Note.md", 10.0);
     call(&mut st, "rescan", json!({}));
@@ -263,14 +261,48 @@ fn at_start_up_an_earlier_text_is_always_in_the_old_cache_or_in_a_copy() {
     let aside = folder.with_extension("aside");
     std::fs::rename(&folder, &aside).unwrap();
     std::fs::write(&folder, "in the way").unwrap();
+    let local = local_folder(&v);
+    std::fs::create_dir_all(local.parent().unwrap()).unwrap();
+    std::fs::write(&local, "in the way").unwrap();
     call(&mut st, "persist", json!({}));
     assert_eq!(cached(&v)["pages/Note.md"], "- oops\n");
     std::fs::remove_file(&folder).unwrap();
     std::fs::rename(&aside, &folder).unwrap();
+    std::fs::remove_file(&local).unwrap();
     call(&mut st, "persist", json!({}));
     assert_eq!(cached(&v)["pages/Note.md"], "- oops again\n");
     let c = call(&mut st, "safety_copies", json!({}));
     assert_eq!(c.as_array().unwrap().len(), 2);
     assert_eq!(call(&mut st, "safety_note", json!({ "id": c[0]["id"], "path": "pages/Note.md", "before": 1 }))["text"], json!("- oops\n"));
+    let _ = std::fs::remove_dir_all(&v);
+}
+
+#[test]
+fn opening_moves_copies_kept_on_this_device_into_the_notes_folder() {
+    // an older version kept its copies in the app's data folder, a folder each
+    let v = setup("moved");
+    put(&v, "pages/Note.md", "- now\n");
+    age(&v, "pages/Note.md", 30.0);
+    let old = local_folder(&v).join("2026-10-27_10-00-00");
+    put(&old, "pages/Note.md", "- as it was\n");
+    let list = json!({"v": 1, "root": v.display().to_string(), "when": 1_793_000_000u64, "files": [{"path": "pages/Note.md", "mtime_ns": 1, "size": 12}], "skipped": []});
+    put(&old, "list.json", &list.to_string());
+    let mut st = open(&v);
+    let c = copies(&mut st, 1);
+    let id = c[0]["id"].as_str().unwrap().to_string();
+    for _ in 0..100 {
+        if !old.exists() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(!old.exists() && !local_folder(&v).exists(), "moved, and the old folder is gone");
+    let c = call(&mut st, "safety_copies", json!({}));
+    assert_eq!(c.as_array().unwrap().len(), 1);
+    let id_now = c[0]["id"].as_str().unwrap();
+    assert_eq!(id_now, format!("{}/2026-10-27_10-00-00", copies_folder(&v).file_name().unwrap().to_string_lossy().trim_start_matches(".safety-")), "(was {id})");
+    assert_eq!((c[0]["kind"].as_str(), c[0]["mine"].as_bool()), (Some("computer"), Some(true)));
+    assert_eq!(call(&mut st, "safety_note", json!({ "id": id_now, "path": "pages/Note.md" }))["text"], json!("- as it was\n"));
+    assert!(copies_folder(&v).join("2026-10-27_10-00-00.copy").is_file());
     let _ = std::fs::remove_dir_all(&v);
 }

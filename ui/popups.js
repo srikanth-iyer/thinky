@@ -2,12 +2,12 @@
 // the date picker, confirm/prompt boxes, and link previews on hover.
 
 import { call, today, nowTime } from './api.js';
-import { esc, renderBlock, propsHtml, stampText } from './render.js';
+import { esc, renderBlock, propsHtml } from './render.js';
 import { createCalendar } from './calendar.js';
+import { h } from './dom.js';
 
 /** A note folded in its page (collapsed:: true on a line after its first; editor.js foldedIn). */
 const COLLAPSED = /\ncollapsed:: true(?=\n|$)/;
-const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
 
 /** Place a floating element under (or above) a rectangle, inside the window. */
 export function place(el, r) {
@@ -38,7 +38,8 @@ export function caretRect(ta) {
 // ---------------------------------------------------------------------------
 // Suggestions while typing
 
-// [label, hint, id (default: the label), more words it's found by (Logseq's names for it…)]
+// [label, hint, id (default: the label), more words it's found by (Logseq's names for it…)]. Also the
+// command list's (commands.js); the "/" list itself leaves out NOT_IN_SLASH.
 export const SLASH = [
   ['TODO', 'to-do'], ['DOING', 'to-do'], ['LATER', 'to-do'], ['NOW', 'to-do'], ['WAITING', 'to-do'], ['DONE', 'to-do'], ['CANCELED', 'to-do', 'CANCELED', 'cancelled'],
   ['Scheduled date…', 'date', 'sched'], ['Deadline…', 'date', 'deadline'], ['Date…', 'link to a day', 'date', 'date picker'],
@@ -54,6 +55,10 @@ export const SLASH = [
   ['Priority A', '[#A]', 'pa'], ['Priority B', '[#B]', 'pb'], ['Priority C', '[#C]', 'pc'],
 ];
 
+/** To-do words the "/" list doesn't offer (he asked, Oct 29: only TODO, DOING, DONE and CANCELED there).
+ *  Notes that have them still show and work as before, and the command list (Ctrl+Shift+P) keeps them. */
+const NOT_IN_SLASH = new Set(['LATER', 'NOW', 'WAITING']);
+
 export class Suggest {
   constructor(app) {
     this.app = app;
@@ -62,10 +67,27 @@ export class Suggest {
     this.el.hidden = true;
     this.el.setAttribute('role', 'listbox');
     document.body.append(this.el);
+    // An item is chosen when it's tapped (the finger lifted where it went down), not as soon as a
+    // finger lands on it, so the list scrolls under a finger (he asked, Oct 30); moving more than
+    // 10px, or the browser taking the touch over for scrolling, chooses nothing. A mouse press acts
+    // at once, as before. The press never takes the focus (the keyboard stays up).
+    let press = null;
     this.el.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       const li = e.target.closest('li[data-k]');
-      if (li) this.choose(+li.dataset.k);
+      if (!li) return;
+      if (e.pointerType === 'mouse') { this.choose(+li.dataset.k); return; }
+      press = { li, id: e.pointerId, x: e.clientX, y: e.clientY };
+    });
+    this.el.addEventListener('pointermove', (e) => {
+      if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) press = null;
+    });
+    this.el.addEventListener('pointercancel', () => { press = null; });
+    this.el.addEventListener('scroll', () => { press = null; }, { passive: true });
+    this.el.addEventListener('pointerup', (e) => {
+      const p = press;
+      press = null;
+      if (p && e.pointerId === p.id && e.target.closest('li[data-k]') === p.li) this.choose(+p.li.dataset.k);
     });
     this.valCache = new Map();
   }
@@ -102,19 +124,27 @@ export class Suggest {
     this.close();
   }
 
-  pages(outline, kind, start, q) {
-    const ql = q.toLowerCase();
-    let names = this.app.names.filter((n) => n.exists || n.refs);
-    let list;
-    if (!ql) list = this.app.recent().concat(names.filter((n) => !n.journal).map((n) => n.name));
-    else {
-      list = names.map((n) => n.name).filter((n) => n.toLowerCase().includes(ql))
-        .sort((a, b) => (b.toLowerCase().startsWith(ql) - a.toLowerCase().startsWith(ql)) || a.length - b.length);
+  /** "[[" / "#" and words: pages found as the search box finds them (the core's `search_pages`:
+   *  accents, any word order, typos); a page's other names (alias::) count as the page, as in
+   *  Logseq: "SB → Sourdough Bread". Nothing typed: recent pages first. */
+  async pages(outline, kind, start, q) {
+    const seq = this.seq, cur = outline.cur;
+    const ql = q.trim().toLowerCase();
+    const names = this.app.names.filter((n) => n.exists || n.refs);
+    let items;
+    if (!ql) {
+      const list = [...new Set(this.app.recent().concat(names.filter((n) => !n.journal).map((n) => n.name)))].slice(0, 8);
+      items = list.map((n) => ({ label: n, html: esc(n), value: n }));
+    } else {
+      let hits = [];
+      try { hits = await call('search_pages', { q, limit: 8 }); } catch { /* none */ }
+      if (seq !== this.seq || !outline.ta || outline.cur !== cur) return; // typing went on (or another note opened) meanwhile: the newest keystroke decides
+      items = hits.map((x) => x.alias
+        ? { label: x.alias, html: `${esc(x.alias)} <span class="new">→ ${esc(x.page)}</span>`, value: x.alias }
+        : { label: x.page, html: esc(x.page), value: x.page });
+      const exact = names.some((x) => x.name.toLowerCase() === ql || x.aliases?.some((a) => a.toLowerCase() === ql));
+      if (!exact && !items.some((it) => it.value.toLowerCase() === ql)) items.push({ label: q, html: `<span class="new">New page:</span> ${esc(q)}`, value: q });
     }
-    list = [...new Set(list)].slice(0, 8);
-    const exact = names.some((x) => x.name.toLowerCase() === ql);
-    const items = list.map((n) => ({ label: n, html: esc(n), value: n }));
-    if (q && !exact && !list.some((n) => n.toLowerCase() === ql)) items.push({ label: q, html: `<span class="new">New page:</span> ${esc(q)}`, value: q });
     this.show(outline, kind, start, q, items);
   }
 
@@ -123,7 +153,7 @@ export class Suggest {
     // (all of them: the list scrolls, as Logseq's does)
     // the ones whose name starts with what's typed first, then a word of it ("/link": Link…, then Page link)
     const rank = (label) => { const l = label.toLowerCase(); return l.startsWith(ql) ? 0 : l.split(/\s+/).some((w) => w.startsWith(ql)) ? 1 : 2; };
-    const items = SLASH.filter(([label, , , more = '']) => !ql || `${label} ${more}`.toLowerCase().includes(ql) || label.toLowerCase().replace(/[^a-z]/g, '').startsWith(ql))
+    const items = SLASH.filter(([label, , , more = '']) => !NOT_IN_SLASH.has(label)).filter(([label, , , more = '']) => !ql || `${label} ${more}`.toLowerCase().includes(ql) || label.toLowerCase().replace(/[^a-z]/g, '').startsWith(ql))
       .sort((a, b) => (ql ? rank(a[0]) - rank(b[0]) : 0))
       .map(([label, hint, id]) => ({ label, html: `${esc(label)}<span class="hint">${esc(hint)}</span>`, value: id || label }));
     if (!items.length) return this.close();
@@ -278,7 +308,12 @@ export function pickDate(anchor, opts = {}) {
       done({ date: [dt.getFullYear(), dt.getMonth() + 1, dt.getDate()], repeat: repeat() });
     };
     const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(null); } };
-    const onDown = (e) => { if (!box.contains(e.target)) done(null); };
+    const onDown = (e) => {
+      if (box.contains(e.target)) return;
+      // a press on the button that opened it closes it (its click then doesn't open it again)
+      if (opts.button?.contains(e.target)) opts.button.dataset.closedAt = String(Date.now());
+      done(null);
+    };
     const cleanup = () => { box.remove(); document.removeEventListener('keydown', onKey, true); document.removeEventListener('pointerdown', onDown, true); };
     document.addEventListener('keydown', onKey, true);
     setTimeout(() => document.addEventListener('pointerdown', onDown, true), 0);
@@ -286,8 +321,6 @@ export function pickDate(anchor, opts = {}) {
     cal.focusDay();
   });
 }
-
-export const stampFor = (date, repeat) => stampText(date, null, repeat);
 
 // ---------------------------------------------------------------------------
 // Confirm and prompt boxes (instead of the browser's, which can't be styled)
@@ -347,12 +380,13 @@ export function formBox({ title, body = '', fields, ok = 'OK' }) {
 }
 
 /** A short list of actions under a button (anchor: anything with getBoundingClientRect, such as a
- *  point where he right-clicked). items: [{label, run, danger, hint}], '-' between groups; hint:
+ *  point where he right-clicked). items: [{label, run, danger, hint}], '-' between groups, {head} a
+ *  small heading over a group; hint:
  *  quiet words on the right, such as the keys that do the same. opts.keep: what has the keyboard
  *  keeps it (the phone toolbar's menus: the editing box and its keyboard stay up); opts.cls: a class. */
 export function menu(anchor, items, opts = {}) {
   const box = h('ul', 'pop menu' + (opts.cls ? ' ' + opts.cls : ''));
-  box.innerHTML = items.map((it, k) => it === '-' ? '<li class="nm-sep" role="separator"></li>' : `<li><button type="button" data-k="${k}" class="${it.danger ? 'danger' : ''}">${it.hint ? `<span class="mhint">${esc(it.hint)}</span>` : ''}${esc(it.label)}</button></li>`).join('');
+  box.innerHTML = items.map((it, k) => it === '-' ? '<li class="nm-sep" role="separator"></li>' : it.head ? `<li class="m-head" role="presentation">${esc(it.head)}</li>` : `<li><button type="button" data-k="${k}" class="${it.danger ? 'danger' : ''}">${it.hint ? `<span class="mhint">${esc(it.hint)}</span>` : ''}${esc(it.label)}</button></li>`).join('');
   if (opts.keep) box.addEventListener('pointerdown', (e) => e.preventDefault());
   document.body.append(box);
   const close = () => { box.remove(); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); document.removeEventListener('beforeinput', close, true); };
@@ -375,7 +409,8 @@ const COLOR_NAMES = { yellow: 'Yellow', red: 'Red', pink: 'Pink', green: 'Green'
  * for none), a row of headings (H1–H6, auto, none; the one now o.heading: 1–6, 'auto' or 0; null:
  * no row), then o.items ({id, label, hint, danger, checked}, '-' between groups). o.pick(kind, value)
  * runs a choice: ('color', name or ''), ('heading', 1–6, 'auto' or 0), ('item', id). Real buttons,
- * finger-sized on phones; arrow keys move between them; Esc, Android's Back (App.closeTop) and a press
+ * easy to tap on phones (one column, rows close together, app.css); arrow keys move
+ * between them; Esc, Android's Back (App.closeTop) and a press
  * outside close it (a tap outside does nothing else). o.focus: it takes the keyboard (else what had
  * it keeps it: the editing box on a phone keeps its keyboard). o.touch: opened by a finger. o.closed(picked)
  * when it closes.

@@ -68,13 +68,14 @@ const geo = await page.evaluate(() => {
     rightSide: folds.every((f) => f.left > outline.left + outline.width * 0.6), folds: folds.length,
     bulVsHeading: Math.round((bul.top + bul.height / 2) - (h.top + h.height / 2)),
     foldVsHeading: Math.round((fold.top + fold.height / 2) - (h.top + h.height / 2)),
-    lineStart: Math.round(lineTop - (bul.top + bul.height / 2 + dot / 2 + 4)),
+    // (Build 32 round 2: a fixed gap, --guide-gap, under the heading's dot)
+    belowDot: Math.round(lineTop - (bul.top + bul.height / 2 + dot / 2)),
     textClear: Math.round((fold.left + fold.width / 2 - 4.5) - textRight),
   };
 });
 check(geo.folds === 3 && geo.rightSide, 'the fold arrows sit at the right end of the notes, away from the lines', JSON.stringify(geo));
 check(Math.abs(geo.bulVsHeading) <= 2 && Math.abs(geo.foldVsHeading) <= 2, 'a heading’s dot and arrow are centred on the heading', JSON.stringify(geo));
-check(Math.abs(geo.lineStart) <= 1, 'the line under a note starts just below its dot', JSON.stringify(geo));
+check(Math.abs(geo.belowDot - 8) <= 1, 'the line under a note starts a small gap (8px) below its dot', JSON.stringify(geo));
 check(geo.textClear >= 4, 'the text of a note with children stops short of its arrow', JSON.stringify(geo));
 await page.screenshot({ path: SHOTS + '/phone-lines.png' });
 await page.locator('.blk', { has: page.locator(':scope > .bc', { hasText: /^plain parent$/ }) }).locator(':scope > .fold').tap();
@@ -262,11 +263,12 @@ await page.setViewportSize({ width: 393, height: 851 });
 await page.evaluate(() => { location.hash = '#/todos'; });
 await sleep(600);
 const labels = await page.locator('.chips .chip').allTextContents();
-check(labels.join('|') === 'Open|Doing|To do|Waiting|Done', 'short labels in the notes’ own words', labels.join('|'));
-await page.locator('.chips [data-o="done"]').tap();
+check(labels.join('|') === 'Open|To do|Doing|Done|Cancelled', 'short labels in the notes’ own words; no Waiting (Build 33)', labels.join('|'));
+await page.locator('.chips [data-k="done"]').tap();
 await sleep(600);
-check(await page.locator('.chips [data-o="done"]').getAttribute('aria-pressed') === 'true' && await page.locator('.todo-item.marker-done').count() > 0, '"Done" is a button that shows finished ones too');
-await page.locator('.chips [data-o="done"]').tap();
+const onlyDone = await page.evaluate(() => ({ pressed: [...document.querySelectorAll('.chips [aria-pressed="true"]')].map((b) => b.dataset.k), done: document.querySelectorAll('.todo-item.marker-done').length, open: document.querySelectorAll('.todo-item:not(.marker-done)').length }));
+check(onlyDone.pressed.join() === 'done' && onlyDone.done > 0 && onlyDone.open === 0, '"Done" shows only finished to-dos, one filter at a time (he asked)', JSON.stringify(onlyDone));
+await page.locator('.chips [data-k="all"]').tap();
 await sleep(500);
 await page.screenshot({ path: SHOTS + '/phone-todos.png' });
 
@@ -395,7 +397,7 @@ const hm = await page.evaluate(() => {
     inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, focusOut: !m.contains(document.activeElement), marked: document.querySelector('.blk.menu-on > .bc')?.textContent };
 });
 check(hm && hm.items[0] === 'Select' && hm.items.includes('Next to-do state') && hm.marked === 'hold three', 'holding a dot and lifting the finger opens the note’s menu (Select first)', JSON.stringify(hm));
-check(hm && hm.itemH >= 44 && hm.swH >= 32 && hm.headH >= 36 && hm.inside, 'finger-sized buttons, all on the screen', JSON.stringify(hm));
+check(hm && hm.itemH >= 32 && hm.swH >= 20 && hm.headH >= 30 && hm.inside, 'compact but easy to tap (rows 32px, colour dots 20px with a bigger reach, as he asked in Build 32), all on the screen', JSON.stringify(hm));
 check((await buzz()).length === 1 && await page.evaluate(() => location.hash) === hash0, 'a short buzz when it lifts; the note isn’t opened on its own', hash0);
 await page.evaluate(() => window.leanApp.onBack());
 await sleep(200);

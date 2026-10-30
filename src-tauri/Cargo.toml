@@ -1,6 +1,8 @@
 [package]
 name = "lean-outliner"
 version = "0.1.0"
+license = "AGPL-3.0-only"
+publish = false
 edition = "2021"
 
 [lib]
@@ -19,3 +21,8 @@ outline_core = { path = "../core" }
 # file-change notifications (inotify); already part of the build through Tauri, so no extra size
 [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
 libc = "0.2"
+
+# Android's "Add a note" pop-up calls the core through JNI (android_capture.rs); the same version
+# Tauri's tao and wry already use there, so nothing new is built or added to the app
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"

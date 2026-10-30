@@ -2,7 +2,7 @@
 //! note and when the box may close, the look's colours it is painted in, its sizes, the order of
 //! the page list, and the few smooth shapes it paints. On Windows the box is a native window
 //! (src-tauri/src/capture_box), which follows these rules; they are tested on any computer
-//! (core/tests/capture_box.rs). The web box (ui/capture.js) has the same rules.
+//! (core/tests/capture_box.rs).
 
 use serde_json::Value;
 use std::path::Path;
@@ -31,19 +31,19 @@ pub const COLOR_KEYS: [&str; 10] = ["surface", "surface-2", "ink", "ink-soft", "
 pub const LOOK_FILE: &str = "look.txt";
 
 impl Default for BoxColors {
-    /// Calm, the app's first look.
+    /// thinky, the app's default look (Build 33; Calm before), until the app writes look.txt.
     fn default() -> Self {
         BoxColors {
             surface: 0xFFFFFF,
-            surface2: 0xF7F8F6,
-            ink: 0x1A2130,
-            ink_soft: 0x535D6E,
-            ink_faint: 0x8A93A2,
-            accent: 0x0B7B66,
+            surface2: 0xF8F6F2,
+            ink: 0x1D1A2E,
+            ink_soft: 0x4A4558,
+            ink_faint: 0x7A7383,
+            accent: 0xC2331A,
             accent_ink: 0xFFFFFF,
-            line: 0xDFE3E0,
-            line_soft: 0xECEFEC,
-            danger: 0xB3412A,
+            line: 0xE3DFD7,
+            line_soft: 0xECE9E3,
+            danger: 0xA8261B,
         }
     }
 }
@@ -79,7 +79,7 @@ impl BoxColors {
 
     pub fn to_text(&self, look: &str) -> String {
         let mut c = *self;
-        let mut out = format!("# The look's colours for the Windows \"Add to journal\" box (written by Lean Outliner)\nlook={look}\n");
+        let mut out = format!("# The look's colours for the Windows \"Add to journal\" box (written by thinky)\nlook={look}\n");
         for k in COLOR_KEYS {
             out.push_str(&format!("{k}=#{:06X}\n", c.slot(k).map_or(0, |v| *v)));
         }
@@ -266,9 +266,6 @@ impl Rules {
     pub fn ready(&mut self, now_ms: u64) {
         self.ready_at = Some(now_ms);
     }
-    pub fn is_ready(&self) -> bool {
-        self.ready_at.is_some()
-    }
     /// It had the keyboard at least once (only then does losing it mean "clicked elsewhere").
     pub fn focused(&mut self) {
         self.had_focus = true;
@@ -441,8 +438,8 @@ pub struct Metrics {
     pub foot_h: i32,
 }
 
-/// Where everything goes, in device pixels from the box's top left corner. Sizes are those of the
-/// web box (ui/capture.html) in CSS pixels, times the scale: 640 wide, 98 tall with one line.
+/// Where everything goes, in device pixels from the box's top left corner. Sizes are in CSS-like
+/// pixels times the scale: 640 wide, 98 tall with one line.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Layout {
     pub w: i32,
@@ -504,37 +501,22 @@ pub fn layout(m: &Metrics) -> Layout {
 
 /// The page list for what's typed in its search field, as indexes into `pages` ((name, change
 /// time) as `App::page_list` gives them): with nothing typed, the pages changed most
-/// recently; else the names holding every typed word, best first: the name itself, names
-/// starting with it, a word starting with it, then the rest (shorter names first).
+/// recently; else the names the Ctrl+K search finds (`search::match_name`: accents, any word
+/// order, typos), in its order (rank, then shorter names, then A–Z).
 pub fn rank_pages(pages: &[(String, u64)], query: &str, limit: usize) -> Vec<usize> {
-    let q = query.trim().to_lowercase();
-    if q.is_empty() {
+    let words = crate::search::query_words(query);
+    if words.is_empty() {
         let mut all: Vec<usize> = (0..pages.len()).collect();
         all.sort_by(|&a, &b| pages[b].1.cmp(&pages[a].1).then_with(|| pages[a].0.to_lowercase().cmp(&pages[b].0.to_lowercase())));
         all.truncate(limit);
         return all;
     }
-    let words: Vec<&str> = q.split_whitespace().collect();
-    let mut hits: Vec<(u8, usize, String, usize)> = Vec::new();
-    for (i, (name, _)) in pages.iter().enumerate() {
-        let n = name.to_lowercase();
-        if !words.iter().all(|w| n.contains(w)) {
-            continue;
-        }
-        let word_start = n.match_indices(q.as_str()).any(|(at, _)| n[..at].chars().last().is_none_or(|c| !c.is_alphanumeric()));
-        let rank = if n == q {
-            0
-        } else if n.starts_with(&q) {
-            1
-        } else if word_start {
-            2
-        } else if n.contains(&q) {
-            3
-        } else {
-            4
-        };
-        hits.push((rank, n.chars().count(), n, i));
-    }
+    let phrase = words.join(" ");
+    let mut hits: Vec<_> = pages
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (name, _))| crate::search::match_name(name, &words, &phrase).map(|(r, _)| (r, name.chars().count(), name.to_lowercase(), i)))
+        .collect();
     hits.sort();
     hits.into_iter().take(limit).map(|h| h.3).collect()
 }
@@ -619,6 +601,48 @@ impl Canvas<'_> {
             let (pa_x, pa_y) = (px - ax, py - ay);
             let h = ((pa_x * dx + pa_y * dy) / len2).clamp(0.0, 1.0);
             ((pa_x - dx * h).powi(2) + (pa_y - dy * h).powi(2)).sqrt() - half
+        });
+    }
+}
+
+// ----- the app's icon, drawn small (the capture box's strip) -----
+
+/// ui/brand/icon-small.svg's pen line (the drawing for 32px and less: thick lines, 1.14x bigger),
+/// sampled and simplified to these points, as fractions of its 1024-unit square.
+const LOGO_LINE: [(f32, f32); 35] = [
+    (0.257, 0.501), (0.275, 0.444), (0.316, 0.425), (0.366, 0.437), (0.430, 0.491), (0.477, 0.570),
+    (0.498, 0.645), (0.497, 0.718), (0.472, 0.758), (0.452, 0.758), (0.424, 0.742), (0.292, 0.602),
+    (0.295, 0.618), (0.269, 0.623), (0.157, 0.597), (0.257, 0.628), (0.373, 0.680), (0.453, 0.737),
+    (0.463, 0.755), (0.458, 0.763), (0.416, 0.751), (0.386, 0.719), (0.369, 0.676), (0.369, 0.625),
+    (0.387, 0.569), (0.419, 0.518), (0.467, 0.464), (0.519, 0.426), (0.284, 0.640), (0.198, 0.745),
+    (0.204, 0.744), (0.198, 0.752), (0.214, 0.738), (0.605, 0.366), (0.701, 0.288),
+];
+/// The icon's colours (the brand's: the cream tile in every look, as on the app's other icons).
+pub const LOGO_TILE: u32 = 0xF4EEE3;
+pub const LOGO_INK: u32 = 0x1D1A2E;
+pub const LOGO_SPARK: u32 = 0xFF4B2B;
+
+impl Canvas<'_> {
+    /// The app's icon, `size` pixels square with its top left at (x, y): the cream tile (rounded
+    /// as the SVG's), the scribble as round-ended lines through LOGO_LINE, the four-point spark
+    /// (its sides are the curves sqrt|x| + sqrt|y| = sqrt r, as the SVG's quadratic curves through
+    /// its middle). Nothing is painted outside that square.
+    pub fn logo(&mut self, x: f32, y: f32, size: f32) {
+        let u = size / 1024.0;
+        // a faint edge, so the cream tile shows on a light strip too (the app's icon gets a soft shadow)
+        let e = (size / 40.0).clamp(0.5, 1.5);
+        self.round_rect(x + 32.0 * u - e, y + 32.0 * u - e, x + 992.0 * u + e, y + 992.0 * u + e, 224.0 * u + e, mix(LOGO_TILE, LOGO_INK, 0.2));
+        self.round_rect(x + 32.0 * u, y + 32.0 * u, x + 992.0 * u, y + 992.0 * u, 224.0 * u, LOGO_TILE);
+        let w = (82.0 * u).max(1.0);
+        for p in LOGO_LINE.windows(2) {
+            self.line(x + p[0].0 * size, y + p[0].1 * size, x + p[1].0 * size, y + p[1].1 * size, w, LOGO_INK);
+        }
+        let (cx, cy, r) = (x + 797.9 * u, y + 237.6 * u, 134.5 * u);
+        self.shape(cx - r, cy - r, cx + r, cy + r, LOGO_SPARK, |px, py| {
+            let (ax, ay) = ((px - cx).abs().max(0.25), (py - cy).abs().max(0.25));
+            let f = ax.sqrt() + ay.sqrt() - r.sqrt();
+            let g = 0.5 * (1.0 / ax + 1.0 / ay).sqrt(); // (how fast f grows: f / g is about the distance)
+            (f / g).max((px - cx).hypot(py - cy) - r)
         });
     }
 }

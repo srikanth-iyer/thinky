@@ -1,0 +1,8 @@
+# Weekly pull requests when a pinned GitHub Action has a new release (the pins are exact commits,
+# so updates only come through reviewed pull requests). Security alerts for crates are switched on
+# in the repository's settings.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }

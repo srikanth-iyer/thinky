@@ -33,12 +33,12 @@ code, pre { font-family: var(--font-mono); }
   /* Recent shows only what fits (App.fitRecent), so normally there is no scroll bar; one appears only
      when even the rest can't fit (a very short window, a phone on its side) */
   grid-column: 1; grid-row: 2; width: var(--side-now); min-height: 0; overflow-y: auto;
-  padding: 0 14px 14px; border-right: 1px solid var(--line-soft); background: var(--side-bg);
+  padding: 0 14px 14px; border-right: 1px solid var(--line-soft); background: var(--side-image) var(--side-image-pos, 0 0) / var(--side-image-size) var(--side-image-repeat, repeat), var(--side-bg);
   display: flex; flex-direction: column; gap: 12px;
   font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 14.5px; line-height: 1.45;
 }
 #col { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
-#main { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 28px 140px; min-width: 0; zoom: var(--text-scale, 1); scroll-padding: 8px 0 60px; }
+#main, #main2 { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 28px 140px; min-width: 0; zoom: var(--text-scale, 1); scroll-padding: 8px 0 60px; }
 #main:focus { outline: none; } /* it takes the focus after moving to another page, so the keyboard scrolls it */
 /* the top strip (laptop): the logo, the sidebar's button and Search, then Home, back, forward and Go
    to date, then the tabs; big icons close together. It stays put when the sidebar opens or closes. */
@@ -49,13 +49,13 @@ code, pre { font-family: var(--font-mono); }
 #histbar svg { width: 22px; height: 22px; }
 .hb-app { flex: none; display: flex; align-items: center; margin-right: 6px; }
 .hb-logo { display: grid; place-items: center; width: 22px; height: 34px; margin: 0 7px 0 2px; pointer-events: none; } /* (it moves the window) */
-#histbar .hb-logo svg { width: 20px; height: 20px; }
+#histbar .hb-logo .logo { width: 20px; height: 20px; }
 #histbar [data-a="side"][aria-expanded="false"] { color: var(--ink-faint); }
 #histbar .drag { flex: 1; align-self: stretch; }
 /* window buttons, flush with the window's top-right corner (Windows: the app draws its own title bar) */
 .winctl { display: flex; align-self: stretch; }
 #histbar .winctl { margin: -8px 0 -2px 0; }
-#topbar .winctl { margin: -6px -8px -6px 0; }
+#topbar .winctl { margin: 0 -4px 0 0; }
 #histbar .winctl button, #topbar .winctl button { width: 46px; height: auto; min-height: 40px; border: 0; border-radius: 0; background: none; display: grid; place-items: center; cursor: default; color: var(--ink-soft); }
 #histbar .winctl button:hover, #topbar .winctl button:hover { background: var(--surface-2); color: var(--ink); }
 #histbar .winctl button.close:hover, #topbar .winctl button.close:hover { background: #C42B1C; color: #fff; }
@@ -65,6 +65,7 @@ code, pre { font-family: var(--font-mono); }
 /* wide mode (t w, the page's ⋯ menu, Settings → Look; App.setWide): notes use the whole width */
 html.wide .view:not([data-kind="settings"]) { max-width: none; }
 #topbar { display: none; }
+:root { --topbar-h: 45px; } /* the phone bar's height (narrow windows), its line under it included */
 
 /* reaches the sidebar's top and side edges, so the whole strip above the search box moves the window */
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; color: var(--ink-soft); margin: 0 -14px; padding: 16px 14px 0 20px; }
@@ -73,19 +74,85 @@ html.wide .view:not([data-kind="settings"]) { max-width: none; }
 @media (min-width: 861px) { .brand { display: none; } #side { padding-top: 4px; } }
 .brand .hide-side { margin-left: auto; }
 .brand svg { width: 22px; height: 22px; flex: none; }
+/* the brand (ui/brand/, dom.js BRAND): the icon keeps its cream tile in every look; the name's letters
+   take the look's ink, its spark and [[ ]] stay red. The name always sits centred under the icon. */
+svg.logo { display: block; width: 100%; height: 100%; overflow: visible; user-select: none; }
+.wordmark { display: block; color: var(--ink); overflow: visible; }
+.brand-mark { display: inline-flex; flex-direction: row; align-items: center; gap: 7px; pointer-events: none; }
+/* the icon's cream tile lifted off light sidebars by a soft shadow (he asked, Oct 29) */
+.brand-mark .logo, .hb-logo .logo { filter: drop-shadow(0 1px 2px rgba(29, 26, 46, 0.22)) drop-shadow(0 0 0.5px rgba(29, 26, 46, 0.25)); }
+.brand-mark .logo { width: 28px; height: 28px; flex: none; }
+.brand .brand-mark .wordmark { width: 57px; height: 25px; margin-top: 1px; }
+/* an empty screen or list: the scribble alone, faded, over its words (BRAND.empty) */
+.empty-mark { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 32px 16px 28px; color: var(--ink-faint); text-align: center; font-size: 14px; line-height: 1.5; list-style: none; }
+.empty-mark .scribble { width: 46px; height: 44px; opacity: 0.45; overflow: visible; }
+.empty-mark span { max-width: 36ch; }
+.r-none .empty-mark { flex: 1; padding: 12px 8px 10px; gap: 6px; } /* (centred across the search box) */
+.r-none .empty-mark .scribble { width: 30px; height: 28px; }
+/* the logo's spark as a small mark (sparingly: the colour --spark, skins.css): today in the date picker,
+   a new version waiting (html.has-update: Settings in the sidebar, the phone's menu button, About), the
+   thank-you after Send feedback */
+:root { --spark-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 0Q12 12 24 12Q12 12 12 24Q12 12 0 12Q12 12 12 0Z'/%3E%3C/svg%3E"); }
+.spark-mark { display: inline-block; width: .85em; height: .85em; margin-right: .35em; vertical-align: -.05em; background: var(--spark); -webkit-mask: var(--spark-mask) center / contain no-repeat; mask: var(--spark-mask) center / contain no-repeat; }
+html.has-update .nav a[data-view="settings"]::after, html.has-update .set-tabs [data-tab="about"]::after, html.has-update #topbar [data-a="menu"]::after {
+  content: ""; width: 9px; height: 9px; background: var(--spark); -webkit-mask: var(--spark-mask) center / contain no-repeat; mask: var(--spark-mask) center / contain no-repeat; }
+html.has-update .nav a[data-view="settings"]::after { align-self: flex-start; margin: 1px 0 0 -5px; }
+html.has-update .set-tabs [data-tab="about"]::after { display: inline-block; margin: 0 -3px 0 4px; vertical-align: 4px; }
+html.has-update #topbar [data-a="menu"] { position: relative; }
+html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; right: 8px; }
+/* a slow wait (BRAND.wait / BRAND.spin): the scribble draws itself and undraws, round and round
+   (1.6 s), over a faint copy of itself; the spark stays. Still, whole, with reduced motion */
+.wait-mark { display: flex; align-items: center; gap: 9px; margin: 10px 0; color: var(--ink-soft); font-size: 14px; line-height: 1.4; }
+.spin { width: 22px; height: 21px; flex: none; overflow: visible; color: var(--ink-soft); vertical-align: -5px; }
+.spin .sp-base { opacity: .22; }
+.spin .sp-run { stroke-dasharray: 1; animation: spin-draw 1.6s cubic-bezier(.45, .05, .55, .95) infinite; }
+@keyframes spin-draw { from { stroke-dashoffset: 1; } 50% { stroke-dashoffset: 0; } to { stroke-dashoffset: -1; } }
+@media (prefers-reduced-motion: reduce) { .spin .sp-run { animation: none; stroke-dasharray: none; } }
+.upd-out .spin { margin-right: 7px; }
+.r-none .wait-mark { flex: 1; justify-content: center; margin: 8px 0; } /* (the search box's first search) */
+/* saved (App.sparkSaved): a tiny spark after the page's title or the day's date, in and out in 0.6 s;
+   it takes no room (zero width, no height), so nothing moves; reduced motion: just shown briefly */
+.saved-mark { display: inline-block; position: relative; width: 0; height: 0; vertical-align: top; pointer-events: none; }
+.saved-mark::before { content: ""; position: absolute; left: .16em; top: .12em; width: .36em; height: .36em; background: var(--spark); -webkit-mask: var(--spark-mask) center / contain no-repeat; mask: var(--spark-mask) center / contain no-repeat; opacity: 0; }
+.saved-mark.on::before { animation: saved-spark .6s ease-in-out; }
+@keyframes saved-spark { 0% { opacity: 0; transform: scale(.4) rotate(-30deg); } 35% { opacity: 1; transform: scale(1.05); } 70% { opacity: 1; transform: none; } 100% { opacity: 0; transform: none; } }
+@keyframes saved-still { 0%, 99% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .saved-mark.on::before { animation: saved-still .6s steps(1, end); } }
+/* while the app opens (index.html #splash): the scribble draws itself (~0.45 s) and ends in the spark,
+   centred on the brand's cream in every look (he asked, Oct 30: cream from the first moment, as
+   Android's own start-up screen and the window behind the page are; android_overlay.py); it never takes a click, and fades once the first page is drawn
+   (App.unsplash); it goes by itself after 12 s whatever happens. Still, no movement, with reduced motion */
+#splash { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; background: #F4EEE3; pointer-events: none; transition: opacity .25s ease-out; animation: sp-away .3s 12s forwards; }
+#splash svg { width: 92px; height: 87px; overflow: visible; }
+#splash .sp-line { fill: none; stroke: #1D1A2E; stroke-width: 42; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: sp-draw .45s cubic-bezier(.45, .05, .4, 1) forwards; }
+#splash .sp-spark { fill: #FF4B2B; transform-origin: 765px 268px; transform: scale(0); animation: sp-spark .22s .42s cubic-bezier(.3, 1.6, .5, 1) forwards; }
+#splash.done { opacity: 0; }
+@keyframes sp-draw { to { stroke-dashoffset: 0; } }
+@keyframes sp-spark { to { transform: scale(1); } }
+@keyframes sp-away { to { opacity: 0; visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  #splash, #splash.done { transition: none; }
+  #splash .sp-line, #splash .sp-spark { animation: none; stroke-dashoffset: 0; transform: none; }
+}
+/* the name inside words: as tall as a capital letter and a descender, sitting on the line like a word */
+.wm-in { display: inline-block; height: 1.3em; width: calc(1.3em * 207 / 91); vertical-align: -0.32em; color: inherit; overflow: visible; margin: 0 0.04em; }
 
 .searchbtn {
   display: flex; align-items: center; gap: 8px; width: 100%; cursor: pointer;
   background: var(--btn-bg); border: var(--btn-border); border-radius: var(--btn-radius); box-shadow: var(--btn-shadow);
   padding: 8px 10px; color: var(--ink-faint); font-size: 14px;
 }
+.chip-say { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-faint); }
 .searchbtn kbd { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); }
+@media (pointer: coarse) { .searchbtn kbd { display: none; } } /* no keyboard keys on a phone (he asked) */
 
 .nav { display: flex; flex-direction: column; gap: 1px; }
 .nav a, .side-list a { display: flex; align-items: center; gap: 9px; padding: 4px 8px; border-radius: 8px; color: var(--ink-soft); text-decoration: none; }
 .nav a:hover, .side-list a:hover { background: var(--surface-2); color: var(--ink); }
 .nav a[aria-current="page"] { background: var(--accent-tint); color: var(--ink); font-weight: 500; }
 .nav svg { width: 17px; height: 17px; flex: none; opacity: .8; }
+/* the sidebar's and the top strips' icons in the look's tint (--icon-ink; most looks: their words' colour) */
+.nav svg, .hb-app button svg, .hb-nav svg, #topbar > button svg { color: var(--icon-ink); }
 .side-h { font-size: 12.5px; color: var(--ink-faint); padding: 0 8px; margin: 0 0 4px; font-weight: 500; }
 /* Favourites / Recent headings fold their list away */
 .side-h.side-fold { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; border-radius: 6px; }
@@ -113,6 +180,7 @@ html.wide .view:not([data-kind="settings"]) { max-width: none; }
 .nav .nav-btn:hover, .nav .nav-btn[aria-expanded="true"] { background: var(--surface-2); color: var(--ink); }
 .nav-btn svg { width: 17px; height: 17px; flex: none; opacity: .8; }
 .look-cur { margin-left: auto; font-size: 12.5px; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.look-cur .wm-in { height: 1.6em; width: calc(1.6em * 207 / 91); vertical-align: -0.45em; } /* (the look named thinky: its wordmark) */
 .pop.looks { width: min(330px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; padding: 5px; }
 .looks ul { list-style: none; margin: 0; padding: 0; }
 .looks [data-look] { display: flex; align-items: center; gap: 11px; width: 100%; padding: 6px 8px 6px 6px; border: 0; border-radius: 9px; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
@@ -127,6 +195,16 @@ html.wide .view:not([data-kind="settings"]) { max-width: none; }
 .look-txt b { font-weight: 500; }
 .look-txt small { font-size: 12.5px; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .look-more { display: block; font-size: 12.5px; color: var(--ink-faint); padding: 7px 8px 4px; border-top: 1px solid var(--line-soft); margin-top: 4px; }
+/* a phone: compact, about half the screen (it scrolls), rows still a finger tall */
+@media (pointer: coarse) {
+  .pop.looks { width: min(280px, calc(100vw - 16px)); max-height: min(60vh, 440px); padding: 4px; overscroll-behavior: contain; }
+  .looks [data-look] { min-height: 44px; gap: 10px; padding: 3px 8px 3px 4px; }
+  .look-sw { width: 46px; height: 32px; border-radius: 7px; }
+  .look-sw > span { padding: 2px 6px; gap: 4px; }
+  .look-sw b { font-size: 13px; }
+  .look-txt { font-size: 14px; }
+  .look-txt small { font-size: 12px; }
+}
 
 /* ---------- headings ---------- */
 .page-title {
@@ -137,7 +215,7 @@ html.wide .view:not([data-kind="settings"]) { max-width: none; }
 /* a journal day's weekday, above its date: small and faint, so the date stands out */
 .weekday {
   font-family: var(--weekday-font); font-style: var(--weekday-style); text-transform: var(--weekday-transform);
-  color: var(--ink-faint); font-size: 15px; line-height: 1.4; margin: 0 0 2px;
+  color: var(--weekday-ink); font-size: 15px; line-height: 1.4; margin: 0 0 2px;
 }
 .weekday::before { content: var(--weekday-before); }
 .weekday::after { content: var(--weekday-after); }
@@ -161,12 +239,18 @@ html.wide .view:not([data-kind="settings"]) { max-width: none; }
 .sheet.today { background-color: var(--today-bg); }
 /* A day in the Journals list (the date is a page title's size): room to breathe, like Logseq.
    More space above and below its notes, under its date (.day-body) and between days (--day-gap;
-   in looks without cards that's the hairline's space below it, the same as above it), and a
-   minimum height, so empty days don't crowd together; today's is taller (Logseq: 250px, today 500) */
+   in looks without cards that's the hairline's space below it, the same as above it: Plain ~48px
+   each, Logseq has 48 above and 24 below), and a minimum height, so empty days don't crowd together;
+   today's is taller (Logseq: 250px, today 500). Oct 28: a little roomier still (he asked) */
 .sheet.day, .sheet.page { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 22px); padding-bottom: calc(var(--sheet-pad-bottom) + 22px); }
+.sheet.day { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 30px); padding-bottom: calc(var(--sheet-pad-bottom) + 32px); }
 .sheet.day { margin-bottom: var(--day-gap); min-height: 250px; }
 .sheet.day.today { min-height: 400px; }
-.day-body { margin-top: 24px; }
+.day-body { margin-top: 28px; }
+/* a day with no notes yet (App.daySheet): its empty first note says "Click to write…" ("Tap…" on a
+   phone) and the empty room under it opens it too, so it's plain that nothing is written there and
+   its references (if any) sit well below */
+.day-body.blank { min-height: 140px; cursor: text; }
 /* a day folds away to its date (App.foldDay): an arrow left of the date (a laptop: on hover, or while
    folded), at the right end of the weekday's line on phones; folded, only the date shows */
 .sheet.day > .day-head { position: relative; }
@@ -193,15 +277,20 @@ html.wide .view:not([data-kind="settings"]) { max-width: none; }
    it taller: the editor sets --hf (how much bigger the heading is, e.g. .3 for ##); --h-grow is 0
    in looks whose lines have a fixed height */
 .blk { position: relative; padding-left: calc(var(--d, 0) * var(--ind) + var(--txt)); --bul-h: calc(var(--line-box) * (1 + var(--hf, 0) * var(--h-grow))); }
-/* the lines of the notes above this one, through its row */
+/* the lines of the notes above this one, through its row. A line ends --guide-end above the bottom of
+   the last note under it (--e: the levels that go on below this row, set by editor.js blockEl on the
+   last row of a branch; the levels from --e to --d end here), so there is room before the next dot */
 .blk::before {
   content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--d, 0) * var(--ind)); pointer-events: none;
-  background: repeating-linear-gradient(90deg, transparent 0 9px, var(--guide) 9px 10px, transparent 10px var(--ind));
+  --g: repeating-linear-gradient(90deg, transparent 0 9px, var(--guide) 9px 10px, transparent 10px var(--ind));
+  background: var(--g) 0 0 / calc(var(--e, var(--d, 0)) * var(--ind)) 100% no-repeat,
+    var(--g) calc(var(--e, var(--d, 0)) * var(--ind)) 0 / calc((var(--d, 0) - var(--e, var(--d, 0))) * var(--ind)) calc(100% - var(--guide-end)) no-repeat;
 }
-/* and its own line, from just below its dot down to its children (when they're showing) */
+/* and its own line, from a small gap under its dot (--guide-gap; the same when its words wrap onto
+   more lines) down to its children (when they're showing) */
 .blk.has-kids:not(.collapsed)::after {
   content: ""; position: absolute; left: calc(var(--d, 0) * var(--ind) + 9px); width: 1px; bottom: 0; pointer-events: none;
-  top: calc(var(--bc-pad-y) + var(--lead, 0px) + var(--bul-h) / 2 + var(--bullet-h) / 2 + 4px); background: var(--guide);
+  top: calc(var(--bc-pad-y) + var(--lead, 0px) + var(--bul-h) / 2 + var(--bullet-h) / 2 + var(--guide-gap)); background: var(--guide);
 }
 .bul {
   position: absolute; left: calc(var(--d, 0) * var(--ind) + 2px); top: calc(var(--bc-pad-y) + var(--lead, 0px)); width: 15px; height: var(--bul-h);
@@ -246,6 +335,14 @@ html.wide .view:not([data-kind="settings"]) { max-width: none; }
 @media (max-width: 860px), (pointer: coarse) {
   .fold { left: auto; right: -10px; width: 40px; }
   .blk.has-kids > .bc, .blk.has-kids > .ed, .refhit.has-kids > .bc { padding-right: 18px; }
+  /* even sides (he asked, Oct 27): the words run on to as far from the right edge as the dots are from
+     the left (they stopped ~9px short), so no column is narrower; the arrow stays where it was. (A dot's
+     left edge is 5.5px - half its width in from the sheet's edge, the words' end 12px in from the
+     outline's: so the outline reaches out 6.5px + half a dot, the same in every look.) */
+  .sheet .outline { margin-right: calc(-6.5px - var(--bullet-w) / 2); }
+  .sheet .outline .fold { right: calc(var(--bullet-w) / 2 - 3.5px); }
+  /* (and the words of a note with an arrow still stop short of it, as before: 18px + that reach) */
+  .sheet .outline .blk.has-kids > .bc, .sheet .outline .blk.has-kids > .ed { padding-right: calc(24.5px + var(--bullet-w) / 2); }
 }
 @media (pointer: coarse) { .fold { opacity: .4; } }
 @media (max-width: 860px), (pointer: coarse) { /* (a finger-sized target, clear of the date) */
@@ -279,8 +376,8 @@ html.wide .view:not([data-kind="settings"]) { max-width: none; }
 /* a done or cancelled to-do (as Logseq): its words faded, a clear line through them in their own colour;
    links stay link-coloured, faded the same; a heading (inline-block) gets the line too, its
    properties box (inline-block across the note) doesn't */
-.blk.marker-done > .bc, .todo-item.marker-done .bc { color: var(--done-ink); text-decoration: line-through; text-decoration-color: var(--done-line); }
-.blk.marker-done > .bc a.pl, .blk.marker-done > .bc a.ext, .todo-item.marker-done .bc a.pl { color: color-mix(in srgb, var(--link) var(--done-fade), transparent); }
+.blk.marker-done > .bc, .todo-item.marker-done .bc, .refhit.marker-done > .bc { color: var(--done-ink); text-decoration: line-through; text-decoration-color: var(--done-line); }
+.blk.marker-done > .bc a.pl, .blk.marker-done > .bc a.ext, .todo-item.marker-done .bc a.pl, .refhit.marker-done > .bc a.pl { color: color-mix(in srgb, var(--link) var(--done-fade), transparent); }
 .blk.marker-done > .bc .h { text-decoration: inherit; }
 .blk.marker-done > .bc > .props { display: inline-block; width: 100%; vertical-align: top; }
 .blk.hit > .bc { background: var(--accent-tint); transition: background 1.2s ease; }
@@ -331,7 +428,7 @@ a.tag .hash { display: var(--hash); }
    --callout-gap/--callout-pad: space around and inside a box (0 would keep words on ruled lines,
    in a look that has them); a note that starts with one gets --lead (editor.viewEl) = that space,
    which moves its dot, arrow and line down to the box's first line of words. */
-.bc blockquote { margin: var(--quote-gap) 0; padding: 0 0 0 12px; border-left: 3px solid var(--line); color: var(--ink-soft); }
+.bc blockquote { margin: var(--quote-gap) 0; padding: 0 0 0 12px; border-left: 3px solid var(--quote-bar); color: var(--ink-soft); }
 .callout { --c: var(--c-note); margin: var(--callout-gap) 0; padding: var(--callout-pad) 12px var(--callout-pad) 15px; border-radius: 8px; background: color-mix(in srgb, var(--c) var(--callout-tint), transparent); box-shadow: inset 4px 0 0 var(--c); }
 .callout-t { color: var(--c); font-weight: 600; }
 .callout.c-tip { --c: var(--c-tip); } .callout.c-important { --c: var(--c-important); }
@@ -383,34 +480,79 @@ a.tag .hash { display: var(--hash); }
 .sec { margin-top: 34px; }
 .sec-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 0 0 12px; font-size: 15px; font-weight: 600; font-family: var(--sec-font); line-height: 1.4; }
 .sec-h .n { font-weight: 400; color: var(--ink-faint); font-size: 13.5px; }
-.refgrp { border-left: var(--ref-rule); padding: 2px 0 2px 14px; margin: 0 0 18px; }
-.refgrp h3 { font-size: 15px; margin: 0 0 4px; font-weight: 500; font-family: var(--sec-font); line-height: 1.4; }
+/* a heading that sits on the page itself, outside the cards (a page's references, tagged pages): a soft plain
+   band behind it where the look draws a pattern there (Automaton, he asked, Oct 29); none by default */
+.view > .sec > .sec-h { background: var(--sec-band, transparent); padding: var(--sec-band-pad, 0); border-radius: var(--sec-band-radius, 0); }
+/* each page's references in a box of its own (he asked, Oct 27: they read as one document), sunken
+   into the page like a well rather than raised like a card (Oct 28: Calm's references sat on the
+   tinted background; now their words are on a canvas): tokens --refgrp-* per look. Its name heads it,
+   clearly but quietly (icon or a day's calendar, the name, how many notes); a faint line and a little
+   room between its notes */
+.refgrp { background: var(--refgrp-bg); border: var(--refgrp-border); border-radius: var(--refgrp-radius); box-shadow: var(--refgrp-shadow);
+  padding: 12px 16px 12px 18px; margin: 0 0 var(--refgrp-gap); content-visibility: auto; contain-intrinsic-size: auto 80px; }
+.refgrp h3 { position: relative; font-size: 16px; margin: 0 0 8px; font-weight: 600; font-family: var(--sec-font); line-height: 1.35; overflow-wrap: anywhere; }
 .refgrp h3 a { color: var(--ink); text-decoration: none; }
 .refgrp h3 a:hover { color: var(--link); }
-/* a page's references fold away from its heading, and open again, as nested notes do (App.refGroup) */
-.refgrp h3 { position: relative; }
-.grp-fold { position: absolute; left: -18px; top: 0; bottom: 0; width: 17px; display: grid; place-items: center; border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink-faint); opacity: 0; } /* (in the group's margin, so the name stays in line with its notes) */
+.refgrp h3 .grp-n { font-weight: 400; font-size: 12.5px; color: var(--ink-faint); margin-left: 9px; white-space: nowrap; font-family: var(--sec-font); }
+.refgrp h3 .grp-day { display: inline-flex; vertical-align: -2px; margin-right: 7px; color: var(--ink-faint); }
+.refgrp h3 .grp-day svg { width: 15px; height: 15px; }
+.refgrp h3 .pg-ic { margin-right: .4em; }
+.refgrp > .refnote + .refnote, .refgrp > .refhit + .refhit { border-top: var(--refgrp-line); margin-top: 9px; padding-top: 9px; }
+.refgrp.folded { padding-top: 11px; padding-bottom: 11px; }
+.refgrp.folded h3 { margin-bottom: 0; }
+/* a page's references' tools (App.refTools): three small quiet icon buttons at the right end of the
+   "Linked references" heading (Filter, Sort, Fold all), the heading's words on the left; the filter box
+   under the heading, only when Filter is on */
+.sec-h.has-acts { flex-wrap: nowrap; align-items: center; }
+.sec-h .sec-t { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.ref-acts { flex: none; display: inline-flex; align-items: center; gap: 4px; margin: -4px -4px -4px 8px; }
+.ref-tbtn { position: relative; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--ink-faint); display: inline-grid; place-items: center; opacity: .8; cursor: pointer; }
+.ref-tbtn svg { width: 16px; height: 16px; }
+.ref-tbtn:hover { opacity: 1; color: var(--ink); background: var(--surface-2); }
+.ref-tbtn[aria-expanded="true"] { opacity: 1; color: var(--accent); background: var(--accent-tint); }
+.ref-tools { display: flex; margin: -2px 0 16px; font-family: var(--sec-font); }
+.ref-find { position: relative; flex: 1 1 220px; max-width: 340px; display: flex; align-items: center; }
+.ref-find svg { position: absolute; left: 10px; width: 15px; height: 15px; color: var(--ink-faint); pointer-events: none; }
+.ref-filter { width: 100%; min-width: 0; font: inherit; font-size: 14px; line-height: 1.3; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px 6px 31px; }
+.ref-filter::placeholder { color: var(--ink-faint); opacity: 1; }
+.ref-filter:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.ref-none { margin: 4px 2px 0; }
+::highlight(ref-filter) { background-color: var(--find-bg); } /* (the words typed in the filter, where they show) */
+/* phones and narrow windows: the filter box across the page */
+@media (max-width: 860px), (pointer: coarse) {
+  .ref-find { max-width: none; }
+}
+@media (pointer: coarse) { /* (each button still looks small, but takes a finger 40px wide and tall: ::after
+     reaches past it, up to its neighbour's; the heading no taller) */
+  .ref-acts { gap: 10px; margin: -8px -2px -8px 10px; }
+  .ref-tbtn { width: 30px; height: 30px; }
+  .ref-tbtn svg { width: 17px; height: 17px; }
+  .ref-tbtn::after { content: ""; position: absolute; inset: -5px; }
+  .ref-filter { min-height: 44px; font-size: 16px; padding-left: 37px; } /* (16px: phones don't zoom in on it) */
+  .ref-find svg { width: 17px; height: 17px; left: 12px; }
+}
+/* a page's references fold away from its heading, and open again, as nested notes do (App.refGroup):
+   the arrow in the box's left margin, so the name stays in line with its notes */
+.grp-fold { position: absolute; left: -17px; top: 0; bottom: 0; width: 16px; display: grid; place-items: center; border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink-faint); opacity: 0; }
 .grp-fold::before { content: ""; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 6px solid currentColor; transition: transform .12s ease; }
 .refgrp.folded .grp-fold::before { transform: rotate(-90deg); }
 .refgrp h3:hover .grp-fold, .grp-fold:focus-visible, .refgrp.folded .grp-fold { opacity: .75; }
 .grp-fold:hover { opacity: 1 !important; color: var(--ink); }
 .refgrp.folded > :not(h3) { display: none; }
-/* phones and narrow windows: at the right end of the heading, like the notes' arrows (clear of the rule) */
-@media (max-width: 860px), (pointer: coarse) { .refgrp h3 { padding-right: 22px; } .grp-fold { left: auto; right: -10px; width: 40px; } }
+/* phones and narrow windows: at the right end of the heading, like the notes' arrows */
+@media (max-width: 860px), (pointer: coarse) { .refgrp h3 { padding-right: 26px; } .grp-fold { left: auto; right: -12px; width: 44px; } }
 @media (pointer: coarse) { .grp-fold { opacity: .45; } .grp-fold::after { content: ""; position: absolute; inset: -12px 0; } }
 .refhit { padding: 2px 0 2px calc(var(--d, 0) * 14px); cursor: pointer; border-radius: 6px; display: flex; gap: 8px; align-items: flex-start; }
 .refhit .bc { flex: 1; min-width: 0; }
 .refhit .linkit { flex: none; margin-top: 2px; }
-.refgrp { content-visibility: auto; contain-intrinsic-size: auto 80px; }
-.refhit:hover { background: var(--surface-2); }
+.refhit:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .refhit .bc { cursor: pointer; }
 /* a linked reference (app.js refTree): the notes it sits under as a small faint path, then the note
    (as in other lists) and its sub-notes (.kid): the look's dot each (--d: its column, --ind apart;
    smaller on narrow screens), a folded one ringed, the fold arrow as in the outline (the note's own:
    left of its words); "… N more" opens the note */
 .refnote { --d: 0; --ind: 20px; --txt: 24px; --fold-x: 14px; }
-.refnote + .refnote { margin-top: 4px; }
-.refpath { font-size: 12.5px; line-height: 1.5; color: var(--ink-faint); margin: 6px 0 0; overflow-wrap: anywhere; }
+.refpath { font-size: 12.5px; line-height: 1.5; color: var(--ink-faint); margin: 0 0 1px; overflow-wrap: anywhere; }
 .refpath a { color: var(--ink-soft); text-decoration: none; }
 .refpath a:hover { color: var(--link); }
 .refnote > .refhit { padding: 0; }
@@ -425,9 +567,10 @@ a.tag .hash { display: var(--hash); }
 .refmore .bc { color: var(--ink-faint); }
 .tagged { display: flex; flex-wrap: wrap; gap: 6px; }
 /* under a day in the Journals list: references to it (smaller headings), and today's due to-dos */
-.day-refs .sec, .day-sched .sched { margin-top: 18px; }
+.day-refs .sec { margin-top: 36px; }
+.day-sched .sched { margin-top: 40px; } /* (room for the faint "+" under the day's last note) */
 .day-refs .sec-h { font-size: 14px; margin-bottom: 8px; }
-.day-refs .refgrp { margin-bottom: 12px; }
+.day-refs .refgrp h3 { font-size: 15px; }
 .sched { border: var(--box-border); background: var(--box-bg); border-radius: var(--box-radius); padding: 10px 14px 6px; font-family: var(--sec-font); }
 .sched-h { display: flex; align-items: baseline; gap: 8px; margin: 0 0 2px; font-size: 14px; font-weight: 600; line-height: 1.4; }
 .sched-grp h4 { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 2px; font-size: 13px; font-weight: 600; color: var(--ink-soft); line-height: 1.4; }
@@ -475,7 +618,7 @@ a.tag .hash { display: var(--hash); }
 .list-tools { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
 .list-tools .filter { margin: 6px 0 0; }
 .toggles { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
-.toggles select { font: inherit; font-size: 13.5px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 3px 6px; }
+.toggles select, .ex-opts select { font: inherit; font-size: 13.5px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 3px 6px; }
 .chip { font: inherit; font-size: 13.5px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); border-radius: 999px; padding: 3px 11px; cursor: pointer; }
 .chip[aria-pressed="true"], .chip[role="tab"][aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 /* a row of filter buttons: always one line; scrolls sideways (fading at the edge) only if it can't fit */
@@ -507,6 +650,7 @@ a.tag .hash { display: var(--hash); }
 .icon-btn svg { width: 19px; height: 19px; }
 .icon-btn.on { color: var(--accent); }
 .icon-btn.on svg { fill: currentColor; }
+.icon-btn.fav.on { color: var(--spark); } /* a favourite: the spark filled in red */
 .title-row { display: flex; align-items: center; gap: 4px; }
 .title-row .page-title { flex: 1; min-width: 0; }
 /* a click on a page's title renames it (app.js editTitle): the text cursor says so; while editing,
@@ -578,12 +722,26 @@ a.tag .hash { display: var(--hash); }
 .sb-mode:hover { background: var(--surface-2); color: var(--ink); }
 .sb-mode svg { width: 15px; height: 15px; }
 .sb-mode kbd { font-size: 11px; }
-/* touch: no keys to show, rows easy to tap */
+/* touch: no keys to show; rows close together (he asked for it, Build 32), still easy to tap: 36px */
 @media (pointer: coarse) {
   .results .r-keys, .sb-mode kbd { display: none; }
-  .results li:not(.r-h) { min-height: 44px; }
-  .sb-mode { min-height: 44px; padding: 0 14px; }
-  .results .r-clear { min-height: 44px; padding: 0 12px; margin: -10px -6px -10px auto; }
+  .results li:not(.r-h) { min-height: 36px; }
+  .sb-mode { min-height: 36px; padding: 0 12px; }
+  .results .r-clear { min-height: 36px; padding: 0 12px; margin: -8px -6px -8px auto; }
+}
+/* phones (and small windows): where it always is (a tenth of the way down, over the darkened page),
+   but compact: a smaller box for what's typed, tighter rows, a shorter list */
+@media (pointer: coarse), (max-width: 640px) {
+  .search-box input { font-size: 16px; padding: 10px 14px; }
+  .results { max-height: 42vh; padding: 4px; }
+  .results li { gap: 8px; padding: 4px 10px; font-size: 14.5px; }
+  .results li > svg { width: 15px; height: 15px; }
+  .results li.r-hit { padding-top: 5px; padding-bottom: 5px; }
+  .results .r-text { font-size: 14px; }
+  .results .r-where { font-size: 12px; }
+  .results .r-h { padding: 8px 10px 2px; font-size: 11px; }
+  .results .r-h:first-child { padding-top: 4px; }
+  .sb-foot { padding: 0 4px; }
 }
 /* the menu's "Commands" (phones and narrow windows: the drawer; a laptop has Ctrl+Shift+P) */
 .nav .nav-btn.cmd-btn { display: none; }
@@ -618,7 +776,7 @@ a.tag .hash { display: var(--hash); }
 .pop-title { font-size: 13px; font-weight: 600; color: var(--ink-soft); padding: 10px 12px 2px; }
 .datepick { padding-bottom: 8px; width: 286px; }
 .datepick .quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 2px; }
-.datepick .quick button, .chiplike { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: var(--surface-2); border-radius: 999px; padding: 2px 9px; cursor: pointer; color: var(--ink-soft); }
+.datepick .quick button { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: var(--surface-2); border-radius: 999px; padding: 2px 9px; cursor: pointer; color: var(--ink-soft); }
 .datepick .pop-note { margin: 0; padding: 8px 12px 0; font-size: 12px; color: var(--ink-faint); }
 .datepick .rep { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-soft); padding: 8px 12px 0; }
 .datepick select { font: inherit; font-size: 13px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
@@ -632,7 +790,9 @@ a.tag .hash { display: var(--hash); }
 .cal-grid .day { position: relative; border: 0; background: none; font: inherit; font-size: 13.5px; height: 34px; border-radius: 8px; cursor: pointer; color: var(--ink); font-variant-numeric: tabular-nums; }
 .cal-grid .day:hover, .cal-grid .day:focus-visible { background: var(--accent-tint); outline: none; }
 .cal-grid .day.other { color: var(--ink-faint); }
-.cal-grid .day.today { color: var(--accent); font-weight: 700; box-shadow: inset 0 0 0 1.5px var(--accent); }
+/* today: its number bold, the logo's spark at the corner (in place of a ring) */
+.cal-grid .day.today { font-weight: 700; }
+.cal-grid .day.today::before { content: ""; position: absolute; top: 3px; right: 3px; width: 9px; height: 9px; background: var(--spark); -webkit-mask: var(--spark-mask) center / contain no-repeat; mask: var(--spark-mask) center / contain no-repeat; }
 .cal-grid .day.focus { background: var(--surface-2); }
 .cal-grid .day.mark::after { content: ""; position: absolute; left: 50%; bottom: 4px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--accent); }
 .menu { list-style: none; margin: 0; padding: 5px; min-width: 200px; }
@@ -735,23 +895,28 @@ button.link { border: 0; background: none; padding: 0; font: inherit; color: var
 .preview .note { margin: 6px 0 4px; font-size: 12.5px; }
 
 /* ---------- mobile edit toolbar ---------- */
-/* big icons packed close together (same height as before) so more fit without scrolling sideways;
-   the hide-keyboard button stays put at the end while the rest scroll under it */
+/* big icons packed close together so more fit without scrolling sideways; thin (Build 32: 45px, was
+   51: the 44px buttons and nothing around them); the hide-keyboard button stays put at the end while
+   the rest scroll under it */
 #toolbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; align-items: center;
-  background: var(--surface); border-top: 1px solid var(--line); padding: 4px 4px;
+  background: var(--surface); border-top: 1px solid var(--line); padding: 0 4px;
 }
 .tb-scroll { display: flex; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
 .tb-scroll::-webkit-scrollbar { display: none; }
-#toolbar button { flex: 0 0 auto; width: 36px; height: 42px; border: 0; background: none; border-radius: 8px; font-size: 16px; letter-spacing: -0.04em; white-space: nowrap; color: var(--ink-soft); cursor: pointer; display: grid; place-items: center; font-family: var(--font-mono); }
+#toolbar button { flex: 0 0 auto; width: 36px; height: 44px; border: 0; background: none; border-radius: 8px; font-size: 16px; letter-spacing: -0.04em; white-space: nowrap; color: var(--ink-soft); cursor: pointer; display: grid; place-items: center; font-family: var(--font-mono); }
 #toolbar button:active { background: var(--accent-tint); }
 #toolbar svg { width: 24px; height: 24px; }
 #toolbar .tb-pin { width: 44px; margin-left: 2px; border-left: 1px solid var(--line-soft); border-radius: 0 8px 8px 0; }
+/* in a page's properties box: only the buttons that type something there */
+#toolbar.tb-text .tb-scroll button:not([data-t="newline"], [data-t="link"], [data-t="tag"], [data-t="bold"], [data-t="italic"], [data-t="mark"]) { display: none; }
 
 /* ---------- settings ---------- */
 .card { padding: 18px 20px; margin-bottom: 18px; line-height: 1.5; }
 .card h2 { font-family: var(--font-title); font-weight: var(--title-weight); font-style: var(--title-style); text-transform: var(--title-transform); font-size: 22px; margin: 0 0 6px; }
 .path { font-family: var(--font-mono); font-size: 13px; background: var(--surface-2); border-radius: 6px; padding: 6px 8px; overflow-wrap: anywhere; margin: 8px 0; }
+/* the notes folder couldn't be opened just now (settings.js folderCard): Try again, finger-sized */
+@media (pointer: coarse) { .btn-row.retry .btn { min-height: 44px; } }
 .picker { border: 1px solid var(--line); border-radius: 10px; margin-top: 10px; overflow: hidden; background: var(--surface); }
 .picker .crumbs { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 10px; background: var(--surface-2); font-size: 13px; }
 .picker .crumbs button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 2px 10px; cursor: pointer; }
@@ -760,6 +925,72 @@ button.link { border: 0; background: none; padding: 0; font: inherit; color: var
 .picker li button:hover { background: var(--surface-2); }
 .picker .badge { margin-left: auto; font-size: 12px; color: var(--accent); background: var(--accent-tint); border-radius: 999px; padding: 1px 8px; }
 .picker .foot { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--line-soft); align-items: center; flex-wrap: wrap; }
+.picker .btn.pk-new { display: inline-flex; align-items: center; gap: 5px; }
+.picker .btn.pk-new svg { width: 16px; height: 16px; margin-left: -3px; }
+.picker .foot .note { font-size: 13.5px; }
+/* a new notes folder: its name, the tour, Create (folderPicker 'new') */
+.picker .pk-make { flex-direction: column; align-items: stretch; gap: 10px; }
+.pk-name { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-soft); }
+.pk-name input { flex: 1; min-width: 0; font: inherit; font-size: 15px; color: var(--ink); padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.pk-name input:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+.pk-tour { font-size: 14px; }
+.pk-tour input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+.modal .pk-tour { display: flex; margin-top: 12px; color: var(--ink); }
+@media (pointer: coarse) {
+  .picker .crumbs button { min-height: 36px; padding: 0 12px; }
+  .picker li button { min-height: 44px; }
+  .picker .foot .btn { min-height: 44px; }
+  .pk-tour { min-height: 40px; }
+}
+
+/* ---------- the welcome screen (welcome.js): the first start, before a notes folder is chosen ----------
+   What the app is in a line, and two big ways in; then the folder picker. While it shows (html.welcome)
+   the sidebar and the bars' buttons are put away: they'd lead nowhere yet (a Windows window keeps its
+   own buttons and its drag strip). */
+html.welcome #app { --sw: 0px; }
+html.welcome #side, html.welcome .side-grip, html.welcome #addnote,
+html.welcome #histbar .hb-app, html.welcome #histbar .hb-nav, html.welcome #histbar .tabs, html.welcome #histbar .tab-new,
+html.welcome #topbar > button { display: none !important; }
+html.welcome #topbar .t { visibility: hidden; }
+html.welcome #topbar:not(.has-winctl) { display: none; }
+.welcome { position: relative; max-width: 560px; margin: 0 auto; padding: clamp(28px, 9vh, 96px) 0 48px; font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.5; color: var(--ink); }
+.wl-close { position: absolute; top: 0; right: -6px; }
+.wl-logo { display: flex; justify-content: center; margin: 0 0 18px; }
+/* the first screen: icon and title centred, the line under them justified to the width of the two choices
+   (he asked, Oct 29) */
+.wl-logo + h1 { text-align: center; }
+.wl-logo ~ .wl-lead { max-width: none; text-align: justify; hyphens: auto; }
+.wl-logo .logo { width: 112px; height: 112px; filter: drop-shadow(0 8px 14px rgba(36, 26, 14, 0.14)); }
+.welcome h1 { font-family: var(--font-title); font-weight: var(--title-weight); font-style: var(--title-style); text-transform: var(--title-transform);
+  letter-spacing: var(--title-tracking); font-size: clamp(29px, 7.4vw, 40px); line-height: 1.12; margin: 0 0 12px; text-wrap: balance; }
+.welcome h1.wl-h { font-size: clamp(25px, 6vw, 32px); }
+.wl-lead { font-size: 16.5px; color: var(--ink-soft); margin: 0 0 28px; max-width: 32em; }
+.wl-lead.small { font-size: 15px; margin-bottom: 16px; }
+.wl-lead code { font-size: .9em; }
+.wl-access .card { margin-bottom: 18px; }
+.wl-choices { display: flex; flex-direction: column; gap: 12px; }
+.wl-choice { display: flex; align-items: center; gap: 16px; width: 100%; padding: 16px 18px; text-align: left; cursor: pointer; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.05);
+  transition: border-color .15s, box-shadow .15s, transform .12s; }
+.wl-choice:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow: 0 10px 26px -16px rgba(0,0,0,.4); }
+.wl-choice:active { transform: translateY(1px); }
+.wl-ic { flex: none; display: grid; place-items: center; width: 46px; height: 46px; border-radius: 12px; background: var(--accent-tint); color: var(--accent); }
+.wl-ic svg { width: 25px; height: 25px; }
+.wl-txt { min-width: 0; }
+.wl-txt b { display: block; font-size: 16.5px; font-weight: 600; line-height: 1.3; }
+.wl-txt small { display: block; margin-top: 3px; font-size: 14px; line-height: 1.4; color: var(--ink-soft); }
+.wl-back { display: inline-flex; align-items: center; gap: 2px; margin: 0 0 14px -6px; padding: 4px 10px 4px 2px; border: 0; border-radius: 8px; background: none; color: var(--ink-soft); font-size: 14.5px; cursor: pointer; }
+.wl-back:hover { background: var(--surface-2); color: var(--ink); }
+.wl-back svg { width: 20px; height: 20px; }
+.welcome .wl-pick { padding: 0; margin: 0; background: none; border: 0; box-shadow: none; outline: 0; }
+.welcome .wl-pick .picker { margin-top: 0; }
+@media (max-width: 860px) {
+  .welcome { padding-top: 40px; }
+  .wl-close { top: -8px; right: -8px; }
+  .wl-close, .wl-back { min-width: 44px; min-height: 44px; }
+  .wl-choice { padding: 14px; gap: 14px; }
+  .wl-lead { font-size: 16px; margin-bottom: 24px; }
+}
 
 /* look picker: each card is a live miniature of its skin */
 .skin-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 14px; }
@@ -798,6 +1029,12 @@ button.link { border: 0; background: none; padding: 0; font: inherit; color: var
 input.inline { padding: 3px 7px; width: 170px; }
 .radio { display: flex; flex-direction: column; gap: 6px; font-size: 14px; margin: 6px 0; }
 .note.small { font-size: 12.5px; }
+/* Settings → Capture → Highlights from Edge: its lists, keys and the folder's path */
+.card ul.how, .card ol.steps { padding-left: 22px; margin: 8px 0 12px; }
+.card ul.how li, .card ol.steps li { margin: 5px 0; }
+.card kbd { font-family: var(--font-mono); font-size: 11.5px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.card .ext-folder { word-break: break-all; }
+.card .ext-state { color: var(--accent); }
 .bookmarklet { text-decoration: none; cursor: grab; }
 .filter.key { width: 240px; margin: 0; font-family: var(--font-mono); cursor: pointer; }
 table.keys { border-collapse: collapse; font-size: 13.5px; margin-top: 8px; width: 100%; }
@@ -806,6 +1043,8 @@ table.keys td:first-child { color: var(--ink-soft); width: 46%; }
 kbd { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; white-space: nowrap; }
 pre.log { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); border-radius: 8px; padding: 10px; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
 /* About: newer versions ("Update now", how it's going) */
+.fb textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); resize: vertical; min-height: 84px; }
+.fb .fb-out:empty { display: none; }
 .upd { margin-top: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
 .upd .upd-out { margin: 0; }
 .upd .upd-out:empty { display: none; }
@@ -818,6 +1057,7 @@ pre.log { font-family: var(--font-mono); font-size: 12px; background: var(--surf
 .todo-item { display: flex; gap: 8px; align-items: flex-start; padding: 6px 4px; border-bottom: 1px solid var(--line-soft); cursor: pointer; }
 .todo-item .todo { margin-top: 5px; flex: none; }
 .todo-item .bc { flex: 1; min-width: 0; padding: 0; margin: 0; cursor: pointer; }
+.todo-item.marker-done .where { display: inline-block; width: 100%; } /* (its page's name isn't struck through: an inline-block takes no line from its parent) */
 .todo-item .where { font-size: 12.5px; color: var(--ink-faint); margin-top: 1px; }
 .todo-item .where a { color: var(--ink-soft); text-decoration: none; }
 
@@ -853,7 +1093,6 @@ body.side-hidden #app { --sw: 0px; }
 /* dragging a favourite to put it elsewhere in the list (App.dragFavourite) */
 #favs .side-list a.fav-drag { background: var(--accent-tint); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
 body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
-@media (pointer: coarse) { #favs .side-list a { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } }
 
 /* ---------- narrow screens ---------- */
 @media (max-width: 860px) {
@@ -862,34 +1101,40 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   #main { overflow: visible; }
   /* the whole page scrolls: keep the block being edited clear of the top bar (it stays on screen)
      and of the phone's editing toolbar at the bottom */
-  html { scroll-padding: 64px 0 60px; }
+  html { scroll-padding: calc(var(--topbar-h) + 8px) 0 60px; }
   #histbar { display: none; }
   body.side-hidden #side { display: flex; }
   .brand .hide-side { display: none; }
   .tree { columns: 1; }
+  /* the menu (a drawer): about three quarters of the width, under the top bar, which stays as it is
+     (its menu button, lit, closes it again; so does a tap on the dimmed page beside it, a swipe to
+     the left or Android's Back) */
   #side {
-    position: fixed; z-index: 45; left: 0; top: 0; bottom: 0; height: auto; width: min(300px, 86vw);
-    background: var(--bg); box-shadow: 0 0 40px rgba(0,0,0,.25);
+    position: fixed; z-index: 45; left: 0; top: var(--topbar-h); bottom: 0; height: auto; width: min(70vw, 280px);
+    background: var(--side-image) var(--side-image-pos, 0 0) / var(--side-image-size) var(--side-image-repeat, repeat), var(--bg); box-shadow: 6px 0 24px -10px rgba(0,0,0,.3); border-right: 1px solid var(--line-soft);
     /* closed: fully off screen, shadow included, and out of reach of the Tab key */
     transform: translateX(calc(-100% - 48px)); visibility: hidden; transition: transform .2s ease, visibility 0s linear .2s;
   }
   body.drawer #side { transform: none; visibility: visible; transition: transform .2s ease; }
-  body.drawer::after { content: ""; position: fixed; inset: 0; z-index: 44; background: rgba(0,0,0,.25); }
+  body.drawer::after { content: ""; position: fixed; inset: var(--topbar-h) 0 0 0; z-index: 44; background: rgba(0,0,0,.28); }
+  body.drawer #topbar { z-index: 46; }
+  body.drawer #topbar [data-a="menu"] { background: var(--accent-tint); color: var(--ink); }
+  /* the top bar: thin (44px buttons, nothing around them), the same buttons and places to tap */
   #topbar {
-    display: flex; align-items: center; gap: 4px; position: sticky; top: 0; z-index: 30;
-    background: var(--bg); padding: 6px 8px; border-bottom: 1px solid var(--line-soft); line-height: 1.3;
+    display: flex; align-items: center; gap: 2px; position: sticky; top: 0; z-index: 30; height: var(--topbar-h);
+    background: var(--bg); padding: 0 4px; border-bottom: 1px solid var(--line-soft); line-height: 1.3;
   }
-  #topbar button { flex: none; border: 0; background: none; width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; color: var(--ink-soft); }
-  #topbar svg { width: 22px; height: 22px; }
+  #topbar button { flex: none; border: 0; background: none; width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; color: var(--ink-soft); }
+  #topbar svg { width: 21px; height: 21px; }
   /* back and forward, like the laptop's; greyed out when there is nowhere to go */
   #topbar [data-h], #topbar [data-a="home"], #topbar [data-a="date"] { width: 36px; }
   #topbar:not(.journals) [data-a="date"] { display: none; } /* (Journals only: a page's name keeps the room) */
-  #topbar [data-h] svg, #topbar [data-a="home"] svg, #topbar [data-a="date"] svg { width: 21px; height: 21px; }
+  #topbar [data-h] svg, #topbar [data-a="home"] svg, #topbar [data-a="date"] svg { width: 20px; height: 20px; }
   #topbar button:disabled { opacity: .3; cursor: default; }
   /* a very narrow Windows window also has the window buttons: Forward and Home make room for them
      (Journals is in the menu too) */
   @media (max-width: 460px) { #topbar.has-winctl [data-h="forward"], #topbar.has-winctl [data-a="home"] { display: none; } }
-  #topbar .t { flex: 1; min-width: 0; padding-left: 6px; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  #topbar .t { flex: 1; min-width: 0; padding-left: 4px; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: "IBM Plex Sans", system-ui, sans-serif; }
   #main { padding: 16px 14px 120px; }
   .sheet { padding-left: min(var(--sheet-pad-x), 18px); padding-right: min(var(--sheet-pad-x), 18px); margin-bottom: min(var(--sheet-gap), 20px); }
   .outline, .pins { --ind: 20px; --txt: 22px; }
@@ -899,14 +1144,17 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
      still fitting beside the star and menu buttons; days a little less roomy than on a laptop */
   .day-head .page-title { font-size: clamp(26px, 8vw, 34px); } /* (the longest dates still fit on one line in most looks) */
   .sheet.day, .sheet.page { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 12px); padding-bottom: calc(var(--sheet-pad-bottom) + 12px); }
-  .sheet.day { margin-bottom: min(var(--day-gap), 36px); min-height: 200px; }
+  .sheet.day { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 18px); padding-bottom: calc(var(--sheet-pad-bottom) + 20px); }
+  .sheet.day { margin-bottom: min(var(--day-gap), var(--day-gap-phone)); min-height: 200px; }
   .sheet.day.today { min-height: 300px; }
-  .day-body { margin-top: 18px; }
+  .day-body { margin-top: 20px; }
+  .day-body.blank { min-height: 116px; }
+  .day-refs .sec { margin-top: 28px; }
   .sheet.page > .page-head { margin-bottom: 18px; }
   /* find: a strip under the top bar that stays with it; notes scrolled to stay clear of both */
-  #findbar { position: sticky; top: 55px; z-index: 29; background: var(--bg); padding: 6px 8px; border-bottom: 1px solid var(--line-soft); align-items: stretch; }
+  #findbar { position: sticky; top: var(--topbar-h); z-index: 29; background: var(--bg); padding: 6px 8px; border-bottom: 1px solid var(--line-soft); align-items: stretch; }
   #findbar .fb-row { width: 100%; box-shadow: none; }
-  html.finding { scroll-padding-top: 112px; }
+  html.finding { scroll-padding-top: calc(var(--topbar-h) + 57px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -926,7 +1174,7 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   .view { max-width: none; }
   a { color: inherit; }
 }
-#toolbar:not([hidden]) ~ #toast { bottom: 72px; } /* above the phone editing toolbar */
+#toolbar:not([hidden]) ~ #toast { bottom: 62px; } /* above the phone editing toolbar */
 
 /* ---------- Settings: pictures nothing uses (Check this folder) and safety copies ---------- */
 .pics { list-style: none; margin: 8px 0; padding: 0; max-height: 360px; overflow: auto; border: 1px solid var(--line-soft); border-radius: 8px; }
@@ -1003,7 +1251,6 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   color: var(--accent); font: 600 14px "IBM Plex Sans", system-ui, sans-serif; }
 /* the hidden box that takes what he types while a note waits for the other side to save (App.editAfterSave) */
 .ed-wait { position: fixed; z-index: -1; width: 2px; height: 1.2em; padding: 0; border: 0; opacity: 0; pointer-events: none; resize: none; overflow: hidden; }
-#main2 { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 28px 140px; min-width: 0; zoom: var(--text-scale, 1); scroll-padding: 8px 0 60px; }
 #main2:focus { outline: none; }
 @media (min-width: 861px) {
   /* two sides: a column each (--split: the left one's share of the width; dragging the line between
@@ -1103,14 +1350,17 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 .nm-l { flex: 1; }
 .nm-item[aria-checked="true"] .nm-l::after { content: "  ✓"; white-space: pre; color: var(--accent); font-weight: 600; }
 .nm-hint { font-size: 11.5px; color: var(--ink-faint); text-align: right; }
-@media (pointer: coarse) { /* finger-sized */
-  .note-menu { width: min(340px, calc(100vw - 16px)); padding: 6px; }
-  .nm-row { gap: 4px; padding: 4px 4px 6px; }
-  .nm-sep { margin: 4px 6px; }
-  .note-menu .nm-sw, .note-menu .nm-sw:hover, .note-menu .nm-sw:focus-visible { width: 32px; height: 32px; }
-  .note-menu .nm-none::after { top: 4px; bottom: 4px; }
-  .note-menu .nm-h { width: 34px; height: 38px; font-size: 13.5px; border-radius: 7px; }
-  .note-menu .nm-item { min-height: 44px; align-items: center; padding: 8px 10px; font-size: 15.5px; line-height: 1.4; border-radius: 8px; }
+/* a phone: one column, rows close together (he asked for it, Build 32: 32px, was 44) and small
+   colour dots; each dot's button reaches a little past it (::before), so it's still easy to hit */
+@media (pointer: coarse) {
+  .note-menu { width: min(272px, calc(100vw - 16px)); padding: 4px; overscroll-behavior: contain; }
+  .nm-row { gap: 2px; padding: 3px 6px; }
+  .nm-sep { margin: 3px 6px; }
+  .note-menu .nm-sw, .note-menu .nm-sw:hover, .note-menu .nm-sw:focus-visible { width: 20px; height: 20px; }
+  .note-menu .nm-sw { position: relative; }
+  .note-menu .nm-sw::before { content: ""; position: absolute; inset: -6px; }
+  .note-menu .nm-h { width: 29px; height: 30px; font-size: 13px; border-radius: 7px; }
+  .note-menu .nm-item { min-height: 32px; align-items: center; padding: 4px 10px; font-size: 15px; line-height: 1.3; border-radius: 7px; }
   .nm-hint { font-size: 12px; }
 }
 @media print { .drop-line, .drag-ghost { display: none; } }
@@ -1128,30 +1378,53 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 #ac li.ac-blk { display: flex; flex-direction: column; min-width: min(360px, calc(100vw - 48px)); }
 #ac .ac-w, #ac .ac-p { overflow: hidden; text-overflow: ellipsis; }
 #ac .ac-p { font-size: 12px; color: var(--ink-faint); }
-@media (pointer: coarse) { #ac li { padding-top: 12px; padding-bottom: 12px; min-height: 44px; box-sizing: border-box; } #ac li.ac-blk { padding-top: 6px; padding-bottom: 6px; } #ac { max-height: 300px; } } /* (finger-sized: the toolbar's "/" opens it) */
-/* phones: the round "+" that adds a note (App.addNote); not while typing (the toolbar is there). Shown
-   in narrow windows with a touch screen, and always on Android (.android: its emulator, and phones with
-   a mouse or keyboard attached, may not say they have a touch screen) */
-#addnote {
-  display: none; place-items: center; position: fixed; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 39;
-  width: 56px; height: 56px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent;
-  background: var(--fab-bg, var(--accent)); color: var(--fab-ink, var(--accent-ink));
-  box-shadow: var(--fab-shadow, 0 6px 16px -6px rgba(0,0,0,.45), 0 2px 4px rgba(0,0,0,.18));
+/* phones (the toolbar's "/" opens it): by the caret, compact: rows close together (he asked for it,
+   Build 32: 32px, was 44), so more of the list shows (eight and a half rows; the rest scrolls) */
+@media (pointer: coarse) {
+  #ac { min-width: 196px; max-width: min(300px, calc(100vw - 16px)); max-height: 280px; overscroll-behavior: contain; border-radius: 12px; touch-action: pan-y; }
+  #ac li { padding: 6px 11px; min-height: 32px; font-size: 14.5px; line-height: 20px; box-sizing: border-box; }
+  #ac li .hint { font-size: 11.5px; }
+  #ac li.ac-blk { padding-top: 3px; padding-bottom: 3px; }
 }
-#addnote svg { width: 28px; height: 28px; stroke-width: 2.2; }
-#addnote:active { transform: scale(.94); }
+/* phones: the "+" that adds a note (App.addNote); not while typing (the toolbar is there). Quiet: a
+   small see-through disc in the page's colour with a soft shadow, the "+" drawn in the logo's pen line in the ink with its red spark; it
+   steps aside while a finger scrolls down the page and comes back on the way up (App.fabScroll).
+   Shown in narrow windows with a touch screen, and always on Android (.android: its emulator, and
+   phones with a mouse or keyboard attached, may not say they have a touch screen) */
+#addnote {
+  display: none; place-items: center; position: fixed; right: 14px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 39;
+  width: 46px; height: 46px; border-radius: 50%; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  background: var(--fab-bg, color-mix(in srgb, var(--surface) 86%, transparent)); color: var(--fab-ink, var(--ink));
+  border: var(--fab-border, 1px solid color-mix(in srgb, var(--ink) 9%, transparent));
+  box-shadow: var(--fab-shadow, 0 4px 14px -5px rgba(0,0,0,.32), 0 1px 3px rgba(0,0,0,.1));
+  transition: opacity .18s ease, transform .18s ease;
+}
+#addnote svg { width: 26px; height: 26px; stroke-width: 2.3; } /* the logo's pen line in the ink (--fab-ink), its spark red */
+#addnote .fab-spark { fill: var(--spark, #FF4B2B); stroke: none; }
+#addnote:active { transform: scale(.92); }
+#addnote.away { opacity: 0; transform: translateY(10px) scale(.9); pointer-events: none; }
 @media (max-width: 860px) and (any-pointer: coarse) {
   #addnote:not([hidden]) { display: grid; }
-  #addnote:not([hidden]) ~ #toast { bottom: 88px; } /* (messages above it) */
+  #addnote:not([hidden]) ~ #toast { bottom: 76px; } /* (messages above it) */
 }
 @media (max-width: 860px) {
   #addnote.android:not([hidden]) { display: grid; }
-  #addnote.android:not([hidden]) ~ #toast { bottom: 88px; }
+  #addnote.android:not([hidden]) ~ #toast { bottom: 76px; }
 }
 #toolbar:not([hidden]) ~ #addnote, body.drawer #addnote { display: none !important; }
 @media print { #addnote { display: none !important; } }
-/* the toolbar's date menu: finger-sized */
-@media (pointer: coarse) { .menu.tb-menu button { padding: 12px 14px; font-size: 15px; } }
+/* menus on a phone (a page's ⋯, the toolbar's date button…): compact, close to their button, rows
+   still a finger tall; long ones scroll. The date menu: one column, rows close together (he asked for
+   it, Build 32: 32px). */
+@media (pointer: coarse) {
+  .pop.menu:not(.note-menu) { min-width: 168px; max-width: min(280px, calc(100vw - 16px)); max-height: min(62vh, 440px); overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
+  .pop.menu:not(.note-menu) button { display: flex; align-items: center; min-height: 44px; padding: 0 12px; font-size: 14.5px; line-height: 1.25; }
+  .pop.menu:not(.note-menu) .mhint { order: 2; float: none; margin-left: auto; padding-left: 16px; font-size: 12px; }
+  .pop.menu.tb-menu { width: min(216px, calc(100vw - 16px)); }
+  .pop.menu.tb-menu button { min-height: 32px; font-size: 15px; }
+}
+/* a small heading in a menu (menu(): {head}) */
+.menu .m-head { padding: 6px 10px 2px; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); }
 /* Copy page as text */
 .modal.export { width: min(560px, 100%); }
 .ex-kinds { display: flex; gap: 6px; margin: 6px 0 12px; }
@@ -1160,7 +1433,30 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 .ex-opts label { display: inline-flex; align-items: center; gap: 6px; }
 .ex-opts label[hidden] { display: none; }
 .ex-opts .note { font-size: 12.5px; }
-.ex-opts select { font: inherit; font-size: 13.5px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
 .ex-out { display: block; width: 100%; box-sizing: border-box; height: min(40vh, 320px); margin-top: 12px; padding: 8px 10px; resize: vertical; white-space: pre; tab-size: 4;
   font-family: var(--font-mono); font-size: 12.5px; line-height: 1.45; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); color: var(--ink); }
 @media (pointer: coarse) { .ex-kinds .btn { min-height: 44px; padding: 0 18px; } .ex-opts label { min-height: 44px; } }
+
+/* Opening animations (Build 33, he asked; CSS only, no size or speed cost): pop-ups (menus, the
+   calendar, the look list, the hover preview) fade in; the search box and dialogs fade in and rise a
+   few pixels over their dimming. Nothing moves with "reduce motion". The "/" and [[ lists don't
+   (they change with every key). */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes pop-in { from { opacity: 0; } }
+  @keyframes rise-in { from { opacity: 0; transform: translateY(6px); } }
+  .pop { animation: pop-in .12s ease-out; }
+  #search:not([hidden]), .modal-back { animation: pop-in .14s ease-out; }
+  #search:not([hidden]) .search-box, .modal-back > .modal { animation: rise-in .16s cubic-bezier(.2, .7, .3, 1); }
+}
+
+/* the faint "+" after a page's (or day's) last note: a click adds a note there (Outline.addEnd; he
+   asked, Oct 30). Under the first level's dots, quiet until the pointer comes near; on phones always
+   a little stronger, a finger tall. */
+.add-end { display: flex; align-items: center; justify-content: center; width: 19px; height: 24px; margin: 2px 0 -26px -4px; padding: 0; position: relative; z-index: 1; border: 0; border-radius: 6px;
+  background: none; color: var(--ink-faint); opacity: .4; cursor: pointer; transition: opacity .12s, background-color .12s; }
+/* (its middle on the first level's dots: theirs is 9.5px in from the outline's edge; it takes no room
+   of its own, sitting in the space under the notes, so no page or day gets taller) */
+.add-end svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.add-end:hover, .add-end:focus-visible { opacity: .9; background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.add-end[hidden] { display: none; }
+@media (pointer: coarse) { .add-end { width: 40px; height: 34px; margin-left: -14.5px; margin-bottom: -36px; opacity: .5; } .add-end svg { width: 15px; height: 15px; } }

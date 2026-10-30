@@ -7,7 +7,7 @@
 // way; dropped where it was: nothing; near the bottom edge the page scrolls; one Undo step). Every
 // check of a file compares all of it, so untouched notes are proved byte for byte the same. The menu
 // and the colours in every look.
-import { open, read, write, check, failures, sleep, go, editBlock, SHOTS } from './lib.mjs';
+import { open, read, write, check, failures, sleep, go, editBlock, lookIds, SHOTS } from './lib.mjs';
 
 const ID = '6528aaaa-bbbb-4ccc-8ddd-eeeeffff0001';
 const ID2 = ID.replace('0001', '0002'), ID3 = ID.replace('0001', '0003');
@@ -22,7 +22,6 @@ write('pages/Folds.md', FOLDS);
 const DRAG = '- one\n- two\n\t- two kid\n- three\n\t- three a\n\t\t- three a deep\n\t- three b\n- four\n';
 write('pages/Drag.md', DRAG);
 write('pages/Long.md', Array.from({ length: 70 }, (_, k) => `- long note ${k + 1}\n`).join(''));
-const LOOKS = ['plain', 'plainnight', 'calm', 'night', 'paper', 'sticker', 'stickernight', 'grimoire', 'automaton', 'azulejo'];
 
 const { browser, page, errors } = await open();
 const row = (t) => page.locator('.outline .blk', { has: page.locator(':scope > .bc', { hasText: t instanceof RegExp ? t : new RegExp('^' + t + '$') }) }).first();
@@ -417,6 +416,7 @@ await rightClick('gamma');
 await menu.locator('[data-c="blue"]').click();
 await settle();
 const looks = [];
+const LOOKS = await lookIds(page);
 for (const id of LOOKS) {
   await page.evaluate((s) => window.leanApp.setSkin(s), id);
   await rightClick('gamma');

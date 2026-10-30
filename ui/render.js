@@ -1,12 +1,14 @@
 // Block text → HTML (view mode). Logseq-flavoured Markdown, deliberately small.
 
 import { tex, findMath } from './math.js';
-import { assetUrl, today } from './api.js';
+import { assetUrl, today, nowTime } from './api.js';
 
-export const HIDDEN_PROPS = new Set(['id', 'collapsed', 'ls-type', 'hl-type', 'hl-page', 'hl-stamp', 'hl-color',
+const HIDDEN_PROPS = new Set(['id', 'collapsed', 'ls-type', 'hl-type', 'hl-page', 'hl-stamp', 'hl-color',
   'heading', 'created-at', 'updated-at', 'annotation-id', 'hid', 'card-last-interval', 'card-repeats',
   'card-ease-factor', 'card-next-schedule', 'card-last-reviewed', 'card-last-score', 'logseq.order-list-type',
   'template-including-parent', 'background-color', 'background_color']);
+/** Logseq's bookkeeping properties (ids, folding, flashcard and highlight data, colours…): never shown. */
+export const hiddenKey = (k) => HIDDEN_PROPS.has(k) || k.startsWith('card-') || k.startsWith('hl-');
 export const MARKERS = /^(TODO|DOING|DONE|LATER|NOW|WAITING|WAIT|CANCELED|CANCELLED|IN-PROGRESS|STARTED)(?=\s|$)/;
 export const PROP = /^\s*([\p{L}\p{N}_.\/-]+)::(?:\s(.*)|$)/u;
 const IMG = /\.(png|jpe?g|gif|webp|svg|bmp|avif|ico)(\?.*)?$/i;
@@ -188,6 +190,20 @@ export const stampText = ([y, m, d], time, repeat) => {
 
 const dayNum = ([y, m, d]) => Math.round(new Date(y, m - 1, d) / 864e5);
 
+/** A time (seconds since 1970, local) in few words: "Today 14:05", "Yesterday 09:12", else "Oct 24"
+ *  (", 2025" in another year, or always with `year`), then ", 14:05" with `time`. */
+export function whenText(secs, { time = true, year = false, now = new Date() } = {}) {
+  if (!secs) return '';
+  const d = new Date(secs * 1000);
+  const hm = nowTime(d);
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const ago = Math.round((day(now) - day(d)) / 864e5);
+  if (ago === 0) return `Today ${hm}`;
+  if (ago === 1) return `Yesterday ${hm}`;
+  const y = year || d.getFullYear() !== now.getFullYear() ? `, ${d.getFullYear()}` : '';
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}${y}${time ? `, ${hm}` : ''}`;
+}
+
 /** "Mon, Oct 27" / "Today" / "Tomorrow" */
 export function niceDate(date) {
   const diff = dayNum(date) - dayNum(today());
@@ -318,7 +334,7 @@ export function renderBlock(text, depth = 0) {
     const pm = line.match(PROP);
     if (pm) {
       const k = pm[1].toLowerCase();
-      if (!HIDDEN_PROPS.has(k) && !k.startsWith('card-') && !k.startsWith('hl-')) props.push([k, pm[2] ?? '']);
+      if (!hiddenKey(k)) props.push([k, pm[2] ?? '']);
       else if (k === 'heading') auto = /^true$/i.test((pm[2] ?? '').trim());
       else if (k === 'background-color' || k === 'background_color') bg = (pm[2] ?? '').trim();
       continue;
@@ -363,7 +379,7 @@ export function renderBlock(text, depth = 0) {
 
 /** Drop bookkeeping properties (ids, fold state, flashcard and highlight data). */
 export function visibleProps(props) {
-  return props.filter(([k]) => !HIDDEN_PROPS.has(k) && !k.startsWith('card-') && !k.startsWith('hl-'));
+  return props.filter(([k]) => !hiddenKey(k));
 }
 
 export function propsHtml(props) {

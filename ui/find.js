@@ -7,11 +7,10 @@
 import { ICON } from './dom.js';
 import { confirmBox } from './popups.js';
 import { esc } from './render.js';
-import { HIDDEN_PROPS, PROP, MARKERS, hasEnd } from './render.js';
+import { hiddenKey, PROP, MARKERS, hasEnd } from './render.js';
 import { findMath } from './math.js';
 
 const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const hiddenKey = (k) => HIDDEN_PROPS.has(k) || k.startsWith('card-') || k.startsWith('hl-');
 /** The parts of a note's text that aren't shown as typed (so find never matches, and Replace never
  *  changes, what can't be seen): hidden properties (id::, collapsed::, heading::…, on any line),
  *  SCHEDULED/DEADLINE lines (shown as date chips), :LOGBOOK: drawers, #+BEGIN_/#+END_ lines, the ">"

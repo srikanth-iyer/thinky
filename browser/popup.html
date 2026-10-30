@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>thinky</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header><img src="icons/32.png" alt="" width="20" height="20"><b>thinky</b></header>
+  <main>
+    <label class="lbl" for="title">Page in your notes</label>
+    <input id="title" spellcheck="false" placeholder="The article’s title">
+    <ol id="list"></ol>
+    <p id="empty" class="hint" hidden>No highlights here yet. Select some text, then right-click → <i>Highlight for thinky</i>, or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd>.</p>
+    <div class="row">
+      <button id="send" class="primary" disabled>Send</button>
+      <button id="clear" class="ghost" hidden>Clear</button>
+    </div>
+    <p id="status" role="status"></p>
+    <button id="journal" class="link">Send the selected text to today’s journal</button>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -82,3 +82,26 @@ fn the_check_never_writes_the_cache() {
     let _ = std::fs::remove_file(&mine);
     let _ = std::fs::remove_dir_all(&base);
 }
+
+#[test]
+fn journals_show_days_other_pages_link_to() {
+    shared_cache();
+    let base = std::env::temp_dir().join(format!("outline_linkeddays_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(base.join("journals")).unwrap();
+    std::fs::create_dir_all(base.join("pages")).unwrap();
+    std::fs::write(base.join("journals/2026_10_22.md"), "\n").unwrap(); // empty, but linked to
+    std::fs::write(base.join("journals/2026_10_24.md"), "-\n").unwrap(); // empty, not linked
+    std::fs::write(base.join("journals/2026_10_21.md"), "- links to itself [[Oct 21st, 2026]]\n").unwrap();
+    std::fs::write(base.join("journals/2026_10_15.md"), "-\n").unwrap();
+    std::fs::write(base.join("journals/2026_10_14.md"), "- self only [[Oct 14th, 2026]]\n- \n").unwrap();
+    // a page tags a day with no file, one with an empty file, and a day after the end
+    std::fs::write(base.join("pages/Trip.md"), "- left on [[Oct 20th, 2026]], back [[Oct 22nd, 2026]]\n- next [[Oct 30th, 2026]]\n").unwrap();
+    let app = App::open(&base).unwrap();
+    let days: Vec<_> = app.journals((2026, 10, 25), 10, true).into_iter().map(|d| d.date).collect();
+    assert_eq!(days, vec![(2026, 10, 25), (2026, 10, 22), (2026, 10, 21), (2026, 10, 20), (2026, 10, 14)]);
+    // one with no file says so (the page opens empty, its references below)
+    let d20 = app.journals((2026, 10, 20), 1, false);
+    assert_eq!((d20[0].date, d20[0].exists), ((2026, 10, 20), false));
+    let _ = std::fs::remove_dir_all(&base);
+}

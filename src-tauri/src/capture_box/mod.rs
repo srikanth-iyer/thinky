@@ -1,11 +1,11 @@
 //! The "Add to journal" box as a native Windows window, so it appears at once even when the app
 //! isn't running (no WebView2 to start): the Start-menu shortcut key (`--capture-box`), the
 //! browser button (`leanoutliner://capture?…&box=1`) and `--capture` when adding straight away
-//! fails. It looks and behaves like the web box (ui/capture.html + capture.js), in the look's
-//! colours (look.txt, kept by the app), and its "+" button opens a small menu: a picture or file,
+//! fails. It is painted in the look's colours (look.txt, kept by the app), and its "+" button
+//! opens a small menu: a picture or file,
 //! a to-do, another page. The rules (when Enter adds, when it closes, its sizes) are in
 //! outline_core::capture_box; this file draws them and talks to Windows. Nothing stays running:
-//! it opens, adds, closes. If its window can't be made, `run` says so and the web box opens.
+//! it opens, adds, closes. If its window can't be made, `run` says so (main.rs logs it and opens the app).
 //!
 //! Re-entrancy: Windows calls back into `wndproc` from inside many calls (moving a window, setting
 //! text, focus). The box's state is borrowed only briefly and never across such a call.
@@ -266,7 +266,7 @@ fn now_ms() -> u64 {
 }
 
 /// Run the box until it closes. `prefill`: the words from a browser link (text, address).
-/// Err when its window couldn't be made (nothing was shown: the caller opens the web box).
+/// Err when its window couldn't be made (nothing was shown: the caller logs it and opens the app).
 /// A box that's already open (the shortcut pressed twice) is brought forward instead, with the
 /// link's words, if any.
 pub fn run(prefill: Option<(String, String)>) -> Result<(), String> {
@@ -529,7 +529,8 @@ unsafe fn open(prefill: Option<(String, String)>, test: Option<selftest::Probe>)
     INBOX.lock().unwrap_or_else(|p| p.into_inner()).clear();
     let colors = rules::load_colors(outline_core::app::cache_dir().as_deref());
     let link = prefill.as_ref().map(|(t, u)| (t.as_str(), u.as_str()));
-    let (text, from_clipboard) = rules::prefill(link, files::clipboard_text);
+    // the clipboard's words, with a link to the web page they were copied from (he asked, Oct 30)
+    let (text, from_clipboard) = rules::prefill(link, || outline_core::capture::with_source(&crate::win::clipboard_text(), files::clipboard_source(0).as_deref()));
     let (mon, mi) = target_monitor();
     let dpi = monitor_dpi(mon);
     let fonts = Fonts::new(dpi);
@@ -619,7 +620,7 @@ unsafe fn open(prefill: Option<(String, String)>, test: Option<selftest::Probe>)
     DragAcceptFiles(hwnd, 1);
     DragAcceptFiles(note, 1);
     relayout(true);
-    // centred across the screen, a quarter of the way down (like the web box)
+    // centred across the screen, a quarter of the way down
     let (w, h) = with(|ui| (ui.layout.w, ui.layout.h)).unwrap_or((640, 98));
     let ins = insets(dpi);
     let m = mi.monitor;
@@ -838,7 +839,7 @@ fn relayout_once(first: bool) {
             ShowWindow(search, if picking { SW_SHOWNOACTIVATE } else { SW_HIDE });
         }
         if !first && (lay.w != before.w || lay.h != before.h) {
-            // grow or shrink downwards, the top staying put (like the web box)
+            // grow or shrink downwards, the top staying put
             let ins = insets(dpi);
             SetWindowPos(hwnd, 0, 0, 0, lay.w + ins.left + ins.right, lay.h + ins.top + ins.bottom, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
         }
@@ -951,6 +952,8 @@ fn draw(ui: &Ui, dc: isize, mut cv: Canvas) {
     let picking = ui.picker.is_some();
     let (keys_w, parts) = keys_width(&ui.fonts, s, picking);
     let mid = (ft.t + line + ft.b) / 2;
+    // the app's icon at the strip's left, 16 px, the words after it (Canvas::logo in outline_core)
+    cv.logo(pxf(14.0), mid as f32 - pxf(8.0), pxf(16.0));
     let foot_lh = line_height(ui.fonts.foot);
     let kbd_lh = line_height(ui.fonts.kbd);
     let kx0 = x.l - px(14.0) - keys_w;
@@ -973,7 +976,7 @@ fn draw(ui: &Ui, dc: isize, mut cv: Canvas) {
             words(dc, ui.fonts.foot, c.ink_faint, *wx, mid - foot_lh / 2, *ww + 2, word);
         }
         // the message at the left: where the note goes, a hint, "✓ Added", or a problem
-        let left = px(18.0);
+        let left = px(38.0); // (after the icon)
         let avail = kx0 - px(14.0) - left;
         let y = mid - foot_lh / 2;
         // over the + button: what it holds (unless there's news to read)
@@ -1753,7 +1756,19 @@ unsafe extern "system" fn note_proc(h: isize, m: u32, w: usize, l: isize) -> isi
                     return Some(0);
                 }
                 match files::clipboard_items(h) {
-                    files::Clip::Text => None,
+                    // words copied from a web page come with a link to their place on it (he asked,
+                    // Oct 30); other text pastes as Windows does
+                    files::Clip::Text => {
+                        let src = files::clipboard_source(h);
+                        let words = if src.is_some() { crate::win::clipboard_text() } else { String::new() };
+                        let with = outline_core::capture::with_source(&words, src.as_deref());
+                        if src.is_none() || with == words {
+                            return None;
+                        }
+                        let w = wide(&rules::to_crlf(&with));
+                        SendMessageW(h, EM_REPLACESEL, 1, w.as_ptr() as isize);
+                        Some(0)
+                    }
                     files::Clip::Files(paths) => {
                         add_files(paths);
                         Some(0)

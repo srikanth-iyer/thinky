@@ -5,9 +5,8 @@
 // clash screen); refused while a clash waits and for a file that isn't plain text. Laptop, narrow
 // window and phone, in every look.
 import fs from 'node:fs';
-import { open, read, write, check, failures, sleep, go, VAULT, SHOTS } from './lib.mjs';
+import { open, read, write, check, failures, sleep, go, lookIds, VAULT, SHOTS } from './lib.mjs';
 
-const LOOKS = ['plain', 'plainnight', 'calm', 'night', 'paper', 'sticker', 'stickernight', 'grimoire', 'automaton', 'azulejo'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /** How the list says a time (local): "Today 01:32", "Yesterday 10:00", "Oct 24, 09:15". */
 function said(ms) {
@@ -235,13 +234,13 @@ await page.evaluate(() => window.leanApp.rescan());
 await sleep(500);
 await openHistory();
 const copyRows = (await rows.allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
-check(copyRows.length === 1 && /^Today \d\d:\d\d Safety copy on this computer 1 note changed$/.test(copyRows[0]), '“Safety copy on this computer”, from when the folder opened', JSON.stringify(copyRows));
+check(copyRows.length === 1 && /^Today \d\d:\d\d Safety copy made by this computer 1 note changed$/.test(copyRows[0]), '“Safety copy made by this computer”, from when the folder opened', JSON.stringify(copyRows));
 await page.keyboard.press('Escape');
 
 console.log('every look');
 await go(page, '#/page/Marta%20Pell');
 await sleep(300);
-for (const look of LOOKS) {
+for (const look of await lookIds(page)) {
   await page.evaluate((l) => window.leanApp.setSkin(l), look);
   await openHistory();
   await rows.filter({ hasText: 'on your phone' }).first().click();

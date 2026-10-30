@@ -2,11 +2,10 @@
 // To-dos and Calendar.
 
 import { call, today, store } from './api.js';
-import { renderBlock, datesHtml, esc } from './render.js';
-import { h, pageLink, ICON } from './dom.js';
+import { renderBlock, datesHtml, esc, whenText } from './render.js';
+import { h, pageLink, ICON, BRAND, plural } from './dom.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
-const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
 /** A row of filter buttons stays on one line; if it's wider than the screen (very large text) it
  *  scrolls sideways, and fades at the edge while more buttons are hidden there. */
@@ -26,17 +25,8 @@ const SORTS = {
   created: { label: 'Created', desc: true, says: ['oldest first', 'newest first'] },
   changed: { label: 'Changed', desc: true, says: ['oldest first', 'newest first'] },
 };
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /** A file time (seconds) in few words: "Today 14:05", "Yesterday 09:12", "Oct 12, 2026". */
-export function shortWhen(secs, now = new Date()) {
-  if (!secs) return '';
-  const d = new Date(secs * 1000);
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const yday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-  if (d.toDateString() === now.toDateString()) return `Today ${hm}`;
-  if (d.toDateString() === yday.toDateString()) return `Yesterday ${hm}`;
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-}
+const shortWhen = (secs) => whenText(secs, { time: false, year: true });
 const fullWhen = (secs) => (secs ? new Date(secs * 1000).toLocaleString() : '');
 
 export async function pagesView(app, view) {
@@ -75,9 +65,17 @@ export async function pagesView(app, view) {
     store.set('pagesOpts', opt);
     draw();
   };
+  // what each filter turned on does, in a line under them (he asked what No file and Namespaces are;
+  // the buttons' tooltips don't show on a phone)
+  const SAYS = { journals: 'Journals: journal days too.', ghosts: 'No file: names your notes link to or tag that have no page yet.',
+    orphans: 'Not linked: only pages no note links to.', tree: 'Namespaces: “Garden/notes” listed under “Garden”.' };
+  const say = h('p', 'note chip-say');
+  tools.querySelector('.chips').after(say);
+  const sayOn = () => { const on = Object.keys(SAYS).filter((k) => opt[k]); say.textContent = on.map((k) => SAYS[k]).join(' '); say.hidden = !on.length; };
+  sayOn();
   tools.querySelectorAll('[data-o]').forEach((el) => {
     el.setAttribute('aria-pressed', String(!!opt[el.dataset.o]));
-    el.onclick = () => { opt[el.dataset.o] = !opt[el.dataset.o]; el.setAttribute('aria-pressed', String(opt[el.dataset.o])); store.set('pagesOpts', opt); draw(); };
+    el.onclick = () => { opt[el.dataset.o] = !opt[el.dataset.o]; el.setAttribute('aria-pressed', String(opt[el.dataset.o])); store.set('pagesOpts', opt); sayOn(); draw(); };
   });
   fitChips($('.chips', tools));
   let selecting = false;
@@ -138,10 +136,10 @@ export async function pagesView(app, view) {
         if (!seen.has(n.name.toLowerCase())) { seen.add(n.name.toLowerCase()); rows.push(row(n, parts[parts.length - 1], parts.length - 1)); }
       }
       ul.className = 'rows pg-rows tree-rows';
-      ul.innerHTML = rows.join('') || '<li class="note">No pages match.</li>';
+      ul.innerHTML = rows.join('') || BRAND.empty('No pages match.', 'li');
     } else {
       ul.className = 'rows pg-rows';
-      ul.innerHTML = shown.map((n) => row(n)).join('') || '<li class="note">No pages match.</li>';
+      ul.innerHTML = shown.map((n) => row(n)).join('') || BRAND.empty('No pages match.', 'li');
     }
     $('[data-a="delete"]', tools).disabled = !chosen.size;
     $('[data-a="delete"]', tools).textContent = chosen.size ? `Delete ${plural(chosen.size, 'page')}` : 'Delete';
@@ -190,11 +188,13 @@ export async function pagesView(app, view) {
 // ---------------------------------------------------------------------------
 export async function tagsView(app, view) {
   view.append(h('h1', 'page-title', 'Tags'));
-  view.append(h('p', 'note', 'Pages carry tags through their <code>tags::</code> property.'));
+  view.append(h('p', 'note', 'Tags from pages’ <code>tags::</code> property, and <code>#tags</code> written in notes.'));
   const tags = await call('tags');
   const ul = h('ul', 'rows');
-  ul.innerHTML = tags.map(([t, n]) => `<li><a href="#" data-page="${esc(t)}">${esc(t)}<span class="meta">${plural(n, 'page')}</span></a></li>`).join('')
-    || '<li class="note">No tags yet.</li>';
+  // [name, pages with tags::, notes with #name] (Build 33: the #tags too, he asked)
+  const says = (p, n) => [p && plural(p, 'page'), n && plural(n, 'note')].filter(Boolean).join(' · ');
+  ul.innerHTML = tags.map(([t, p, n]) => `<li><a href="#" data-page="${esc(t)}">${esc(t)}<span class="meta">${says(p, n || 0)}</span></a></li>`).join('')
+    || BRAND.empty('No tags yet.', 'li');
   ul.addEventListener('click', (e) => app.linkClick(e));
   view.append(ul);
 }
@@ -202,12 +202,46 @@ export async function tagsView(app, view) {
 // ---------------------------------------------------------------------------
 export async function propsView(app, view, key) {
   if (!key) {
+    // he asked (Oct 30): sort, filter and search. The box filters the property names as he types and,
+    // from two letters on, also finds notes whose values have those words (any property).
     view.append(h('h1', 'page-title', 'Properties'));
     const keys = await call('props');
+    const opt = store.get('propsOpts', { sort: 'name' });
+    const tools = h('div', 'list-tools');
+    tools.innerHTML = `<input class="filter" type="search" placeholder="Filter names, or search values" aria-label="Filter property names or search their values">
+      <div class="chips" role="group" aria-label="Sort">${[['name', 'A to Z', 'By name'], ['count', 'Most used', 'The most used first']].map(([k, l, tt]) => `<button class="chip" data-s="${k}" title="${tt}" aria-pressed="${opt.sort === k}">${l}</button>`).join('')}</div>`;
     const ul = h('ul', 'rows');
-    ul.innerHTML = keys.map(([k, n]) => `<li><a href="#/props/${encodeURIComponent(k)}">${esc(k)}<span class="meta">${n}</span></a></li>`).join('')
-      || '<li class="note">No properties yet.</li>';
-    view.append(ul);
+    const found = h('div', 'prop-found');
+    view.append(tools, ul, found);
+    const input = $('input', tools);
+    const draw = () => {
+      const q = input.value.trim().toLowerCase();
+      const list = keys.filter(([k]) => !q || k.toLowerCase().includes(q));
+      list.sort(opt.sort === 'count' ? (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]) : (a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: 'base', numeric: true }));
+      ul.innerHTML = list.map(([k, n]) => `<li><a href="#/props/${encodeURIComponent(k)}">${esc(k)}<span class="meta">${n}</span></a></li>`).join('')
+        || (q.length >= 2 ? '' : BRAND.empty(keys.length ? 'No property names match.' : 'No properties yet.', 'li')); // (from two letters the values below speak)
+      ul.hidden = !ul.children.length;
+    };
+    let timer, seq = 0;
+    const search = async () => {
+      const q = input.value.trim(), mine = ++seq;
+      if (q.length < 2) { found.replaceChildren(); return; }
+      const groups = await call('with_property', { key: '', value: q });
+      if (mine !== seq || !view.isConnected) return;
+      const n = groups.reduce((s, g) => s + g.hits.length, 0);
+      const head = h('h2', 'sec-h', `Values with “${esc(q)}” <span class="n">${n}</span>`);
+      found.replaceChildren(head, n ? app.groupsEl(groups) : h('p', 'note', ul.hidden ? 'No property names or values have these words.' : 'No property values have these words.'));
+    };
+    input.oninput = () => { draw(); clearTimeout(timer); timer = setTimeout(search, 250); };
+    tools.onclick = (e) => {
+      const c = e.target.closest('[data-s]');
+      if (!c) return;
+      opt.sort = c.dataset.s; store.set('propsOpts', opt);
+      tools.querySelectorAll('[data-s]').forEach((b) => b.setAttribute('aria-pressed', b === c));
+      draw();
+    };
+    found.addEventListener('click', (e) => app.linkClick(e));
+    draw();
     return;
   }
   view.append(h('h1', 'page-title', esc(key)));
@@ -230,14 +264,19 @@ export async function propsView(app, view, key) {
 // ---------------------------------------------------------------------------
 /** Day number of a [y, m, d] date (for comparing dates). */
 export const num = ([y, m, d]) => Math.round(new Date(y, m - 1, d) / 864e5);
-const GROUPS = { DOING: 'doing', NOW: 'doing', 'IN-PROGRESS': 'doing', STARTED: 'doing', TODO: 'todo', LATER: 'todo', WAITING: 'waiting', WAIT: 'waiting', DONE: 'done', CANCELED: 'done', CANCELLED: 'done' };
+const GROUPS = { DOING: 'doing', NOW: 'doing', 'IN-PROGRESS': 'doing', STARTED: 'doing', TODO: 'todo', LATER: 'todo', WAITING: 'todo', WAIT: 'todo', DONE: 'done', CANCELED: 'canceled', CANCELLED: 'canceled' };
+/** Finished: done or cancelled. */
+const closed = (x) => ['done', 'canceled'].includes(GROUPS[x.marker]);
 /** The earliest of a to-do's scheduled and deadline days (Infinity without either). */
 export const taskDay = (x) => Math.min(...[x.scheduled, x.deadline].filter(Boolean).map((w) => num(w.date)));
+const prioRank = (x) => ({ A: 0, B: 1, C: 2 }[x.priority] ?? 1);
+/** To-dos by day (the earlier of scheduled and deadline), then priority A, B (or none), C. */
+export const byDay = (a, b) => (taskDay(a) - taskDay(b)) || (prioRank(a) - prioRank(b));
 
 /** One to-do as a row: tick box, marker, text, dates, and the page it's on. */
 export function taskRow(x) {
   const r = renderBlock(x.text);
-  const open = GROUPS[x.marker] !== 'done';
+  const open = !closed(x);
   const label = !['TODO', 'DONE'].includes(x.marker) ? `<span class="mk">${esc(x.marker)}</span>` : '';
   const prio = x.priority ? `<span class="prio p${x.priority}">${x.priority}</span>` : '';
   return `<div class="todo-item${open ? '' : ' marker-done'}" data-page="${esc(x.page)}" data-line="${x.line}">
@@ -257,7 +296,7 @@ export function taskClicks(app, list, tasks, reload) {
     if (!x) return;
     if (e.target.classList.contains('todo')) {
       e.preventDefault();
-      const open = GROUPS[x.marker] !== 'done';
+      const open = !closed(x);
       const text = open ? await call('task_done', { text: x.text, today: today() }) : x.text.replace(/^(DONE|CANCELED|CANCELLED)/, app.workflow() === 'now' ? 'LATER' : 'TODO');
       try {
         const res = await call('save_block', { name: x.page, line: x.line, base: x.text, text });
@@ -274,43 +313,45 @@ export function taskClicks(app, list, tasks, reload) {
 }
 
 export async function todosView(app, view) {
-  const opt = store.get('todoOpts', { done: false, kind: 'all' });
+  const opt = store.get('todoOpts', { kind: 'all' });
+  if (!['all', 'todo', 'doing', 'done', 'canceled'].includes(opt.kind)) opt.kind = 'all'; // (Waiting and the Done add-on went, Build 33)
   view.append(h('h1', 'page-title', 'To-dos'));
   const tools = h('div', 'list-tools');
-  // the words of his own workflow (config.edn: NOW/LATER or DOING/TODO); each filter shows both kinds
+  // one filter at a time (he asked: Done shows only finished ones); the words of his own workflow
+  // (config.edn: NOW/LATER or DOING/TODO); To do also takes WAITING ones
   const now = app.workflow() === 'now';
-  const kinds = [['all', 'Open', 'Every open to-do'], ['doing', now ? 'Now' : 'Doing', 'NOW and DOING'], ['todo', now ? 'Later' : 'To do', 'LATER and TODO'], ['waiting', 'Waiting', 'WAITING']];
+  const kinds = [['all', 'Open', 'Every open to-do'], ['todo', now ? 'Later' : 'To do', now ? 'LATER, TODO and WAITING' : 'TODO, LATER and WAITING'], ['doing', now ? 'Now' : 'Doing', 'NOW and DOING'], ['done', 'Done', 'Finished to-dos'], ['canceled', 'Cancelled', 'Cancelled to-dos']];
   tools.innerHTML = `<input class="filter" type="search" placeholder="Filter to-dos" aria-label="Filter to-dos">
-    <div class="chips" role="group" aria-label="Show">${kinds.map(([k, l, t]) => `<button class="chip" data-k="${k}" title="${t}" aria-pressed="${opt.kind === k}">${l}</button>`).join('')}
-      <button class="chip chip-end" data-o="done" title="Also show finished to-dos" aria-pressed="${!!opt.done}">Done</button></div>`;
+    <div class="chips" role="group" aria-label="Show">${kinds.map(([k, l, t]) => `<button class="chip" data-k="${k}" title="${t}" aria-pressed="${opt.kind === k}">${l}</button>`).join('')}</div>`;
   const out = h('div', 'todos');
   view.append(tools, out);
   const input = $('input', tools);
   let tasks = [];
-  const load = async () => { tasks = await call('tasks', { done: opt.done }); draw(); };
+  const load = async () => { tasks = await call('tasks', { done: ['done', 'canceled'].includes(opt.kind) }); draw(); };
   const draw = () => {
     const q = input.value.trim().toLowerCase();
     const t = num(today());
-    const list = tasks.filter((x) => (opt.kind === 'all' ? true : GROUPS[x.marker] === opt.kind || (opt.done && GROUPS[x.marker] === 'done'))
+    const list = tasks.filter((x) => (opt.kind === 'all' ? !closed(x) : GROUPS[x.marker] === opt.kind)
       && (!q || x.text.toLowerCase().includes(q) || x.page.toLowerCase().includes(q)));
-    const when = taskDay;
-    const groups = [['Overdue', []], ['Today', []], ['Next 7 days', []], ['Later', []], ['No date', []], ['Done', []]];
+    const ahead = app.summary?.config?.future_days ?? 7; // (config.edn :scheduled/future-days, as today's box)
+    const groups = [['Overdue', []], ['Today', []], [ahead === 1 ? 'Tomorrow' : `Next ${ahead} days`, []], ['Later', []], ['No date', []], [opt.kind === 'canceled' ? 'Cancelled' : 'Done', []]];
     for (const x of list) {
-      const w = when(x);
-      const g = GROUPS[x.marker] === 'done' ? 5 : !Number.isFinite(w) ? 4 : w < t ? 0 : w === t ? 1 : w <= t + 7 ? 2 : 3;
+      const w = taskDay(x);
+      const g = closed(x) ? 5 : !Number.isFinite(w) ? 4 : w < t ? 0 : w === t ? 1 : w <= t + ahead ? 2 : 3;
       groups[g][1].push(x);
     }
-    const prio = (x) => ({ A: 0, B: 1, C: 2 }[x.priority] ?? 1);
-    for (const [, g] of groups) g.sort((a, b) => (when(a) - when(b)) || (prio(a) - prio(b)));
+    for (const [, g] of groups) g.sort(byDay);
     out.innerHTML = groups.filter(([, g]) => g.length).map(([name, g]) => `<section class="sec"><h2 class="sec-h">${name} <span class="n">${g.length}</span></h2>
       ${g.map((x) => taskRow(x)).join('')}</section>`).join('')
-      || `<p class="note">${tasks.length ? 'Nothing matches.' : 'No open to-dos. Start a block with TODO (or press Ctrl+Enter) to make one.'}</p>`;
+      || BRAND.empty(input.value.trim() && tasks.length ? 'Nothing matches.' : { done: 'No finished to-dos.', canceled: 'No cancelled to-dos.' }[opt.kind] || 'No open to-dos here. Start a block with TODO (or press Ctrl+Enter) to make one.');
   };
   tools.onclick = (e) => {
     const c = e.target.closest('[data-k]');
-    if (c) { opt.kind = c.dataset.k; store.set('todoOpts', opt); tools.querySelectorAll('[data-k]').forEach((b) => b.setAttribute('aria-pressed', b === c)); draw(); }
-    const d = e.target.closest('[data-o="done"]');
-    if (d) { opt.done = !opt.done; d.setAttribute('aria-pressed', String(opt.done)); store.set('todoOpts', opt); load(); }
+    if (!c || c.dataset.k === opt.kind) return;
+    const was = ['done', 'canceled'].includes(opt.kind);
+    opt.kind = c.dataset.k; store.set('todoOpts', opt);
+    tools.querySelectorAll('[data-k]').forEach((b) => b.setAttribute('aria-pressed', b === c));
+    if (was !== ['done', 'canceled'].includes(opt.kind)) load(); else draw();
   };
   fitChips($('.chips', tools));
   input.oninput = draw;

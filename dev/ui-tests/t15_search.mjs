@@ -236,7 +236,7 @@ await sleep(300);
 await page.locator('#search input').fill('recipe dumplings');
 await sleep(500);
 const hgt = await page.evaluate(() => [...document.querySelectorAll('#search .results li[data-k]')].map((li) => li.getBoundingClientRect().height));
-check(hgt.length > 2 && hgt.every((x) => x >= 44), 'results at least 44px tall', hgt.join(','));
+check(hgt.length > 2 && hgt.every((x) => x >= 36), 'results at least 36px tall (compact since Build 32, as he asked; still easy to tap)', hgt.join(','));
 await page.screenshot({ path: SHOTS + '/search-phone.png' });
 const box = await page.evaluate(() => { const r = document.querySelector('.search-box').getBoundingClientRect(); return { l: r.left, r: r.right, w: innerWidth }; });
 check(box.l >= 0 && box.r <= box.w, 'the box fits the screen', JSON.stringify(box));

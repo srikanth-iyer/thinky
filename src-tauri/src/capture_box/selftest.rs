@@ -244,6 +244,11 @@ fn dark(step: usize, ms: u64) -> Go {
             let Some(ok) = waited(ms, 5000, matches!(saying(), Say::Where(_))) else { return Go::Wait };
             check(ok, "The dark box says where the note goes", say_text(&saying()));
             check(note_text() == "copied text", "The clipboard's words are in the box", note_text());
+            // words copied in a browser: the clipboard says which page (Build 33; with_source makes
+            // the link, tested in core/tests/clip.rs)
+            let ok = files::set_clipboard_html(h, "a copied passage", "https://example.org/page");
+            let src = files::clipboard_source(h);
+            check(ok && src.as_deref() == Some("https://example.org/page"), "Words copied from a web page: the box finds the page's address", format!("{ok} {src:?}"));
             Go::Next
         }
         1 => {

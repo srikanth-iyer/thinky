@@ -43,7 +43,7 @@ fn links_say_what_they_open() {
     // the bookmarklet's capture links, as before
     assert_eq!(
         link::parse("leanoutliner://capture?url=https%3A%2F%2Fa.b%2F&title=A+page&text="),
-        Some(Link::Capture { text: "A page".into(), url: "https://a.b/".into(), boxed: false })
+        Some(Link::Capture { text: "".into(), url: "[A page · a.b](https://a.b/)".into(), boxed: false })
     );
     assert_eq!(link::parse("leanoutliner://capture?text=hi%20there&box=1"), Some(Link::Capture { text: "hi there".into(), url: "".into(), boxed: true }));
     assert_eq!(link::parse("leanoutliner:?text=x"), Some(Link::Capture { text: "x".into(), url: "".into(), boxed: false }));
@@ -54,14 +54,9 @@ fn links_say_what_they_open() {
 
 #[test]
 fn links_round_trip_like_the_page_writes_them() {
-    // the page writes them with encodeURIComponent: the same text as link::encode
-    assert_eq!(link::page_link("Marta Pell"), "leanoutliner://page/Marta%20Pell");
-    assert_eq!(link::page_link("APRON/Spice jars"), "leanoutliner://page/APRON%2FSpice%20jars");
-    assert_eq!(link::encode("it’s (a) test!*~'.-_"), "it%E2%80%99s%20(a)%20test!*~'.-_");
-    assert_eq!(link::note_link("6528AAAA-bbbb-4ccc-8ddd-eeeeffff6666"), "leanoutliner://note/6528aaaa-bbbb-4ccc-8ddd-eeeeffff6666");
-    for name in ["Marta Pell", "APRON/Spice jars", "C++ & Rust?", "100% done #1", "Café ☕ notes", "a/b/c", "it’s “quoted”", "x=1&y=2"] {
-        assert_eq!(link::parse(&link::page_link(name)), Some(Link::Page { name: name.into() }), "{name}");
-    }
+    // the page writes them with encodeURIComponent (api.js pageLinkUrl; t15_pages checks the round trip)
+    assert_eq!(link::parse("leanoutliner://page/APRON%2FSpice%20jars"), Some(Link::Page { name: "APRON/Spice jars".into() }));
+    assert_eq!(link::parse("leanoutliner://page/it%E2%80%99s%20(a)%20test!*~'.-_"), Some(Link::Page { name: "it’s (a) test!*~'.-_".into() }));
     // the app asks the core what a link is (the phone, a link clicked inside the app)
     let mut st: Option<App> = None;
     assert_eq!(dispatch(&mut st, "link", json!({"link": "leanoutliner://page/Na%C3%AFve"})).unwrap(), json!({"kind": "page", "name": "Naïve"}));
@@ -133,6 +128,38 @@ fn pages_say_when_they_were_changed_and_made() {
     put(&v, "pages/Old.md", "- written again\n");
     app.rescan();
     assert!(entry(&app, "Old")["created"].as_u64().unwrap() >= now, "{}", entry(&app, "Old"));
+    let _ = std::fs::remove_dir_all(&v);
+}
+
+#[test]
+fn linked_references_say_when_their_page_changed() {
+    // (the "Last changed" order above a page's linked references: each page's file time, kept by the
+    // app, so a save made here counts at once)
+    let _c = cache();
+    let v = vault("reftimes");
+    put(&v, "pages/Old.md", "- about [[Person]]\n");
+    put(&v, "pages/New.md", "- also [[Person]]\n");
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    set_mtime(&v.join("pages/Old.md"), now - 86_400 * 9);
+    set_mtime(&v.join("pages/New.md"), now - 3_600);
+    let mut app = App::open(&v).unwrap();
+    let times = |app: &App| -> Vec<(String, u64)> {
+        let refs = serde_json::to_value(&app.page("Person", None).refs).unwrap();
+        refs.as_array().unwrap().iter().map(|g| (g["page"].as_str().unwrap().to_string(), g["changed"].as_u64().unwrap())).collect()
+    };
+    let t = times(&app);
+    assert_eq!(t.iter().find(|(p, _)| p == "Old").unwrap().1, now - 86_400 * 9, "{t:?}");
+    assert_eq!(t.iter().find(|(p, _)| p == "New").unwrap().1, now - 3_600, "{t:?}");
+    // the app saves Old: it's the newest now
+    let pv = app.page("Old", None);
+    let mut doc = pv.doc.clone();
+    doc.blocks[0].text.push_str(" (edited)");
+    assert!(app.save(serde_json::from_value(json!({"name": "Old", "doc": doc, "base_hash": pv.hash, "path": "pages/Old.md"})).unwrap()).unwrap().ok);
+    let t = times(&app);
+    assert!(t.iter().find(|(p, _)| p == "Old").unwrap().1 + 5 >= now, "{t:?}");
+    // (no file time goes into the JSON of other lists)
+    let un = serde_json::to_value(app.vault.unlinked_refs("person", 10).0).unwrap();
+    assert!(un.as_array().unwrap().iter().all(|g| g.get("changed").is_none() && g.get("path").is_none()), "{un}");
     let _ = std::fs::remove_dir_all(&v);
 }
 

@@ -1,7 +1,6 @@
 //! A small problems log the user can read and copy in Settings. Capped, so it never grows.
 
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 const FILE: &str = "problems.log";
 const MAX: usize = 64 * 1024;
@@ -10,7 +9,7 @@ static MEM: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// "2026-10-26 00:41:03 UTC" for now.
 pub fn now_utc() -> String {
-    let secs = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs()) as i64;
+    let secs = crate::app::now_secs() as i64;
     let (y, m, d) = crate::date::civil_from_days(secs.div_euclid(86400));
     let t = secs.rem_euclid(86400);
     format!("{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02} UTC", t / 3600, t / 60 % 60, t % 60)

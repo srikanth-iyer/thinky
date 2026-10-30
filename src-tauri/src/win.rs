@@ -103,6 +103,15 @@ mod imp {
         ok
     }
 
+    /// A registry key's default value under HKEY_CURRENT_USER (native_host.rs).
+    pub fn reg_default(sub: &str) -> Option<String> {
+        get(sub)
+    }
+    /// Set a key's default value under HKEY_CURRENT_USER (made if missing); false if refused.
+    pub fn set_reg_default(sub: &str, value: &str) -> bool {
+        set(sub, "", value)
+    }
+
     /// Make `leanoutliner://…` links open this program (per user, no admin rights needed).
     /// Cheap when already set up: one registry read.
     pub fn register_link_handler() {
@@ -112,7 +121,7 @@ mod imp {
         if get(&format!("{KEY}\\shell\\open\\command")).as_deref() == Some(cmd.as_str()) {
             return;
         }
-        set(KEY, "", "URL:Lean Outliner");
+        set(KEY, "", "URL:thinky");
         set(KEY, "URL Protocol", "");
         set(&format!("{KEY}\\shell\\open\\command"), "", &cmd);
     }
@@ -176,6 +185,12 @@ mod imp {
         String::new()
     }
     pub fn register_link_handler() {}
+    pub fn reg_default(_sub: &str) -> Option<String> {
+        None
+    }
+    pub fn set_reg_default(_sub: &str, _value: &str) -> bool {
+        false
+    }
     pub fn capture_shortcut_path() -> Option<std::path::PathBuf> {
         None
     }

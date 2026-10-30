@@ -80,7 +80,7 @@ export class Tabs {
       const { kind, arg } = parsePlace(place);
       if (reload || (kind !== 'page' && kind !== 'zoom')) return true;
       const low = String(arg).toLowerCase();
-      return this.app.names.some((n) => n.name.toLowerCase() === low && (n.exists || n.refs));
+      return this.app.names.some((n) => (n.name.toLowerCase() === low || n.aliases?.some((a) => a.toLowerCase() === low)) && (n.exists || n.refs));
     };
     this.panes = [];
     for (const sp of Array.isArray(saved?.panes) ? saved.panes.slice(0, 2) : []) {
@@ -94,7 +94,8 @@ export class Tabs {
       }
       if (tabs.length) this.panes.push(mkPane(this.els[this.panes.length], tabs, Math.min(Math.max(0, sp.cur | 0), tabs.length - 1)));
     }
-    if (!this.panes.length) this.panes.push(mkPane(this.els[0], [{ hist: [location.hash || (open ? '#/journals' : '#/settings')], at: 0, top: 0 }]));
+    // (no notes folder open: the welcome screen if none was ever chosen, else Settings to choose again)
+    if (!this.panes.length) this.panes.push(mkPane(this.els[0], [{ hist: [location.hash || (open ? '#/journals' : store.get('vault', '') ? '#/settings' : '#/welcome')], at: 0, top: 0 }]));
     this.act = Math.min(Math.max(0, saved?.act | 0), this.panes.length - 1);
     const t = this.tab();
     if (location.hash && location.hash !== placeOf(t)) { // started at another address: it's where to go

@@ -1,29 +1,22 @@
 // A page's History ("History…" in its ⋯ menu): its earlier versions, from the backups in logseq/bak
-// (Logseq's and this app's) and this device's safety copies (core/src/app/history.rs), newest first,
-// each with when, where it came from and how it differs from the page now. One opens drawn like the
+// (Logseq's and this app's) and the safety copies in logseq/.safety-<device>, this device's and the other
+// one's (core/src/app/history.rs), newest first, each with when, where it came from (which device
+// made a copy) and how it differs from the page now. One opens drawn like the
 // page, read-only (Outline with preview); "Put this version back" keeps the page's text as it is now
 // in logseq/bak first (history_keep), then the page's editor saves the version the usual way
 // (Outline.putBack: one Undo step; a change made elsewhere meanwhile is merged in, or the clash
 // screen asks). Refused while a clash on the page waits, or for a file that isn't UTF-8 text.
 import { call, isAndroid } from './api.js';
-import { esc, propsHtml, visibleProps } from './render.js';
-import { h, ICON } from './dom.js';
+import { esc, propsHtml, visibleProps, whenText } from './render.js';
+import { h, ICON, BRAND, plural } from './dom.js';
 import { Outline, docKey } from './editor.js';
 /** A page's title:: (in its properties or its first note), small letters; '' when it has none. */
 const titleOf = (doc) => (`${doc?.preamble ?? ''}\n${doc?.blocks?.[0]?.text ?? ''}`.match(/^[ \t]*title::[ \t]*(.*?)[ \t]*\r?$/mi)?.[1] ?? '').toLowerCase();
 
 const DEVICE = isAndroid ? 'phone' : 'computer';
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-/** "Today 01:32", "Yesterday 18:05", "Oct 24, 02:00"; another year "Oct 24, 2025, 02:00" (local time). */
-export function whenText(secs, now = new Date()) {
-  const d = new Date(secs * 1000);
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const ago = Math.round((day(now) - day(d)) / 864e5);
-  if (ago === 0) return `Today ${hm}`;
-  if (ago === 1) return `Yesterday ${hm}`;
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}${d.getFullYear() === now.getFullYear() ? '' : `, ${d.getFullYear()}`}, ${hm}`;
-}
+/** Which device made a safety copy ({kind, mine}, safety.rs `Made`), in his words: "this computer",
+ *  "your phone", "another computer" (the same kind, not this one). */
+export const madeBy = (d) => (d.mine ? `this ${DEVICE}` : d.kind === DEVICE ? `another ${d.kind}` : `your ${d.kind}`);
 /** Where a version came from, in plain words (history.rs `from`). */
 const FROM = {
   'logseq-phone': 'Backup made by Logseq on your phone',
@@ -31,16 +24,15 @@ const FROM = {
   logseq: 'Backup made by Logseq',
   app: 'Backup made by this app',
   bak: 'Backup copy in logseq/bak',
-  copy: `Safety copy on this ${DEVICE}`,
+  copy: 'Safety copy',
   before: 'Before a change made elsewhere',
 };
-const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 /** How a version differs from the page now, briefly: "3 more notes, 1 changed". */
 export function differs(v) {
   const p = [];
-  if (v.more) p.push(count(v.more, 'more note'));
-  if (v.fewer) p.push(count(v.fewer, 'fewer note'));
-  if (v.changed) p.push(p.length ? `${v.changed} changed` : `${count(v.changed, 'note')} changed`);
+  if (v.more) p.push(plural(v.more, 'more note'));
+  if (v.fewer) p.push(plural(v.fewer, 'fewer note'));
+  if (v.changed) p.push(p.length ? `${v.changed} changed` : `${plural(v.changed, 'note')} changed`);
   if (v.props) p.push(p.length ? 'properties changed' : 'Page properties changed');
   return p.join(', ') || 'Only spacing or line breaks differ';
 }
@@ -57,8 +49,8 @@ export async function openHistory(app, o) {
   box.setAttribute('aria-labelledby', 'hv-title');
   box.innerHTML = `<header class="panel-head"><div class="hv-top"><h2 id="hv-title">History of “${esc(o.name)}”</h2>
       <button type="button" class="icon-btn" data-h="close" aria-label="Close" title="Close (Esc)">${ICON.winClose}</button></div>
-      <p class="note">Earlier versions of this page, newest first: backups in <code>logseq/bak</code> and this ${DEVICE}’s safety copies.</p></header>
-    <div class="panel-body hv-body"><p class="note hv-wait">Looking for earlier versions…</p></div>
+      <p class="note">Earlier versions of this page, newest first: backups in <code>logseq/bak</code> and the safety copies (this ${DEVICE}’s and your ${isAndroid ? 'computer' : 'phone'}’s).</p></header>
+    <div class="panel-body hv-body">${BRAND.wait('Looking for earlier versions…', 'p', 'hv-wait')}</div>
     <footer class="panel-foot" hidden></footer>`;
   back.append(box);
   document.body.append(back);
@@ -74,13 +66,18 @@ export async function openHistory(app, o) {
     document.removeEventListener('keydown', onKey, true);
     o.el.closest('.view')?.querySelector('.title-row [data-a="more"]')?.focus({ preventScroll: true }); // (where it was opened)
   };
-  const label = (v) => FROM[v.from] || FROM.bak;
+  // a safety copy says which device made it; an earlier text kept by the other device, too
+  const label = (v) => {
+    if (!v.made) return FROM[v.from] || FROM.bak;
+    if (v.from === 'before') return v.made.mine ? FROM.before : `${FROM.before} (kept by ${madeBy(v.made)})`;
+    return `Safety copy made by ${madeBy(v.made)}`;
+  };
 
   const showList = (k = 0) => {
     shown = null;
     foot.hidden = true;
     if (!list.length) {
-      body.innerHTML = `<p class="note">No earlier versions of this page yet. They come from backups (Logseq’s, and this app’s when a page is changed in two places at once or a version is put back) and from this ${DEVICE}’s safety copies of the pages changed in the last 3 days.</p>`;
+      body.innerHTML = BRAND.empty(`No earlier versions of this page yet. They come from backups (Logseq’s, and this app’s when a page is changed in two places at once or a version is put back) and from the safety copies of the pages changed in the last 3 days (this ${DEVICE}’s and your ${isAndroid ? 'computer' : 'phone'}’s).`);
       return;
     }
     body.innerHTML = `<ul class="rows hv-list">${list.map((v, i) => `<li><button type="button" data-k="${i}"><span class="hv-when">${esc(whenText(v.when))}</span>

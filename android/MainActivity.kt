@@ -74,8 +74,9 @@ class MainActivity : TauriActivity() {
     // No automatic jump to Android's settings: the app explains why it needs access and offers a button.
     // The strips at the top and bottom take the look's colour; the last one is remembered, so it's
     // right from the first moment
-    val p = Journal.prefs(this)
-    if (p.contains("bar_bg")) paintBars(p.getInt("bar_bg", 0), p.getBoolean("bar_light", true))
+    // until the page paints: all of it the brand's cream, bars too (he asked, Oct 30: no white or dark
+    // screen first); the page then gives the look's colours (setBarColors, remembered for next time)
+    paintBars(0xFFF4EEE3.toInt(), true)
     // started from a shortcut (but not when Android reopens an earlier visit, which repeats its request)
     if (savedInstanceState == null && (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) takeIntent(intent)
     if (Build.VERSION.SDK_INT >= 25) Thread { publishShortcuts() }.start()
@@ -185,7 +186,7 @@ class MainActivity : TauriActivity() {
 
   fun startUpdate(tag: String) {
     val n = Regex("^build-([0-9]{1,6})$").find(tag)?.groupValues?.get(1)
-    if (n == null) { updateEvent("error", "That isn’t a build of Lean Outliner."); return }
+    if (n == null) { updateEvent("error", "That isn’t a build of thinky."); return }
     // Android 8 and later ask once whether this app may install apps
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
       updateTag = tag
@@ -194,7 +195,7 @@ class MainActivity : TauriActivity() {
         try { startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))) }
         catch (e: Exception) {
           updateTag = null
-          updateEvent("error", "Android’s “Install unknown apps” screen didn’t open. Allow it for Lean Outliner in Android’s settings, then try again.")
+          updateEvent("error", "Android’s “Install unknown apps” screen didn’t open. Allow it for thinky in Android’s settings, then try again.")
         }
       }
       return
@@ -209,7 +210,7 @@ class MainActivity : TauriActivity() {
     val tag = updateTag ?: return
     updateTag = null
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls())
-      updateEvent("error", "Lean Outliner wasn’t allowed to install apps, so it can’t update itself.")
+      updateEvent("error", "thinky wasn’t allowed to install apps, so it can’t update itself.")
     else startUpdate(tag)
   }
 
@@ -323,6 +324,9 @@ class MainActivity : TauriActivity() {
   @SuppressLint("JavascriptInterface", "AddJavascriptInterface")
   override fun onWebViewCreate(webView: WebView) {
     web = webView
+    // the brand's cream until the page paints (its start-up drawing is on the same cream): never a
+    // white or dark flash between Android's splash and the drawing (he asked, Oct 30)
+    webView.setBackgroundColor(0xFFF4EEE3.toInt())
     webView.addJavascriptInterface(Bridge(), "LeanAndroid")
   }
 
@@ -364,7 +368,7 @@ class MainActivity : TauriActivity() {
       runOnUiThread {
         val w = web ?: return@runOnUiThread
         val pm = getSystemService(Context.PRINT_SERVICE) as PrintManager
-        val name = title.ifBlank { "Lean Outliner" }
+        val name = title.ifBlank { "thinky" }
         pm.print(name, w.createPrintDocumentAdapter(name), PrintAttributes.Builder().build())
       }
     }
@@ -381,6 +385,57 @@ class MainActivity : TauriActivity() {
       File(applicationInfo.sourceDir).copyTo(apk, overwrite = true)
       updateApk = apk
       this@MainActivity.installUpdate()
+    }
+    /** Test builds only (the emulator test, step 7b): the widgets' colours as they come out, made
+     *  from the same RemoteViews the home screen gets (JournalWidget.paint, a row from the list's
+     *  factory, QuickAddWidget.paint), applied to real views here: JSON of "#rrggbb" for the journal
+     *  widget's background, title, "+", empty line and first row, and the one-tap "+" drawn (its
+     *  circle beside the plus, and the plus). "{}" in a release. */
+    @JavascriptInterface fun testWidgetColors(): String {
+      if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return "{}"
+      val out = JSONObject()
+      val done = java.util.concurrent.CountDownLatch(1)
+      runOnUiThread {
+        try {
+          val ctx = this@MainActivity
+          fun hex(c: Int) = String.format(java.util.Locale.US, "#%06x", c and 0xFFFFFF)
+          val parent = android.widget.FrameLayout(ctx)
+          val rv = android.widget.RemoteViews(packageName, R.layout.widget_journal)
+          JournalWidget.paint(ctx, rv)
+          val v = rv.apply(ctx, parent)
+          val bg = v.findViewById<View>(android.R.id.background) ?: v
+          out.put("bg", hex((bg.background as? android.graphics.drawable.ColorDrawable)?.color ?: 0))
+          for ((k, id) in listOf("title" to R.id.widget_title, "add" to R.id.widget_add, "empty" to R.id.widget_empty)) {
+            out.put(k, hex(v.findViewById<android.widget.TextView>(id).currentTextColor))
+          }
+          val f = JournalWidgetService.Factory(applicationContext)
+          f.onDataSetChanged()
+          val items = Journal.items(ctx)
+          val i = items.indexOfFirst { it.kind == Journal.NOTE }
+          if (i >= 0) out.put("row", hex((f.getViewAt(i).apply(ctx, parent) as android.widget.TextView).currentTextColor))
+          out.put("rows", items.size)
+          val q = android.widget.RemoteViews(packageName, R.layout.widget_quick_add)
+          QuickAddWidget.paint(ctx, q)
+          val qv = q.apply(ctx, parent)
+          val dp = resources.displayMetrics.density
+          val size = (80 * dp).toInt()
+          val spec = View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY)
+          qv.measure(spec, spec)
+          qv.layout(0, 0, size, size)
+          val bmp = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+          qv.draw(android.graphics.Canvas(bmp))
+          val c = size / 2
+          val off = (8 * dp).toInt() // inside the circle, away from the plus's two strokes
+          out.put("circle", hex(bmp.getPixel(c + off, c + off)))
+          out.put("plus", hex(bmp.getPixel(c, c)))
+        } catch (e: Exception) {
+          out.put("error", e.toString())
+        } finally {
+          done.countDown()
+        }
+      }
+      done.await(5, java.util.concurrent.TimeUnit.SECONDS)
+      return out.toString()
     }
   }
 }
@@ -406,7 +461,7 @@ class UpdateReceiver : BroadcastReceiver() {
       else -> "error"
     }, when (st) {
       PackageInstaller.STATUS_SUCCESS -> ""
-      PackageInstaller.STATUS_FAILURE_ABORTED -> "The update was cancelled."
+      PackageInstaller.STATUS_FAILURE_ABORTED -> "The update was cancelled. If Google Play Protect asked to scan it, tap Update now again once the scan is done. ($why; ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE})"
       PackageInstaller.STATUS_FAILURE_CONFLICT -> "Android refused the update: it isn’t signed like the app on this phone ($why)."
       PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> "Android says this update doesn’t suit this phone ($why)."
       PackageInstaller.STATUS_FAILURE_STORAGE -> "There isn’t enough space on the phone for the update."

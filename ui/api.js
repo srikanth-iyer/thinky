@@ -13,6 +13,8 @@ export async function call(cmd, args = {}, opts = {}) {
 }
 
 export const isApp = !!T;
+/** The app's name as people see it (the welcome screen…): the one place to change when it's renamed. */
+export const APP_NAME = 'thinky';
 
 /** Links that open the app right at a page or a note (outline_core::link reads them back). */
 export const pageLinkUrl = (name) => 'leanoutliner://page/' + encodeURIComponent(name.trim());
@@ -29,9 +31,8 @@ export function today() {
   return [d.getFullYear(), d.getMonth() + 1, d.getDate()];
 }
 
-/** "14:05" */
-export function nowTime() {
-  const d = new Date();
+/** "14:05" (now, or at Date d) */
+export function nowTime(d = new Date()) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 

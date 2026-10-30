@@ -221,7 +221,9 @@ fn checked_again_right_before_moving() {
     assert!(v.join("assets/onlybak.png").exists());
     // a picture the app itself just linked (saved, not yet anywhere else) is used too
     pic(&v, "assets/fresh.png", 3);
-    app.append_to("pages/Shapes.md", "![](../assets/fresh.png)").unwrap();
+    let mut pv = app.page("Shapes", None);
+    pv.doc.blocks.push(outline_core::DocBlock { depth: 0, text: "![](../assets/fresh.png)".into(), raw: None, plain: false });
+    app.save(serde_json::from_value(json!({"name": "Shapes", "doc": pv.doc, "base_hash": pv.hash})).unwrap()).unwrap();
     let r = app.bin_pictures_at(&["assets/fresh.png".to_string()], later()).unwrap();
     assert!(r.moved.is_empty() && r.skipped[0].1 == "a note uses it now");
     let _ = std::fs::remove_dir_all(&v);

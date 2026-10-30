@@ -16,22 +16,38 @@ fn capture(text: &str, url: &str) -> Result<String, String> {
     }
     let root = outline_core::app::last_vault_or_why()?;
     let (today, time) = lean_outliner_lib::win::local_now();
-    outline_core::capture::capture_to_vault(&root, text, url, today, &time)
+    outline_core::capture::capture_to_usual(&root, text, url, false, today, &time)
 }
 
-/// The "Add to journal" box: on Windows the native one, which appears at once (no web engine to
-/// start); the web one elsewhere, or when the native one can't be made.
+/// The "Add to journal" box (Windows' native one: it appears at once, no web engine to start).
+/// If it can't be made (or elsewhere), the reason and any words handed to it go to the problems
+/// log, so a link's or `--capture`'s words are never lost, and the app opens instead.
 fn open_box(prefill: Option<(String, String)>) {
     #[cfg(windows)]
-    if lean_outliner_lib::capture_box::run(prefill.clone()).is_ok() {
-        return;
-    }
-    lean_outliner_lib::run_capture_box(prefill);
+    let why = match lean_outliner_lib::capture_box::run(prefill.clone()) {
+        Ok(()) => return,
+        Err(e) => e,
+    };
+    #[cfg(not(windows))]
+    let why = "it exists on Windows only".to_string();
+    let words = prefill.map(|(t, u)| format!("{t} {u}").trim().to_string()).unwrap_or_default();
+    let kept = if words.is_empty() { String::new() } else { format!(" Not added: {words}") };
+    outline_core::log::record(&format!("The Add to journal box couldn't open ({why}).{kept}"));
+    lean_outliner_lib::run()
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let arg = |i: usize| args.get(i).cloned().unwrap_or_default();
+    // Started by Edge for the browser extension (native messaging, native_host.rs): answer it and
+    // exit. First too: nothing of Tauri or the web engine starts.
+    if lean_outliner_lib::native_host::is_host_call(&arg(1)) {
+        if let Some(d) = cache_dir() {
+            outline_core::app::set_cache_dir(d);
+        }
+        lean_outliner_lib::native_host::run();
+        return;
+    }
     // `--hotkey`: the shortcut key's helper (hotkey.rs), started with Windows: it waits for the
     // capture box's key and starts `--capture-box` when it's pressed. First, before anything of
     // Tauri or the web engine: it stays running, so it must stay small.

@@ -1,7 +1,8 @@
 //! `leanoutliner://` links: what a link asks the app to do, and the links the app copies.
 //!   leanoutliner://page/<name>        open the app (or its open window) at that page
 //!   leanoutliner://note/<id>          … at the note with that `id::` (zoomed in, as Logseq's block links)
-//!   leanoutliner://capture?text=…&url=…&title=…&box=1   add a note (the browser bookmarklet)
+//!   leanoutliner://capture?text=…&url=…&title=…&site=…&box=1   add a note (the browser bookmarklet;
+//!                                     the address becomes a neat link, `capture::md_link`)
 //! A name is written as JavaScript's `encodeURIComponent` writes it (the app copies links so), and
 //! read back by decoding `%xx`; a `+` stays a `+`. Any other `leanoutliner:` link is a capture, as
 //! before page and note links existed.
@@ -11,7 +12,7 @@ use serde::Serialize;
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Link {
-    /// Add a note: its words, the web page it came from, and whether to open the box first.
+    /// Add a note: its words, the web page it came from (a Markdown link), and whether to open the box first.
     Capture { text: String, url: String, boxed: bool },
     /// Open the page with this name.
     Page { name: String },
@@ -44,44 +45,23 @@ pub fn parse(link: &str) -> Option<Link> {
         return Some(if ok { Link::Note { id } } else { Link::App });
     }
     let query = rest.split_once('?').map_or("", |(_, q)| q);
-    let (mut text, mut url, mut title, mut boxed) = (String::new(), String::new(), String::new(), false);
+    let (mut text, mut url, mut title, mut site, mut boxed) = (String::new(), String::new(), String::new(), String::new(), false);
     for pair in query.split('&') {
         let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
         match k {
             "text" => text = decode(v, true),
             "url" => url = decode(v, true),
             "title" => title = decode(v, true),
+            "site" => site = decode(v, true),
             "box" => boxed = v != "0",
             _ => {}
         }
     }
-    // a selection is the note; without one, the page title is
-    let text = if text.trim().is_empty() { title } else { text };
+    // the page's address as "[Title · Site](address)"; a selection is the note's words, and
+    // without one the link is (capture::bullet)
+    let url = if url.trim().is_empty() { String::new() } else { crate::capture::md_link(&url, &title, &site) };
+    let text = if text.trim().is_empty() && url.is_empty() { title } else { text };
     Some(Link::Capture { text, url, boxed })
-}
-
-/// The link that opens the app at page `name`.
-pub fn page_link(name: &str) -> String {
-    format!("leanoutliner://page/{}", encode(name.trim()))
-}
-
-/// The link that opens the app at the note with this `id::`.
-pub fn note_link(id: &str) -> String {
-    format!("leanoutliner://note/{}", encode(&id.trim().to_ascii_lowercase()))
-}
-
-/// As JavaScript's encodeURIComponent: everything but letters, digits and `-_.!~*'()` as %XX of
-/// its UTF-8 bytes.
-pub fn encode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 8);
-    for &b in s.as_bytes() {
-        if b.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&b) {
-            out.push(b as char);
-        } else {
-            out.push_str(&format!("%{b:02X}"));
-        }
-    }
-    out
 }
 
 /// `%xx` decoded (a broken one is kept as written); `plus`: a `+` is a space (query values).

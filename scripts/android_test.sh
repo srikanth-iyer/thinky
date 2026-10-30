@@ -6,8 +6,9 @@ OUT=android-test; mkdir -p $OUT
 log() { echo "== $*" | tee -a $OUT/log.txt; }
 shot() { adb exec-out screencap -p > "$OUT/$1.png"; log "screenshot $1"; }
 run() { log "\$ $*"; "$@" 2>&1 | tee -a $OUT/log.txt; }
+log "test script started $(date -u +%H:%M:%S); device: $(timeout 20 adb get-state 2>&1)"
 # the whole system log, from the start (the emulator's log buffer is too small to read afterwards)
-adb logcat -c
+timeout 30 adb logcat -c || log "!! clearing the system log timed out"
 adb logcat -v threadtime > $OUT/logcat.txt 2>&1 &
 LOGCAT=$!
 # is the app still running, and what is on top?
@@ -38,22 +39,24 @@ log "today's journal: $TODAY"
 run adb push /tmp/vault /sdcard/
 run adb shell ls /sdcard/vault /sdcard/vault/Diary
 
-# 1. first start without file access: the app explains and offers a button (no automatic jump)
+# 1. first start without file access: the welcome screen explains and offers a button (no automatic jump)
 run adb shell am start -W -n "$PKG/.MainActivity"
 sleep 10; shot 01-first-start-explains-access
 run python3 scripts/ui_tap.py "Open the setting"
 sleep 4; shot 02-android-all-files-access
 run adb shell appops set --uid "$PKG" MANAGE_EXTERNAL_STORAGE allow
 run adb shell input keyevent KEYCODE_BACK
-sleep 5; shot 03-back-in-app-folder-picker
+sleep 5; shot 03-back-in-app-welcome
 
 # 2. drive the page over the DevTools protocol (debug build only)
 connect
-CDP="node scripts/android_cdp.mjs"
+CDP="timeout 120 node scripts/android_cdp.mjs" # (never waits forever: a stuck step must not eat the whole run)
 if [ -n "$SOCK" ]; then
-  run $CDP eval "(async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); const b = [...document.querySelectorAll('.picker li button')].find(x => x.textContent.trim().startsWith('vault')); if (!b) return 'no vault folder listed: ' + (document.querySelector('#main')?.innerText || '').slice(0, 400); b.click(); await s(1000); const u = document.querySelector('.picker [data-use]'); if (!u || u.disabled) return 'Use this folder is disabled'; u.click(); await s(3000); return { hash: location.hash, days: [...document.querySelectorAll('.sheet .page-title')].map(e => e.textContent), err: document.querySelector('.err')?.textContent || null }; })()"
+  # (the welcome screen first: "Open an existing notes folder" shows the folder picker)
+  run $CDP eval "(async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); const w = document.querySelector('[data-w=open]'); if (w) { w.click(); await s(1500); } const b = [...document.querySelectorAll('.picker li button')].find(x => x.textContent.trim().startsWith('vault')); if (!b) return 'no vault folder listed: ' + (document.querySelector('#main')?.innerText || '').slice(0, 400); b.click(); await s(1000); const u = document.querySelector('.picker [data-use]'); if (!u || u.disabled) return 'Use this folder is disabled'; u.click(); await s(3000); return { hash: location.hash, days: [...document.querySelectorAll('.sheet .page-title')].map(e => e.textContent), err: document.querySelector('.err')?.textContent || null }; })()"
 else
-  log "no DevTools socket; tapping through the picker instead"
+  log "no DevTools socket; tapping through the welcome screen and the picker instead"
+  run python3 scripts/ui_tap.py "Open an existing notes folder"; sleep 2
   run python3 scripts/ui_tap.py vault; sleep 2
   run python3 scripts/ui_tap.py "Use this folder"; sleep 4
 fi
@@ -115,8 +118,8 @@ fi
 ensure_app
 # 4. a page with linked references, in another look
 if [ -n "$SOCK" ]; then
-  run $CDP eval "(async () => { const a = window.leanApp; a.setSkin('grimoire'); a.go('page', 'Sourdough Bread'); await new Promise(r => setTimeout(r, 2000)); return { title: document.querySelector('h1.page-title')?.textContent, refs: document.querySelectorAll('.refgrp').length, blocks: document.querySelectorAll('.outline .blk').length }; })()"
-  sleep 1; shot 06-page-grimoire
+  run $CDP eval "(async () => { const a = window.leanApp; a.setSkin('automaton'); a.go('page', 'Sourdough Bread'); await new Promise(r => setTimeout(r, 2000)); return { title: document.querySelector('h1.page-title')?.textContent, refs: document.querySelectorAll('.refgrp').length, blocks: document.querySelectorAll('.outline .blk').length }; })()"
+  sleep 1; shot 06-page-automaton
   run $CDP eval "(async () => { window.leanApp.setSkin('sticker'); window.leanApp.go('journals'); await new Promise(r => setTimeout(r, 2000)); return document.querySelectorAll('.sheet').length; })()"
   sleep 1; shot 07-journals-sticker
 fi
@@ -162,6 +165,13 @@ if [ -n "$SOCK" ]; then
   log "look list: $LOOKS"
   sleep 1; shot 12-look-picker
   run $CDP eval "(async () => { document.querySelector('.pop.looks [data-look=plain]')?.click(); await new Promise(r => setTimeout(r, 500)); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); document.body.classList.remove('drawer'); return document.documentElement.dataset.skin; })()"
+
+  # 7b. the widgets follow the look, light and dark ones: for each look, the journal widget's
+  #     background, title, "+", empty line and a note's row, and the one-tap "+" (drawn), as the
+  #     test-build-only LeanAndroid.testWidgetColors() makes them from the same RemoteViews the home
+  #     screen gets, against the look's own colours (--surface, --ink, --ink-faint, --accent)
+  WIDGET=$($CDP eval "(async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); const out = []; for (const id of ['plainnight', 'plainteal', 'paper', 'automaton', 'plain']) { window.leanApp.setSkin(id); await s(500); const css = getComputedStyle(document.documentElement); const want = (k) => css.getPropertyValue(k).trim().toLowerCase(); out.push({ id, want: { bg: want('--surface'), ink: want('--ink'), faint: want('--ink-faint'), accent: want('--accent') }, got: JSON.parse(window.LeanAndroid.testWidgetColors()) }); } return out; })()" | tr -d '\r')
+  log "widget colours, per look: $WIDGET"
 
   # 8. Android's back button goes back inside the app
   run $CDP eval "(async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); window.leanApp.go('journals'); await s(1000); window.leanApp.go('page', 'Sourdough Bread'); await s(1500); return location.hash; })()"
@@ -261,12 +271,12 @@ run grep -E 'id=|shortLabel=|intents=' $OUT/shortcuts.txt
 shortcut() { # $1: the shortcut's name; $2: name for a screenshot of the menu
   #   each menu that opens is saved (icon-menu-<n>.xml): the check passes when one of them shows all three
   adb shell input keyevent KEYCODE_HOME; sleep 2
-  if ! python3 scripts/ui_tap.py "Lean Outliner" --exact --long >> $OUT/log.txt; then
+  if ! python3 scripts/ui_tap.py "thinky" --exact --long >> $OUT/log.txt; then
     log "no app icon on the home screen: trying the list of all apps"
     local try found=
     for try in 1 2; do # the list sometimes opens without the app in view: look again from the home screen
       adb shell input swipe $((W / 2)) $((H * 4 / 5)) $((W / 2)) $((H / 5)) 300; sleep 3
-      if python3 scripts/ui_tap.py "Lean Outliner" --exact --long >> $OUT/log.txt; then found=1; break; fi
+      if python3 scripts/ui_tap.py "thinky" --exact --long >> $OUT/log.txt; then found=1; break; fi
       shot "18x-all-apps-$MENUS-$try"; adb shell input keyevent KEYCODE_HOME; sleep 2
     done
     [ -n "$found" ] || return 1
@@ -325,6 +335,77 @@ TILE_TOP=$(adb shell dumpsys activity activities | tr -d '\r' | grep -m1 -o 'top
 TILE_FOCUS=$(adb shell dumpsys window | tr -d '\r' | grep -m1 -o 'mCurrentFocus=[^}]*')
 log "after tapping the tile: $TILE_TOP; focus: $TILE_FOCUS"
 adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK; sleep 1
+# 15. the pop-up adds through the app's own code (src-tauri/src/android_capture.rs, loaded by the pop-up
+#     itself: the app is stopped first), so it finds the quick capture page as the app does: with the
+#     page "Inbox" while pages/inbox.md is the page "Mail" (its title::), the note goes to a new
+#     pages/Inbox (2).md, as on Windows and in the app, and Mail's file stays as it was
+adb exec-out cat /sdcard/vault/logseq/config.edn > $OUT/config-before.edn
+python3 - $OUT/config-before.edn <<'PY'
+import sys
+c = open(sys.argv[1]).read().rstrip().rstrip('}')
+open('/tmp/config-inbox.edn', 'w').write(c + '\n :quick-capture-options {:insert-today? false :default-page "Inbox"}}\n')
+open('/tmp/inbox.md', 'w').write('title:: Mail\n- mail, written before the share')
+PY
+run adb push /tmp/config-inbox.edn /sdcard/vault/logseq/config.edn
+run adb push /tmp/inbox.md /sdcard/vault/pages/inbox.md
+run adb shell am force-stop "$PKG"
+sleep 1; log "app pid after stopping it: '$(adb shell pidof "$PKG" | tr -d '\r')'"
+run adb shell am start -n "$PKG/.QuickCaptureActivity" -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "'Inbox check from the phone'"
+sleep 5; shot 24-share-to-inbox
+adb shell uiautomator dump /sdcard/qc.xml >/dev/null 2>&1; adb shell cat /sdcard/qc.xml > $OUT/qc-inbox.xml
+INBOX_WHERE=$(grep -o 'text="to [^"]*"' $OUT/qc-inbox.xml | head -1)
+log "the pop-up says: $INBOX_WHERE; its error line (none expected): $(grep -o 'text="[^"]*" resource-id="[^"]*qc_error"' $OUT/qc-inbox.xml | head -1)"
+run python3 scripts/ui_tap.py Add --exact
+sleep 4; shot 25-after-add-to-inbox
+log "pop-up's library (logcat):"
+run bash -c "grep -a ' LeanCore' $OUT/logcat.txt | tail -5"
+log "pages/Inbox (2).md:"; run adb shell "cat '/sdcard/vault/pages/Inbox (2).md'"
+log "pages/inbox.md (Mail):"; run adb shell "cat /sdcard/vault/pages/inbox.md"
+adb exec-out cat /sdcard/vault/pages/inbox.md > $OUT/inbox-after.md 2>/dev/null
+run adb push $OUT/config-before.edn /sdcard/vault/logseq/config.edn
+adb shell input keyevent KEYCODE_BACK; sleep 1
+
+# 14b. start-up with the phone in dark mode (he asked, Oct 30: no dark screen first, then cream):
+# shots as fast as the emulator gives them from the moment the app is started; each one's light
+log "start-up in dark mode: frames from the start"
+run adb shell cmd uimode night yes
+adb shell am force-stop "$PKG"; sleep 2
+adb shell am start -W -n "$PKG/.MainActivity" >/dev/null 2>&1 # (-W: back once its window shows, so no frame of the home screen is counted)
+for k in 1 2 3 4 5 6 7 8; do adb exec-out screencap -p > "$OUT/start-$k.png" 2>/dev/null; done
+STARTUP=$(python3 - "$OUT" <<'PY'
+import sys, struct, zlib, glob
+def mean(path):  # the mean grey of the middle band of a PNG (8-bit RGB/RGBA, no filters beyond PNG's own)
+    d = open(path, 'rb').read()
+    if d[:8] != b'\x89PNG\r\n\x1a\n': return None
+    i, w, h, ct, raw = 8, 0, 0, 0, b''
+    while i < len(d):
+        n = struct.unpack('>I', d[i:i+4])[0]; tag = d[i+4:i+8]; body = d[i+8:i+8+n]; i += 12 + n
+        if tag == b'IHDR': w, h, bd, ct = struct.unpack('>IIBB', body[:10])
+        elif tag == b'IDAT': raw += body
+    px = {2: 3, 6: 4}.get(ct)
+    if not px: return None
+    data = zlib.decompress(raw); stride = w * px; prev = bytearray(stride); out = []
+    for y in range(h):
+        f = data[y*(stride+1)]; line = bytearray(data[y*(stride+1)+1:(y+1)*(stride+1)])
+        for x in range(stride):
+            a = line[x-px] if x >= px else 0; b = prev[x]; c = prev[x-px] if x >= px else 0
+            if f == 1: line[x] = (line[x] + a) & 255
+            elif f == 2: line[x] = (line[x] + b) & 255
+            elif f == 3: line[x] = (line[x] + (a + b) // 2) & 255
+            elif f == 4:
+                p = a + b - c; pa, pb, pc = abs(p-a), abs(p-b), abs(p-c)
+                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        prev = line
+        if h // 3 <= y < 2 * h // 3 and y % 8 == 0:
+            out += [sum(line[x:x+3]) / 3 for x in range(0, stride, px * 8)]
+    return sum(out) / len(out)
+print(' '.join(str(round(mean(f) or 0)) for f in sorted(glob.glob(sys.argv[1] + '/start-*.png'), key=lambda s: int(s.split('-')[-1][:-4]))))
+PY
+)
+log "start-up frames, mean light of the middle (0 dark – 255 white): $STARTUP"
+run adb shell cmd uimode night no
+sleep 3
+
 log "crashes (none expected):"
 run adb logcat -b crash -d
 log "the app's own problems log:"
@@ -365,6 +446,7 @@ result "the app keeps running after leaving" "[ -n '$LEFT' ]"
 result "Update now asks for Android's “Install unknown apps” first" "echo \"\$UPD\" | grep -q '\"permission\"' && echo \"\$UNKNOWN\" | grep -q 'com.android.settings'"
 result "allowed, the newest release downloads and the app refuses it: not signed like this test build" "[ \"\$ST\" = error ] && echo \"\$REFUSED\" | grep -q 'signed like this app'"
 result "handed a good download, Android's installer asks to go ahead; cancelled, the app says so" "echo \"\$ASKED\" | grep -qi 'packageinstaller' && echo \"\$CANCELLED\" | grep -q 'cancelled'"
+result "the widgets take each look's colours (journal widget: background, title, +, empty line, rows; the one-tap +)" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); ok=lambda x: (x[\"got\"].get(\"bg\"), x[\"got\"].get(\"title\"), x[\"got\"].get(\"row\"), x[\"got\"].get(\"empty\"), x[\"got\"].get(\"add\"), x[\"got\"].get(\"circle\")) == (x[\"want\"][\"bg\"], x[\"want\"][\"ink\"], x[\"want\"][\"ink\"], x[\"want\"][\"faint\"], x[\"want\"][\"accent\"], x[\"want\"][\"accent\"]); sys.exit(0 if len(d) == 5 and all(map(ok, d)) else 1)' '$WIDGET'"
 result "both widgets are offered to the home screen" "adb shell dumpsys appwidget | grep -qi journalwidget && adb shell dumpsys appwidget | grep -qi quickaddwidget"
 result "the app sets up its icon shortcuts Today, Add note and Search" "grep -q '{id=today' $OUT/shortcuts.txt && grep -q '{id=add' $OUT/shortcuts.txt && grep -q '{id=search' $OUT/shortcuts.txt"
 result "pressing and holding the app icon shows them" "menu_shown"
@@ -373,8 +455,12 @@ result "the Search shortcut starts the app with the search box open" "python3 -c
 result "the keyboard comes up for the search" "[ '$KEYBOARD' = 'mInputShown=true' ]"
 result "a leanoutliner://page/… link opens that page in the open app" "[ '$SC_LINK' = '\"#/page/Sourdough Bread\"' ]"
 result "the Add note shortcut opens the pop-up" "echo '$SC_ADD' | grep -q QuickCaptureActivity"
+result "the pop-up (app closed) adds through the app's code: quick capture page Inbox → a new pages/Inbox (2).md" "dev '/sdcard/vault/pages/Inbox (2).md' | head -1 | grep -qx 'title:: Inbox' && dev '/sdcard/vault/pages/Inbox (2).md' | grep -q '^- .*Inbox check from the phone'"
+result "pages/inbox.md (the page Mail, by its title::) is left byte for byte" "cmp -s $OUT/inbox-after.md /tmp/inbox.md"
+result "the pop-up says where the note goes, as config.edn says now: to Inbox" "[ '$INBOX_WHERE' = 'text=\"to Inbox\"' ]"
 result "the Add note tile is offered in Quick Settings" "echo '$QS' | grep -q AddNoteTile"
 result "tapping the tile opens the pop-up and closes the shade" "echo '$TILE_TOP' | grep -q QuickCaptureActivity && echo '$TILE_FOCUS' | grep -q QuickCaptureActivity"
+result "starting in dark mode: no dark frame before the app (cream from the first moment)" "python3 -c 'import sys; v=[int(x) for x in sys.argv[1].split()]; sys.exit(0 if len(v) >= 4 and min(v) > 150 else 1)' '$STARTUP'"
 gzip -9 $OUT/logcat.txt
 log "done: $([ $FAILED = 0 ] && echo 'everything passed' || echo 'SOMETHING FAILED, see the FAIL lines')"
 exit $FAILED

@@ -6,9 +6,9 @@ import { call, today, nowTime, store, isApp, isAndroid, listen, pageLinkUrl } fr
 import { Outline, EDGE, PIN_H, findAgain, caretAgain, foldedIn, lineLook } from './editor.js';
 import { renderBlock, propsHtml, visibleProps, esc } from './render.js';
 import { Suggest, Preview, menu, confirmBox, promptBox, pickDate, place } from './popups.js';
-import { pagesView, tagsView, propsView, todosView, taskRow, taskClicks, taskDay, num } from './views.js';
+import { pagesView, tagsView, propsView, todosView, taskRow, taskClicks, taskDay, byDay, num } from './views.js';
 import { settingsView } from './settings.js';
-import { h, pageLink, ICON } from './dom.js';
+import { h, pageLink, ICON, BRAND } from './dom.js';
 import { keyOf } from './calendar.js';
 import { Find } from './find.js';
 import { Tabs, placeOf, parsePlace, sideNav } from './tabs.js';
@@ -19,19 +19,22 @@ import { initFileDrop } from './filedrop.js';
 // Looks: name and one-line note for the picker; the look itself lives in skins.css.
 export const SKINS = [
   { id: 'plain', name: 'Plain', note: 'Logseq’s own look: off-white, flat and quiet' },
-  { id: 'plainnight', name: 'Plain night', note: 'Logseq’s dark look: deep blue-green, quiet' },
+  { id: 'plainnight', name: 'Plain night', note: 'Plain in near-black, quiet' },
+  { id: 'plainteal', name: 'Plain teal', note: 'Logseq’s dark look: deep blue-green' },
   { id: 'calm', name: 'Calm', note: 'The first look: light, teal, lifted cards' },
   { id: 'calmplain', name: 'Calm plain', note: 'Calm without the cards, on white' },
   { id: 'night', name: 'Night', note: 'The Board’s dark look, labels set into the page' },
   { id: 'paper', name: 'Paper', note: 'Dot-grid paper, serif writing, highlighter' },
   { id: 'sticker', name: 'Sticker', note: 'The Board’s sticker look: bold outlines' },
   { id: 'stickernight', name: 'Sticker night', note: 'Sticker, dimmed for evenings' },
-  { id: 'grimoire', name: 'Grimoire', note: 'A quiet library at night: ink blue, warm gold' },
-  { id: 'automaton', name: 'Automaton', note: 'Graph-paper lab notes with a rule 30 band' },
+  { id: 'automaton', name: 'Automaton', note: 'Lab notes on a rule 30 pattern' },
   { id: 'azulejo', name: 'Azulejo', note: 'Cobalt tiles on white' },
+  { id: 'thinky', name: 'thinky', word: true, note: 'The logo’s cream, ink and red spark' },
 ];
 const SKIN_IDS = new Set(SKINS.map((s) => s.id));
-/** The current look's colours for the Windows "Add to journal" box, as #rrggbb: each token painted
+/** A look's name as HTML: the look named after the app shows the wordmark (his rule: the name is never plain letters). */
+export const lookName = (s) => (s.word ? BRAND.word : esc(s.name));
+/** The current look's colours for the Windows "Add to journal" box and the Android widgets, as #rrggbb: each token painted
  *  on a 1-pixel canvas over the box's background, so any CSS colour (see-through ones too) comes
  *  out as the colour seen. The names are the CSS tokens (outline_core::capture_box::COLOR_KEYS). */
 function lookColors() {
@@ -59,7 +62,7 @@ const QUIET_BUTTONS = '#histbar button, #topbar button, .side-fold, .title-row .
 const SLIDE_MS = 200, SLIDE_EASE = 'cubic-bezier(.2, .7, .3, 1)';
 // the sidebar's width (dragging its edge; 252 px until then) and the least width of each of two sides
 const SIDE_MIN = 200, SIDE_MAX = 480, PANE_MIN = 340;
-const VIEW_NAMES = { journals: 'Journals', pages: 'All pages', tags: 'Tags', props: 'Properties', settings: 'Settings', todos: 'To-dos' };
+const VIEW_NAMES = { journals: 'Journals', pages: 'All pages', tags: 'Tags', props: 'Properties', settings: 'Settings', todos: 'To-dos', welcome: 'Welcome' };
 const $ = (sel, root = document) => root.querySelector(sel);
 /** A refusal's words (the app's answers are words; the dev server's come in an Error). */
 const said = (e) => String(e?.message ?? e);
@@ -69,13 +72,38 @@ const said = (e) => String(e?.message ?? e);
 function refRow(n, extra = '') {
   const row = h('div', 'refhit');
   const r = n.line === null ? { html: '', props: n.props } : renderBlock(n.text);
-  const mk = r.marker ? `<span class="mk">${esc(r.marker)}</span>` : '';
+  // a to-do: its tick box, as on its page (he asked: not the word TODO); other words as labels
+  let mk = '';
+  if (r.marker) {
+    if (!r.marker.startsWith('CANCEL')) mk += `<input type="checkbox" class="todo" ${r.marker === 'DONE' ? 'checked' : ''} aria-label="Done">`;
+    if (!['TODO', 'DONE'].includes(r.marker)) mk += `<span class="mk">${esc(r.marker)}</span>`;
+    row.refText = n.text;
+    if (['DONE', 'CANCELED', 'CANCELLED'].includes(r.marker)) row.classList.add('marker-done');
+  }
   row.innerHTML = `<div class="bc">${mk}${r.html}${propsHtml(r.props)}</div>${extra}`;
   if (r.html.includes(' data-ref="')) app.blockRefs(row); // ((block references)): the note's words (one look-up per list drawn)
   const { hf, lead } = lineLook(r); // (where linked references draw a dot or an arrow)
   if (hf) row.style.setProperty('--hf', hf);
   if (lead) row.style.setProperty('--lead', lead);
   return row;
+}
+/** The filter's words (small letters, accents dropped) lit in el's words: ranges added to the
+ *  highlight hl (App.refTools). Matched in each piece of text as shown. */
+function litWords(el, words, hl) {
+  const fold = (x) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    const t = fold(n.data);
+    if (t.length !== n.data.length) continue; // (letters with accents written as two: places would differ)
+    for (const w of words) {
+      for (let i = t.indexOf(w); i >= 0; i = t.indexOf(w, i + w.length)) {
+        const r = new Range();
+        r.setStart(n, i);
+        r.setEnd(n, i + w.length);
+        hl.add(r);
+      }
+    }
+  }
 }
 /** A linked reference's rows (App.refTree): the reference and the sub-notes not inside a folded
  *  one. A row is made the first time its note shows (in order, after the rows before it), then only
@@ -141,7 +169,7 @@ function oneNoteApart(x, o) {
 export function accessCard(title) {
   const c = h('div', 'card');
   c.innerHTML = `<h2>${esc(title)}</h2>
-    <p class="note">Android needs your permission before the app can read the notes folder that Drive Sync keeps up to date. Turn on <b>Allow access to manage all files</b> for Lean Outliner, then come back.</p>
+    <p class="note">Android needs your permission before the app can read the notes folder that Drive Sync keeps up to date. Turn on <b>Allow access to manage all files</b> for ${BRAND.word}, then come back.</p>
     <button class="btn">Open the setting</button>`;
   c.querySelector('button').onclick = () => window.LeanAndroid?.openAllFilesSettings();
   return c;
@@ -157,6 +185,27 @@ const dayFolds = () => new Set(session.get('dayFolds', []));
 /** Reference groups folded (App.refGroup): kind 'l' (linked) or 'u' (unlinked) references to host, from page. */
 const refKey = (kind, host, page) => `${kind}:${String(host).toLowerCase()}\n${String(page).toLowerCase()}`;
 const refFolds = () => new Set(session.get('refFolds', []));
+/** The references' orders (Build 33, he asked: each both ways, and by date created): its key → [what
+ *  it sorts by, which way, the words in the menu and on the button]. */
+const REF_SORTS = {
+  changed: ['changed', -1, 'Last changed, newest first'], 'changed-old': ['changed', 1, 'Last changed, oldest first'],
+  name: ['name', 1, 'Name, A to Z'], 'name-za': ['name', -1, 'Name, Z to A'],
+  created: ['created', -1, 'Date created, newest first'], 'created-old': ['created', 1, 'Date created, oldest first'],
+};
+/** The references' tools, per page (he asked, Oct 29): is the filter box open, and the sort picked. Kept in
+ *  localStorage `refTools` = [[page in small letters, open 0/1, 'changed'|'name'], …], the page used
+ *  last at the end, at most REF_TOOLS_MAX; a page back to closed + Last changed leaves the list. */
+const REF_TOOLS_MAX = 200;
+const refToolsList = () => { const l = store.get('refTools', []); return Array.isArray(l) ? l.filter((x) => Array.isArray(x)) : []; };
+const refPrefs = (host) => {
+  const e = refToolsList().find((x) => x[0] === String(host).toLowerCase());
+  return { open: !!e?.[1], sort: REF_SORTS[e?.[2]] ? e[2] : 'changed' };
+};
+const setRefPrefs = (host, { open, sort }) => {
+  const k = String(host).toLowerCase(), l = refToolsList().filter((x) => x[0] !== k);
+  if (open || sort !== 'changed') l.push([k, open ? 1 : 0, sort]);
+  store.set('refTools', l.slice(-REF_TOOLS_MAX));
+};
 const ymd = (dt) => [dt.getFullYear(), dt.getMonth() + 1, dt.getDate()];
 
 // ---------------------------------------------------------------------------
@@ -268,7 +317,7 @@ class App {
     // the phone bar's Go to date shows on the Journals list only: on a page, its name keeps the room
     $('#topbar')?.classList.toggle('journals', kind === 'journals');
     const add = $('#addnote'); // phones: "+" adds a note (Journals list: to today), where there are notes
-    if (add) add.hidden = !['journals', 'page', 'zoom'].includes(kind);
+    if (add) { add.hidden = !['journals', 'page', 'zoom'].includes(kind); add.classList.remove('away'); }
     this.updateHistBar();
   }
 
@@ -375,7 +424,22 @@ class App {
   updateToolbar() {
     const narrow = window.matchMedia('(max-width: 860px), (pointer: coarse)').matches;
     const o = this.active;
-    $('#toolbar').hidden = !(o && narrow && (o.cur !== null || o.sel));
+    const tb = $('#toolbar');
+    const text = this.textTa?.isConnected && document.activeElement === this.textTa; // (a page's properties box)
+    tb.hidden = !(narrow && (text || (o && (o.cur !== null || o.sel))));
+    tb.classList.toggle('tb-text', !!text);
+    if (tb.hidden) $('#addnote')?.classList.remove('away'); // (done typing: the "+" is back)
+  }
+  /** Phones: the "+" steps aside while a finger scrolls the page down and comes back when it scrolls
+   *  up or reaches the top. Only scrolling by a finger counts (touchedAt): the app's own scrolling
+   *  (to a note being typed in, back to where a page was) leaves it as it is. */
+  fabScroll() {
+    const y = window.scrollY, last = this.fabY ?? y;
+    this.fabY = y;
+    const add = $('#addnote');
+    if (!add || add.hidden) return;
+    if (y < 48) add.classList.remove('away');
+    else if (Date.now() - (this.touchedAt || 0) < 1000 && Math.abs(y - last) > 3) add.classList.toggle('away', y > last);
   }
   /** The phone's "+": a new note at the end of the page shown, or of today on the Journals list (the
    *  first day there), typing in it (Outline.addAtEnd). */
@@ -383,7 +447,20 @@ class App {
     const { kind } = parsePlace(placeOf(this.tabs.tab()));
     const os = this.pane.outlines;
     const o = kind === 'journals' ? os.find((x) => x.journal?.join() === today().join()) : os[0];
-    if (o) { this.unfoldFor(o); o.addAtEnd(); } // (today folded: it opens first, so the new note shows)
+    if (o) {
+      this.unfoldFor(o); // (today folded: it opens first, so the new note shows)
+      o.addAtEnd();
+      // the new note in view at once (he asked: he had to look for it), and again once the phone's
+      // keyboard has come up and the screen got shorter
+      const show = () => o.ta?.isConnected && o.ta.scrollIntoView({ block: 'center' });
+      show();
+      const vv = window.visualViewport;
+      if (vv) {
+        const again = () => { vv.removeEventListener('resize', again); show(); };
+        vv.addEventListener('resize', again);
+        setTimeout(() => vv.removeEventListener('resize', again), 1500);
+      }
+    }
     else if (kind === 'journals') this.toast('Today’s journal is still opening. Try again in a moment.', 2500);
   }
   /** Editing starts on note i of outline o while the same page, open on the other side (x), has typing
@@ -535,8 +612,22 @@ class App {
     if (isNew || icon !== (this.icons?.get(key) ?? '')) this.refreshNames();
     this.widgetTasksSoon();
     outline.behind = false; // (its save took in what the file had)
+    this.sparkSaved(outline);
     // the same page open on the other side shows what was just saved
     for (const o of this.outlines) if (o !== outline && sameFile(o, outline)) { o.behind = true; this.catchUp(o, file); }
+  }
+  /** Saved: a tiny spark by the page's title (a journal day's date) fades in and out (app.css
+   *  .saved-mark). One element, moved to the title of the page just saved; it takes no room (no line
+   *  moves), nothing per note. */
+  sparkSaved(o) {
+    const title = o.host?.closest?.('.sheet')?.querySelector('.page-title');
+    if (!title) return;
+    const m = this.savedMark ??= h('i', 'saved-mark');
+    m.setAttribute('aria-hidden', 'true');
+    m.classList.remove('on');
+    if (m.parentNode !== title) title.append(m);
+    void m.offsetWidth; // (start the fade again)
+    m.classList.add('on');
   }
   /** Outline o is behind: the same page was saved from the other side (file: what it holds now, if
    *  known). It shows that now, keeping its reading place: one note changed, in place
@@ -740,7 +831,9 @@ class App {
     p.el.replaceChildren(view);
     if (active) window.scrollTo(0, 0); // phones and narrow windows scroll the whole page,
     p.el.scrollTop = 0; // wide windows just the pane under the top strip
-    if (!this.vaultOpen && kind !== 'settings') { if (active) this.go('settings'); return; }
+    // (no notes folder: the welcome screen until one was ever chosen, else Settings, to choose again)
+    if (active) document.documentElement.classList.toggle('welcome', kind === 'welcome');
+    if (!this.vaultOpen && kind !== 'settings' && kind !== 'welcome') { if (active) this.go(store.get('vault', '') ? 'settings' : 'welcome'); return; }
     try {
       if (kind === 'journals') await this.journalsView(view);
       else if (kind === 'page' || kind === 'zoom') await this.pageView(view, arg, zoomLine, line);
@@ -749,12 +842,24 @@ class App {
       else if (kind === 'props') await propsView(this, view, arg);
       else if (kind === 'todos') await todosView(this, view);
       else if (kind === 'settings') await settingsView(this, view, arg);
+      else if (kind === 'welcome') (await import('./welcome.js')).welcomeView(this, view); // (loaded only when it shows)
       else await this.journalsView(view);
     } catch (e) {
       view.append(h('p', 'err', esc('Something went wrong: ' + e)));
       call('log', { msg: `view ${kind}: ${e?.stack || e}` }).catch(() => {});
     }
     if (restore && seq === p.seq) T.scrollBack(p, t);
+    if (seq === p.seq) this.unsplash();
+  }
+
+  /** The start-up drawing (index.html #splash) fades once the first page is drawn: only ever once. */
+  unsplash() {
+    const s = document.getElementById('splash');
+    if (!s || s.classList.contains('done')) return;
+    s.classList.add('done');
+    setTimeout(() => s.remove(), 300);
+    this.barsLater?.(); // (the phone's bars: from the drawing's cream to the look's colour)
+    this.barsLater = null;
   }
 
   // ----- views -----
@@ -844,7 +949,15 @@ class App {
     const pv = await call('page', { name: day.name, today: today(), time: nowTime() });
     const pane = list.isConnected && this.paneOf(list);
     if (!pane) return null; // another page opened meanwhile (see journalsView)
-    pane.outlines.push(new Outline(body, pv, this));
+    const o = new Outline(body, pv, this);
+    pane.outlines.push(o);
+    // a day with no notes yet (often one only other pages link to): its empty first note ("Click to
+    // write…") with a roomy empty area under it that a click or tap also opens, so it's plain at a
+    // glance that nothing is written there, and easy to start (he asked, Oct 27; app.css .day-body.blank)
+    if (!o.readonly && o.blocks.length === 1 && !o.blocks[0].text.trim()) {
+      body.classList.add('blank');
+      body.addEventListener('click', (e) => { if (e.target === body || e.target === o.el) o.edit(o.end - 1); });
+    }
     if (isToday) this.scheduledBox(sched, day.name);
     if (pv.refs.length) refs.append(this.dayLinked(pv.refs, day.name));
     return sec;
@@ -893,12 +1006,19 @@ class App {
     const n = groups.reduce((s, g) => s + g.hits.length, 0);
     sec.innerHTML = `<h3 class="sec-h">Linked references <span class="n">${n}</span></h3>`;
     const MAX = 6; // a day linked from very many pages: the first few, then a button for the rest
-    sec.append(this.groupsEl(groups.slice(0, MAX), { tree: true, host: day }));
-    if (groups.length > MAX) {
-      const more = h('button', 'btn ghost small', `Show ${groups.length - MAX} more page${groups.length - MAX === 1 ? '' : 's'}`);
-      more.onclick = () => more.replaceWith(this.groupsEl(groups.slice(MAX), { tree: true, host: day }));
-      sec.append(more);
-    }
+    const fill = (gs, mark) => {
+      gs = this.sortRefs(gs, day);
+      const list = h('div', 'refs-list'), part = (x) => { const el = this.groupsEl(x, { tree: true, host: day }); mark?.(el); return el; };
+      list.append(part(gs.slice(0, MAX)));
+      if (gs.length > MAX) {
+        const more = h('button', 'btn ghost small', `Show ${gs.length - MAX} more page${gs.length - MAX === 1 ? '' : 's'}`);
+        more.onclick = () => more.replaceWith(part(gs.slice(MAX)));
+        list.append(more);
+      }
+      sec.append(list);
+    };
+    this.refTools(sec, groups, day, fill); // (the same tools as a page's, kept per day)
+    fill(groups);
     return sec;
   }
 
@@ -929,8 +1049,7 @@ class App {
       if (!Number.isFinite(w) || w > t + ahead || x.page.toLowerCase() === todayName.toLowerCase()) continue;
       groups[w < t ? 0 : w === t ? 1 : 2][2].push(x);
     }
-    const prio = (x) => ({ A: 0, B: 1, C: 2 }[x.priority] ?? 1);
-    for (const [, , g] of groups) g.sort((a, b) => (taskDay(a) - taskDay(b)) || (prio(a) - prio(b)));
+    for (const [, , g] of groups) g.sort(byDay);
     const total = groups.reduce((s, [, , g]) => s + g.length, 0);
     if (!total) { host.replaceChildren(); return; }
     const folds = store.get('schedFolds', { box: false, overdue: true });
@@ -956,8 +1075,11 @@ class App {
    *  g d the active side's date button, else the page). */
   async goToDate(anchorEl) {
     if (!this.vaultOpen) { this.toast('First choose your notes folder (Settings).', 3500); return; }
+    // pressed again while open: that press closed it, so this click doesn't open it again (he asked)
+    if (Date.now() - Number(anchorEl.dataset?.closedAt || 0) < 600) { delete anchorEl.dataset.closedAt; return; }
+    const button = anchorEl.closest?.('button') || null;
     const marks = call('journal_days').then((ds) => new Set(ds.map(keyOf))).catch(() => null);
-    const pick = await pickDate(anchorEl.getBoundingClientRect(), { title: 'Go to a day', marks, note: 'Dots mark days with notes.' });
+    const pick = await pickDate(anchorEl.getBoundingClientRect(), { title: 'Go to a day', marks, note: 'Dots mark days with notes.', button });
     if (!pick) return;
     try { this.go('page', await call('journal_name', { date: pick.date })); } catch (e) { this.toast(`That day can’t be opened: ${e}`, 5000); }
   }
@@ -982,7 +1104,7 @@ class App {
     const pic = (pv.info.props || []).find(([k]) => k === 'icon')?.[1]?.trim();
     const picHtml = pic && [...pic].length <= 8 ? `<span class="pg-ic" aria-hidden="true">${esc(pic)}</span>` : '';
     titleRow.innerHTML = `<h1 class="page-title">${picHtml}<span class="pt-name">${esc(ns ? parts[parts.length - 1] : pv.info.name)}</span></h1>
-      <button class="icon-btn${fav ? ' on' : ''}" data-a="fav" data-name="${esc(pv.info.name)}" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" title="Favourite">${ICON.star}</button>
+      <button class="icon-btn fav${fav ? ' on' : ''}" data-a="fav" data-name="${esc(pv.info.name)}" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" title="Favourite">${ICON.fav}</button>
       <button class="icon-btn" data-a="more" aria-label="Page actions" title="More">${ICON.more}</button>`;
     // page properties go right under the title (none: nothing; the ⋯ menu's "Add properties")
     const propsBox = h('div', 'page-props');
@@ -1028,7 +1150,10 @@ class App {
       const count = pv.refs.reduce((s, g) => s + g.hits.length, 0);
       refs.innerHTML = `<h2 class="sec-h">Linked references <span class="n">${count} in ${pv.refs.length} page${pv.refs.length === 1 ? '' : 's'}</span></h2>`;
       view.append(refs);
-      this.fillRefs(refs, pv.refs, pv.info.name); // (after the page's own notes show, a little at a time)
+      const name = pv.info.name;
+      const fill = (gs, mark) => this.fillRefs(refs, this.sortRefs(gs, name), name, mark); // (after the page's own notes show, a little at a time)
+      this.refTools(refs, pv.refs, name, fill); // filter, sort, fold all (more than one page)
+      fill(pv.refs);
     }
     view.addEventListener('click', (e) => this.linkClick(e));
     if (line !== null && zoomLine === null) {
@@ -1050,7 +1175,7 @@ class App {
       const open = btn.getAttribute('aria-expanded') === 'true';
       btn.setAttribute('aria-expanded', String(!open));
       if (open) { body.replaceChildren(); return; }
-      body.innerHTML = '<p class="note">Looking through your notes…</p>';
+      body.innerHTML = BRAND.wait('Looking through your notes…');
       let res;
       try { res = await call('unlinked', { name }); } catch (e) { body.innerHTML = `<p class="err">${esc(e)}</p>`; return; }
       const n = res.groups.reduce((s, g) => s + g.hits.length, 0);
@@ -1086,7 +1211,11 @@ class App {
       ta.placeholder = 'tags:: idea, reading\nalias:: Another name';
       ta.rows = Math.max(2, ta.value.split('\n').length);
       box.replaceChildren(ta);
+      // phones: the editing toolbar comes up for it too ([[ ]], #, …; he asked)
+      this.textTa = ta;
+      ta.addEventListener('focus', () => this.updateToolbar());
       ta.focus();
+      this.updateToolbar();
       let snapped = false;
       ta.oninput = () => {
         if (!snapped) { outline.snap(); snapped = true; }
@@ -1096,10 +1225,28 @@ class App {
         outline.markDirty();
       };
       ta.onblur = async () => {
+        this.textTa = null;
+        this.updateToolbar();
         await outline.flush();
         await this.freshProps(box, outline, props);
       };
     };
+  }
+  /** The phone toolbar on a plain text box (a page's properties): k = the button. */
+  textTool(ta, k) {
+    const s = ta.selectionStart, e = ta.selectionEnd, v = ta.value;
+    const put = (text, caret = text.length, sel = 0) => {
+      ta.setRangeText(text, s, e, 'end');
+      ta.setSelectionRange(s + caret, s + caret + sel);
+      ta.dispatchEvent(new Event('input'));
+    };
+    const wrap = (a, z) => put(a + v.slice(s, e) + z, a.length, e - s);
+    ({
+      newline: () => put('\n'), tag: () => put('#'),
+      link: () => (s !== e ? wrap('[[', ']]') : put('[[]]', 2)),
+      bold: () => wrap('**', '**'), italic: () => wrap('*', '*'), mark: () => wrap('^^', '^^'),
+      done: () => { ta.blur(); this.updateToolbar(); },
+    })[k]?.();
   }
   /** Page properties drawn again as the page's file has them now (props: if it can't be read). */
   async freshProps(box, outline, props) {
@@ -1108,13 +1255,133 @@ class App {
     if (box.isConnected) this.renderPageProps(box, outline, fresh);
   }
 
+  /** Reference groups in the order picked in the tools above those references (refPrefs(host).sort,
+   *  per page; a day in the Journals list is its own): 'changed' (the default) = the page whose file
+   *  changed last first (g.changed, the app's own file times; else the pages list's), 'name' = pages A
+   *  to Z, then journal days, newest first. */
+  sortRefs(groups, host = '') {
+    const [by, way] = REF_SORTS[refPrefs(host).sort];
+    if (by === 'name') { // (days by their date, after the pages: a date's words don't sort; Z to A turns both round)
+      const day = (g) => (g.journal ? g.journal[0] * 400 + g.journal[1] * 32 + g.journal[2] : 0);
+      return [...groups].sort((a, b) => way * ((!!a.journal - !!b.journal) || (day(b) - day(a)) || a.page.localeCompare(b.page, undefined, { sensitivity: 'base', numeric: true })));
+    }
+    let t = null; // (only when the answer had no times: the pages list's)
+    const at = (g) => g[by] ?? (t ??= new Map((this.names || []).map((x) => [String(x.name).toLowerCase(), x]))).get(g.page.toLowerCase())?.[by] ?? 0;
+    return [...groups].sort((a, b) => way * (at(a) - at(b)));
+  }
+  /** Linked references from two pages or more get tools (he asked, Oct 29: three small buttons at the
+   *  right end of the heading, no row of tools): Filter (opens a filter box under the heading, with the
+   *  focus; every word typed, found in a note, the notes around it or its page's name; capitals and
+   *  accents ignored), Sort (Last changed ↔ Name; its icon shows the order now) and Fold all / Open all
+   *  (kept for the session, as each group's own arrow; its icon shows which it does). Filter again, or
+   *  Esc in the empty box, closes the box and empties it. Per page (refPrefs): the box open or not, and
+   *  the sort; never the words typed. fill(groups, mark) draws the list (a `.refs-list` in sec,
+   *  replaced on each change; mark lights the words in what it draws); host = the page (or day) they
+   *  link to. */
+  refTools(sec, groups, host, fill) {
+    if (groups.length < 2) return;
+    const fold = (x) => String(x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const texts = new Map(); // (each group's words, worked out the first time a word is typed)
+    const textOf = (g) => {
+      if (!texts.has(g)) texts.set(g, g.hits.map((x) => fold([g.page, x.text ?? '', ...(x.props || []).flat(), ...(x.parents || []).map((p) => p.text), ...(x.kids || []).map((k) => k.text)].join('\n'))));
+      return texts.get(g);
+    };
+    const head = sec.querySelector('.sec-h'), count = head.querySelector('.n'), said = count.textContent;
+    // the heading's words (and count) on the left, wrapping there if they must; the buttons at the right end
+    const words0 = h('span', 'sec-t');
+    words0.append(...head.childNodes);
+    const acts = h('span', 'ref-acts');
+    acts.innerHTML = '<button type="button" class="ref-tbtn ref-f"></button><button type="button" class="ref-tbtn ref-s"></button><button type="button" class="ref-tbtn ref-fa"></button>';
+    head.classList.add('has-acts');
+    head.append(words0, acts);
+    const [btn, sortBtn, all] = acts.children;
+    btn.innerHTML = ICON.filter;
+    const bar = h('div', 'ref-tools');
+    bar.innerHTML = `<label class="ref-find">${ICON.search}<input type="search" class="ref-filter" placeholder="Filter references" aria-label="Filter references" enterkeyhint="search" autocomplete="off" spellcheck="false"></label>`;
+    head.after(bar);
+    const input = $('.ref-filter', bar);
+    const keys = () => groups.map((g) => refKey('l', host, g.page));
+    const tip = (b, t) => { b.setAttribute('aria-label', t); b.title = t; };
+    const paint = () => {
+      const { open, sort } = refPrefs(host);
+      bar.hidden = !open;
+      btn.setAttribute('aria-expanded', String(open));
+      tip(btn, open ? 'Hide the filter' : 'Filter references');
+      sortBtn.innerHTML = REF_SORTS[sort][0] === 'name' ? ICON.sortName : ICON.sortChanged;
+      sortBtn.dataset.sort = sort;
+      tip(sortBtn, `Sorted: ${REF_SORTS[sort][2].toLowerCase()} (click to change)`);
+      const f = refFolds(), shut = keys().every((k) => f.has(k));
+      all.innerHTML = shut ? ICON.openAll : ICON.foldAll;
+      all.dataset.shut = String(shut);
+      tip(all, shut ? 'Open all' : 'Fold all');
+    };
+    // the words typed, lit where they show (a CSS highlight, as find on the page: the notes' own HTML
+    // is untouched); none where the browser has no highlights. One name for all: the box typed in last.
+    const lit = window.CSS?.highlights && typeof Highlight === 'function' ? new Highlight() : null;
+    const draw = () => {
+      const old = sec.querySelector(':scope > .refs-list');
+      if (old) { this.dropLive(old); old.remove(); }
+      sec.querySelector(':scope > .ref-none')?.remove();
+      const words = fold(input.value).split(/\s+/).filter(Boolean);
+      let gs = groups;
+      if (words.length) gs = groups.map((g) => { const ts = textOf(g); return { ...g, hits: g.hits.filter((_, i) => words.every((w) => ts[i].includes(w))) }; }).filter((g) => g.hits.length);
+      const n = gs.reduce((s, g) => s + g.hits.length, 0), of = groups.reduce((s, g) => s + g.hits.length, 0);
+      count.textContent = words.length ? `${n} of ${of} match` : said; // (the heading's count while filtering)
+      paint();
+      lit?.clear();
+      if (lit && words.length) CSS.highlights.set('ref-filter', lit);
+      if (!gs.length) { sec.append(h('p', 'note ref-none', `No references mention “${esc(input.value.trim())}”.`)); return; }
+      fill(gs, words.length && lit ? (el) => litWords(el, words, lit) : null);
+    };
+    const set = (change) => setRefPrefs(host, { ...refPrefs(host), ...change });
+    const close = () => {
+      set({ open: false });
+      clearTimeout(timer);
+      const had = input.value;
+      input.value = '';
+      if (bar.contains(document.activeElement)) btn.focus({ preventScroll: true });
+      if (had) draw(); else paint();
+    };
+    btn.onclick = () => {
+      if (refPrefs(host).open) { close(); return; }
+      set({ open: true });
+      paint();
+      input.focus({ preventScroll: true });
+    };
+    // Sort: a small menu of the orders, each both ways; the one in use ticked
+    sortBtn.onclick = () => {
+      const now = refPrefs(host).sort;
+      const item = (k, label) => ({ label, hint: k === now ? '✓' : '', run: () => { set({ sort: k }); draw(); } });
+      menu(sortBtn, [{ head: 'Last changed' }, item('changed', 'Newest first'), item('changed-old', 'Oldest first'),
+        { head: 'Name' }, item('name', 'A to Z'), item('name-za', 'Z to A'),
+        { head: 'Date created' }, item('created', 'Newest first'), item('created-old', 'Oldest first')], { cls: 'sort-menu' });
+    };
+    all.onclick = () => {
+      const f = refFolds(), shut = !keys().every((k) => f.has(k));
+      for (const k of keys()) if (shut) f.add(k); else f.delete(k);
+      session.set('refFolds', [...f]);
+      draw();
+    };
+    let timer;
+    input.oninput = () => { clearTimeout(timer); timer = setTimeout(draw, 150); };
+    input.onkeydown = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); if (input.value) { input.value = ''; clearTimeout(timer); draw(); } else close(); }
+      if (e.key === 'Enter') input.blur(); // (a phone's keyboard goes away, the matches stay)
+    };
+    // a group's own arrow changes what "Fold all" should do
+    sec.addEventListener('click', (e) => { if (e.target.closest('.grp-fold')) setTimeout(paint); });
+    paint();
+  }
+
   /** A page's linked references (refTree each), drawn after its own notes have shown and a few at a
    *  time (about 12 ms of work, then the screen gets a turn), so a page that hundreds of notes link
    *  to opens as quickly as any other. Stops if the page is left meanwhile. */
-  fillRefs(sec, groups, host = '') {
-    const wrap = h('div');
+  fillRefs(sec, groups, host = '', mark = null) {
+    const wrap = h('div', 'refs-list');
     wrap.addEventListener('click', (e) => this.refClick(e));
     sec.append(wrap);
+    // (mark: the filter's words lit in each reference as it's drawn, App.refTools)
+    const tree = (x) => { const b = this.refTree(x); mark?.(b); return b; };
     let gi = 0, hi = 0, grp = null; // the group being filled, and its next reference
     const step = () => {
       if (!wrap.isConnected) return;
@@ -1123,11 +1390,12 @@ class App {
         const g = groups[gi];
         if (!g.hits.length) { gi++; continue; }
         if (!grp) {
-          grp = this.refGroup(g, host && refKey('l', host, g.page), (el) => { for (const x of g.hits) el.append(this.refTree(x)); });
+          grp = this.refGroup(g, host && refKey('l', host, g.page), (el) => { for (const x of g.hits) el.append(tree(x)); });
+          mark?.(grp.firstChild);
           wrap.append(grp);
           if (grp.later) { grp = null; gi++; continue; } // folded: its references wait until it's opened
         }
-        grp.append(this.refTree(g.hits[hi++]));
+        grp.append(tree(g.hits[hi++]));
         if (hi >= g.hits.length) { grp = null; gi++; hi = 0; }
       }
       if (gi < groups.length) setTimeout(step, 0);
@@ -1143,7 +1411,11 @@ class App {
     const grp = h('div', 'refgrp');
     grp.dataset.page = g.page;
     const shut = !!key && refFolds().has(key);
-    grp.innerHTML = `<h3><button type="button" class="grp-fold" aria-expanded="${!shut}" aria-label="${shut ? 'Unfold' : 'Fold'} the references from ${esc(g.page)}"></button>${this.icon(g.page)}${pageLink(g.page)}</h3>`;
+    // a clear heading (he asked, Oct 27): its icon:: emoji, else a small calendar for a journal day (days
+    // and pages tell apart at a glance), the name, and how many of its notes are listed
+    const ic = this.icon(g.page) || (g.journal ? `<span class="grp-day" aria-hidden="true">${ICON.calendar}</span>` : '');
+    const n = g.hits?.length ?? 0;
+    grp.innerHTML = `<h3><button type="button" class="grp-fold" aria-expanded="${!shut}" aria-label="${shut ? 'Unfold' : 'Fold'} the references from ${esc(g.page)}"></button>${ic}${pageLink(g.page)}<span class="grp-n">${n} note${n === 1 ? '' : 's'}</span></h3>`;
     grp.foldKey = key || null;
     if (shut) { grp.classList.add('folded'); grp.later = draw; }
     return grp;
@@ -1176,6 +1448,7 @@ class App {
           row.style.setProperty('--d', Math.min(hit.depth, 4));
           row.onclick = async (e) => {
             if (e.target.closest('a')) return;
+            if (e.target.matches('input.todo')) { e.preventDefault(); this.tickRef(g.page, hit.line, row.refText, row); return; }
             if (e.target.closest('.linkit')) {
               e.stopPropagation();
               try {
@@ -1239,6 +1512,7 @@ class App {
     const page = box.parentElement.dataset.page;
     const at = e.target.closest('.refpath [data-line]');
     if (at) { e.preventDefault(); this.go('page', page, { line: +at.dataset.line }); return; }
+    if (box.live) return; // (being edited in place: its outline takes its own clicks)
     if (e.target.closest('a')) return;
     const f = e.target.closest('.fold');
     if (f) {
@@ -1251,8 +1525,79 @@ class App {
     }
     const row = e.target.closest('.refhit');
     if (!row) return;
+    if (e.target.matches('input.todo')) { e.preventDefault(); this.tickRef(page, +row.dataset.line, row.refText, row); return; }
     const line = (row.classList.contains('refmore') ? box.querySelector('.refhit') : row).dataset.line;
-    this.go(row.classList.contains('refmore') ? 'zoom' : 'page', page, { line: line === '' ? null : +line });
+    if (row.classList.contains('refmore') || line === '') { this.go(row.classList.contains('refmore') ? 'zoom' : 'page', page, { line: line === '' ? null : +line }); return; }
+    // a note's words: edited right here, as part of this page (he asked, Oct 30, as Logseq does);
+    // its page is a click on the group's name or on the path above it
+    this.editRef(box, page, +line);
+  }
+
+  /** A linked reference (box: its .refnote) becomes the real note, editable where it is: an Outline of
+   *  its own page zoomed in on it (opts.embed), with every rule of editing a page (saves with the
+   *  file's version, merges, the clash screen, Undo, the other side's catching up). line: the note
+   *  clicked (the reference or one of its sub-notes), where typing starts. Its rows go; the path stays. */
+  async editRef(box, page, line) {
+    if (box.live) { const o = box.live, i = o.indexForLine(line); if (i !== null && i !== undefined) o.edit(i); return; }
+    if (box.opening) return;
+    box.opening = true;
+    const hit = box.tree?.hit;
+    try {
+      const pv = await call('page', { name: page, today: today(), time: nowTime() });
+      const pane = box.isConnected && this.paneOf(box);
+      if (!pane) return;
+      const host = h('div', 'ref-live');
+      const o = new Outline(host, pv, this, { zoomLine: hit.line, embed: true });
+      // the note moved or went since the list was drawn: open its page instead
+      const first = (s) => String(s ?? '').split('\n')[0].trim();
+      if (o.root === null || o.root === undefined || !o.blocks[o.root] || o.readonly || first(o.blocks[o.root].text) !== first(hit.text)) { this.go('page', page, { line: hit.line }); return; }
+      box.querySelectorAll(':scope > .refhit').forEach((r) => r.remove());
+      box.tree = null;
+      box.append(host);
+      box.classList.add('live');
+      box.live = o;
+      pane.outlines.push(o);
+      const i = o.indexForLine(line);
+      o.edit(i ?? o.root);
+    } catch (err) {
+      this.toast(String(err));
+    } finally {
+      box.opening = false;
+    }
+  }
+  /** Notes being edited inside references (editRef) under el, about to be drawn again or taken away:
+   *  their typing saved, then let go. */
+  dropLive(el) {
+    for (const p of this.tabs.panes) {
+      p.outlines = p.outlines.filter((o) => {
+        if (!o.embed || !el.contains(o.el)) return true;
+        o.stopEdit();
+        o.flush();
+        return false;
+      });
+    }
+  }
+
+  /** A to-do's tick box in a list of references: ticked off (or back on) in its own page's file,
+   *  as the To-dos list does; the row shows it at once, and its page, if open, is read again. */
+  async tickRef(page, line, text, row) {
+    if (!text || !Number.isFinite(line)) return;
+    const open = !/^(DONE|CANCELED|CANCELLED)\b/.test(text);
+    try {
+      const to = open ? await call('task_done', { text, today: today() }) : text.replace(/^(DONE|CANCELED|CANCELLED)/, this.workflow() === 'now' ? 'LATER' : 'TODO');
+      const res = await call('save_block', { name: page, line, base: text, text: to });
+      if (!res.ok) { this.toast('That to-do changed somewhere else; open its page to tick it there.'); return; }
+      if (/^(TODO|LATER) /.test(to) && open) this.toast('Repeating to-do: moved to its next date', 2200);
+      const ticked = /^DONE\b/.test(to);
+      if (row) {
+        row.refText = to;
+        row.classList.toggle('marker-done', ticked);
+        const box = row.querySelector('input.todo');
+        if (box) box.checked = ticked;
+      }
+      this.widgetTasksSoon?.();
+      await this.reloadPage(page); // (its own page, if it's open too)
+    } catch (err) { this.toast(String(err)); }
   }
 
   linkClick(e) {
@@ -1335,7 +1680,7 @@ class App {
       await this.refreshNames();
       this.renameRecent(name, res.name);
       this.toast(res.files_changed ? `Renamed. Updated links in ${res.files_changed} other page${res.files_changed === 1 ? '' : 's'}.` : 'Renamed.', 4000);
-      if (res.skipped.length) this.toast(`Renamed, but ${res.skipped.length} file(s) couldn’t be updated (not plain text): ${res.skipped.join(', ')}`, 8000);
+      if (res.skipped.length) this.toast(`Renamed, but ${res.skipped.length} file(s) couldn’t be updated (not plain text, or being changed elsewhere just then): ${res.skipped.join(', ')}`, 8000);
       this.tabs.renamed(name, res.name); // every tab (and the address) follows the new name
       this.redrawAll();
       return true;
@@ -1372,7 +1717,7 @@ class App {
     const notes = res.notes ? ` ${res.notes} note${res.notes === 1 ? '' : 's'} added at its end${res.props ? ' (its properties first)' : ''}.` : '';
     const links = res.files_changed ? ` Links updated in ${res.files_changed} other page${res.files_changed === 1 ? '' : 's'}.` : '';
     this.toast(`Merged “${name}” into “${res.name}”.${notes}${links}`, 9000, { label: 'Undo', run: () => this.undoMerge(res.undo, name) });
-    if (res.skipped.length) setTimeout(() => this.toast(`These files link to “${name}” but couldn’t be changed (not plain text): ${res.skipped.join(', ')}`, 8000), 9000);
+    if (res.skipped.length) setTimeout(() => this.toast(`These files link to “${name}” but couldn’t be changed (not plain text, or being changed elsewhere just then): ${res.skipped.join(', ')}`, 8000), 9000);
     return true;
   }
   /** The merge message's Undo: both pages (and the links) as they were, if nothing changed since. */
@@ -1529,22 +1874,27 @@ class App {
 
   // ----- looks, text size, sidebar -----
   setSkin(id) {
-    if (id === 'screenplay') id = 'plain';
-    if (!SKIN_IDS.has(id)) id = 'calm';
+    if (!SKIN_IDS.has(id)) id = 'calm'; // (Grimoire, taken out in Build 32, too; boot.js does the same before the first paint)
     document.documentElement.dataset.skin = id;
     store.set('skin', id);
     const cur = $('#side .look-cur');
-    if (cur) cur.textContent = SKINS.find((s) => s.id === id).name;
-    // the Android home-screen widgets and the "Add a note" pop-up follow the look
-    const css = getComputedStyle(document.documentElement);
-    const v = (k) => css.getPropertyValue(k).trim();
-    window.LeanAndroid?.setWidgetColors?.(v('--surface'), v('--ink'), v('--ink-faint'), v('--accent'));
+    if (cur) cur.innerHTML = lookName(SKINS.find((s) => s.id === id));
+    // the Android home-screen widgets and the "Add a note" pop-up follow the look (at every start and
+    // look change; as #rrggbb, the colours as seen, which Android always reads: a look may use any
+    // CSS colour, e.g. rgb() or color-mix(), and Android would fall back to its defaults for those)
+    if (window.LeanAndroid?.setWidgetColors) {
+      const c = lookColors();
+      window.LeanAndroid.setWidgetColors(c.surface, c.ink, c['ink-faint'], c.accent);
+    }
     // and so do the phone's status bar (clock, battery) and navigation bar: the page's colour,
     // with dark icons on a light look and light icons on a dark one
     const rgb = (getComputedStyle(document.body).backgroundColor.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
     if (rgb.length === 3 && window.LeanAndroid?.setBarColors) {
       const hex = '#' + rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('');
-      window.LeanAndroid.setBarColors(hex, 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 140);
+      const bars = () => window.LeanAndroid.setBarColors(hex, 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 140);
+      // while the start-up drawing shows, the bars stay its cream (MainActivity paints them so): then the look's
+      const sp = document.getElementById('splash');
+      if (sp && !sp.classList.contains('done')) { this.barsLater = bars; setTimeout(() => { this.barsLater?.(); this.barsLater = null; }, 12500); } else bars(); // (12 s: when the drawing goes by itself)
     }
     // and so does the Windows "Add to journal" box, which draws itself without this page: it reads
     // the colours from a small file the app keeps (written only when they change). A moment later,
@@ -1565,7 +1915,7 @@ class App {
     box.setAttribute('aria-label', 'Choose a look');
     box.innerHTML = `<ul>${SKINS.map((s) => `<li><button type="button" data-look="${s.id}" aria-pressed="${s.id === cur}">
         <span class="look-sw" data-skin="${s.id}" aria-hidden="true"><span><i></i><b>Aa</b></span></span>
-        <span class="look-txt"><b>${esc(s.name)}</b><small>${esc(s.note)}</small></span></button></li>`).join('')}</ul>
+        <span class="look-txt"><b>${lookName(s)}</b><small>${esc(s.note)}</small></span></button></li>`).join('')}</ul>
       <a class="look-more" href="#/settings/look">Bigger previews and text size: Settings</a>`;
     document.body.append(box);
     const rows = () => [...box.querySelectorAll('[data-look]')];
@@ -1663,7 +2013,7 @@ class App {
     const win = isApp && !isAndroid ? window.__TAURI__?.window?.getCurrentWindow?.() : null;
     const side = $('#side');
     side.innerHTML = `
-      <div class="brand">${ICON.logo}<span>Lean Outliner</span><button class="icon-btn hide-side" data-a="side" aria-label="Hide the sidebar" title="Hide the sidebar (t l)">${ICON.side}</button></div>
+      <div class="brand">${ICON.brand}<button class="icon-btn hide-side" data-a="side" aria-label="Hide the sidebar" title="Hide the sidebar (t l)">${ICON.side}</button></div>
       <button class="searchbtn" data-a="search">${ICON.search.replace('<svg', '<svg width="16" height="16"')}<span>Search</span><kbd>Ctrl K</kbd></button>
       <nav class="nav">
         <a href="#/journals" data-view="journals">${ICON.journals}Journals</a>
@@ -1703,7 +2053,7 @@ class App {
       const a = e.target.closest('#recent a, #favs a');
       if (a) { e.preventDefault(); this.go('page', a.dataset.page); }
     });
-    this.setSkin(document.documentElement.dataset.skin || 'calm');
+    this.setSkin(document.documentElement.dataset.skin || 'thinky');
     this.sideExtras(side);
     this.textSize(this.textSize());
     this.applyTextStyle();
@@ -1723,7 +2073,7 @@ class App {
     let homeF = 0;
     const onScroll = () => {
       clearTimeout(noteT); noteT = setTimeout(() => this.noteTop(), 150); this.pinSoon();
-      if (!homeF) homeF = requestAnimationFrame(() => { homeF = 0; this.updateHome(); });
+      if (!homeF) homeF = requestAnimationFrame(() => { homeF = 0; this.updateHome(); this.fabScroll(); });
     };
     window.addEventListener('resize', () => this.pinSoon());
     for (const el of this.tabs.els) el.addEventListener('scroll', onScroll, { passive: true }); // (both sides)
@@ -1744,7 +2094,7 @@ class App {
     const home = `<button data-a="home" aria-label="Today in Journals" title="Today in Journals (g j)">${ICON.home}</button>`;
     const strip = (p) => `<div class="tabs" data-p="${p}" role="tablist" aria-label="Open pages${p ? ' on the right' : ''}" hidden></div>`
       + `<button type="button" class="tab-new" data-p="${p}" aria-label="New tab${p ? ' on the right' : ''}" title="New tab (Ctrl+T)" hidden>${ICON.plus}</button>`;
-    const appBtns = `<span class="hb-app"><i class="hb-logo" title="Lean Outliner">${ICON.logo}</i>`
+    const appBtns = `<span class="hb-app"><i class="hb-logo" title="thinky">${ICON.logo}</i>`
       + `<button data-a="side" aria-controls="side" aria-label="Sidebar" title="Hide the sidebar (t l)">${ICON.side}</button>`
       + `<button data-a="search" aria-label="Search" title="Search (Ctrl+K)">${ICON.search}</button></span>`;
     hb.innerHTML = `<div class="hb-h">${appBtns}<span class="hb-nav" data-p="0">${sideNav(0)}</span>${strip(0)}</div>`
@@ -1781,7 +2131,7 @@ class App {
     }
 
     const top = $('#topbar');
-    top.innerHTML = `<button data-a="menu" aria-label="Menu">${ICON.menu}</button>${home}
+    top.innerHTML = `<button data-a="menu" aria-label="Menu" aria-controls="side" aria-expanded="false">${ICON.menu}</button>${home}
       <button data-h="back" aria-label="Back" title="Back">${ICON.back}</button><button data-h="forward" aria-label="Forward" title="Forward">${ICON.forward}</button>
       <span class="t"></span><button data-a="date" aria-label="Go to date" title="Go to date">${ICON.date}</button><button data-a="search" aria-label="Search">${ICON.search}</button>${winctl}`;
     // Tauri moves the window when one of these is pressed directly (not a button inside it).
@@ -1803,6 +2153,9 @@ class App {
     document.addEventListener('click', (e) => {
       if (document.body.classList.contains('drawer') && !e.target.closest('#side, #topbar, .pop, .modal-back')) document.body.classList.remove('drawer');
     });
+    // the menu button says whether the menu (drawer) is open, whatever opened or closed it
+    const menuBtn = $('[data-a="menu"]', top);
+    new MutationObserver(() => menuBtn.setAttribute('aria-expanded', String(document.body.classList.contains('drawer')))).observe(document.body, { attributes: true, attributeFilter: ['class'] });
     // phones: a swipe in from the left edge opens the menu, a swipe to the left closes it
     // (Android's Back gesture keeps the very edge; notes swipe in and out further in, editor.js)
     let sw = null;
@@ -1812,6 +2165,7 @@ class App {
       sw = e.touches.length === 1 && matchMedia('(max-width: 860px)').matches && (open || t.clientX < EDGE) ? { x: t.clientX, y: t.clientY, open } : null;
     }, { passive: true });
     document.addEventListener('touchmove', (e) => {
+      this.touchedAt = Date.now(); // (the page scrolled by a finger: the "+" may step aside, fabScroll)
       if (!sw) return;
       const dx = e.touches[0].clientX - sw.x, dy = Math.abs(e.touches[0].clientY - sw.y);
       if (dy > 30 && dy > Math.abs(dx)) { sw = null; return; }
@@ -1823,9 +2177,10 @@ class App {
 
     // phone editing toolbar: scrolls sideways, except "close keyboard", which stays at the end
     const tb = $('#toolbar');
-    const tools = [['outdent', 'Outdent'], ['indent', 'Indent'], ['up', 'Move up'], ['down', 'Move down'], ['more', 'Note menu: colour, heading, cut, copy…'], ['slash', 'Commands (/)'], ['newline', 'New line in this block'],
+    // his order (Oct 30): Undo and Redo first, the writing buttons, then moving the note, "/" last
+    const tools = [['undo', 'Undo'], ['redo', 'Redo'], ['newline', 'New line in this block'],
       ['link', 'Link'], ['tag', 'Tag'], ['check', 'To-do'], ['date', 'Date: a link to a day, or scheduled / deadline'], ['bold', 'Bold'], ['italic', 'Italics'], ['mark', 'Highlight'], ['heading', 'Heading'],
-      ['image', 'Add image'], ['undo', 'Undo'], ['redo', 'Redo']];
+      ['image', 'Add image'], ['more', 'Note menu: colour, heading, cut, copy…'], ['outdent', 'Outdent'], ['indent', 'Indent'], ['up', 'Move up'], ['down', 'Move down'], ['slash', 'Commands (/)']];
     const tbBtn = ([k, label], cls = '') => `<button data-t="${k}"${cls ? ` class="${cls}"` : ''} aria-label="${label}" title="${label}">${ICON[k]}</button>`;
     tb.innerHTML = `<div class="tb-scroll">${tools.map((t) => tbBtn(t)).join('')}</div>${tbBtn(['done', 'Close keyboard'], 'tb-pin')}`;
     // A button acts when it's tapped (the finger lifted where it went down), not as soon as a finger
@@ -1847,6 +2202,8 @@ class App {
       press = null;
       if (!p || e.pointerId !== p.id || e.target.closest('button') !== p.b) return;
       const b = p.b;
+      // a page's properties box: only the buttons that type something there
+      if (this.textTa?.isConnected && document.activeElement === this.textTa) { this.textTool(this.textTa, b.dataset.t); return; }
       const o = this.active;
       if (!o) return;
       const i = o.cur ?? (o.sel ? o.selRange()[0] : null);
@@ -1861,9 +2218,16 @@ class App {
         slash: () => o.openCommands(), // (while typing; not for selected notes)
         bold: () => o.wrap('**', '**'), italic: () => o.wrap('*', '*'), mark: () => o.wrap('^^', '^^'), heading,
         image: () => o.pickFile(true), undo: () => this.undo(o), redo: () => this.redo(o),
-        more: () => o.openMenu(o.cur ?? o.sel.b, { kb: true, touch: true }), // (the editing box keeps the keyboard)
+        more: () => o.openMenu(o.cur ?? o.sel.b, { kb: true, touch: true, at: b.getBoundingClientRect() }), // (by the button; the editing box keeps the keyboard)
         done: () => { o.stopEdit(); o.clearSel(); document.activeElement?.blur(); this.updateToolbar(); },
       })[b.dataset.t]?.();
+      // the toolbar went away (Close keyboard): the click that comes with this tap mustn't land on
+      // what's under the finger now (the "+", a note)
+      if (tb.hidden) {
+        const eat = (c) => { c.preventDefault(); c.stopPropagation(); };
+        document.addEventListener('click', eat, { capture: true, once: true });
+        setTimeout(() => document.removeEventListener('click', eat, true), 500);
+      }
     });
 
     // phones: a round "+" at the bottom adds a note at the end of the page shown (on the Journals list,
@@ -1875,7 +2239,7 @@ class App {
     add.hidden = true;
     add.setAttribute('aria-label', 'Add a note');
     add.title = 'Add a note';
-    add.innerHTML = ICON.plus;
+    add.innerHTML = ICON.addNote;
     add.onclick = () => this.addNote();
     if (isAndroid) add.classList.add('android'); // (shown on any Android, app.css)
     tb.after(add);
@@ -2324,9 +2688,16 @@ class App {
       const changed = await call('rescan');
       if (changed.length) {
         this.refCache?.clear();
+        // the settings changed on disk (Logseq, the phone) or arrived late: taken in by the core
+        // (core app.rs take_config); journals named or kept elsewhere now: every side drawn again
+        const was = changed.includes('logseq/config.edn') && this.summary?.config;
+        if (was) await this.useSettings(await call('summary'));
+        const c = this.summary?.config;
+        const moved = was && ['pages_dir', 'journals_dir', 'journal_title_format', 'journal_file_format'].some((k) => was[k] !== c[k]);
         await this.refreshNames();
         const set = new Set(changed);
-        for (const o of this.outlines) if (set.has(o.path)) await o.reload();
+        if (moved) await Promise.all(this.tabs.panes.map((p) => this.draw(p)));
+        else for (const o of this.outlines) if (set.has(o.path)) await o.reload();
         this.widgetTasksSoon();
       }
     } catch { /* ignore */ }
@@ -2377,6 +2748,8 @@ class App {
     if (this.ac.isOpen) { this.ac.close(); return true; }
     if (this.find.isOpen) { this.find.close(); return true; }
     if (document.body.classList.contains('drawer')) { document.body.classList.remove('drawer'); return true; }
+    const wlBack = $('.welcome .wl-back'); // (the welcome screen's folder picker: back to its first step)
+    if (wlBack) { wlBack.click(); return true; }
     const o = this.outlines.find((x) => x.cur !== null || x.sel);
     if (o) { o.stopEdit(); o.clearSel(); document.activeElement?.blur(); this.updateToolbar(); return true; }
     const a = document.activeElement; // e.g. the page properties box, a filter
@@ -2444,15 +2817,8 @@ class App {
     this.noAccess = !!window.LeanAndroid && !window.LeanAndroid.hasAllFilesAccess();
     if (!path) return;
     try {
-      const s = await call('open', { path });
-      s.today = await call('journal_name', { date: today() });
-      this.summary = s;
+      await this.useSettings(await call('open', { path }));
       this.vaultOpen = true;
-      const c = s.config;
-      this.keyMap = { ...DEFAULT_KEYS };
-      for (const [action, keys] of c.shortcuts || []) this.keyMap[action] = keys;
-      window.LeanAndroid?.setWidgetConfig?.(s.root, c.journals_dir, c.journal_file_format, c.journal_title_format);
-      this.sendCaptureConfig();
       this.vaultError = null;
       await this.refreshNames();
       this.renderSideLists();
@@ -2460,6 +2826,18 @@ class App {
     } catch (e) {
       this.vaultError = String(e?.message ?? e);
     }
+  }
+
+  /** The open folder's summary and its settings (config.edn): the shortcut keys, and the phone
+   *  widget's and quick capture's settings. */
+  async useSettings(s) {
+    s.today = await call('journal_name', { date: today() });
+    this.summary = s;
+    const c = s.config;
+    this.keyMap = { ...DEFAULT_KEYS };
+    for (const [action, keys] of c.shortcuts || []) this.keyMap[action] = keys;
+    window.LeanAndroid?.setWidgetConfig?.(s.root, c.journals_dir, c.journal_file_format, c.journal_title_format);
+    this.sendCaptureConfig();
   }
 
   /** The phone's share pop-up and widget use the same quick capture format as the app. */
@@ -2492,6 +2870,7 @@ class App {
     this.latest = latest;
     const newer = !!latest && n(latest.tag) > n(ver);
     $('#update').hidden = !newer;
+    document.documentElement.classList.toggle('has-update', newer); // (a small spark on Settings and About: app.css)
     return newer;
   }
 }

@@ -186,6 +186,16 @@ check(items.includes('Copy link') && !items.includes('Show file in Explorer'), '
 await page.locator('.pop.menu button', { hasText: 'Copy link' }).click();
 await sleep(200);
 check(await clip() === 'leanoutliner://page/Tasks' && (await toast()).includes('Link to this page copied'), 'Copy link: leanoutliner://page/Tasks', await clip());
+// the page's own link rule (api.js, encodeURIComponent) is what the core reads back (link.rs)
+const trip = await page.evaluate(async (names) => {
+  const api = await import('/api.js');
+  const out = [];
+  for (const n of names) out.push([n, api.pageLinkUrl(n), (await api.call('link', { link: api.pageLinkUrl(n) })).name]);
+  const note = await api.call('link', { link: api.noteLinkUrl('6528AAAA-bbbb-4ccc-8ddd-eeeeffff6666') });
+  return { out, note };
+}, ['Marta Pell', 'APRON/Spice jars', 'C++ & Rust?', '100% done #1', 'Café ☕ notes', 'a/b/c', 'it’s “quoted”', 'x=1&y=2']);
+check(trip.out.every(([n, , back]) => back === n) && trip.out[1][1] === 'leanoutliner://page/APRON%2FSpice%20jars', 'page links made by the page open the same page in the core', JSON.stringify(trip.out));
+check(trip.note.kind === 'note' && trip.note.id === '6528aaaa-bbbb-4ccc-8ddd-eeeeffff6666', 'a note link names the note (small letters)', JSON.stringify(trip.note));
 const TASKS = read('pages/Tasks.md');
 await page.locator('#main .outline .blk', { hasText: 'undated thing' }).first().locator(':scope > .bul').click({ button: 'right' });
 await page.waitForSelector('.note-menu');

@@ -72,11 +72,13 @@ const hl = await page.evaluate(() => {
   const row = (t) => [...document.querySelectorAll('.blk')].find((b) => b.querySelector(':scope > .bc')?.textContent === t);
   const b = row('a').querySelector(':scope > .bul');
   const r = l.getBoundingClientRect(), bul = b.getBoundingClientRect(), a2 = row('a2').getBoundingClientRect();
-  // it starts just below the dot, where the pale line under it starts (see .blk::after)
-  const zz = bul.width / b.offsetWidth, dot = parseFloat(getComputedStyle(b, '::after').height);
-  return { top: Math.round(r.top - (bul.top + bul.height / 2 + (dot / 2 + 4) * zz)), bottom: Math.round(r.bottom - a2.bottom), x: Math.round(r.left + r.width / 2 - (bul.left + bul.width / 2)) };
+  // it runs where the pale line does (.blk::before/::after, Build 32): from --guide-gap under "a"'s
+  // dot to the words of the last block under it, --guide-end above the end of that row
+  const zz = bul.width / b.offsetWidth, cs = getComputedStyle(b.closest('.blk'));
+  const start = (parseFloat(cs.getPropertyValue('--bullet-h')) / 2 + parseFloat(cs.getPropertyValue('--guide-gap'))) * zz, end = parseFloat(cs.getPropertyValue('--guide-end')) * zz;
+  return { top: Math.round(r.top - (bul.top + bul.height / 2 + start)), bottom: Math.round(r.bottom - (a2.bottom - end)), x: Math.round(r.left + r.width / 2 - (bul.left + bul.width / 2)), gap: Math.round((r.top - (bul.top + bul.height / 2)) / zz) };
 });
-check(z > 1.2 && hl && Math.abs(hl.top) <= 1 && Math.abs(hl.bottom) <= 1 && Math.abs(hl.x) <= 1, 'at 125% the lit line runs from just below the dot to the last block under it', JSON.stringify({ z, hl }));
+check(z > 1.2 && hl && Math.abs(hl.top) <= 1 && Math.abs(hl.bottom) <= 1 && Math.abs(hl.x) <= 1 && hl.gap >= 10, 'at 125% the lit line runs from a gap under the dot to the last block’s words', JSON.stringify({ z, hl }));
 await page.mouse.click(...onLineOfA);
 await sleep(900);
 const tf = read('pages/Thread.md');
@@ -93,7 +95,7 @@ const ms = await page.evaluate(() => {
   for (let k = 0; k < 5; k++) { o.showThread(null); o.showThread(0); }
   return (performance.now() - t0) / 5;
 });
-const lit = await page.evaluate(() => { const l = document.querySelector('.thread-hl')?.getBoundingClientRect(); const f = [...document.querySelectorAll('.blk')].find((b) => b.querySelector(':scope > .bc')?.textContent === 'folded')?.getBoundingClientRect(); return l && f ? Math.round(l.bottom - f.bottom) : null; });
+const lit = await page.evaluate(() => { const l = document.querySelector('.thread-hl')?.getBoundingClientRect(); const fb = [...document.querySelectorAll('.blk')].find((b) => b.querySelector(':scope > .bc')?.textContent === 'folded'); const f = fb?.getBoundingClientRect(); return l && f ? Math.round(l.bottom - (f.bottom - parseFloat(getComputedStyle(fb).getPropertyValue('--guide-end')))) : null; });
 check(ms < 40 && lit === 0, '3,800 blocks with 2,000 folded at the end: lit in a moment, down to the last block shown', JSON.stringify({ ms: Math.round(ms), lit }));
 await page.evaluate(() => window.leanApp.outlines[0].showThread(null));
 

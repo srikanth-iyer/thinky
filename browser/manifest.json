@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "thinky highlights",
+  "version": "1.0.0",
+  "description": "Highlight passages on web pages and send them to thinky, filed on the article's own page.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtFLmgbw3zFvJOH71RdHBqDIl2NRlpVQlq6FwX6gcenY8PRzeT6hpeulTgyCwkk644YspgKMJ89e2Ck+l+JmUKKhEkt+lSJIxVRW5qbFTZKda5SkzzrtpRbfZv+VSoPyIqenTDbUT+6Plt2jEWpVm7wo3c1He2YZj3JFGs14g4epWeOBQfFu4MefzkLYzfxEYoYlm6aZvGAvIGUk86JzgxJ+zGEpNQSq4tD2i95x4dhKHAyTfkePsHEu/xf0LaJvTsNABZWm2KFdDC3igiVZtDmUBTyBF7GjBV23A4JBbczvw9y3PrBkGxNqxu0g1yrIrfJ4g8AkyOlgGYgUEkSeDmQIDAQAB",
+  "minimum_chrome_version": "105",
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus", "nativeMessaging"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "thinky highlights",
+    "default_popup": "popup.html",
+    "default_icon": { "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" }
+  },
+  "icons": { "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "commands": {
+    "highlight": { "suggested_key": { "default": "Alt+Shift+H" }, "description": "Highlight the selected text" },
+    "journal": { "suggested_key": { "default": "Alt+Shift+J" }, "description": "Send the selected text to today's journal" },
+    "_execute_action": { "suggested_key": { "default": "Alt+Shift+L" }, "description": "Open the highlights box" }
+  }
+}

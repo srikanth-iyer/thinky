@@ -300,10 +300,26 @@ fn block_refs_search_and_ids() {
         "pages/Refs.md",
         "- Rule one is salt first\n  id:: 6528AAAA-bbbb-4ccc-8ddd-eeeeffff0001\n- another rule note\n\t- rule of thumb\n\t  status:: rule\n- id only in a property\n  id:: 6528aaaa-bbbb-4ccc-8ddd-eeeeffff0002\n",
     );
-    // notes holding every word, starting with them first, then shorter; property lines don't count
+    // notes holding every word (as the search box: property values count, id:: doesn't), starting
+    // with them first, then shorter
     let hits = v.search_blocks("rule", 12);
     let texts: Vec<&str> = hits.iter().map(|h| h.text.lines().next().unwrap()).collect();
-    assert_eq!(texts[..3], ["rule of thumb", "Rule one is salt first", "another rule note"], "{texts:?}");
+    assert_eq!(texts[..3], ["Rule one is salt first", "rule of thumb", "another rule note"], "{texts:?}");
+    // accents and capitals as the search box: "cremerie" finds "Crémerie"
+    v.upsert("pages/Uni.md", "- Bistro Crémerie Centrale
+");
+    assert_eq!(v.search_blocks("cremerie", 12).len(), 1);
+    // the best note is found however many others match (no cut-off before choosing)
+    let many: String = (0..2500).map(|k| format!("- a kiwi fruit note {k}\n")).collect();
+    for n in 0..3 {
+        v.upsert(&format!("pages/Many{n}.md"), &many);
+    }
+    v.upsert("pages/Best.md", "- kiwi\n");
+    assert_eq!(v.search_blocks("kiwi", 12)[0].page, "Best");
+    for n in 0..3 {
+        v.remove(&format!("pages/Many{n}.md"));
+    }
+    v.remove("pages/Best.md");
     assert!(!hits.iter().any(|h| h.text.starts_with("id only")));
     assert_eq!(v.search_blocks("thumb rule", 12).len(), 1); // every word, in any order
     assert!(v.search_blocks("  ", 12).is_empty());
@@ -326,4 +342,50 @@ fn block_refs_search_and_ids() {
     let mut got: Vec<String> = v.search_blocks("kiwi", 12).into_iter().map(|h| h.text).collect();
     got.sort();
     assert_eq!(got, ["a deeper kiwi dash", "a kiwi dash note"]);
+}
+
+/// A page's other names (alias::) count as the page (asked for Oct 28): the page list carries
+/// them, so typing [[SB offers "SB → Sourdough Bread", never "New page: SB"; an alias that's a page
+/// of its own, or that another page claims, isn't one of its names; links to an alias are never a
+/// page without a file.
+#[test]
+fn aliases_count_as_the_page() {
+    let mut v = sample();
+    v.upsert("pages/Hartley.md", "alias:: Edith Hartley, [[EH]], Pickles in brine\n- pastry chef\n");
+    let all = v.all_pages();
+    let get = |n: &str| all.iter().find(|p| p.name == n).unwrap_or_else(|| panic!("{n}"));
+    assert_eq!(get("Sourdough Bread").aliases, vec!["SB"]);
+    assert_eq!(get("Hartley").aliases, vec!["Edith Hartley", "EH"], "Pickles in brine is a page of its own");
+    assert!(!all.iter().any(|p| p.name.eq_ignore_ascii_case("sb") || p.name == "EH"), "an alias isn't listed as a page of its own");
+    assert!(get("Sourdough Bread").refs >= 2, "links to the alias count for the page");
+    let info = v.page_info("sb");
+    assert_eq!((info.name.as_str(), info.exists), ("Sourdough Bread", true), "the alias opens the page");
+    // two pages claiming one alias: it leads to one of them, and only that one lists it
+    v.upsert("pages/Other.md", "alias:: SB\n- also claims it\n");
+    let all = v.all_pages();
+    let owners: Vec<&str> = all.iter().filter(|p| p.aliases.iter().any(|a| a == "SB")).map(|p| p.name.as_str()).collect();
+    assert_eq!(owners.len(), 1, "{owners:?}");
+    assert_eq!(v.page_info("SB").name, owners[0]);
+    // the JSON the app gets: "aliases" only where there are some
+    let json = serde_json::to_value(&all).unwrap();
+    let hartley = json.as_array().unwrap().iter().find(|p| p["name"] == "Hartley").unwrap();
+    assert_eq!(hartley["aliases"], serde_json::json!(["Edith Hartley", "EH"]));
+    assert!(json.as_array().unwrap().iter().find(|p| p["name"] == "Pickles in brine").unwrap().get("aliases").is_none());
+}
+
+#[test]
+fn tags_count_pages_and_hash_tags_in_notes() {
+    // he asked (Oct 30): a #tag written in a note counts too, beside the pages with tags::
+    let mut v = Vault::new();
+    v.upsert("pages/a.md", "tags:: reading, ideas\n\n- a note #reading and #[[deep work]]\n- `#notatag` in code and [[reading]] as a link\n");
+    v.upsert("pages/b.md", "- #reading twice #reading in one note\n- ```\n  #include <x>\n  ```\n");
+    v.upsert("pages/c.md", "tags:: ideas\n");
+    let tags = v.all_tags();
+    let get = |n: &str| tags.iter().find(|t| t.0.eq_ignore_ascii_case(n)).map(|t| (t.1, t.2));
+    assert_eq!(get("reading"), Some((1, 2)), "one page with tags::, two notes with #reading (one counted once)");
+    assert_eq!(get("ideas"), Some((2, 0)));
+    assert_eq!(get("deep work"), Some((0, 1)));
+    assert_eq!(get("notatag"), None, "not in code");
+    assert_eq!(get("include"), None, "not in a code block");
+    assert_eq!(tags[0].0.to_lowercase(), "reading", "the most used first");
 }

@@ -12,13 +12,21 @@ const btn = page.locator('#side [data-a="looks"]');
 check(await btn.isVisible(), 'sidebar has one Look button');
 const curName = async () => (await page.locator('#side .look-cur').textContent()).trim();
 const skin = () => page.evaluate(() => document.documentElement.dataset.skin);
+// no look picked yet: thinky (the default since Build 33, he asked); its name is the wordmark
+await page.evaluate(() => localStorage.removeItem('skin'));
+await page.reload();
+await page.waitForSelector('.sheet .outline');
+check((await skin()) === 'thinky' && await page.locator('#side .look-cur svg.wm-in').count() === 1, 'no look picked yet: thinky, named by its wordmark', await skin());
+await page.evaluate(() => localStorage.setItem('skin', JSON.stringify('calm')));
+await page.reload();
+await page.waitForSelector('.sheet .outline');
 check((await curName()) === 'Calm' && (await skin()) === 'calm', 'button shows the current look', await curName());
 
 await btn.click();
 await sleep(150);
 const pop = page.locator('.pop.looks');
 check(await pop.isVisible(), 'clicking it opens the list');
-check(await page.locator('.pop.looks [data-look]').count() === 11, '11 looks listed');
+check(await page.locator('.pop.looks [data-look]').count() === 12, '12 looks listed (Grimoire taken out, thinky added)');
 check(await page.evaluate(() => document.activeElement?.dataset.look) === 'calm', 'focus starts on the current look');
 const bgs = await page.evaluate(() => [...document.querySelectorAll('.look-sw')].map((e) => getComputedStyle(e).backgroundColor));
 check(new Set(bgs).size >= 6, 'each sample is painted in its own look', bgs.join(' | '));
@@ -39,8 +47,8 @@ check(sent?.look === 'night' && sent.colors.surface === '#2a2f38' && sent.colors
   'the look’s colours are saved for the Windows capture box', JSON.stringify(sent));
 check(await pop.isVisible(), 'list stays open to compare');
 check(await page.locator('.pop.looks [aria-pressed="true"]').getAttribute('data-look') === 'night', 'tick moves to the new look');
-for (let k = 0; k < 5; k++) await page.keyboard.press('ArrowUp'); // Night → Calm plain → Calm → Plain night → Plain → (round) Azulejo
-check(await page.evaluate(() => document.activeElement?.dataset.look) === 'azulejo', 'arrow keys wrap around');
+for (let k = 0; k < 6; k++) await page.keyboard.press('ArrowUp'); // Night → Calm plain → Calm → Plain teal → Plain night → Plain → (round) thinky, the last
+check(await page.evaluate(() => document.activeElement?.dataset.look) === 'thinky', 'arrow keys wrap around');
 await page.keyboard.press('Escape');
 await sleep(100);
 check(await pop.count() === 0, 'Esc closes the list');
@@ -59,7 +67,7 @@ const kept = await page.evaluate(() => localStorage.getItem('skin'));
 check(kept === '"plain"', 'the choice is remembered', kept);
 // Settings still has the big previews
 await page.evaluate(() => { location.hash = '#/settings/look'; }); await sleep(500);
-check(await page.locator('.skin-card').count() === 11, 'Settings still shows the large previews');
+check(await page.locator('.skin-card').count() === 12, 'Settings still shows the large previews');
 console.log('link colour and fonts');
 await page.evaluate(() => { location.hash = '#/settings/look'; });
 await sleep(700);
