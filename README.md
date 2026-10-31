@@ -12,6 +12,24 @@ you choose; thinky has no accounts, no servers and no tracking.
 (Until Build 32 the app was called Lean Outliner. The downloads, the program's file names and its
 hidden id keep that name, so updates install over older versions.)
 
+## Use it with your Logseq notes
+
+thinky opens an existing Logseq folder as it is: point it at the folder that holds `pages/`,
+`journals/` and `logseq/config.edn`. Nothing is imported or converted, and there is no database of
+its own.
+
+- It follows that folder's `config.edn`: where journals and pages live, the journal date and file
+  name formats, favourites, the to-do workflow, quick-capture templates and shortcuts.
+- It writes Logseq's own Markdown: `- ` bullets, `key:: value` properties, `[[links]]`, `#tags`,
+  `((block references))`, TODO/DOING/DONE, SCHEDULED and DEADLINE. Lines you didn't touch are written
+  back byte for byte, so Logseq opens every file it saves.
+- Logseq can keep using the same folder, on the desktop or the phone, even while thinky has it open.
+  When both change a page, thinky merges the two and never silently overwrites.
+- Its safety copies sit in a hidden `logseq/.safety-…` folder, which Logseq ignores.
+
+It works with Logseq's Markdown folders (Logseq 0.10 and its file-based graphs). It doesn't read
+Org-mode (`.org`) files or whiteboards, or Logseq's newer database version.
+
 ## What it does
 
 - Journals, pages, links, tags, properties, linked and unlinked references, search (Ctrl+K).
