@@ -1,0 +1,49 @@
+shown_ms=61
+where_ms=61
+PASS An Enter right as the box appears is ignored
+PASS It says where the note goes
+PASS The words from the link are in the box
+PASS …and selected, so typing replaces them
+PASS The box grows with the text
+PASS Enter adds the note and says so
+PASS The note is in today's journal as typed
+PASS Then the box closes by itself
+PASS (the test put words on the clipboard)
+PASS The dark box says where the note goes
+PASS The clipboard's words are in the box
+PASS Words copied from a web page: the box finds the page's address
+PASS To-do: a LATER mark shows (the "now" workflow)
+PASS Clicking the to-do mark takes it off
+PASS (the test put a picture on the clipboard)
+PASS A pasted picture is linked in the note
+PASS …but not copied into assets/ before the note is added
+PASS A dropped file is linked (copied only when the note is added)
+PASS The page list shows today's journal and the pages
+PASS A page named by title:: is listed by that name
+PASS Clicking a page in the list picks it
+PASS A date offers that day's journal, not a new page
+PASS A name no page can have says why
+PASS Typing finds the page (and offers a new one)
+PASS Enter picks it: the note will go there
+PASS The to-do is added to that page
+PASS The to-do went to the end of Project ideas, as LATER
+PASS The picture (as PNG) and the file are in assets/, as linked
+PASS The third box says where the note goes
+PASS A dropped file is linked by its name
+PASS Pressing the shortcut again hands the open box the new words, on a line of their own
+PASS An Enter right after it's brought forward is ignored
+PASS …and brings it forward (no second box)
+PASS The small buttons ([[ ]], #, To-do) are on the box, after the text
+PASS [[ ]] turns the selected words into a page link
+PASS # starts a tag where the caret is
+PASS [[ ]] with nothing selected: the caret between the brackets
+PASS To-do puts the to-do mark on
+PASS …and a second click takes it off
+PASS Clicking × closes the box
+PASS A box closed without adding leaves nothing in assets/
+PASS Nothing else was written in the notes folder
+PASS The box never writes the app's index cache
+PASS It says why the notes folder can't be used
+PASS A note that can't be added stays in the box, editable
+PASS Esc closes it
+PASS Nothing was written for the missing folder
