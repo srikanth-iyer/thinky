@@ -616,7 +616,9 @@ jobs:
   # and older look. Environment `publish`, allowed only for main.
   release:
     needs: [number, windows, sign, verify, rename-check]
-    if: github.ref == 'refs/heads/main' && needs.sign.result == 'success' && needs.verify.result == 'success' && needs.rename-check.result == 'success'
+    # (always(): `sign-wip`, skipped on main, sits upstream of `verify`, and a skipped job upstream would
+    # otherwise skip this one; every job it needs is checked by name instead)
+    if: always() && github.ref == 'refs/heads/main' && needs.number.result == 'success' && needs.windows.result == 'success' && needs.sign.result == 'success' && needs.verify.result == 'success' && needs.rename-check.result == 'success'
     runs-on: ubuntu-latest
     environment: publish
     permissions:
