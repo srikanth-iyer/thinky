@@ -254,6 +254,7 @@ jobs:
           Write-Host "Build 31 installed: $oldDir; shortcuts: $((& $ours | ForEach-Object FullName) -join ', ')"
           New-Item -Force -Path $linkKey | Out-Null
           Set-ItemProperty -Path $linkKey -Name '(default)' -Value "`"$oldDir\lean-outliner.exe`" `"%1`""
+          if (-not (Test-Path $runKey)) { New-Item -Path $runKey | Out-Null }   # (a fresh runner has none)
           Set-ItemProperty -Path $runKey -Name 'Lean Outliner shortcut key' -Value "`"$oldDir\lean-outliner.exe`" --hotkey"
           # the app's data (named by the hidden identifier) must come through untouched
           $marks = @((Join-Path $env:LOCALAPPDATA 'com.srikanth.leanoutliner\ci-marker.txt'), (Join-Path $env:APPDATA 'com.srikanth.leanoutliner\ci-marker.txt'))

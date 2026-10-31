@@ -169,7 +169,11 @@ run adb shell am start -n "$PKG/.QuickCaptureActivity" -a android.intent.action.
 sleep 3
 adb shell uiautomator dump /sdcard/ui-fileshare.xml >/dev/null 2>&1; adb exec-out cat /sdcard/ui-fileshare.xml > $OUT/ui-fileshare.xml 2>/dev/null
 shot 10b-file-share-refused
-adb shell input keyevent KEYCODE_BACK; sleep 1
+# close the pop-up (it always shows since Build 34: Back first closes its keyboard, then the pop-up)
+for i in 1 2 3; do
+  adb shell dumpsys activity activities | tr -d '\r' | grep -m1 'topResumedActivity' | grep -q QuickCaptureActivity || break
+  adb shell input keyevent KEYCODE_BACK; sleep 1
+done
 run adb shell ls -l /sdcard/vault/assets
 run adb shell "cat '/sdcard/vault/pages/quick capture.md'"
 ensure_app
@@ -461,7 +465,7 @@ result "Android's back button goes back inside the app" "[ '$BACKHASH' = '\"#/jo
 result "Back closes the menu drawer first and stays on the page" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if d[\"drawer\"] is False and d[\"hash\"].endswith(\"Sourdough Bread\") else 1)' '$DRAWER'"
 result "Back at the start leaves the app for the home screen" "[ -n '$TOP' ] && ! echo '$TOP' | grep -q '$PKG'"
 result "the app keeps running after leaving" "[ -n '$LEFT' ]"
-result "Update now asks for Android's “Install unknown apps” first" "echo \"\$UPD\" | grep -q '\"permission\"' && echo \"\$UNKNOWN\" | grep -q 'com.android.settings'"
+[ -n "$LATEST" ] && result "Update now asks for Android's “Install unknown apps” first" "echo \"\$UPD\" | grep -q '\"permission\"' && echo \"\$UNKNOWN\" | grep -q 'com.android.settings'"
 if [ -n "$LATEST" ]; then
 result "allowed, the newest release downloads and the app refuses it: not signed like this test build" "[ \"\$ST\" = error ] && echo \"\$REFUSED\" | grep -q 'signed like this app'"
 result "handed a good download, Android's installer asks to go ahead; cancelled, the app says so" "echo \"\$ASKED\" | grep -qi 'packageinstaller' && echo \"\$CANCELLED\" | grep -q 'cancelled'"
