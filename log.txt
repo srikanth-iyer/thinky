@@ -1,0 +1,507 @@
+== test script started 12:29:34; device: device
+== $ adb install -r apk/app-universal-debug.apk
+Performing Streamed Install
+Success
+== package: com.srikanth.leanoutliner
+== today's journal: October 31st, 2026
+== $ adb push /tmp/vault /sdcard/
+/tmp/vault/: 36 files pushed, 0 skipped. 0.0 MB/s (4105 bytes in 0.247s)
+== $ adb shell ls /sdcard/vault /sdcard/vault/Diary
+/sdcard/vault:
+Diary
+logseq
+pages
+
+/sdcard/vault/Diary:
+October 10th, 2026.md
+October 11th, 2026.md
+October 12th, 2026.md
+October 13th, 2026.md
+October 14th, 2026.md
+October 15th, 2026.md
+October 16th, 2026.md
+October 17th, 2026.md
+October 18th, 2026.md
+October 19th, 2026.md
+October 1st, 2026.md
+October 20th, 2026.md
+October 21st, 2026.md
+October 22nd, 2026.md
+October 23rd, 2026.md
+October 24th, 2026.md
+October 25th, 2026.md
+October 26th, 2026.md
+October 27th, 2026.md
+October 28th, 2026.md
+October 29th, 2026.md
+October 2nd, 2026.md
+October 30th, 2026.md
+October 31st, 2026.md
+October 3rd, 2026.md
+October 4th, 2026.md
+October 5th, 2026.md
+October 6th, 2026.md
+October 7th, 2026.md
+October 8th, 2026.md
+October 9th, 2026.md
+September 30th, 2026.md
+== $ adb shell am start -W -n com.srikanth.leanoutliner/.MainActivity
+Starting: Intent { cmp=com.srikanth.leanoutliner/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.srikanth.leanoutliner/.MainActivity
+TotalTime: 1232
+WaitTime: 1238
+Complete
+== screenshot 01-first-start-explains-access
+== $ python3 scripts/ui_tap.py Open the setting
+tapped 'open the setting' at 102,437
+== screenshot 02-android-all-files-access
+== $ adb shell appops set --uid com.srikanth.leanoutliner MANAGE_EXTERNAL_STORAGE allow
+== $ adb shell input keyevent KEYCODE_BACK
+== screenshot 03-back-in-app-welcome
+== pid 2275 devtools socket: webview_devtools_remote_2275
+== $ timeout 120 node scripts/android_cdp.mjs eval (async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); const w = document.querySelector('[data-w=open]'); if (w) { w.click(); await s(1500); } const b = [...document.querySelectorAll('.picker li button')].find(x => x.textContent.trim().startsWith('vault')); if (!b) return 'no vault folder listed: ' + (document.querySelector('#main')?.innerText || '').slice(0, 400); b.click(); await s(1000); const u = document.querySelector('.picker [data-use]'); if (!u || u.disabled) return 'Use this folder is disabled'; u.click(); await s(3000); return { hash: location.hash, days: [...document.querySelectorAll('.sheet .page-title')].map(e => e.textContent), err: document.querySelector('.err')?.textContent || null }; })()
+{
+ "hash": "#/journals",
+ "days": [
+  "October 31st, 2026",
+  "October 30th, 2026",
+  "October 29th, 2026",
+  "October 28th, 2026",
+  "October 27th, 2026"
+ ],
+ "err": null
+}
+== app pid: '2275' top: topResumedActivity=ActivityRecord{eae7ab1 u0 com.srikanth.leanoutliner/.MainActivity t8
+== app pid: '2275' top: topResumedActivity=ActivityRecord{eae7ab1 u0 com.srikanth.leanoutliner/.MainActivity t8
+== app pid: '2275' top: topResumedActivity=ActivityRecord{eae7ab1 u0 com.srikanth.leanoutliner/.MainActivity t8
+== app pid: '2275' top: topResumedActivity=ActivityRecord{eae7ab1 u0 com.srikanth.leanoutliner/.MainActivity t8
+== app pid: '2275' top: topResumedActivity=ActivityRecord{eae7ab1 u0 com.srikanth.leanoutliner/.MainActivity t8
+== app pid: '2275' top: topResumedActivity=ActivityRecord{eae7ab1 u0 com.srikanth.leanoutliner/.MainActivity t8
+== screenshot 04-journals
+== screenshot 04b-journals-scrolled
+== journal days shown: 5 before scrolling, 25 after
+== $ timeout 120 node scripts/android_cdp.mjs eval (async () => { window.scrollTo(0, 0); await new Promise(r => setTimeout(r, 500)); return { sched: document.querySelector('.sched')?.innerText.slice(0, 200) || null }; })()
+{
+ "sched": "Scheduled & deadline\n1\nToday\n1\nredo the tasting\n◷ Scheduled Today\nSourdough Bread"
+}
+== screenshot 04c-today-scheduled
+== $ python3 scripts/ui_tap.py cold-proving
+tapped 'cold-proving is the key idea' at 178,243
+== $ adb shell input keyevent KEYCODE_MOVE_END
+== $ adb shell input text %styped%son%sandroid
+== screenshot 05-editing-keyboard
+== today's file after typing:
+== $ adb shell cat '/sdcard/vault/Diary/October 31st, 2026.md'
+- Reading [[The Patient Baker]] by [[Marta Pell]] #reading
+	- cold-proving is the key idea typed on android
+	- goes well with [[Sourdough Bread]] too
+- TODO email [[Rosa Penhallow]] about the spice order
+== $ timeout 120 node scripts/android_cdp.mjs eval (async () => { const a = window.leanApp; a.outlines.forEach((o) => { o.stopEdit(); o.clearSel(); }); document.activeElement?.blur(); a.updateToolbar(); a.go('journals'); await new Promise(r => setTimeout(r, 1500)); window.scrollTo(0, 0); return { plus: !!document.querySelector('#addnote:not([hidden])') }; })()
+{
+ "plus": true
+}
+== the + on the page: {
+ "shown": true,
+ "x": 283,
+ "y": 577,
+ "dpr": 1,
+ "top": 0
+}
+tapped 'add a note' at 21,404
+== keyboard after the +: mInputShown=true
+== $ adb shell input text from%sthe%splus
+== screenshot 05b-plus-button
+== $ timeout 120 node scripts/android_cdp.mjs eval (async () => { const a = window.leanApp; a.setSkin('automaton'); a.go('page', 'Sourdough Bread'); await new Promise(r => setTimeout(r, 2000)); return { title: document.querySelector('h1.page-title')?.textContent, refs: document.querySelectorAll('.refgrp').length, blocks: document.querySelectorAll('.outline .blk').length }; })()
+{
+ "title": "Sourdough Bread",
+ "refs": 2,
+ "blocks": 3
+}
+== screenshot 06-page-automaton
+== $ timeout 120 node scripts/android_cdp.mjs eval (async () => { window.leanApp.setSkin('sticker'); window.leanApp.go('journals'); await new Promise(r => setTimeout(r, 2000)); return document.querySelectorAll('.sheet').length; })()
+5
+== screenshot 07-journals-sticker
+== $ adb shell am start -n com.srikanth.leanoutliner/.QuickCaptureActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'Shared from another app'
+Starting: Intent { act=android.intent.action.SEND typ=text/plain cmp=com.srikanth.leanoutliner/.QuickCaptureActivity (has extras) }
+== screenshot 08-quick-capture
+== $ python3 scripts/ui_tap.py Add --exact
+tapped 'add' at 238,352
+== screenshot 09-after-add
+== today's file after sharing:
+== $ adb shell cat '/sdcard/vault/Diary/October 31st, 2026.md'
+- Reading [[The Patient Baker]] by [[Marta Pell]] #reading
+	- cold-proving is the key idea typed on android
+	- goes well with [[Sourdough Bread]] too
+- TODO email [[Rosa Penhallow]] about the spice order
+- from the plus
+== the capture page after sharing:
+== $ adb shell cat '/sdcard/vault/pages/quick capture.md'
+- written before the share
+- [[quick capture]] **12:31**: Shared from another app== $ adb push /tmp/shared.png /sdcard/Pictures/shared.png
+/tmp/shared.png: 1 file pushed, 0 skipped. 1.5 MB/s (99 bytes in 0.000s)
+== the shared picture's address: content://media/external/images/media/1000000065
+== $ adb shell am start -n com.srikanth.leanoutliner/.QuickCaptureActivity -a android.intent.action.SEND -t image/png --eu android.intent.extra.STREAM content://media/external/images/media/1000000065
+Starting: Intent { act=android.intent.action.SEND typ=image/png cmp=com.srikanth.leanoutliner/.QuickCaptureActivity (has extras) }
+== screenshot 10-share-picture
+== $ python3 scripts/ui_tap.py Add --exact
+tapped 'add' at 238,598
+== $ adb shell am start -n com.srikanth.leanoutliner/.QuickCaptureActivity -a android.intent.action.SEND -t image/png --eu android.intent.extra.STREAM content://media/external/images/media/1000000065
+Starting: Intent { act=android.intent.action.SEND typ=image/png cmp=com.srikanth.leanoutliner/.QuickCaptureActivity (has extras) }
+== $ python3 scripts/ui_tap.py Add --exact
+tapped 'add' at 238,598
+== $ adb push /tmp/shared.png /sdcard/Download/shared.png
+/tmp/shared.png: 1 file pushed, 0 skipped. 1.3 MB/s (99 bytes in 0.000s)
+== $ adb shell am start -n com.srikanth.leanoutliner/.QuickCaptureActivity -a android.intent.action.SEND -t image/png --eu android.intent.extra.STREAM file:///sdcard/Download/shared.png
+Starting: Intent { act=android.intent.action.SEND typ=image/png cmp=com.srikanth.leanoutliner/.QuickCaptureActivity (has extras) }
+== screenshot 10b-file-share-refused
+== $ adb shell ls -l /sdcard/vault/assets
+total 16
+-rw-rw---- 1 u0_a128 media_rw 99 2026-10-31 12:31 shared_1793449881794.png
+-rw-rw---- 1 u0_a128 media_rw 99 2026-10-31 12:31 shared_1793449890859.png
+== $ adb shell cat '/sdcard/vault/pages/quick capture.md'
+- written before the share
+- [[quick capture]] **12:31**: Shared from another app
+- [[quick capture]] **12:31**: ![shared](../assets/shared_1793449881794.png)
+- [[quick capture]] **12:31**: ![shared](../assets/shared_1793449890859.png)== $ timeout 120 node scripts/android_cdp.mjs eval (async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); await window.leanApp.rescan(); window.leanApp.go('page', 'quick capture'); await s(2500); const im = document.querySelector('.outline img'); return { blocks: [...document.querySelectorAll('.outline .bc')].map(e => e.textContent.slice(0, 80)), img: im ? { src: im.getAttribute('src'), loaded: im.complete && im.naturalWidth > 0 } : null }; })()
+{
+ "blocks": [
+  "written before the share",
+  "quick capture 12:31: Shared from another app",
+  "quick capture 12:31: ",
+  "quick capture 12:31: "
+ ],
+ "img": {
+  "src": "http://vault.localhost/assets%2Fshared_1793449881794.png",
+  "loaded": true
+ }
+}
+== screenshot 11-picture-in-app
+== look list: {
+ "rows": 12,
+ "top": 8,
+ "bottom": 608,
+ "height": 616
+}
+== screenshot 12-look-picker
+== $ timeout 120 node scripts/android_cdp.mjs eval (async () => { document.querySelector('.pop.looks [data-look=plain]')?.click(); await new Promise(r => setTimeout(r, 500)); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); document.body.classList.remove('drawer'); return document.documentElement.dataset.skin; })()
+"plain"
+== widget colours, per look: [
+ {
+  "id": "plainnight",
+  "want": {
+   "bg": "#1a1a1a",
+   "ink": "#e6e6e6",
+   "faint": "#878787",
+   "accent": "#8ab4f8"
+  },
+  "got": {
+   "bg": "#1a1a1a",
+   "title": "#e6e6e6",
+   "add": "#8ab4f8",
+   "empty": "#878787",
+   "row": "#e6e6e6",
+   "rows": 8,
+   "circle": "#8ab4f8",
+   "plus": "#15171c"
+  }
+ },
+ {
+  "id": "plainteal",
+  "want": {
+   "bg": "#023643",
+   "ink": "#a4b5b6",
+   "faint": "#6a8a8f",
+   "accent": "#8ec2c2"
+  },
+  "got": {
+   "bg": "#023643",
+   "title": "#a4b5b6",
+   "add": "#8ec2c2",
+   "empty": "#6a8a8f",
+   "row": "#a4b5b6",
+   "rows": 8,
+   "circle": "#8ec2c2",
+   "plus": "#15171c"
+  }
+ },
+ {
+  "id": "paper",
+  "want": {
+   "bg": "#fffefa",
+   "ink": "#2a251e",
+   "faint": "#746c5e",
+   "accent": "#b23a26"
+  },
+  "got": {
+   "bg": "#fffefa",
+   "title": "#2a251e",
+   "add": "#b23a26",
+   "empty": "#746c5e",
+   "row": "#2a251e",
+   "rows": 8,
+   "circle": "#b23a26",
+   "plus": "#ffffff"
+  }
+ },
+ {
+  "id": "automaton",
+  "want": {
+   "bg": "#ffffff",
+   "ink": "#0f1b3a",
+   "faint": "#74819f",
+   "accent": "#1e56e6"
+  },
+  "got": {
+   "bg": "#ffffff",
+   "title": "#0f1b3a",
+   "add": "#1e56e6",
+   "empty": "#74819f",
+   "row": "#0f1b3a",
+   "rows": 8,
+   "circle": "#1e56e6",
+   "plus": "#ffffff"
+  }
+ },
+ {
+  "id": "plain",
+  "want": {
+   "bg": "#ffffff",
+   "ink": "#171717",
+   "faint": "#6d6d6d",
+   "accent": "#1b6898"
+  },
+  "got": {
+   "bg": "#ffffff",
+   "title": "#171717",
+   "add": "#1b6898",
+   "empty": "#6d6d6d",
+   "row": "#171717",
+   "rows": 8,
+   "circle": "#1b6898",
+   "plus": "#ffffff"
+  }
+ }
+]
+== $ timeout 120 node scripts/android_cdp.mjs eval (async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); window.leanApp.go('journals'); await s(1000); window.leanApp.go('page', 'Sourdough Bread'); await s(1500); return location.hash; })()
+"#/page/Sourdough%20Bread"
+== $ adb shell input keyevent KEYCODE_BACK
+== screenshot 13-after-back
+== hash after Back: "#/journals"
+== $ timeout 120 node scripts/android_cdp.mjs eval window.LeanAndroid.print('Sourdough Bread'); 'asked'
+"asked"
+== screenshot 14-print-screen
+== $ adb shell input keyevent KEYCODE_BACK
+== $ timeout 120 node scripts/android_cdp.mjs eval (async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); window.leanApp.go('journals'); await s(1000); window.leanApp.go('page', 'Sourdough Bread'); await s(1500); document.querySelector('#topbar [data-a=menu]').click(); await s(600); return document.body.classList.contains('drawer'); })()
+true
+== screenshot 15-drawer-open
+== $ adb shell input keyevent KEYCODE_BACK
+== screenshot 16-after-back-drawer
+== after Back with the menu drawer open: {
+ "drawer": false,
+ "hash": "#/page/Sourdough Bread"
+}
+== $ timeout 120 node scripts/android_cdp.mjs eval (async () => { history.go(-window.leanApp.histN); await new Promise(r => setTimeout(r, 1500)); return { n: window.leanApp.histN, hash: location.hash }; })()
+{
+ "n": 0,
+ "hash": "#/journals"
+}
+== $ adb shell input keyevent KEYCODE_BACK
+== screenshot 17-after-back-at-start
+== after Back at the start: topResumedActivity=ActivityRecord{3236552 u0 com.android.launcher3/.uioverrides.QuickstepLauncher t7
+== newest release on the public repo: build-34
+== $ adb shell am start -W -n com.srikanth.leanoutliner/.MainActivity
+Starting: Intent { cmp=com.srikanth.leanoutliner/.MainActivity }
+Warning: Activity not started, its current task has been brought to the front
+Status: ok
+LaunchState: HOT
+Activity: com.srikanth.leanoutliner/.MainActivity
+TotalTime: 79
+WaitTime: 90
+Complete
+== pid 2275 devtools socket: webview_devtools_remote_2275
+== after Update now: {
+ "stage": "permission",
+ "text": "Android asks first: turn on Allow from this source for , then come back here."
+}
+== screenshot 18-update-install-unknown-apps
+== on top after Update now: topResumedActivity=ActivityRecord{76452f7 u0 com.android.settings/.spa.SpaActivity t8
+== $ adb shell appops set com.srikanth.leanoutliner REQUEST_INSTALL_PACKAGES allow
+== $ adb shell input keyevent KEYCODE_BACK
+== update stage: error; the app says: "Nothing was installed: the download isn’t signed like this app (so it may not be genuine). You can try again, or get it from the downloads page."
+== screenshot 19-update-refused-by-the-app
+== $ timeout 120 node scripts/android_cdp.mjs eval window.LeanAndroid.testInstallSelf(); 'handed over'
+"handed over"
+== on top after handing over: topResumedActivity=ActivityRecord{2de65bc u0 com.android.packageinstaller/.PackageInstallerActivity t13
+== screenshot 20-update-android-asks
+== $ adb shell input keyevent KEYCODE_BACK
+== after cancelling, the app says: "The update was cancelled. If Google Play Protect asked to scan it, tap Update now again once the scan is done. (INSTALL_FAILED_ABORTED: User rejected permissions; unknown Android SDK built for x86_64, Android 14) You can try again, or get it from the downloads page."
+== screenshot 21-update-cancelled
+== $ adb shell am start -W -n com.srikanth.leanoutliner/.MainActivity
+Starting: Intent { cmp=com.srikanth.leanoutliner/.MainActivity }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+LaunchState: UNKNOWN (0)
+Activity: com.srikanth.leanoutliner/.MainActivity
+TotalTime: 0
+WaitTime: 27
+Complete
+== $ bash -c adb shell dumpsys appwidget | grep -i -A2 'journalwidget\|quickaddwidget' | head -12
+  [8] provider ProviderId{user:0, app:10141, cmp:ComponentInfo{com.srikanth.leanoutliner/com.srikanth.leanoutliner.JournalWidget}}
+    min=(64001x46081)   minResize=(46081x28161) updatePeriodMillis=1800000 resizeMode=3 widgetCategory=1 autoAdvanceViewId=-1 initialLayout=#7f0b0070 initialKeyguardLayout=#0   zombie=false
+  [9] provider ProviderId{user:0, app:10141, cmp:ComponentInfo{com.srikanth.leanoutliner/com.srikanth.leanoutliner.QuickAddWidget}}
+    min=(10241x10241)   minResize=(10241x10241) updatePeriodMillis=0 resizeMode=0 widgetCategory=1 autoAdvanceViewId=-1 initialLayout=#7f0b0071 initialKeyguardLayout=#0   zombie=false
+ 
+== the app's shortcuts (dumpsys shortcut):
+== $ grep -E id=|shortLabel=|intents= android-test/shortcuts.txt
+          ShortcutInfo {id=today, flags=0x85 [DynIc-rStr]
+            shortLabel=Today, resId=0[null]
+            intents=[Intent { act=android.intent.action.MAIN flg=0x24000000 cmp=com.srikanth.leanoutliner/.MainActivity }/PersistableBundle[{open=today}]]
+          ShortcutInfo {id=add, flags=0x85 [DynIc-rStr]
+            shortLabel=Add note, resId=0[null]
+            intents=[Intent { act=android.intent.action.MAIN cmp=com.srikanth.leanoutliner/.QuickCaptureActivity }/null]
+          ShortcutInfo {id=search, flags=0x85 [DynIc-rStr]
+            shortLabel=Search, resId=0[null]
+            intents=[Intent { act=android.intent.action.MAIN flg=0x24000000 cmp=com.srikanth.leanoutliner/.MainActivity }/PersistableBundle[{open=search}]]
+not found: thinky
+== no app icon on the home screen: trying the list of all apps
+not found: thinky
+== screenshot 18x-all-apps-0-1
+held 'thinky thinky' at 198,387
+== screenshot 18-icon-menu
+tapped 'today today' at 116,198
+== pid 2275 devtools socket: webview_devtools_remote_2275
+== screenshot 19-shortcut-today
+== after the Today shortcut: "#/page/October 31st, 2026"
+== $ adb shell am force-stop com.srikanth.leanoutliner
+not found: thinky
+== no app icon on the home screen: trying the list of all apps
+held 'thinky thinky' at 198,387
+tapped 'search search' at 116,306
+== pid 3897 devtools socket: webview_devtools_remote_3897
+== screenshot 20-shortcut-search
+== after the Search shortcut: {
+ "open": true,
+ "focused": true,
+ "hash": "#/journals"
+}
+== keyboard: mInputShown=true
+== $ adb shell am start -W -a android.intent.action.VIEW -d 'leanoutliner://page/Sourdough%20Bread'
+Starting: Intent { act=android.intent.action.VIEW dat=leanoutliner://page/... }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+LaunchState: UNKNOWN (0)
+Activity: com.srikanth.leanoutliner/.MainActivity
+TotalTime: 0
+WaitTime: 24
+Complete
+== pid 3897 devtools socket: webview_devtools_remote_3897
+== screenshot 20b-page-link
+== after the page link: "#/page/Sourdough Bread"
+not found: thinky
+== no app icon on the home screen: trying the list of all apps
+held 'thinky thinky' at 198,387
+tapped 'add note add note' at 116,252
+== screenshot 21-shortcut-add-note
+== after the Add note shortcut: topResumedActivity=ActivityRecord{94d0ec4 u0 com.srikanth.leanoutliner/.QuickCaptureActivity t15
+== Quick Settings tiles that apps offer: com.android.permissioncontroller/.permission.service.v33.SafetyCenterQsTileService com.srikanth.leanoutliner/.AddNoteTile
+== $ adb shell cmd statusbar add-tile com.srikanth.leanoutliner/.AddNoteTile
+== tiles in the shade: custom(com.srikanth.leanoutliner/.AddNoteTile),internet,bt,flashlight,dnd,alarm,airplane,controls,rotation,battery,cast,screenrecord,mictoggle,cameratoggle,dbg:mem,custom(com.android.permissioncontroller/.permission.service.v33.SafetyCenterQsTileService)
+== $ adb shell cmd statusbar expand-settings
+== screenshot 22-quick-settings
+not found: add note
+== the tile isn't on screen: clicking it with cmd statusbar click-tile
+== $ adb shell cmd statusbar click-tile com.srikanth.leanoutliner/.AddNoteTile
+== screenshot 23-tile-add-note
+== after tapping the tile: topResumedActivity=ActivityRecord{edb906c u0 com.srikanth.leanoutliner/.QuickCaptureActivity t16; focus: mCurrentFocus=Window{3263917 u0 com.srikanth.leanoutliner/com.srikanth.leanoutliner.QuickCaptureActivity
+== $ adb push /tmp/config-inbox.edn /sdcard/vault/logseq/config.edn
+/tmp/config-inbox.edn: 1 file pushed, 0 skipped. 3.2 MB/s (186 bytes in 0.000s)
+== $ adb push /tmp/inbox.md /sdcard/vault/pages/inbox.md
+/tmp/inbox.md: 1 file pushed, 0 skipped. 0.6 MB/s (45 bytes in 0.000s)
+== $ adb shell am force-stop com.srikanth.leanoutliner
+== app pid after stopping it: ''
+== $ adb shell am start -n com.srikanth.leanoutliner/.QuickCaptureActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'Inbox check from the phone'
+Starting: Intent { act=android.intent.action.SEND typ=text/plain cmp=com.srikanth.leanoutliner/.QuickCaptureActivity (has extras) }
+== screenshot 24-share-to-inbox
+== the pop-up says: text="to Inbox"; its error line (none expected): 
+== $ python3 scripts/ui_tap.py Add --exact
+tapped 'add' at 238,352
+== screenshot 25-after-add-to-inbox
+== pop-up's library (logcat):
+== $ bash -c grep -a ' LeanCore' android-test/logcat.txt | tail -5
+10-31 12:31:04.924  2275  2834 I LeanCore: loaded lean_outliner_lib
+10-31 12:35:09.015  3897  4236 I LeanCore: loaded lean_outliner_lib
+10-31 12:35:50.808  4458  4480 I LeanCore: loaded lean_outliner_lib
+== pages/Inbox (2).md:
+== $ adb shell cat '/sdcard/vault/pages/Inbox (2).md'
+title:: Inbox
+- [[quick capture]] **12:35**: Inbox check from the phone
+== pages/inbox.md (Mail):
+== $ adb shell cat /sdcard/vault/pages/inbox.md
+title:: Mail
+- mail, written before the share== $ adb push android-test/config-before.edn /sdcard/vault/logseq/config.edn
+android-test/config-before.edn: 1 file pushed, 0 skipped. 1.9 MB/s (117 bytes in 0.000s)
+== start-up in dark mode: frames from the start
+== $ adb shell cmd uimode night yes
+Night mode: yes
+== start-up frames, mean light of the middle (0 dark – 255 white): 236 236 236 236 236 236 236 232
+== $ adb shell cmd uimode night no
+Night mode: no
+== crashes (none expected):
+== $ adb logcat -b crash -d
+== the app's own problems log:
+== $ adb shell run-as com.srikanth.leanoutliner sh -c 'ls -la cache; cat cache/problems.log'
+total 56
+drwxrws--x 3 u0_a141 u0_a141_cache 4096 2026-10-31 12:36 .
+drwx------ 8 u0_a141 u0_a141       4096 2026-10-31 12:30 ..
+drwx--S--- 6 u0_a141 u0_a141_cache 4096 2026-10-31 12:29 WebView
+-rw------- 1 u0_a141 u0_a141_cache   25 2026-10-31 12:36 last-vault.txt
+-rw------- 1 u0_a141 u0_a141_cache  392 2026-10-31 12:32 problems.log
+-rw------- 1 u0_a141 u0_a141_cache 8928 2026-10-31 12:36 vault-ddbdc53da66f07a7.json
+2026-10-31 12:32:26 UTC  update (Android): Nothing was installed: the download isn’t signed like this app (so it may not be genuine).
+2026-10-31 12:32:31 UTC  update (Android): The update was cancelled. If Google Play Protect asked to scan it, tap Update now again once the scan is done. (INSTALL_FAILED_ABORTED: User rejected permissions; unknown Android SDK built for x86_64, Android 14)
+== app processes that ended (from the full log):
+== $ bash -c grep -E 'Process com.srikanth.leanoutliner|has died|Killing [0-9]+:com.srikanth.leanoutliner|Force finishing|ANR in|Fatal signal|FATAL|crash detected|wasn.t handled' android-test/logcat.txt | head -40
+10-31 12:33:42.776   508   575 I ActivityManager: Killing 2275:com.srikanth.leanoutliner/u0a141 (adj 0): stop com.srikanth.leanoutliner due to from pid 3690
+10-31 12:35:49.407   508   873 I ActivityManager: Killing 3897:com.srikanth.leanoutliner/u0a141 (adj 900): stop com.srikanth.leanoutliner due to from pid 4446
+10-31 12:36:05.227   508  2515 I ActivityManager: Killing 4458:com.srikanth.leanoutliner/u0a141 (adj 905): stop com.srikanth.leanoutliner due to from pid 4574
+== PASS the app kept running (never had to be started again)
+== PASS the app didn't crash
+== PASS nothing in the app's problems log
+== PASS choosing the folder opened the notes
+== PASS typing on the phone was saved
+== PASS the + button adds a note to today, the keyboard up, and what's typed is saved
+== PASS a page with linked references opened
+== PASS text shared from another app was added
+== PASS a shared picture was saved and linked
+== PASS the picture shows in the app
+== shared pictures in assets: 2, the same as the picture: 2
+== PASS a picture shared twice is kept twice, never written over
+== PASS a file:// address is never opened by the share pop-up
+== PASS adding keeps a page's missing last line break
+== PASS the look list fits the screen
+== PASS scrolling the journals loads older days
+== PASS Android's back button goes back inside the app
+== PASS Back closes the menu drawer first and stays on the page
+== PASS Back at the start leaves the app for the home screen
+== PASS the app keeps running after leaving
+== PASS Update now asks for Android's “Install unknown apps” first
+== PASS allowed, the newest release downloads and the app refuses it: not signed like this test build
+== PASS handed a good download, Android's installer asks to go ahead; cancelled, the app says so
+== PASS the widgets take each look's colours (journal widget: background, title, +, empty line, rows; the one-tap +)
+== PASS both widgets are offered to the home screen
+== PASS the app sets up its icon shortcuts Today, Add note and Search
+== PASS pressing and holding the app icon shows them
+== PASS the Today shortcut opens today's journal page (app open)
+== PASS the Search shortcut starts the app with the search box open
+== PASS the keyboard comes up for the search
+== PASS a leanoutliner://page/… link opens that page in the open app
+== PASS the Add note shortcut opens the pop-up
+== PASS the pop-up (app closed) adds through the app's code: quick capture page Inbox → a new pages/Inbox (2).md
+== PASS pages/inbox.md (the page Mail, by its title::) is left byte for byte
+== PASS the pop-up says where the note goes, as config.edn says now: to Inbox
+== PASS the Add note tile is offered in Quick Settings
+== PASS tapping the tile opens the pop-up and closes the shade
+== PASS starting in dark mode: no dark frame before the app (cream from the first moment)
+== done: everything passed

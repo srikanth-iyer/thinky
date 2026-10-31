@@ -1,0 +1,58 @@
+      Package: com.srikanth.leanoutliner  UID: 10141
+        Calls: 0
+        Last known FG: 213751
+        Last reset: [1793449765280] 2026-10-31 12:29:25
+
+        PackageInfo:
+          IsShadow: false (installed)
+          Version: 1000
+          Backup Allowed: true
+          Last package update time: 1793449776406
+
+        Shortcuts:
+          ShortcutInfo {id=today, flags=0x85 [DynIc-rStr]
+            packageName=com.srikanth.leanoutliner
+            activity=ComponentInfo{com.srikanth.leanoutliner/com.srikanth.leanoutliner.MainActivity}
+            shortLabel=Today, resId=0[null]
+            longLabel=null, resId=0[null]
+            disabledMessage=null, resId=0[null]
+            disabledReason=[Not disabled]
+            categories=null
+            persons=null
+            icon=null
+            rank=0, timestamp=1793449777592
+            intents=[Intent { act=android.intent.action.MAIN flg=0x24000000 cmp=com.srikanth.leanoutliner/.MainActivity }/PersistableBundle[{open=today}]]
+            extras=null
+            iconRes=2131165418[drawable/sc_today], bitmapPath=null, iconUri=null}
+          ShortcutInfo {id=add, flags=0x85 [DynIc-rStr]
+            packageName=com.srikanth.leanoutliner
+            activity=ComponentInfo{com.srikanth.leanoutliner/com.srikanth.leanoutliner.MainActivity}
+            shortLabel=Add note, resId=0[null]
+            longLabel=null, resId=0[null]
+            disabledMessage=null, resId=0[null]
+            disabledReason=[Not disabled]
+            categories=null
+            persons=null
+            icon=null
+            rank=1, timestamp=1793449777592
+            intents=[Intent { act=android.intent.action.MAIN cmp=com.srikanth.leanoutliner/.QuickCaptureActivity }/null]
+            extras=null
+            iconRes=2131165416[drawable/sc_add_note], bitmapPath=null, iconUri=null}
+          ShortcutInfo {id=search, flags=0x85 [DynIc-rStr]
+            packageName=com.srikanth.leanoutliner
+            activity=ComponentInfo{com.srikanth.leanoutliner/com.srikanth.leanoutliner.MainActivity}
+            shortLabel=Search, resId=0[null]
+            longLabel=null, resId=0[null]
+            disabledMessage=null, resId=0[null]
+            disabledReason=[Not disabled]
+            categories=null
+            persons=null
+            icon=null
+            rank=2, timestamp=1793449777592
+            intents=[Intent { act=android.intent.action.MAIN flg=0x24000000 cmp=com.srikanth.leanoutliner/.MainActivity }/PersistableBundle[{open=search}]]
+            extras=null
+            iconRes=2131165417[drawable/sc_search], bitmapPath=null, iconUri=null}
+        Total bitmap size: 0 (0 B)
+
+  Pending saves: Num=0 Executor=java.util.concurrent.ThreadPoolExecutor@6727f67[Running, pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 1]
+
