@@ -171,7 +171,7 @@ fn links_to_saved_files_are_swapped_in_one_go() {
 
 #[test]
 fn the_box_is_sized_like_the_web_box() {
-    let m = Metrics { scale: 1.0, line_h: 27, lines: 1, pill_w: 0, rows: 0, list_line_h: 19, foot_h: 17 };
+    let m = Metrics { scale: 1.0, line_h: 27, lines: 1, pill_w: 0, rows: 0, list_line_h: 19, foot_h: 17, tool_w: [0; 3] };
     let l = layout(&m);
     assert_eq!((l.w, l.h), (640, 98), "one line: 640 × 98");
     assert_eq!(l.tile, Rect::new(16, 15, 48, 47));
@@ -750,4 +750,30 @@ fn the_logo_is_drawn_in_its_square() {
         assert!(px.contains(&LOGO_TILE), "{size}: the tile");
         assert!(px.iter().any(|&p| (p >> 16) > 0xE0 && (p & 0xFF) < 0x90), "{size}: the spark (red, maybe softened at its edges)");
     }
+}
+
+/// The small buttons on the box ([[ ]], #, To-do; Build 34): at the right of the first line, level
+/// with the + button, in that order, and the text stops before them.
+#[test]
+fn small_buttons_sit_right_of_the_text() {
+    let m = Metrics { scale: 1.0, line_h: 27, lines: 1, pill_w: 0, rows: 0, list_line_h: 19, foot_h: 17, tool_w: [34, 22, 52] };
+    let l = layout(&m);
+    let [a, b, c] = l.tools;
+    assert_eq!(c.r, 640 - 18, "the last ends where the text used to");
+    assert!(a.r < b.l && b.r < c.l, "in order, with a gap: {a:?} {b:?} {c:?}");
+    assert_eq!((a.w(), b.w(), c.w()), (34, 22, 52));
+    assert!(l.note.r < a.l, "the text stops before them");
+    for t in l.tools {
+        assert_eq!(t.h(), 22);
+        assert_eq!((t.t + t.b) / 2, (l.tile.t + l.tile.b) / 2, "level with the + button");
+    }
+    assert_eq!((l.w, l.h), (640, 98), "the box is no bigger");
+    // none: the text reaches the edge, as before
+    let none = layout(&Metrics { tool_w: [0; 3], ..m });
+    assert_eq!(none.note.r, 640 - 18);
+    assert!(none.tools.iter().all(|t| t.is_empty()));
+    // scaled
+    let big = layout(&Metrics { scale: 1.5, line_h: 40, foot_h: 25, list_line_h: 28, tool_w: [51, 33, 78], ..m });
+    assert_eq!(big.tools[2].r, 960 - 27);
+    assert_eq!(big.tools[0].h(), 33);
 }

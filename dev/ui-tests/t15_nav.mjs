@@ -44,7 +44,9 @@ const xs0 = await stripXs();
 check(/^side@\d+ search@\d+ home@\d+ back@\d+ forward@\d+ date@\d+$/.test(xs0), 'in that order, at the left of the window', xs0);
 const gaps = xs0.match(/@(\d+)/g).map((s) => +s.slice(1)).slice(2);
 const icon = await page.evaluate(() => Math.round(document.querySelector('#histbar [data-a="home"] svg').getBoundingClientRect().width));
-check(gaps.every((x, k) => !k || x - gaps[k - 1] <= 32) && icon >= 22, 'big icons, close together', `${gaps} icon ${icon}`);
+// (Build 34, he asked: evenly spaced over the sidebar's width, the last at its edge; t19 measures the gaps)
+const steps = gaps.slice(1).map((x, k) => x - gaps[k]);
+check(icon >= 22 && Math.max(...steps) - Math.min(...steps) <= 1, 'big icons, evenly spaced', `${gaps} icon ${icon}`);
 const hb = await box('#histbar'), sd = await box('#side');
 check(hb.x === 0 && hb.w === 1280 && sd.y >= hb.b - 1, 'the strip runs across the whole window, the sidebar below it', JSON.stringify({ hb, sd }));
 await page.locator('#histbar [data-a="search"]').click();
@@ -112,7 +114,11 @@ check(grip && Math.abs(grip.x + grip.w / 2 - 252) <= 2 && await page.locator('.s
 const drag = async (x0, y, x1) => { await page.mouse.move(x0, y); await page.mouse.down(); await page.mouse.move((x0 + x1) / 2, y, { steps: 3 }); await page.mouse.move(x1, y, { steps: 3 }); await page.mouse.up(); await sleep(150); };
 await drag(252, 400, 352);
 check(await sideW() === 352 && (await box('#col')).x === 352 && await page.evaluate(() => JSON.parse(localStorage.getItem('sideW'))) === 352, 'wider by as much as it was dragged; kept', await sideW());
-check(await stripXs() === xs0, 'the strip doesn’t move');
+{ // the buttons over the sidebar spread with its new width (evenly; nothing past them moves on its own)
+  const xs = (await stripXs()).match(/@(\d+)/g).map((v) => +v.slice(1)).slice(2);
+  const st = xs.slice(1).map((x, k) => x - xs[k]);
+  check(Math.max(...st) - Math.min(...st) <= 1 && xs.at(-1) > gaps.at(-1), 'the strip’s buttons spread evenly over the wider sidebar', xs.join(','));
+}
 await drag(352, 400, 60);
 check(await sideW() === 200, 'never narrower than 200 px', await sideW());
 await drag(200, 400, 1100);

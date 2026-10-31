@@ -174,7 +174,10 @@ function added(r) {
 }
 
 // the popup asks through messages: {do: 'list'|'send'|'remove'|'clear'|'paint', tabId, …}
-chrome.runtime.onMessage.addListener((m, _sender, reply) => {
+chrome.runtime.onMessage.addListener((m, sender, reply) => {
+  // only this extension's own pages may ask (its popup; never a script inside a web page, whose
+  // sender.url is that page's address)
+  if (sender.id !== chrome.runtime.id || !String(sender.url || '').startsWith(chrome.runtime.getURL(''))) return false;
   (async () => {
     const tab = await chrome.tabs.get(m.tabId);
     if (m.do === 'send') return reply(await sendAll(tab, m.title));

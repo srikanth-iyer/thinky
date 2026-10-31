@@ -70,10 +70,12 @@ impl Config {
         let mut c = Config::default();
         let Some(root) = edn::parse(text) else { return c };
         let s = |k: &str| root.get(k).and_then(|n| n.as_str()).map(str::to_string);
-        if let Some(v) = s("pages-directory") {
+        // (only a folder inside the notes folder: config.edn is synced and other programs write it,
+        // so "../.." or "C:\\Windows" must never send notes elsewhere; Logseq's default otherwise)
+        if let Some(v) = s("pages-directory").and_then(inside_folder) {
             c.pages_dir = v;
         }
-        if let Some(v) = s("journals-directory") {
+        if let Some(v) = s("journals-directory").and_then(inside_folder) {
             c.journals_dir = v;
         }
         if let Some(v) = s("journal/page-title-format") {
@@ -152,7 +154,12 @@ impl Config {
     }
 
     pub fn journal_rel_path(&self, d: Date) -> String {
-        format!("{}/{}.md", self.journals_dir, date::format(&self.journal_file_format, d))
+        let mut stem = date::format(&self.journal_file_format, d);
+        // a format with quoted words could make a path ("'../x'yyyy"): Logseq's default instead
+        if stem.is_empty() || stem.contains(['/', '\\', ':', '\0']) || stem.starts_with('.') {
+            stem = date::format("yyyy_MM_dd", d);
+        }
+        format!("{}/{}.md", self.journals_dir, stem)
     }
 
     /// Date from a journal file stem; also accepts the default `yyyy_MM_dd`.
@@ -164,4 +171,15 @@ impl Config {
     pub fn journal_from_title(&self, title: &str) -> Option<Date> {
         date::parse(&self.journal_title_format, title)
     }
+}
+
+/// A folder setting (`:pages-directory`, `:journals-directory`) if it names a folder inside the
+/// notes folder: plain names separated by "/", no "..", no drive, not starting at the top.
+pub fn inside_folder(v: String) -> Option<String> {
+    let v = v.trim().trim_end_matches(['/', '\\']).to_string();
+    let ok = !v.is_empty()
+        && !v.starts_with(['/', '\\'])
+        && !v.contains([':', '\0'])
+        && v.split(['/', '\\']).all(|p| !p.is_empty() && p != "." && p != "..");
+    ok.then_some(v)
 }

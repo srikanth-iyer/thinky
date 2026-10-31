@@ -12,6 +12,10 @@ use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+/// Sent with every file from the notes folder (pictures and attachments): shown as itself, never
+/// as a page that can run script or reach the app (src-tauri lib.rs sends the same).
+const VAULT_CSP: &str = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'";
+
 fn mime(p: &std::path::Path) -> &'static str {
     match p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
         Some("html") => "text/html; charset=utf-8",
@@ -49,6 +53,7 @@ struct Request {
     method: String,
     url: String,
     origin: Option<String>,
+    host: Option<String>,
     /// `X-Test-Now: <seconds since 1970>`: UI tests ask "Check this folder" as at another time
     /// (every picture a test makes is new, and pictures from the last 3 days are left alone).
     test_now: Option<u64>,
@@ -62,7 +67,7 @@ fn read_request(stream: &TcpStream) -> Option<Request> {
     r.read_line(&mut line).ok()?;
     let mut parts = line.split_whitespace();
     let (method, url) = (parts.next()?.to_string(), parts.next()?.to_string());
-    let (mut len, mut origin, mut test_now) = (0usize, None, None);
+    let (mut len, mut origin, mut host, mut test_now) = (0usize, None, None, None);
     loop {
         let mut h = String::new();
         if r.read_line(&mut h).ok()? == 0 {
@@ -76,6 +81,7 @@ fn read_request(stream: &TcpStream) -> Option<Request> {
             match k.trim().to_ascii_lowercase().as_str() {
                 "content-length" => len = v.trim().parse().ok()?,
                 "origin" => origin = Some(v.trim().to_string()),
+                "host" => host = Some(v.trim().to_ascii_lowercase()),
                 "x-test-now" => test_now = v.trim().parse().ok(),
                 _ => {}
             }
@@ -86,7 +92,7 @@ fn read_request(stream: &TcpStream) -> Option<Request> {
     }
     let mut body = vec![0; len];
     r.read_exact(&mut body).ok()?;
-    Some(Request { method, url, origin, test_now, body })
+    Some(Request { method, url, origin, host, test_now, body })
 }
 
 fn respond(mut stream: &TcpStream, code: u16, headers: &[(&str, &str)], body: &[u8]) {
@@ -120,9 +126,14 @@ fn handle(sv: &Server, stream: TcpStream) {
     if let Some(t0) = sv.trace {
         eprintln!("{:>7.1} ms  {} {}", t0.elapsed().as_secs_f64() * 1000.0, req.method, url);
     }
+    // only this computer's own address: a web page that points its own name at 127.0.0.1 ("DNS
+    // rebinding") sends that name as the Host, and is refused here on every route
+    if !req.host.as_ref().is_some_and(|h| sv.me.iter().any(|m| m.strip_prefix("http://") == Some(h.as_str()))) {
+        return respond(&stream, 403, &[], b"forbidden");
+    }
     if let Some(cmd) = url.strip_prefix("/api/") {
-        // only this page may call the API (another web page open in the browser can't)
-        if req.origin.as_ref().is_some_and(|o| !sv.me.contains(o)) {
+        // only this page may call the API (another web page open in the browser can't), and only by POST
+        if req.method != "POST" || req.origin.as_ref().is_some_and(|o| !sv.me.contains(o)) {
             return respond(&stream, 403, &[], b"forbidden");
         }
         let args = serde_json::from_slice(&req.body).unwrap_or(serde_json::Value::Null);
@@ -149,7 +160,9 @@ fn handle(sv: &Server, stream: TcpStream) {
     if let Some(rel) = url.strip_prefix("/vault/") {
         let root = sv.state.lock().unwrap_or_else(|p| p.into_inner()).as_ref().map(|a| a.root.clone());
         return match root.and_then(|r| asset_file(&r, &decode(rel))).and_then(|f| std::fs::read(&f).ok().map(|b| (f, b))) {
-            Some((f, bytes)) => respond(&stream, 200, &[("Content-Type", mime(&f))], &bytes),
+            // (a file from the notes folder is never a page that runs: an SVG or HTML file synced
+            // into assets/ could otherwise run script with the app's own rights)
+            Some((f, bytes)) => respond(&stream, 200, &[("Content-Type", mime(&f)), ("Content-Security-Policy", VAULT_CSP), ("X-Content-Type-Options", "nosniff")], &bytes),
             None => respond(&stream, 404, &[], b"not found"),
         };
     }

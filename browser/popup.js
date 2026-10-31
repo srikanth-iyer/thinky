@@ -88,3 +88,12 @@ $('journal').onclick = async () => {
   tabId = tab.id;
   show(await ask({ do: 'list' }));
 })();
+
+// the Highlight key as Edge has it now (set at edge://extensions/shortcuts; a setup from before
+// Build 34 keeps Alt+Shift+H), so the hint never names a key that doesn't work
+chrome.commands?.getAll?.((cmds) => {
+  const k = (cmds || []).find((c) => c.name === 'highlight')?.shortcut;
+  const el = document.getElementById('hlkey');
+  if (el && k) el.textContent = k;
+  else if (el && cmds) el.closest('p').innerHTML = 'No highlights here yet. Select some text, then right-click → <i>Highlight for thinky</i>.'; // (no key set: just the menu)
+});

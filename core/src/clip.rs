@@ -112,9 +112,55 @@ pub fn source_url(value: &str) -> Option<String> {
     Some(u.replace("%28", "(").replace("%29", ")").replace("%20", " "))
 }
 
-/// A passage's words, safe to put in a note: no line can start a new note, a property or a code
-/// block (an invisible zero-width space goes in front), at most one empty line in a row, no
-/// spaces at line ends.
+/// Words from a web page, made inert inline: a zero-width space inside `[[`, `]]`, `((`, `{{` and
+/// `::`, `@@` (Logseq's `@@html: …@@`), after a `#` that starts a tag and after a `<` that could start HTML, so a page's text can never become a link, a block
+/// reference, a macro (`{{query}}`, `{{embed}}`), a property or a tag in the notes. The extension
+/// does the same (page.js `safe`); doing it here too means the notes never rely on it.
+pub fn defuse(text: &str) -> String {
+    const ZW: char = '\u{200b}';
+    let mut out = String::with_capacity(text.len() + 8);
+    let mut prev: Option<char> = None;
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        let pair = matches!((prev, c), (Some('['), '[') | (Some(']'), ']') | (Some('('), '(') | (Some('{'), '{') | (Some(':'), ':') | (Some('@'), '@'));
+        if pair {
+            out.push(ZW);
+        }
+        out.push(c);
+        // a # at the start or after a space, "(" or "," starts a tag in Logseq: break it
+        // (not twice: words the extension already made safe come with one)
+        if c == '#' && prev.is_none_or(|p| p.is_whitespace() || p == '(' || p == ',') && chars.peek() != Some(&ZW) {
+            out.push(ZW);
+        }
+        // a "<" before a letter, "/" or "!" could start HTML (Logseq draws some): keep it words
+        if prev == Some('<') && (c.is_ascii_alphabetic() || c == '/' || c == '!') {
+            out.insert(out.len() - c.len_utf8(), ZW);
+        }
+        prev = Some(c);
+    }
+    out
+}
+
+/// A web address made safe to write inside `(...)` of a Markdown link: spaces, brackets and any
+/// control character (a line break could split the note) percent-encoded.
+pub fn safe_url(url: &str) -> String {
+    let mut out = String::with_capacity(url.len());
+    for c in url.trim().chars() {
+        match c {
+            ' ' => out.push_str("%20"),
+            '(' => out.push_str("%28"),
+            ')' => out.push_str("%29"),
+            c if (c as u32) < 0x20 || c == '\u{7f}' => out.push_str(&format!("%{:02X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// A passage's words, safe to put in a note: no line can start a new note, a property, a code
+/// block, a box, a Logseq hiccup line (`[:div …]`), a SCHEDULED/DEADLINE line or a drawer (`:LOGBOOK:`), and the first line can't
+/// start with a to-do word or a priority (an invisible zero-width space goes in front); at most
+/// one empty line in a row, no spaces at line ends.
 pub fn guard(text: &str) -> String {
     let mut out: Vec<String> = vec![];
     for line in text.replace("\r\n", "\n").replace('\r', "\n").split('\n') {
@@ -126,10 +172,16 @@ pub fn guard(text: &str) -> String {
             continue;
         }
         let t = l.trim_start();
+        let first = out.iter().all(|l| l.is_empty());
         let risky = crate::doc::bullet(t).is_some()
             || t.starts_with("```")
             || t.starts_with("#+")
-            || crate::parse::property(t).is_some();
+            || t.starts_with("[:")
+            || crate::parse::property(t).is_some()
+            || t.starts_with("SCHEDULED:")
+            || t.starts_with("DEADLINE:")
+            || is_drawer_line(t)
+            || (first && starts_like_task(t));
         out.push(if risky { format!("\u{200b}{t}") } else { t.to_string() });
     }
     while out.last().is_some_and(|l| l.is_empty()) {
@@ -138,15 +190,26 @@ pub fn guard(text: &str) -> String {
     out.join("\n")
 }
 
+/// `:LOGBOOK:`, `:END:` and the like: a line Logseq reads as a drawer's edge (it hides what's inside).
+fn is_drawer_line(t: &str) -> bool {
+    t.len() > 2 && t.starts_with(':') && t.ends_with(':') && t[1..t.len() - 1].chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// Would this line, as a note's first line, make the note a to-do or give it a priority?
+fn starts_like_task(t: &str) -> bool {
+    const WORDS: [&str; 9] = ["TODO", "DOING", "DONE", "LATER", "NOW", "WAITING", "WAIT", "CANCELED", "CANCELLED"];
+    let word = t.split_whitespace().next().unwrap_or("");
+    WORDS.contains(&word) || t.starts_with("[#")
+}
+
 /// The note for one highlight: its words, then a small link to the passage in the article.
 pub fn highlight_note(h: &Highlight) -> String {
-    let text = guard(&h.text);
+    let text = guard(&defuse(&h.text));
     let link = h.link.trim();
     if link.is_empty() || !(link.starts_with("https://") || link.starts_with("http://")) {
         return text;
     }
-    let addr = link.replace(' ', "%20").replace('(', "%28").replace(')', "%29");
-    format!("{text} [↗]({addr})")
+    format!("{text} [↗]({})", safe_url(link))
 }
 
 /// The words of a highlight note without its link, to tell whether a passage is on the page.
@@ -335,7 +398,8 @@ pub fn host_manifest(exe: &str) -> String {
 pub const MAX_MESSAGE: usize = 8 * 1024 * 1024;
 
 /// One message as Edge sends it: 4 bytes of length (this computer's byte order), then that much
-/// JSON. None: nothing (more) to read, or a length over MAX_MESSAGE.
+/// JSON. None: nothing (more) to read, or a length over MAX_MESSAGE. A message that isn't JSON
+/// comes back as JSON null (answered "not understood").
 pub fn read_message(r: &mut impl std::io::Read) -> Option<serde_json::Value> {
     let mut len = [0u8; 4];
     r.read_exact(&mut len).ok()?;
@@ -345,7 +409,7 @@ pub fn read_message(r: &mut impl std::io::Read) -> Option<serde_json::Value> {
     }
     let mut buf = vec![0u8; n];
     r.read_exact(&mut buf).ok()?;
-    serde_json::from_slice(&buf).ok()
+    Some(serde_json::from_slice(&buf).unwrap_or(serde_json::Value::Null))
 }
 
 /// One answer, framed the same way.
@@ -365,7 +429,8 @@ pub fn message_bytes(v: &serde_json::Value) -> Vec<u8> {
 pub fn answer(msg: &serde_json::Value, root: Result<std::path::PathBuf, String>, today: Date, time: &str) -> serde_json::Value {
     use serde_json::json;
     let res = (|| -> Result<serde_json::Value, String> {
-        let root = root?;
+        // (never a folder's path in an answer: the extension may show it inside the web page)
+        let root = root.map_err(|e| if e.contains("can’t be reached") { "Your notes folder can’t be reached right now. If it’s on Google Drive, check that Drive is running.".to_string() } else { e })?;
         let s = |k: &str| msg.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
         match msg.get("cmd").and_then(|v| v.as_str()).unwrap_or("") {
             "hello" => Ok(json!({ "folder": root.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default() })),
@@ -377,7 +442,8 @@ pub fn answer(msg: &serde_json::Value, root: Result<std::path::PathBuf, String>,
             "journal" => {
                 let url = s("url");
                 let link = if url.starts_with("https://") || url.starts_with("http://") { crate::capture::md_link(&url, &s("title"), &s("site")) } else { String::new() };
-                let rel = crate::capture::capture_to_usual(&root, &s("text"), &link, false, today, time)?;
+                let text = guard(&defuse(&s("text")));
+                let rel = crate::capture::capture_to_usual(&root, &text, &link, false, today, time)?;
                 Ok(json!({ "rel": rel }))
             }
             other => Err(format!("Unknown request “{other}”.")),

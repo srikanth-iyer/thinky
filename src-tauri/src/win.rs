@@ -1,5 +1,5 @@
 //! Windows-only helpers for capturing notes from anywhere: the `leanoutliner://` link
-//! (for the browser bookmarklet), the clipboard, the local time, and the Start-menu shortcut
+//! (page and note links), the clipboard, the local time, and the Start-menu shortcut
 //! with a key combination that opens the capture box (the portable copy's way; the installed
 //! copy's key is answered by its helper, hotkey.rs).
 
@@ -7,6 +7,19 @@
 mod imp {
     use std::ffi::c_void;
     use std::os::windows::ffi::OsStrExt;
+
+    /// Windows' own PowerShell: <system folder>\WindowsPowerShell\v1.0\powershell.exe.
+    fn powershell() -> std::path::PathBuf {
+        use std::os::windows::ffi::OsStringExt;
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetSystemDirectoryW(buf: *mut u16, size: u32) -> u32;
+        }
+        let mut buf = [0u16; 260];
+        let n = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as u32) } as usize;
+        let dir = if n > 0 && n < buf.len() { std::path::PathBuf::from(std::ffi::OsString::from_wide(&buf[..n])) } else { std::path::PathBuf::from(r"C:\Windows\System32") };
+        dir.join("WindowsPowerShell").join("v1.0").join("powershell.exe")
+    }
 
     #[repr(C)]
     #[derive(Default)]
@@ -137,7 +150,9 @@ mod imp {
     /// `hotkey` (Windows' words, "CTRL+ALT+N"; empty: none), made with WScript.Shell (PowerShell).
     pub fn make_shortcut(lnk: &std::path::Path, target: &std::path::Path, args: &str, hotkey: &str, what: &str) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
-        let q = |s: &str| s.replace('\'', "''");
+        // inside '…' PowerShell also ends the text at ‘ ’ ‚ ‛ (curly quotes, e.g. in a folder's name):
+        // each is doubled, as ' is
+        let q = |s: &str| s.chars().flat_map(|c| if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') { vec![c, c] } else { vec![c] }).collect::<String>();
         let script = format!(
             "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}');$s.TargetPath='{}';$s.Arguments='{}';$s.Hotkey='{}';$s.Description='{}';$s.Save()",
             q(&lnk.display().to_string()),
@@ -146,7 +161,8 @@ mod imp {
             q(hotkey),
             q(what)
         );
-        let out = std::process::Command::new("powershell")
+        // PowerShell by its full path (never one found beside a portable exe or on PATH)
+        let out = std::process::Command::new(powershell())
             .args(["-NoProfile", "-NonInteractive", "-Command", &script])
             .creation_flags(0x0800_0000) // no console window
             .output()

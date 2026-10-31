@@ -90,7 +90,7 @@ pub fn clean_title(title: &str, site: &str, url: &str) -> String {
 /// A neat Markdown link for a web address: "[Title · Site](url)"; the site's address when its
 /// name isn't known ("[Title · kitchenweekly.org](url)"), and only that when there's no title
 /// ("[kitchenweekly.org](url)"). Square brackets in the name become round ones (they would end
-/// the link), and spaces and round brackets in the address are written as %20, %28, %29.
+/// the link), and spaces, round brackets and control characters in the address are percent-encoded.
 pub fn md_link(url: &str, title: &str, site: &str) -> String {
     let url = url.trim();
     if url.is_empty() {
@@ -107,8 +107,10 @@ pub fn md_link(url: &str, title: &str, site: &str) -> String {
         format!("{title} · {place}")
     };
     let name = if name.is_empty() { url.to_string() } else { name };
-    let name = name.replace('[', "(").replace(']', ")").replace('\n', " ");
-    let addr = url.replace(' ', "%20").replace('(', "%28").replace(')', "%29");
+    // (a page's title is the page's to choose: made inert like highlighted words, on one line)
+    let name: String = name.replace('[', "(").replace(']', ")").chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    let name = crate::clip::defuse(&name);
+    let addr = crate::clip::safe_url(url);
     format!("[{name}]({addr})")
 }
 
@@ -322,7 +324,7 @@ pub fn html_source_url(html: &str) -> Option<String> {
     (url.starts_with("https://") || url.starts_with("http://")).then(|| url.to_string())
 }
 
-/// encodeURIComponent, with "-" as %2D too (a text fragment's own sign), as the bookmarklet does.
+/// encodeURIComponent, with "-" as %2D too (a text fragment's own sign), as the Edge extension does.
 fn fragment_part(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
@@ -336,7 +338,7 @@ fn fragment_part(s: &str) -> String {
 
 /// An address that opens `url` at `words` (a text fragment, `#:~:text=…`): up to 8 words whole,
 /// else the first 4 and the last 4 (the browser finds what lies between); the address's own `#…`
-/// goes. As the bookmarklet and the Edge extension make them.
+/// goes. As the Edge extension makes them.
 pub fn text_fragment(url: &str, words: &str) -> String {
     let base = url.split('#').next().unwrap_or(url);
     let w: Vec<&str> = words.split_whitespace().collect();

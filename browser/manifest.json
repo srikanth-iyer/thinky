@@ -14,7 +14,7 @@
   },
   "icons": { "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
   "commands": {
-    "highlight": { "suggested_key": { "default": "Alt+Shift+H" }, "description": "Highlight the selected text" },
+    "highlight": { "suggested_key": { "default": "Ctrl+Shift+H" }, "description": "Highlight the selected text" },
     "journal": { "suggested_key": { "default": "Alt+Shift+J" }, "description": "Send the selected text to today's journal" },
     "_execute_action": { "suggested_key": { "default": "Alt+Shift+L" }, "description": "Open the highlights box" }
   }

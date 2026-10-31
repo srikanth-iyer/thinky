@@ -105,8 +105,8 @@ export function tex(src) {
       const name = m[1];
       if (name === '\\') { base = '<br>'; continue; }
       if (IGNORE.has(name)) continue;
-      if (name in SYM) { base = esc(SYM[name]); continue; }
-      if (name in BIG) { base = `<span class="m-big">${BIG[name]}</span>`; continue; }
+      if (Object.hasOwn(SYM, name)) { base = esc(SYM[name]); continue; }
+      if (Object.hasOwn(BIG, name)) { base = `<span class="m-big">${BIG[name]}</span>`; continue; }
       if (FUNCS.has(name)) { base = `<span class="m-op">${name}</span>`; continue; }
       if (name === 'operatorname') { base = `<span class="m-op">${esc(p.arg())}</span>`; continue; }
       if (name === 'frac' || name === 'dfrac' || name === 'tfrac' || name === 'cfrac') {
@@ -122,14 +122,14 @@ export function tex(src) {
         const a = tex(p.arg());
         base = `${n ? `<sup class="m-root">${tex(n)}</sup>` : ''}√<span class="m-over">${a}</span>`; continue;
       }
-      if (name in ACCENT) { const a = tex(p.arg()); base = `<span class="m-acc">${a}${ACCENT[name]}</span>`; continue; }
+      if (Object.hasOwn(ACCENT, name)) { const a = tex(p.arg()); base = `<span class="m-acc">${a}${ACCENT[name]}</span>`; continue; }
       if (name === 'bar' || name === 'overline') { base = `<span class="m-over">${tex(p.arg())}</span>`; continue; }
       if (name === 'underline') { base = `<span class="m-under">${tex(p.arg())}</span>`; continue; }
       if (name === 'text' || name === 'textrm' || name === 'mathrm' || name === 'textnormal' || name === 'mbox') { base = `<span class="m-text">${esc(p.arg())}</span>`; continue; }
       if (name === 'mathbf' || name === 'textbf' || name === 'boldsymbol' || name === 'bm') { base = `<b>${tex(p.arg())}</b>`; continue; }
       if (name === 'mathit' || name === 'textit' || name === 'emph') { base = `<i>${esc(p.arg())}</i>`; continue; }
       if (name === 'mathsf' || name === 'mathtt' || name === 'texttt') { base = `<span class="m-text">${esc(p.arg())}</span>`; continue; }
-      if (name in FONTS) { base = esc([...p.arg()].map(FONTS[name]).join('')); continue; }
+      if (Object.hasOwn(FONTS, name)) { base = esc([...p.arg()].map(FONTS[name]).join('')); continue; }
       if (name === 'begin') { base = env(p); continue; }
       if (name === 'not') { const a = tex(p.arg()); base = `${a}̸`; continue; }
       base = `<span class="m-unknown">\\${esc(name)}</span>`;
@@ -160,7 +160,8 @@ function env(p) {
   const rows = text.split(/\\\\/).map((r) => r.trim()).filter((r, k, all) => r || k < all.length - 1).map((r) => r.split('&'));
   const cols = Math.max(1, ...rows.map((r) => r.length));
   const cells = rows.map((r) => Array.from({ length: cols }, (_, k) => `<span>${tex((r[k] ?? '').trim())}</span>`).join('')).join('');
-  const fence = { bmatrix: 'm-b', pmatrix: 'm-p', vmatrix: 'm-v', Vmatrix: 'm-vv', Bmatrix: 'm-cb', cases: 'm-cases' }[kind] || '';
+  const FENCE = { bmatrix: 'm-b', pmatrix: 'm-p', vmatrix: 'm-v', Vmatrix: 'm-vv', Bmatrix: 'm-cb', cases: 'm-cases' };
+  const fence = Object.hasOwn(FENCE, kind) ? FENCE[kind] : ''; // (own names only: never "constructor" and the like)
   const align = /align|cases|split|gather/.test(kind) ? ' m-left' : '';
   return `<span class="m-mat ${fence}${align}" style="--cols:${cols}">${cells}</span>`;
 }

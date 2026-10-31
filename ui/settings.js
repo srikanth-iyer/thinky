@@ -394,6 +394,14 @@ function lookCard(app) {
     $('input', wide).onchange = (e) => app.setWide(e.target.checked, true);
     sc.append(wide);
   }
+  // spelling (Build 34, he asked): the system's own check, as he types; the words are underlined and
+  // a right-click (on the phone, the keyboard) offers the right spelling. Nothing leaves the device.
+  const spell = h('label', 'toggle spell-row', `<input type="checkbox"${store.get('spellcheck', true) ? ' checked' : ''}> Check spelling as I type ${matchMedia('(pointer: coarse)').matches ? '(your keyboard suggests the right word)' : '(right-click an underlined word for suggestions)'}`);
+  $('input', spell).onchange = (e) => {
+    store.set('spellcheck', e.target.checked);
+    for (const ta of document.querySelectorAll('textarea.ed')) ta.spellcheck = e.target.checked; // (a note being typed in now too)
+  };
+  sc.append(spell);
   sc.append(textStyle(app));
   return sc;
 }
@@ -497,13 +505,12 @@ function captureCard(app) {
   const card = h('div', 'card');
   const where = free('where', (n) => document.querySelector(`[name="${n}"]`)); // (one choice per copy of Settings)
   card.innerHTML = `<h2>Quick capture</h2>
-    <p class="note">What gets added when you share something to the app (phone share menu, the widget’s +, the browser button and shortcut key on the laptop). Same settings as Logseq’s, kept in <code>logseq/config.edn</code>, so Logseq uses them too.
+    <p class="note">What gets added when you share something to the app (phone share menu, the widget’s +, the shortcut key and “Send to today’s journal” from Edge on the laptop). Same settings as Logseq’s, kept in <code>logseq/config.edn</code>, so Logseq uses them too.
     <br><code>{time}</code> = time, <code>{date}</code> = today’s date, <code>{text}</code> = what you shared or typed, <code>{url}</code> = its web address (or the picture).</p>
     <label class="field">Shared text and links<input data-f="text" value="${esc(c.capture_text)}"></label>
     <label class="field">Shared pictures<input data-f="media" value="${esc(c.capture_media)}"></label>
     <div class="radio"><label><input type="radio" name="${where}" value="today" ${c.capture_today ? 'checked' : ''}> Add to today’s journal</label>
       <label><input type="radio" name="${where}" value="page" ${c.capture_today ? '' : 'checked'}> Add to the page <input data-f="page" value="${esc(c.capture_page)}" class="inline"></label></div>
-    ${window.LeanAndroid ? `<label class="toggle"><input type="checkbox" data-f="onetap" ${store.get('oneTap', false) ? 'checked' : ''}> Add shared things straight away (no pop-up)</label>` : ''}
     <p class="note preview"></p>
     <div class="btn-row"><button class="btn" data-a="save">Save</button><span class="note saved" hidden>Saved to config.edn</span></div>`;
   const f = (k) => $(`[data-f="${k}"]`, card);
@@ -518,7 +525,6 @@ function captureCard(app) {
     try {
       const s = await call('set_capture', { text: f('text').value, media: f('media').value, today: $('input[type=radio]:checked', card).value === 'today', page: f('page').value });
       app.summary.config = s.config;
-      if (f('onetap')) store.set('oneTap', f('onetap').checked);
       app.sendCaptureConfig();
       $('.saved', card).hidden = false;
       setTimeout(() => ($('.saved', card).hidden = true), 2500);
@@ -527,9 +533,6 @@ function captureCard(app) {
   return card;
 }
 
-// the page's address (with a selection: an address that opens the page at it, a text fragment
-// `#:~:text=first words,last words`), its title and the site's name (core link.rs makes the neat link)
-const BOOKMARKLET = "javascript:(function(){var s=String(getSelection()).trim(),h=location.href.split('#')[0],u=h,e=function(x){return encodeURIComponent(x).replace(/-/g,'%2D')};if(s){var w=s.split(/\\s+/);u=h+'#:~:text='+(w.length>8?e(w.slice(0,4).join(' '))+','+e(w.slice(-4).join(' ')):e(w.join(' ')))}var m=document.querySelector('meta[property=\"og:site_name\"]');location.href='leanoutliner://capture?url='+encodeURIComponent(u)+'&title='+encodeURIComponent(document.title)+'&site='+encodeURIComponent(m?m.content:'')+'&text='+encodeURIComponent(s);var d=document.createElement('div');d.textContent='Sent to thinky';d.style.cssText='position:fixed;z-index:2147483647;top:16px;right:16px;background:#1a2130;color:#fff;padding:10px 14px;border-radius:10px;font:14px system-ui';document.body.appendChild(d);setTimeout(function(){d.remove()},2200)})();";
 
 // The Edge extension (browser/ in the repo; native_host.rs in the app): set up here, then loaded in
 // Edge once by hand ("Load unpacked": an extension that isn't from the add-ons store).
@@ -538,10 +541,11 @@ function browserCard(app) {
   card.innerHTML = `<h2>Highlights from Edge</h2>
     <p class="note">With the ${BRAND.word} extension in Edge you highlight passages as you read, then send them all at once to the article’s own page in your notes (one page per article, the day’s highlights under the date, each linked to its place in the article).</p>
     <ul class="note how">
-      <li>Highlight: select text, then right-click → <b>Highlight for thinky</b>, or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd>.</li>
+      <li>Highlight: select text, then right-click → <b>Highlight for thinky</b>, or press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd>.</li>
       <li>Send: click the extension’s button next to Edge’s address bar (or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd>), then <b>Send</b>.</li>
       <li>One passage to today’s journal: right-click → <b>Send to today’s journal</b>, or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>.</li>
     </ul>
+    <p class="note keys-how">These are the keys of a new setup (an extension set up before Build 34 keeps <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd> for Highlight). To see or change them, open <code class="ext-keys">edge://extensions/shortcuts</code> in Edge <button class="btn ghost small" data-a="copykeys">Copy address</button> (Edge doesn’t let a page open it for you).</p>
     <p class="note ext-state" role="status" hidden></p>
     <div class="btn-row"><button class="btn" data-a="setup">Set up</button></div>
     <ol class="note steps" hidden>
@@ -568,6 +572,7 @@ function browserCard(app) {
   };
   const copy = async (t) => { try { await navigator.clipboard.writeText(t); app.toast('Copied', 1200); } catch { app.toast('Couldn’t copy'); } };
   $('[data-a="copyext"]', card).onclick = () => copy('edge://extensions');
+  $('[data-a="copykeys"]', card).onclick = () => copy('edge://extensions/shortcuts');
   $('[data-a="copyfolder"]', card).onclick = () => copy($('.ext-folder', card).textContent);
   return card;
 }
@@ -576,19 +581,11 @@ function windowsCard(app) {
   const card = h('div', 'card');
   const hk = store.get('captureKey', '');
   card.innerHTML = `<h2>Capture from anywhere on the laptop</h2>
-    <h3>A bookmark button (without the extension)</h3>
-    <p class="note">Drag this button onto your browser’s bookmarks bar. Then on any web page, click it to add the page (and any text you selected) to your journal, using the quick capture format above. The first time, the browser asks to open ${BRAND.word}: tick “Always allow”.</p>
-    <div class="btn-row"><a class="btn bookmarklet" href="${esc(BOOKMARKLET)}" draggable="true" title="Drag me to the bookmarks bar">＋ Add to journal</a>
-      <button class="btn ghost" data-a="copy">Copy the code instead</button></div>
-    <p class="note small">No bookmarks bar? In Chrome or Edge press Ctrl+Shift+B. If dragging doesn’t work: copy the code, right-click the bookmarks bar, choose “Add page…”, name it “Add to journal” and paste the code as the address.</p>
-    <h3>With a shortcut key</h3>
     <p class="note">Press a key combination (for example Ctrl+Alt+N) anywhere in Windows to open a small box that adds a note to your journal, pre-filled with what you last copied.</p>
     <p class="note key-how">The key works instantly because a tiny helper waits for it in the background (it starts with Windows and uses under 2 MB of memory). Remove the key to turn the helper off.</p>
     <div class="btn-row"><input class="filter key" readonly placeholder="Click here, then press keys" value="${esc(hk)}">
       <button class="btn" data-a="setkey">Save</button><button class="btn ghost" data-a="clearkey" ${hk ? '' : 'hidden'}>Remove</button></div>
     <div class="banner key-state" role="status" hidden><span></span><button class="btn ghost small" data-a="retrykey">Try again</button></div>`;
-  $('.bookmarklet', card).onclick = (e) => { e.preventDefault(); app.toast('Drag this button to your browser’s bookmarks bar.'); };
-  $('[data-a="copy"]', card).onclick = async () => { try { await navigator.clipboard.writeText(BOOKMARKLET); app.toast('Copied', 1200); } catch { app.toast('Couldn’t copy'); } };
   const key = $('.key', card);
   // the key as the app has it now (the helper's, or the portable copy's Start-menu shortcut), which
   // way this copy answers it, and whether it works right now: if the helper doesn't hold it (say,

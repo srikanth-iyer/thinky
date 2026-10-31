@@ -71,6 +71,8 @@
       if (s && s.matches('script[type^="math/tex"]')) t = s.textContent;
     }
     t = (t || '').trim().replace(/^\{\\displaystyle\s*([\s\S]*)\}$/, '$1').trim();
+    // the page chose these words too: one line, and made inert like any other (safe)
+    t = safe(t.replace(/\s+/g, ' '));
     if (!t) return null;
     const display = el.matches('.katex-display, .MathJax_Display, mjx-container[display="true"]') || !!el.closest('.katex-display') || el.getAttribute('display') === 'block';
     return display ? `$$${t}$$` : `$${t}$`;
@@ -85,6 +87,9 @@
       const tag = n.nodeName.toUpperCase();
       if (n.nodeType === 1) {
         if (SKIP.test(tag) || n.getAttribute('aria-hidden') === 'true' || n.hidden) return;
+        // words the reader can't see aren't taken (a page could hide text inside a passage)
+        const cs = getComputedStyle(n);
+        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return;
         if (n.matches(MATH)) { const t = tex(n); if (t) { out += t; return; } }
         if (tag === 'BR') { out += '\n'; return; }
         if (tag === 'IMG') return;
@@ -96,7 +101,9 @@
       if (tag === 'CODE' && n.parentNode && n.parentNode.nodeName !== 'PRE') { out += '`' + n.textContent.replace(/`/g, "'") + '`'; return; }
       if (tag === 'A' && /^https?:/i.test(n.href || '')) {
         const label = inner().trim().replace(/[[\]]/g, (c) => (c === '[' ? '(' : ')'));
-        out += label ? `[${label}](${n.href.replace(/ /g, '%20').replace(/\(/g, '%28').replace(/\)/g, '%29')})` : '';
+        // (a "!" just before would make it a picture loaded from the web: keep them apart)
+        if (label && out.endsWith('!')) out += ZW;
+        out += label ? `[${label}](${n.href.replace(/ /g, '%20').replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/[\u0000-\u001f\u007f]/g, (c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0').toUpperCase())})` : '';
         return;
       }
       const block = BLOCK.test(tag);
@@ -213,12 +220,16 @@
     },
     clear() { ranges.clear(); repaint(); },
     // A small message in the page's corner.
+    // (inside a closed shadow root: the web page can't read what it says, e.g. a notes page's name)
     toast(msg, bad) {
+      const host = document.createElement('div');
+      const root = host.attachShadow({ mode: 'closed' });
       const d = document.createElement('div');
       d.textContent = msg;
       d.style.cssText = `position:fixed;z-index:2147483647;top:16px;right:16px;max-width:360px;background:${bad ? '#8a1f1f' : '#1a2130'};color:#fff;padding:10px 14px;border-radius:10px;font:14px/1.4 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.25)`;
-      document.documentElement.append(d);
-      setTimeout(() => d.remove(), bad ? 6000 : 2600);
+      root.append(d);
+      document.documentElement.append(host);
+      setTimeout(() => host.remove(), bad ? 6000 : 2600);
     },
   };
 })();

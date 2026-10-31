@@ -4,7 +4,7 @@
 
 import { call, today, nowTime, store, isApp, isAndroid, listen, pageLinkUrl } from './api.js';
 import { Outline, EDGE, PIN_H, findAgain, caretAgain, foldedIn, lineLook } from './editor.js';
-import { renderBlock, propsHtml, visibleProps, esc } from './render.js';
+import { renderBlock, propsHtml, visibleProps, esc, pagesIn } from './render.js';
 import { Suggest, Preview, menu, confirmBox, promptBox, pickDate, place } from './popups.js';
 import { pagesView, tagsView, propsView, todosView, taskRow, taskClicks, taskDay, byDay, num } from './views.js';
 import { settingsView } from './settings.js';
@@ -206,6 +206,22 @@ const setRefPrefs = (host, { open, sort }) => {
   if (open || sort !== 'changed') l.push([k, open ? 1 : 0, sort]);
   store.set('refTools', l.slice(-REF_TOOLS_MAX));
 };
+/** "Linked references" folded shut from its heading (Build 34, the maintainer asked: like Unlinked references):
+ *  localStorage `refShut` = [page or day in small letters…], the last folded at the end, at most 200. */
+const refShutList = () => { const l = store.get('refShut', []); return Array.isArray(l) ? l.map(String) : []; };
+const refShut = (host) => refShutList().includes(String(host).toLowerCase());
+const setRefShut = (host, shut) => {
+  const k = String(host).toLowerCase(), l = refShutList().filter((x) => x !== k);
+  if (shut) l.push(k);
+  store.set('refShut', l.slice(-REF_TOOLS_MAX));
+};
+/** The heading's "Linked references" as a fold button (the section's notes and tools hide). */
+function foldableRefs(sec, host) {
+  const btn = sec.querySelector('.sec-h .disclose');
+  const show = (shut) => { sec.classList.toggle('shut', shut); btn.setAttribute('aria-expanded', String(!shut)); };
+  show(refShut(host));
+  btn.onclick = () => { const shut = !sec.classList.contains('shut'); setRefShut(host, shut); show(shut); };
+}
 const ymd = (dt) => [dt.getFullYear(), dt.getMonth() + 1, dt.getDate()];
 
 // ---------------------------------------------------------------------------
@@ -1004,7 +1020,8 @@ class App {
   dayLinked(groups, day) {
     const sec = h('section', 'sec');
     const n = groups.reduce((s, g) => s + g.hits.length, 0);
-    sec.innerHTML = `<h3 class="sec-h">Linked references <span class="n">${n}</span></h3>`;
+    sec.innerHTML = `<h3 class="sec-h"><button class="disclose" aria-expanded="true">Linked references</button> <span class="n">${n}</span></h3>`;
+    foldableRefs(sec, day);
     const MAX = 6; // a day linked from very many pages: the first few, then a button for the rest
     const fill = (gs, mark) => {
       gs = this.sortRefs(gs, day);
@@ -1148,7 +1165,8 @@ class App {
     if (pv.refs.length) {
       const refs = h('section', 'sec');
       const count = pv.refs.reduce((s, g) => s + g.hits.length, 0);
-      refs.innerHTML = `<h2 class="sec-h">Linked references <span class="n">${count} in ${pv.refs.length} page${pv.refs.length === 1 ? '' : 's'}</span></h2>`;
+      refs.innerHTML = `<h2 class="sec-h"><button class="disclose" aria-expanded="true">Linked references</button> <span class="n">${count} in ${pv.refs.length} page${pv.refs.length === 1 ? '' : 's'}</span></h2>`;
+      foldableRefs(refs, pv.info.name);
       view.append(refs);
       const name = pv.info.name;
       const fill = (gs, mark) => this.fillRefs(refs, this.sortRefs(gs, name), name, mark); // (after the page's own notes show, a little at a time)
@@ -1297,9 +1315,47 @@ class App {
     const [btn, sortBtn, all] = acts.children;
     btn.innerHTML = ICON.filter;
     const bar = h('div', 'ref-tools');
-    bar.innerHTML = `<label class="ref-find">${ICON.search}<input type="search" class="ref-filter" placeholder="Filter references" aria-label="Filter references" enterkeyhint="search" autocomplete="off" spellcheck="false"></label>`;
+    bar.innerHTML = `<label class="ref-find">${ICON.search}<input type="search" class="ref-filter" placeholder="Filter references" aria-label="Filter references" enterkeyhint="search" autocomplete="off" spellcheck="false"></label>`
+      + '<div class="ref-chips" role="group" aria-label="Pages these references mention"></div>';
     head.after(bar);
     const input = $('.ref-filter', bar);
+    // Logseq's filter buttons (Build 34, the maintainer asked): the pages these references mention (links and
+    // tags in a note, its path and sub-notes, and the page it's on), most mentioned first. A click shows
+    // only references mentioning it, a second hides those, a third lets it go; several combine. For the
+    // session only (Logseq writes its filters into the page; this never writes).
+    const hostKey = String(host).toLowerCase();
+    const namesOf = new Map(); // a group → each reference's page names (small letters)
+    const refNames = (g) => {
+      if (!namesOf.has(g)) namesOf.set(g, g.hits.map((x) => new Set([g.page, ...[x.text, ...(x.parents || []).map((p) => p.text), ...(x.kids || []).map((k) => k.text)].flatMap(pagesIn)].map((n) => n.toLowerCase()))));
+      return namesOf.get(g);
+    };
+    const counts = new Map(), shown = new Map(); // small letters → how many references / the name as written first
+    for (const g of groups) g.hits.forEach((x, i) => {
+      for (const n of refNames(g)[i]) if (n !== hostKey) counts.set(n, (counts.get(n) || 0) + 1);
+      for (const n of [g.page, ...pagesIn(x.text)]) if (!shown.has(n.toLowerCase())) shown.set(n.toLowerCase(), n);
+    });
+    const picks = new Map(); // small letters → 'in' | 'out'
+    const chipsEl = $('.ref-chips', bar);
+    const CHIPS = 24; // the most mentioned first; "More" shows the rest
+    const drawChips = (all = false) => {
+      const names = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a) || a.localeCompare(b));
+      const list = all ? names : names.slice(0, CHIPS);
+      chipsEl.innerHTML = list.map((n) => {
+        const p = picks.get(n), say = p === 'in' ? 'Only these; click to hide them instead' : p === 'out' ? 'Hidden; click to stop filtering by it' : 'Click to show only these';
+        return `<button type="button" class="chip ref-chip" data-n="${esc(n)}"${p ? ` data-pick="${p}"` : ''} aria-pressed="${p ? 'true' : 'false'}" title="${esc(say)}">${p === 'out' ? '<s>' : ''}${esc(shown.get(n) || n)}${p === 'out' ? '</s>' : ''} <span class="n">${counts.get(n)}</span></button>`;
+      }).join('') + (!all && names.length > CHIPS ? `<button type="button" class="chip ref-more">${names.length - CHIPS} more</button>` : '');
+      chipsEl.hidden = !names.length;
+    };
+    chipsEl.onclick = (e) => {
+      if (e.target.closest('.ref-more')) { drawChips(true); return; }
+      const c = e.target.closest('.ref-chip');
+      if (!c) return;
+      const n = c.dataset.n, p = picks.get(n);
+      if (!p) picks.set(n, 'in'); else if (p === 'in') picks.set(n, 'out'); else picks.delete(n);
+      drawChips(chipsEl.querySelector('.ref-more') === null && counts.size > CHIPS);
+      draw();
+    };
+    drawChips();
     const keys = () => groups.map((g) => refKey('l', host, g.page));
     const tip = (b, t) => { b.setAttribute('aria-label', t); b.title = t; };
     const paint = () => {
@@ -1324,21 +1380,28 @@ class App {
       sec.querySelector(':scope > .ref-none')?.remove();
       const words = fold(input.value).split(/\s+/).filter(Boolean);
       let gs = groups;
-      if (words.length) gs = groups.map((g) => { const ts = textOf(g); return { ...g, hits: g.hits.filter((_, i) => words.every((w) => ts[i].includes(w))) }; }).filter((g) => g.hits.length);
+      const ins = [...picks].filter(([, p]) => p === 'in').map(([n]) => n), outs = [...picks].filter(([, p]) => p === 'out').map(([n]) => n);
+      if (words.length || picks.size) gs = groups.map((g) => {
+        const ts = words.length ? textOf(g) : null, ns = picks.size ? refNames(g) : null;
+        return { ...g, hits: g.hits.filter((_, i) => words.every((w) => ts[i].includes(w)) && ins.every((n) => ns[i].has(n)) && !outs.some((n) => ns[i].has(n))) };
+      }).filter((g) => g.hits.length);
+      const filtering = words.length || picks.size;
       const n = gs.reduce((s, g) => s + g.hits.length, 0), of = groups.reduce((s, g) => s + g.hits.length, 0);
-      count.textContent = words.length ? `${n} of ${of} match` : said; // (the heading's count while filtering)
+      count.textContent = filtering ? `${n} of ${of} match` : said; // (the heading's count while filtering)
       paint();
       lit?.clear();
       if (lit && words.length) CSS.highlights.set('ref-filter', lit);
-      if (!gs.length) { sec.append(h('p', 'note ref-none', `No references mention “${esc(input.value.trim())}”.`)); return; }
+      if (!gs.length) { sec.append(h('p', 'note ref-none', words.length ? `No references mention “${esc(input.value.trim())}”.` : 'No references match these pages.')); return; }
       fill(gs, words.length && lit ? (el) => litWords(el, words, lit) : null);
     };
     const set = (change) => setRefPrefs(host, { ...refPrefs(host), ...change });
     const close = () => {
       set({ open: false });
       clearTimeout(timer);
-      const had = input.value;
+      const had = input.value || picks.size;
       input.value = '';
+      picks.clear();
+      drawChips();
       if (bar.contains(document.activeElement)) btn.focus({ preventScroll: true });
       if (had) draw(); else paint();
     };
@@ -2772,6 +2835,21 @@ class App {
     };
     window.addEventListener('error', (e) => log(`script: ${e.message} (${e.filename?.split('/').pop()}:${e.lineno})`));
     window.addEventListener('unhandledrejection', (e) => log(`script: ${e.reason?.stack || e.reason}`));
+    // a web link never opens a window of the app's own (Build 34, the security review): a middle
+    // click, or Ctrl/Shift/Alt with a click, on one sends it to the browser, as a plain click does
+    if (isApp) {
+      const web = (e) => e.target.closest?.('a[href]:not([href^="#"])');
+      document.addEventListener('mousedown', (e) => { if (e.button === 1 && web(e)) e.preventDefault(); }, true);
+      const away = (e) => {
+        const a = web(e);
+        if (!a || (e.type === 'click' && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) || (e.type === 'auxclick' && e.button !== 1)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.openUrl(a.getAttribute('href'));
+      };
+      document.addEventListener('click', away, true);
+      document.addEventListener('auxclick', away, true);
+    }
     this.buildChrome();
     this.renderSideLists();
     initFileDrop(this); // pictures and files dragged in from Explorer (filedrop.js)
@@ -2844,10 +2922,10 @@ class App {
   sendCaptureConfig() {
     const c = this.summary?.config;
     if (!c || !window.LeanAndroid?.setCaptureConfig) return;
-    window.LeanAndroid.setCaptureConfig(JSON.stringify({ text: c.capture_text, media: c.capture_media, today: c.capture_today, page: c.capture_page, pagesDir: c.pages_dir, oneTap: store.get('oneTap', false) }));
+    window.LeanAndroid.setCaptureConfig(JSON.stringify({ text: c.capture_text, media: c.capture_media, today: c.capture_today, page: c.capture_page, pagesDir: c.pages_dir }));
   }
 
-  /** Is there a newer build on the public downloads page? Asked at most once a day at start;
+  /** Is there a newer build on the public repo’s releases page? Asked at most once a day at start;
    *  maxAge: how old an answer may be (About asks again when the last answer is over a minute old,
    *  its "Check" button always: true). */
   async checkUpdate(maxAge = 864e5) {
@@ -2860,7 +2938,7 @@ class App {
     if (maxAge === true || Date.now() - last.at > maxAge) {
       try {
         // (given up after 8 s: About waits for this answer, and a bad network mustn't leave it blank)
-        const r = await fetch('https://api.github.com/repos/srikanth-iyer/lean-outliner-releases/releases/latest', { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) });
+        const r = await fetch('https://api.github.com/repos/srikanth-iyer/thinky/releases/latest', { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) });
         // (with each file's size: About says how much "Update now" downloads)
         if (r.ok) { const j = await r.json(); latest = { tag: j.tag_name, url: j.html_url, sizes: Object.fromEntries((j.assets || []).map((a) => [a.name, a.size])) }; }
       } catch { /* offline */ }

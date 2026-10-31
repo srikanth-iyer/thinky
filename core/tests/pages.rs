@@ -40,13 +40,27 @@ fn links_say_what_they_open() {
     for bad in ["leanoutliner://page/", "leanoutliner://page/%20%20", "leanoutliner://page/a%0Ab", "leanoutliner://page/%5B%5Bx%5D%5D", "leanoutliner://note/", "leanoutliner://note/not-an-id!", "leanoutliner://note/12"] {
         assert_eq!(link::parse(bad), Some(Link::App), "{bad}");
     }
-    // the bookmarklet's capture links, as before
+    // capture links (the old bookmarklet's) are still read, though the app does nothing with them
     assert_eq!(
         link::parse("leanoutliner://capture?url=https%3A%2F%2Fa.b%2F&title=A+page&text="),
         Some(Link::Capture { text: "".into(), url: "[A page · a.b](https://a.b/)".into(), boxed: false })
     );
     assert_eq!(link::parse("leanoutliner://capture?text=hi%20there&box=1"), Some(Link::Capture { text: "hi there".into(), url: "".into(), boxed: true }));
     assert_eq!(link::parse("leanoutliner:?text=x"), Some(Link::Capture { text: "x".into(), url: "".into(), boxed: false }));
+    // a web page made the link: only inert words and an http(s) address come through
+    match link::parse("leanoutliner://capture?text=alias%3A%3A%20X%0A-%20%5B%5BPage%5D%5D%20%7B%7Bquery%20x%7D%7D%20%23tag%20%3Cimg%3E&url=javascript%3Aalert(1)") {
+        Some(Link::Capture { text, url, boxed: false }) => {
+            assert_eq!(url, "");
+            for live in ["alias::", "\n- ", "[[", "{{", " #tag", "<img"] {
+                assert!(!text.contains(live), "{live} in {text:?}");
+            }
+        }
+        other => panic!("{other:?}"),
+    }
+    match link::parse(&format!("leanoutliner://capture?text={}", "a".repeat(20000))) {
+        Some(Link::Capture { text, .. }) => assert_eq!(text.chars().count(), 8000),
+        other => panic!("{other:?}"),
+    }
     assert_eq!(link::parse("https://example.com"), None);
     assert_eq!(link::parse("lean"), None);
     assert_eq!(link::parse("leanoutliné://page/x"), None, "never a slice through a letter");
@@ -442,4 +456,14 @@ fn a_link_that_cant_be_rewritten_doesnt_stop_the_merge() {
     assert_eq!(get(&v, "pages/Free.md"), "- and [[Foo]]\n");
     assert_eq!(get(&v, "pages/Bar.md"), "- bar\n");
     let _ = std::fs::remove_dir_all(&v);
+}
+
+#[test]
+fn only_the_apps_own_page_may_be_shown() {
+    for ok in ["http://tauri.localhost", "http://tauri.localhost/", "http://tauri.localhost/index.html#/page/x", "https://tauri.localhost/?t=1", "tauri://localhost/", "TAURI://LOCALHOST", "about:blank", "blob:http://tauri.localhost/1234-abcd"] {
+        assert!(link::is_app_page(ok), "{ok}");
+    }
+    for bad in ["https://example.com/", "http://tauri.localhost.evil.com/", "http://tauri.localhost@evil.com/", "http://evil.com/?http://tauri.localhost", "file:///C:/x.html", "http://vault.localhost/assets/x.svg", "data:text/html,hi", "blob:https://evil.com/1", "javascript:alert(1)", "about:srcdoc", "", "leanoutliner://page/x"] {
+        assert!(!link::is_app_page(bad), "{bad}");
+    }
 }

@@ -22,11 +22,17 @@ pub fn is_host_call(arg1: &str) -> bool {
     arg1.starts_with("chrome-extension://")
 }
 
+/// Is it our extension that started it? Edge passes the caller's origin as the first argument;
+/// only the one extension the host manifest allows is answered (anything else: nothing is read).
+pub fn is_our_extension(arg1: &str) -> bool {
+    arg1.trim_end_matches('/') == format!("chrome-extension://{}", outline_core::clip::EXTENSION_ID)
+}
+
 /// Answer the extension until Edge closes the pipe. The notes folder is the one last opened in
-/// the app (as for the capture box); tests can point it elsewhere with `LEAN_CLIP_VAULT`.
+/// the app (as for the capture box); test builds (debug) can point it elsewhere with `LEAN_CLIP_VAULT`.
 pub fn run() {
     let root = || match std::env::var_os("LEAN_CLIP_VAULT") {
-        Some(v) if !v.is_empty() => Ok(PathBuf::from(v)),
+        Some(v) if !v.is_empty() && cfg!(debug_assertions) => Ok(PathBuf::from(v)),
         _ => outline_core::app::last_vault_or_why(),
     };
     outline_core::clip::serve(&mut std::io::stdin().lock(), &mut std::io::stdout().lock(), root, crate::win::local_now);

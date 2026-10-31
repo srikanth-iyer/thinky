@@ -175,6 +175,20 @@ fn mime(p: &std::path::Path) -> &'static str {
 fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // the window shows only the app's own page: no web page, file or other address can ever
+        // be loaded into it, so nothing outside reaches its commands (or Android's LeanAndroid
+        // bridge). Web links open in the browser instead (the opener plugin, App.openUrl).
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry, ()>::new("navigation-guard")
+                .on_navigation(|_, url| {
+                    let ok = outline_core::link::is_app_page(url.as_str());
+                    if !ok {
+                        outline_core::log::record(&format!("The window was kept from going to another address ({}).", url.scheme()));
+                    }
+                    ok
+                })
+                .build(),
+        )
         .manage(State(Mutex::new(None)))
         .setup(|app| {
             if let Ok(dir) = app.path().app_cache_dir() {
@@ -202,6 +216,10 @@ fn builder() -> tauri::Builder<tauri::Wry> {
                     Some((f, bytes)) => tauri::http::Response::builder()
                         .header(tauri::http::header::CONTENT_TYPE, mime(&f))
                         .header(tauri::http::header::CACHE_CONTROL, "max-age=600")
+                        // never a page that runs: an SVG or HTML file synced into assets/ could
+                        // otherwise run script with the app's own rights (dev/src/main.rs the same)
+                        .header("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'")
+                        .header("X-Content-Type-Options", "nosniff")
                         .body(bytes),
                     None => tauri::http::Response::builder().status(404).body(Vec::new()),
                 };

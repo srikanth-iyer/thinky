@@ -1,7 +1,6 @@
 //! The "Add to journal" box as a native Windows window, so it appears at once even when the app
-//! isn't running (no WebView2 to start): the Start-menu shortcut key (`--capture-box`), the
-//! browser button (`leanoutliner://capture?…&box=1`) and `--capture` when adding straight away
-//! fails. It is painted in the look's colours (look.txt, kept by the app), and its "+" button
+//! isn't running (no WebView2 to start): the shortcut key (`--capture-box`), and
+//! `--capture` when adding straight away fails. It is painted in the look's colours (look.txt, kept by the app), and its "+" button
 //! opens a small menu: a picture or file,
 //! a to-do, another page. The rules (when Enter adds, when it closes, its sizes) are in
 //! outline_core::capture_box; this file draws them and talks to Windows. Nothing stays running:
@@ -41,6 +40,10 @@ const WM_TEST_LATE: u32 = WM_APP + 2;
 const NOTE_HINT: &str = "Add a note…";
 const SEARCH_HINT: &str = "Find a page…";
 const PLUS_HINT: &str = "More: a picture or file, a to-do, another page (Alt+↓)";
+/// The small buttons on the box (Build 34, he asked: on the box itself, tiny), and what each says
+/// in the bottom strip under the mouse.
+const TOOLS: [&str; 3] = ["[[ ]]", "#", "To-do"];
+const TOOL_HINTS: [&str; 3] = ["Link a page: its name goes between [[ ]] (words selected become the link)", "Tag: #word", "Make it a to-do (again to take it off)"];
 
 /// The text boxes' own window procedures (the box listens in on them).
 static NOTE_PROC: AtomicIsize = AtomicIsize::new(0);
@@ -171,6 +174,8 @@ enum Hot {
     Pill,
     Search,
     Row(usize),
+    /// a small button: 0 [[ ]], 1 #, 2 To-do
+    Tool(usize),
 }
 
 /// A row of the page list.
@@ -795,7 +800,10 @@ fn relayout_once(first: bool) {
         }
         _ => line_height(foot_font),
     };
-    let mut m = Metrics { scale, line_h, lines: 1, pill_w, rows, list_line_h, foot_h };
+    // the small buttons: their words in the to-do mark's font, with room on either side
+    let tool_font = with(|ui| ui.fonts.pill).unwrap_or(0);
+    let tool_w = TOOLS.map(|t| text_width(tool_font, t) + 2 * px(8.0));
+    let mut m = Metrics { scale, line_h, lines: 1, pill_w, rows, list_line_h, foot_h, tool_w };
     // The text box wraps at its width: when that changes (first time, the to-do mark, another
     // DPI), give it the new width first, then count its lines.
     let want = rules::layout(&m).note;
@@ -915,6 +923,16 @@ fn draw(ui: &Ui, dc: isize, mut cv: Canvas) {
         cv.round_rect(bx, by, bx + bs, by + bs, pxf(2.5), c.accent);
         cv.round_rect(bx + pxf(1.5), by + pxf(1.5), bx + bs - pxf(1.5), by + bs - pxf(1.5), pxf(1.2), bg);
     }
+    // the small buttons: quiet pills, tinted under the mouse (To-do also while it's on)
+    for (i, t) in l.tools.iter().enumerate() {
+        if t.is_empty() {
+            continue;
+        }
+        let on = i == 2 && ui.todo;
+        let bg = if ui.pressed == Hot::Tool(i) { mix(c.surface2, c.accent, 0.22) } else if ui.hot == Hot::Tool(i) || on { mix(c.surface2, c.accent, 0.12) } else { c.surface2 };
+        cv.round_rect(t.l as f32, t.t as f32, t.r as f32, t.b as f32, pxf(6.0), c.line_soft);
+        cv.round_rect(t.l as f32 + 1.0, t.t as f32 + 1.0, t.r as f32 - 1.0, t.b as f32 - 1.0, pxf(6.0) - 1.0, bg);
+    }
     // the page list: a search field and the rows, the chosen one tinted
     if let Some(pk) = &ui.picker {
         let f = l.search;
@@ -970,6 +988,15 @@ fn draw(ui: &Ui, dc: isize, mut cv: Canvas) {
     unsafe {
         GdiFlush();
         SetBkMode(dc, TRANSPARENT);
+        let pill_lh = line_height(ui.fonts.pill);
+        for (i, t) in l.tools.iter().enumerate() {
+            if t.is_empty() {
+                continue;
+            }
+            let tw = text_width(ui.fonts.pill, TOOLS[i]);
+            let ink = if ui.hot == Hot::Tool(i) || (i == 2 && ui.todo) { c.ink } else { c.ink_soft };
+            words(dc, ui.fonts.pill, ink, t.l + (t.w() - tw) / 2, (t.t + t.b) / 2 - pill_lh / 2, tw + 2, TOOLS[i]);
+        }
         for ((k, word), (kx, kt, kw, wx, ww)) in keys(picking).iter().zip(&caps) {
             let tw = text_width(ui.fonts.kbd, k);
             words(dc, ui.fonts.kbd, c.ink_soft, kx + (kw - tw) / 2, *kt + (mid - kt - kbd_lh / 2), tw + 2, k);
@@ -980,10 +1007,15 @@ fn draw(ui: &Ui, dc: isize, mut cv: Canvas) {
         let avail = kx0 - px(14.0) - left;
         let y = mid - foot_lh / 2;
         // over the + button: what it holds (unless there's news to read)
-        let hint = ui.hot == Hot::Plus && matches!(ui.say, Say::Nothing | Say::Where(_));
+        let hint = match ui.hot {
+            Hot::Plus => Some(PLUS_HINT),
+            Hot::Tool(i) => TOOL_HINTS.get(i).copied(),
+            _ => None,
+        }
+        .filter(|_| matches!(ui.say, Say::Nothing | Say::Where(_)));
         match &ui.say {
-            _ if hint => {
-                words(dc, ui.fonts.foot, c.ink_faint, left, y, avail, PLUS_HINT);
+            _ if hint.is_some() => {
+                words(dc, ui.fonts.foot, c.ink_faint, left, y, avail, hint.unwrap_or_default());
             }
             Say::Where(place) => {
                 let to = words(dc, ui.fonts.foot, c.ink_faint, left, y, avail, "To ");
@@ -1475,6 +1507,28 @@ fn caret_after_selection() {
     }
 }
 
+/// The [[ ]] button: the selected words become a page link; with none, "[[]]" with the caret
+/// between, ready for the page's name.
+fn link_brackets() {
+    if with(|ui| ui.rules.busy()).unwrap_or(true) {
+        return;
+    }
+    let Some(note) = with(|ui| ui.note) else { return };
+    unsafe {
+        let (mut a, mut b) = (0u32, 0u32);
+        SendMessageW(note, EM_GETSEL, &mut a as *mut u32 as usize, &mut b as *mut u32 as isize);
+        let t: Vec<u16> = get_text(note).encode_utf16().collect();
+        let (a, b) = ((a as usize).min(t.len()), (b as usize).min(t.len()));
+        let (a, b) = (a.min(b), a.max(b));
+        let inner = String::from_utf16_lossy(&t[a..b]);
+        let w = wide(&format!("[[{inner}]]"));
+        SendMessageW(note, EM_REPLACESEL, 1, w.as_ptr() as isize);
+        let caret = if a == b { a + 2 } else { a + 4 + (b - a) }; // (inside the empty brackets, or after the link)
+        SendMessageW(note, EM_SETSEL, caret, caret as isize);
+    }
+    focus_note();
+}
+
 /// Put `s` in the note where the caret is, with a space on either side where it touches words.
 fn insert_at_caret(s: &str) {
     let Some(note) = with(|ui| ui.note) else { return };
@@ -1869,6 +1923,9 @@ fn hot_at(x: i32, y: i32) -> Hot {
         if l.close.contains(x, y) {
             return Hot::Close;
         }
+        if let Some(i) = l.tools.iter().position(|t| !t.is_empty() && t.contains(x, y)) {
+            return Hot::Tool(i);
+        }
         if !l.pill.is_empty() && l.pill.contains(x, y) {
             return Hot::Pill;
         }
@@ -2105,6 +2162,14 @@ unsafe extern "system" fn wndproc(h: isize, m: u32, w: usize, l: isize) -> isize
                         Hot::Plus => open_menu(false),
                         Hot::Close => request_close(),
                         Hot::Pill => toggle_todo(),
+                        Hot::Tool(0) => link_brackets(),
+                        Hot::Tool(1) => {
+                            if !with(|ui| ui.rules.busy()).unwrap_or(true) {
+                                insert_at_caret("#");
+                                focus_note();
+                            }
+                        }
+                        Hot::Tool(_) => toggle_todo(),
                         Hot::Row(i) => pick(i),
                         _ => {}
                     }

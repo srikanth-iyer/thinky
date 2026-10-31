@@ -22,10 +22,9 @@ flowchart LR
     HK["lean-outliner.exe --hotkey<br/>(shortcut-key helper, running while a key is set)"]
     BOX["lean-outliner.exe --capture-box<br/>(native Win32 box, one-shot)"]
     APP["lean-outliner.exe<br/>(main app: Tauri + WebView2)"]
-    BM["Browser bookmarklet<br/>leanoutliner://capture?…"]
+    EXT["Edge extension<br/>(highlights, Send to today's journal)"]
     HK -- "key pressed" --> BOX
-    BM -- "new exe writes straight in" --> VAULT
-    BM -. "only if that fails, or box=1" .-> BOX
+    EXT -- "native host: exe started by Edge" --> VAULT
   end
   subgraph Phone["Android phone"]
     AAPP["thinky APK<br/>(Tauri + Android WebView)"]
@@ -57,9 +56,7 @@ There is a single executable, `lean-outliner.exe`. What it does depends on how i
 |---|---|---|---|
 | `--hotkey` | The **shortcut-key helper**. Sits asleep, waits for the capture key, starts `--capture-box`. Started with Windows (installed copy only); quits at once if no key is set (`hotkey.txt` empty). | No | `src-tauri/src/hotkey.rs` |
 | `--capture-box` | The **"Add to journal" box** (Spotlight-like). Native Win32 window, appears in ~40–120 ms, adds one note, exits. Uses worker threads (opening the vault read-only for the page list, adding, pasted picture → PNG) and reads the clipboard to pre-fill. | No | `src-tauri/src/capture_box/` (`files.rs`: clipboard, file picker, PNG), rules in `core/src/capture_box.rs` |
-| *(web capture box)* | Fallback when the native box can't be made (and on non-Windows): a second Tauri window labelled `capture` (`ui/capture.html/js`), adds via the `quick_capture` command. Its start-up still re-points the link handler, but skips the helper, links and tidy. | Yes | `lib.rs` `run_capture_box` |
-| `--capture "text" ["url"]` | Adds a note straight to the journal, no window (opens the box if that fails). | No | `main.rs` → `core/src/capture.rs` |
-| `leanoutliner://capture?…` | A browser bookmarklet click. Writes the note straight in (`capture_to_vault`); opens the box only if that fails, or if the link has `box=1` (the shipped bookmarklet never sends it). | No | `core/src/link.rs`, `main.rs` |
+| `leanoutliner://capture?…` | Nothing since Build 34 (any web page can send one; the bookmarklet that made them is gone). The program exits at once. | No | `main.rs` |
 | `leanoutliner://page/<name>`, `…/note/<id>` (or any other non-capture `leanoutliner://`, `Link::App`) | Hands the link to the open app and quits; if none is open, starts the app on that page. | Only if it starts the app | `src-tauri/src/links.rs` |
 | `--check <vault> <out.json>` | Read-only health check of a vault. | No | `core/src/app.rs` `check_vault` |
 | `--verify-update <exe> <sig> <N>` | CI only: would the app accept this installer as build N? | No | `src-tauri/src/update.rs` |
@@ -80,9 +77,9 @@ On Android there is one app (the APK) plus Kotlin extras (section 4).
 | **Start-up threads** (inside the main app, every start: `lib.rs` `setup`) | Once per start | — | `hotkey::at_start` (installed copy only) checks and **repairs** the helper: may start one, rewrite the Run value, write `hotkey.txt`, delete the old `.lnk`. `update::tidy` clears an old download. `win::register_link_handler` points `leanoutliner://` at *this* exe. |
 | **Link listener** (inside the main app) | While the main window is open | Hidden window class `LeanOutlinerLinks`, title "Lean Outliner links" | Lets a clicked `leanoutliner://page/…` link reach the open app instead of opening a second one. |
 | **File watcher** (a thread inside the main app) | While a vault is open | — | Notices `.md` changes in `pages/` and `journals/` (sync apps, the phone, other tools) within ~400 ms and tells the page (`lean-files` event → `rescan`). Windows change notifications / inotify on Android; dot-files ignored. The page *also* rescans when the window regains focus or becomes visible (and polls every 30 s under the dev server). |
-| **Safety-copy thread** (inside the main app) | Once, in the background after a vault opens | — | Copies recently changed notes outside the vault (section 5). |
+| **Safety-copy thread** (inside the main app) | Once, in the background after a vault opens | — | Copies recently changed notes into `logseq/.safety-<device>/` inside the notes folder (falls back to the app's data folder only when the notes folder can't be written; CLAUDE.md "app/safety.rs"). |
 | **Close guard thread** | When the window is closing | — | Gives the page 5 s to save (`lean-close`), then exits anyway. |
-| **Update check** (inside the page) | Once at start (skipped if the last answer is under a day old), and from Settings → About. **No timer**: an app left open for days doesn't check again. Laptop and phone. | The check talks to `api.github.com`; "Update now" downloads from `github.com/…/releases/download` (curl.exe on Windows, MainActivity on Android) | Looks for a newer "Build N" on the public releases repo. |
+| **Update check** (inside the page) | Once at start (skipped if the last answer is under a day old), and from Settings → About. **No timer**: an app left open for days doesn't check again. Laptop and phone. | The check talks to `api.github.com`; "Update now" downloads from `github.com/…/releases/download` (curl.exe on Windows, MainActivity on Android) | Looks for a newer "Build N" among this repo's releases (Build 33 and older: the old downloads repo). |
 
 Rules that follow from this:
 - **Anything that must react to a key press, a link or a file change already has a home.** Add to
@@ -130,7 +127,7 @@ never) and when the app pushes new data; everything else runs only when opened.
 | File | Job |
 |---|---|
 | `main.rs` | Picks the job from the command line (section 2) |
-| `lib.rs` | Starts Tauri; **one command `call`** that forwards to `dispatch`, plus a few OS-only commands (`save_asset_path`, `clipboard`, `prefill`, `start_link`, `reveal_file`, `set_shortcut`/`get_shortcut`, `capture_where`, `update_*`, `quick_capture`, `quit`, `platform`). Two shared commands are special-cased there: `rescan` reads files without holding the lock, and `open` also starts the file watcher. The `vault://` protocol that serves pictures. Close waits for saves (`lean-close`). The three start-up threads (section 3). |
+| `lib.rs` | Starts Tauri; **one command `call`** that forwards to `dispatch`, plus a few OS-only commands handled before it (`save_asset_path`, `start_link`, `reveal_file`, `set_shortcut`/`get_shortcut`, `update_*`, `browser_setup`/`browser_status`, `quit`, `platform`; see `lib.rs`). Two shared commands are special-cased there: `rescan` reads files without holding the lock, and `open` also starts the file watcher. The `vault://` protocol that serves pictures. Close waits for saves (`lean-close`). The three start-up threads (section 3). |
 | `watch.rs` | File-change watcher |
 | `hotkey.rs` | The shortcut-key helper and the app's side of it (`set`, `state`, `at_start`, `stop`) |
 | `capture_box/` | Native Win32 capture box (`mod.rs` the window, `ffi.rs` = Windows functions declared by hand, also used by links.rs; `files.rs` clipboard, file picker, picture → PNG; `selftest.rs` CI) |
@@ -152,10 +149,9 @@ never) and when the app pushes new data; everything else runs only when opened.
 | `search.js`, `commands.js` | Ctrl+K search and the Ctrl+Shift+P command list |
 | `popups.js` | Suggestions, `/` menu, date picker, menus, dialogs, hover preview |
 | `views.js` | All pages, tags, properties, to-dos |
-| `settings.js` | Settings tabs (Notes, Look, Capture incl. bookmarklet + shortcut key, Shortcuts, About/update) |
+| `settings.js` | Settings tabs (Notes, Look, Capture incl. the Edge extension's set-up + shortcut key, Shortcuts, About/update) |
 | `clash.js`, `history.js` | Clash screen · page History |
 | `find.js`, `paste.js`, `export.js`, `move.js`, `filedrop.js` | Find/replace · rich paste · copy page as text · move notes between pages · files dropped from Explorer |
-| `capture.html`, `capture.js` | The **web** capture box (fallback; adds via `quick_capture`) |
 | `calendar.js`, `dom.js` | Month grid · small DOM helpers and icons |
 | `skins.css`, `app.css` | Looks are only token values in `skins.css`; `app.css` reads tokens and never names a look |
 | `fonts.css`, `fonts/`, `skins/` | Bundled fonts (Inter since Build 31, Plex, Newsreader, Bricolage) · looks' background images |
@@ -177,7 +173,7 @@ paths). Other localStorage keys: `tabs`, `updateCheck`, `skin`, `sideW`, `splitA
 | File | Job |
 |---|---|
 | `MainActivity.kt` | Window insets, all-files permission, the **`window.LeanAndroid` bridge** (widget config/colours/tasks, bar colours, print, keyboard, shortcuts, updates), app-icon shortcuts, `leanoutliner://` links |
-| `kotlin/JournalWidget.kt` | Today's-journal widget, the round "+" widget, and `Journal` — **a Kotlin copy of the append rules** |
+| `kotlin/JournalWidget.kt` | Today's-journal widget, the round "+" widget, and `Journal` (reads today's journal for the widget; the pop-up adds notes through the app's own Rust code, `LeanCore.kt` → `src-tauri/src/android_capture.rs`) |
 | `kotlin/QuickCaptureActivity.kt` | The "Add to journal" pop-up (widgets' "+", share sheet, tile) |
 | `kotlin/AddNoteTile.kt` | Quick Settings tile |
 | `res/` | Widget layouts and info XML, drawables, the pop-up's layout |
@@ -212,7 +208,7 @@ tests (smoke + t1…t15), `run.sh` runs them all.
 - `Software\Classes\leanoutliner` (default "URL:Lean Outliner", "URL Protocol") and
   `…\shell\open\command` = `"<exe>" "%1"` (the link handler). **Every start of any copy — installed,
   portable, test, even the web capture box — re-points this to itself.** After testing an exe, put it
-  back to `"C:\Users\you\AppData\Local\Lean Outliner\lean-outliner.exe" "%1"`.
+  back to `"%LOCALAPPDATA%\thinky\lean-outliner.exe" "%1"`.
 
 **Start menu:** `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Lean Outliner capture.lnk` — the
 *old* way to get a shortcut key (made by spawning PowerShell/WScript.Shell). The installed copy
@@ -223,14 +219,14 @@ removes it once the helper holds the key; the portable copy still uses it.
 links"), `LeanOutlinerCaptureBox` (the box, plus a hidden owner window "Lean Outliner capture"; a
 second box finds the first by class + title and hands it its words by WM_COPYDATA).
 
-**Installed program:** `C:\Users\you\AppData\Local\Lean Outliner\` (per-user installer,
-`installMode: currentUser`). Tauri's default NSIS installer also adds its own uninstall entry and
-shortcuts — Tauri's behaviour, not code in this repo; not yet checked on the laptop.
+**Installed program:** `%LOCALAPPDATA%\thinky\` (per-user installer, `installMode: currentUser`;
+before the rename, Oct 29, 2026, `…\Lean Outliner\`, moved by `src-tauri/windows/hooks.nsh`). Tauri's
+NSIS installer adds its own uninstall entry and shortcuts; CI's Rename check covers both.
 
 **App folder** `%LOCALAPPDATA%\com.srikanth.leanoutliner\` (Android: the app's private cache/data):
 | File | Written by | Read by |
 |---|---|---|
-| `last-vault.txt` | the app when a vault opens (`remember_vault`) | capture box, `--capture`, bookmarklet, `capture_where`, `quick_capture` (they add to this vault **without** the app open) |
+| `last-vault.txt` | the app when a vault opens (`remember_vault`) | the capture box, the Edge extension's receiver, the Android pop-up (they add to this vault **without** the app open) |
 | `hotkey.txt` | Settings → Capture → Save/Remove (Remove writes it empty); also `at_start`'s `ensure` (moves an old `.lnk` key over) | the helper at start (empty = off) |
 | `hotkey-status.txt` | the helper when it can't take the key | Settings (shows why + Try again) |
 | `look.txt` | the app when the look changes (`save_look`) | the native capture box (its colours) |
@@ -271,16 +267,11 @@ anyone else's change".
 | Entry point | Code path |
 |---|---|
 | Shortcut key on the laptop | helper → `--capture-box` → native box → `capture::capture_to_usual` or `App::capture_to_page` (both via `capture::append_note`) |
-| Browser bookmarklet (Settings → Capture) | `leanoutliner://capture?url&title&text` → `main.rs` → `capture::capture_to_vault` straight in; the box only if that fails (or a link with `box=1`, which the bookmarklet doesn't send) |
-| `--capture "text" "url"` | `main.rs` → `capture_to_vault` (box if it fails) |
-| Web capture box (fallback) | `ui/capture.js` → `quick_capture` (`lib.rs`) → `capture_to_vault` |
 | Inside the app | Ordinary editing: the phone "+" → `App.addNote` → `Outline.addAtEnd`, saved like any note. (`dispatch` also has `capture` / `append_journal` commands, but no UI uses them; only tests do.) |
-| Phone widget "+", share sheet, Quick Settings tile | `QuickCaptureActivity` → Kotlin `Journal.append` |
+| Phone widget "+", share sheet, Quick Settings tile | `QuickCaptureActivity` (always shown; Add) → `LeanCore.capture` → the app's Rust code (`android_capture.rs` → `capture.rs`) |
 
-**Planned:** browser highlights collected per article into one page named after the article, under a
-`[[date]]` bullet per visit. The natural starting point is the bookmarklet → `link.rs` →
-`capture.rs` path above (a new link kind, or richer `capture` parameters) — not a new background
-program.
+Browser highlights (Build 32) go through the Edge extension and its native host (`clip.rs`), not
+links: no web page can add a note.
 
 ---
 
@@ -288,11 +279,10 @@ program.
 
 The same note-format rules exist in **two** codebases. Change one → change the others:
 1. Rust `core/` (`append_bullet` in `lib.rs`, `capture.rs`, `file_stem_for`, `asset_file_name`, dates, config)
-2. Kotlin `android/kotlin/JournalWidget.kt` (`Journal.append` ≈ `append_bullet` + the 3-try check,
-   `saveAsset` ≈ `asset_file_name`, `fileStem` ≈ `file_stem_for`, `Journal.fill`/`splitUrl` ≈
-   `capture::fill`/`split_url`, `Journal.format` ≈ `date.rs`). **Not a full mirror:** Kotlin's
-   `captureTarget` finds the quick-capture page by file name only (capitals ignored) — no `title::`
-   or alias lookup like the Rust side.
+2. Kotlin `android/kotlin/JournalWidget.kt`, only for reading and the pop-up's pre-fill:
+   `Journal.format` ≈ `date.rs` (today's journal file for the widget), `splitUrl`/`mdLink` ≈
+   `capture::split_url`/`md_link`. Adding notes and pictures is NOT mirrored any more
+   (since Build 32): the pop-up calls the app's own Rust code (`LeanCore.kt` → `android_capture.rs`).
 
 Other pairs that must match:
 - **Installer ↔ Rust:** `src-tauri/windows/hooks.nsh` hard-codes the class `LeanOutlinerHotkey`, the
@@ -300,7 +290,10 @@ Other pairs that must match:
 - `ui/api.js` `pageLinkUrl`/`noteLinkUrl` build the links `link.rs` parses.
 - `look.txt`: written from `lookColors` (app.js) via `save_look`, read by `core/src/capture_box.rs`.
 
-Also mirrored: `search.rs` `fold` ↔ `ui/search.js`; the bookmarklet text (`settings.js`) ↔ `link.rs`.
+Also mirrored: `search.rs` `fold` ↔ `ui/search.js`.
+- **Making web words inert:** `clip::defuse`/`guard` (Rust) ↔ `browser/page.js` `safe`; the picture
+  path rule `app::asset_file` ↔ `ui/api.js` `assetUrl` / render.js `image` (CLAUDE.md, "Where outside
+  input gets in").
 
 ---
 
@@ -325,7 +318,8 @@ Also mirrored: `search.rs` `fold` ↔ `ui/search.js`; the bookmarklet text (`set
 ## 10. Build, release, CI (short)
 
 - Push to `main` = a public release "Build N" (Windows installer + portable exe, Android APK) on
-  `srikanth-iyer/lean-outliner-releases`. Commits touching only Markdown, `ci/baseline.json`, `dev/**` or the phone-test scripts don't build (`paths-ignore` in build.yml; the phone test has no such list, so `[android-test]` still runs it). `wip/**` branches
+  this repo, where the app looks for updates from Build 34 on (Build 34 also went to the old downloads
+  repo, `srikanth-iyer/lean-outliner-releases`, where Build 33 and older look). Commits touching only Markdown, `ci/baseline.json`, `dev/**` or the phone-test scripts don't build (`paths-ignore` in build.yml; the phone test has no such list, so `[android-test]` still runs it). `wip/**` branches
   build without publishing — use them to check compiling. Build minutes are limited: batch features.
 - Jobs in `.github/workflows/build.yml`: `number`, `test`, `update-key`, `windows` (also runs both
   self-tests), `capture-shots`, `android`, `sign` (main, after approval), `sign-wip`, `verify`, `sizes`,

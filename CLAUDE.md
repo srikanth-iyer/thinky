@@ -129,6 +129,27 @@ moved or changed since the list was drawn opens its page instead; redrawing the 
 lets such outlines go (`dropLive`: typing saved). The page's name (group heading) and the path still go to
 the page; "… N more" still zooms. Tested by t17_refedit. The Tags list counts `#tag`s written in notes too
 (`parse::hash_tags`, not in code; `Vault::all_tags` = [name, pages with tags::, notes with #name]).
+Build 34 (the maintainer's list of Oct 30; tested by t19_build34, t15_pages, core/tests/capture_box.rs and
+CI's capture-box self-test): the top strip's seven buttons over the sidebar evenly spaced to its edge (app.css
+`--hb-gap`); Ctrl+Enter cycles DONE → CANCELED too (editor.js `nextMarker`); "Linked references" folds from its
+heading like the unlinked ones (`foldableRefs`, localStorage `refShut`); the reference filter has buttons for
+the pages its references are on or mention (`refTools` chips: a click shows only those, a second hides them,
+a third lets go; 24, then "N more"; `pagesIn` in render.js); the To-dos list orders Newest (default) /
+Oldest (by the page file's change time, `TaskHit.changed` from `App::tasks`) / By date (the old groups),
+`todoOpts.sort`, with the same page buttons (`.todo-chips`); All pages' Namespaces lists only pages in a
+namespace and their parents, each level in the columns' order (views.js); the editor's spelling check
+(`textarea.ed` `spellcheck`, Settings → Look, localStorage `spellcheck`, default on; the system's own:
+WebView2's on Windows, the keyboard's on Android; no grammar check: none built in); the Android pop-up
+more compact (less space above and below, the same text sizes); the Windows capture box's small buttons
+[[ ]], # and To-do at the right of the first line (`Layout.tools`, `Metrics.tool_w`, `Hot::Tool`;
+`link_brackets`: selected words become a link, else the caret between empty brackets).
+Also Build 34: the faint words (`--ink-faint`: counts, weekday, paths, property names, placeholders) at least
+4.5:1 on the page and cards in Plain (#6D6D6D; its soft words #5C5C5C so they stay darker), Plain night
+(#878787), Calm and Calm plain (#656D7C), Paper (#746C5E) and Night (#9198A2), and Plain's #tags in the
+whole link colour (shown to the maintainer as before/after pictures; t19 measures it); the Edge
+extension's Highlight key Ctrl+Shift+H for a new setup (`browser/manifest.json`; an existing one keeps
+its key; popup.js shows the real one from `chrome.commands`), Settings → Capture lists the keys and gives
+`edge://extensions/shortcuts` to copy.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 
@@ -168,9 +189,8 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     Site](url)" (`clean_title` drops a "| Site" ending; the site's address, `host`, when its name isn't
     known), "[site](url)" with no title; `split_url` takes a bare address or a whole `[name](http…)`
     link, `as_link` makes a bare one neat, and a note with no other words is just the link (no dangling
-    "from"). The bookmarklet sends `title`/`site` and, with a selection, a text-fragment address
-    (`#:~:text=first 4 words,last 4 words`, ≤8 words whole) that opens the page at it; link.rs makes the
-    link; the capture box is prefilled "words [Title · Site](url)"; Android mirrors it (JournalWidget.kt
+    "from"). The Edge extension sends `title`/`site` and, with a selection, a text-fragment address
+    (`#:~:text=first 4 words,last 4 words`, ≤8 words whole) that opens the page at it; the capture box is prefilled "words [Title · Site](url)"; Android mirrors it (JournalWidget.kt
     `splitUrl`/`mdLink`/`asLink`; a shared page's subject + address → one link). Tests: tests/clip.rs.
   - `clip.rs` the browser extension's highlights (Build 32; tests in `tests/clip.rs`, in a real browser
     `t16_browser.mjs`): `file_clip` files a `Clip {url, title, site, highlights: [{text, link}]}` on the
@@ -265,7 +285,8 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     note: more/fewer/changed, properties). Named "bak:<file>" / "copy:<device>/<id>:<n>": only names the listing
     gives are read. `history_keep` keeps the current text in logseq/bak (refused for non-UTF-8), then
     the editor saves the version (`Outline.putBack`: one Undo step, base_hash: merged or the clash screen).
-  - `link.rs` `leanoutliner://` links: page, note, capture (below, "Pages"; tests in `tests/pages.rs`)
+  - `link.rs` `leanoutliner://` links: page, note (a capture link is read but ignored since Build 34),
+    and `is_app_page`, the window's navigation guard (below, "Pages"; tests in `tests/pages.rs`)
   - `start.rs` starting from scratch (tests in `tests/start.rs`): `new_folder` (the picker's "New
     folder": `folder_name_problem` refuses empty, `.`/`..`, `/\:*?"<>|`, a leading or ending dot,
     Windows' reserved names in any capitals; `create_dir`, never over a folder or file of that name in
@@ -297,7 +318,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   com.srikanth.leanoutliner` (and Chrome's); files written only when they differ. Once set up, each
   start (`refresh`, a thread) brings files and manifest up to date (Edge reloads an unpacked
   extension's files when it restarts). Uninstalling (hooks.nsh) removes both registry keys.
-  `--check <vault> <out.json>` = read-only health check; `--capture`, `--capture-box`, `leanoutliner://`;
+  `--check <vault> <out.json>` = read-only health check; `--capture-box`, `leanoutliner://`;
   `--hotkey` (the helper; handled first in main.rs, before anything of Tauri);
   `--verify-update <installer> <sig> <N>` (exit 0 = would accept it as build N; CI runs it).
   `update.rs` one-click updates on Windows, no updater plugin (+1 MB): only the installed app
@@ -321,8 +342,8 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   permissions in `capabilities/default.json`); never on Android (the drag call doesn't exist there).
   The capture box ("Add to journal", a launcher-style box like Spotlight): on Windows a native Win32
   window, `src-tauri/src/capture_box/` (Win32 declared by hand in `ffi.rs`; no web engine, so it shows
-  at once with the app closed), made straight from `main` for `--capture-box`, `box=1` links and the
-  `--capture` fallback (`open_box`); if that window can't be made (or not on Windows), the reason
+  at once with the app closed), made straight from `main` for `--capture-box [words]`
+  (`open_box`; `--capture`, a note added with no window, went in Build 34: nothing used it); if that window can't be made (or not on Windows), the reason
   and the words handed to it go to the problems log and the app opens instead (no web box since
   Build 32). Its rules
   are platform-free in `outline_core::capture_box`, tested in core/tests/capture_box.rs: pre-fill (a
@@ -354,18 +375,17 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   (`Vault::free_rel`, below), names no file can have refused) are exactly the app's;
   `App::capture_to_page` re-reads changes and resolves the page again right before adding, writes a
   new page only where no file is (`Expect::Missing`, else it looks again), and is done the moment the
-  note is written. The usual place: `capture::capture_to_usual`, also `--capture` and the browser
+  note is written. The usual place: `capture::capture_to_usual`, also the browser
   button; today's journal needs only the settings, the quick capture page is found as everywhere
   (the notes folder opened read-only, then `App::capture_to_page`). Both add with
   `capture::append_note`: the file is read again and the new text written only if nobody saved it
   meanwhile (`app::write_atomic_checked`, its own temp name `.<file>.<pid>-<n>.tmp`, a refused rename
   retried ~0.5 s; the first save into a folder in a run removes such temp files over a day old),
   else redone (3 tries, then it says so and keeps the text). Pressing the shortcut again finds the
-  open box (window class + title) and brings it forward, handing it a link's words (WM_COPYDATA,
+  open box (window class + title) and brings it forward, handing it any words it was given (WM_COPYDATA,
   `pack_words` with the time sent: words arriving after the sender stopped waiting are dropped;
   `Rules::more_words`) and starting the Enter guard again (`Rules::ready`, also when it's in front,
-  and for Enter in the page list), so the Enter that answered the browser's "Open Lean Outliner?"
-  prompt can't add the note; a box that's adding or closing says no and a new one opens.
+  and for Enter in the page list), so an Enter meant for another window can't add the note; a box that's adding or closing says no and a new one opens.
   `default_place` says where the note goes; `last_vault_or_why` says why not. Known
   limit: Narrator can't reach the drawn "+" and × or read the bottom strip's messages (the text boxes
   and the menu are Windows' own and work). `--capture-box-selftest <dir>`: CI's check (below).
@@ -416,7 +436,9 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   position across the 860px switch. `App.draw(pane)` lets only the newest of quick successive moves in
   a pane finish (`pane.seq`); views check `view.isConnected` / `list.isConnected` after each await
   before adding outlines (to `paneOf(view).outlines`).
-  CSP in `tauri.conf.json`: no inline scripts (hence `ui/boot.js`), images from vault/https.
+  CSP in `tauri.conf.json`: no inline scripts (hence `ui/boot.js`), images from vault/https (never
+  `http:`). A navigation guard (lib.rs, `link::is_app_page`) keeps the window on the app's own page on
+  every system, which also keeps Android's `LeanAndroid` bridge to the app's page.
 - `ui/` plain HTML/CSS/ES modules, no build step. `api.js` (bridge) · `render.js` (inline Markdown)
   · `math.js` (small TeX) · `editor.js` (block editor, undo, selection, saving, conflicts) · `app.js`
   (routing, journals/page views, back/forward + title bar, sidebar, Look picker, shortcuts,
@@ -821,7 +843,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
 - Pages (Build 30; core `tests/pages.rs`, UI `t15_pages.mjs`):
   - All pages (views.js `pagesView`, as Logseq's table): column heads Name / Links / Created / Changed
     (`.pg-cols`, buttons; `SORTS`: a click sorts, again the other way; localStorage `pagesOpts` {sort,
-    desc}); pages with no file (no times) last; Namespaces on: A to Z, heads disabled. Rows are one grid
+    desc}); pages with no file (no times) last; Namespaces on: only pages in a namespace (and their parents), each level sorted by the column. Rows are one grid
     (`--pg-cols`, px widths); a narrow side or phone (`@container`, `.pg-table` < 560px) shows only the
     sorted column (`data-sort`). Times come with the `pages` command (`App::pages`: `PageEntry.changed`
     = the file's change time, `.created`, seconds). "Created" = `App::born`: the earliest of the
@@ -855,7 +877,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     says so and changes nothing. Refused while a clash waits (`readyToRename`, shared with rename);
     tabs on the old page follow to the target (`Tabs.renamed(…, merged)`: zoomed places → the page).
   - Links (core `link.rs`, the only parser): `leanoutliner://page/<encodeURIComponent name>`,
-    `…/note/<id>`, anything else a capture link as before (`Link::{Page, Note, App, Capture}`; the
+    `…/note/<id>`, anything else a capture link, which the app ignores (`Link::{Page, Note, App, Capture}`; the
     `link` command). Page ⋯ "Copy link" (`pageLinkUrl`, api.js) and the note menu's "Copy link to this
     note" (`Outline.copyNoteLink`: an `id::` the Logseq way if it has none, one Undo step). `App.openLink`
     opens a page, or a note zoomed in (`blocks_by_id`); used by `openUrl` (links in notes: render.js
@@ -950,7 +972,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
 - `browser/` the Edge extension "thinky highlights" (Build 32, MV3, no build step, ~25 KB; the maintainer
   loads it unpacked from the folder `setup` makes). Permissions: activeTab, scripting, storage,
   contextMenus, nativeMessaging: no host permissions, so `page.js` is put into a page only when the maintainer uses
-  it there (toolbar button, right-click menu, Alt+Shift+H highlight / J to the journal / L the box). `page.js`:
+  it there (toolbar button, right-click menu, Ctrl+Shift+H highlight (Build 34; an older setup keeps Alt+Shift+H; Ctrl+Shift+J would be Edge's developer tools and Ctrl+Shift+L is the Windows capture key, so J and L stay Alt+Shift), Alt+Shift+J to the journal / L the box; Settings → Capture lists them and gives `edge://extensions/shortcuts` to copy: a page can't open edge:// links). `page.js`:
   `window.__leanOutliner` (once per page): `pageInfo` (canonical address on the same site, og:title,
   og:site_name), `highlight` (the selection → {id, plain, text: Markdown, pos, link}; marks it with the
   CSS Custom Highlight API, no change to the page's HTML), `paint` (finds kept passages again by their
@@ -1053,6 +1075,53 @@ it; the first save of a new page writes only where no file is: one that turned u
   earlier-text number). History (history.rs) only reads what its own listing names, and puts a version
   back through the normal save (base_hash), never deleting a backup.
 
+## Where outside input gets in (security review, Oct 30, 2026)
+Anything a web page, another app, a synced file or config.edn brings is data, never a command or a
+path out of the notes folder. Keep these when changing the code (tests in brackets):
+- Words from the web (the extension's highlights and its `journal` message): `clip::defuse` (a zero-width space inside `[[ ]] (( {{ :: @@`, after a tag's `#` and after a
+  `<` that could start HTML) and `clip::guard` (no line starts a note, property, code block, box,
+  hiccup `[:…]`, SCHEDULED/DEADLINE line or drawer; the first line no to-do word or priority); addresses only
+  http(s), through `clip::safe_url`. `capture::md_link`
+  defuses the name. The extension's page.js does the same first (`safe`), skips words the reader
+  can't see, and its toast is in a closed shadow root; background.js answers only its own pages
+  (`sender.id`, not a tab). (tests/clip.rs `web_words_stay_words`, tests/pages.rs)
+- The native host runs only when Edge starts it for this extension (`native_host::is_our_extension`);
+  `LEAN_CLIP_VAULT` works only in debug builds; its errors never name the folder.
+- Files from the notes folder (`vault://`, the dev server's `/vault/`): `app::asset_file` builds the
+  path from plain names only, before touching the disk (no `..`, no drive, no `\\server\share`:
+  on Windows opening one connects there and offers the user's sign-in); served with
+  `Content-Security-Policy: sandbox; default-src 'none'…` and `nosniff`, so an SVG or HTML file
+  synced into assets/ never runs. render.js/api.js `assetUrl` refuse such addresses too, and web
+  pictures load with `referrerpolicy="no-referrer"`. (tests/features.rs, t18_security)
+- Drawing notes: a note that makes a drawing rule throw shows as its plain words (`renderBlock`'s
+  catch); math.js looks names up with `Object.hasOwn` (no `\constructor`). (t18_security)
+- config.edn: `:pages-directory`/`:journals-directory` only folders inside the notes folder
+  (`config::inside_folder`), a journal file name with `/`, `\`, `:` or a leading `.` falls back to
+  `yyyy_MM_dd` (`journal_rel_path`). (tests/features.rs `folder_settings_stay_inside_the_notes_folder`)
+- Windows file names: Windows' reserved names include COM¹–³, LPT¹–³, CONIN$, CONOUT$ and any of them
+  before a dot (`file_stem_for`, `start.rs`).
+- Android's share pop-up opens only `content://` pictures from another app's provider
+  (`QuickCaptureActivity.sharedPicture`; android_test.sh step 6 checks a file:// share is refused).
+- The dev server answers only requests addressed to 127.0.0.1/localhost on its own port (`Host`; a
+  web page renaming itself to 127.0.0.1, "DNS rebinding", is refused), and its API only by POST from
+  its own page. It still serves whatever notes folder it is given: never point it at a real one.
+- Windows shortcuts made with PowerShell (`win::make_shortcut`): `'` and the curly quotes ‘ ’ ‚ ‛ are
+  doubled inside its '…' texts.
+- The window's permissions: `opener:allow-open-url` + `allow-default-urls` only (web, mail, phone
+  links); "Show file in Explorer" is the app's own command for its own page files.
+- No web page can add a note (Build 34, the maintainer's choice): the bookmarklet is gone and the app does
+  nothing with a `leanoutliner://capture` link (main.rs); page and note links only open something.
+- Android's share pop-up always shows and waits for Add (the no-pop-up setting went in Build 34).
+- Pictures on the old, open web (`http://`) are never fetched (render.js `image`: a "Picture not shown"
+  line with the address as a link; no `http:` in the CSP's img-src). (t18_security)
+- The window shows only the app's own page (`link::is_app_page`, a navigation guard in lib.rs: also
+  keeps Android's `LeanAndroid` bridge to the app's own page). (tests/pages.rs)
+- A web link never opens a window of the app's own: in the app, a middle click or a click with
+  Ctrl/Shift/Alt on one goes to the browser through `App.openUrl` (app.js `start`), as a plain click does.
+Known and accepted (see the security report): script running inside the app's page could still call
+any command (`open` any folder…), but the page's CSP lets no script in but the app's own, and the
+window can't be sent to another page.
+
 ## Build & test
 - Here: `cargo test -p outline_core`; speed: `cargo run --release -p outline_core --example bench`.
   UI: `dev/ui-tests/run.sh [test…]` (Playwright against the dev server, fresh sample vault per test,
@@ -1091,7 +1160,9 @@ it; the first save of a new page writes only where no file is: one that turned u
   byte, folding days and reference groups, the note menu's size, the preview, phone).
 - On a real Windows computer: `lean-outliner.exe --check <notes folder> <out.json>` is read-only; start
   the app with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` to drive it over CDP
-  with Node. Never test against a real notes folder: use a throwaway folder and delete it. Any test exe
+  with Node (while that port is open, any program on the computer can drive the app and read or change
+  its notes: only with a throwaway notes folder, and close the app afterwards). Never test against a
+  real notes folder: use a throwaway folder and delete it. Any test exe
   re-points the `leanoutliner://` link handler (HKCU\Software\Classes\leanoutliner\shell\open\command)
   to itself: put it back to the installed `"%LOCALAPPDATA%\thinky\lean-outliner.exe" "%1"` afterwards.
   The capture box always adds to the notes folder in `last-vault.txt` (the real one) and takes the
@@ -1110,8 +1181,8 @@ it; the first save of a new page writes only where no file is: one that turned u
   is plain Android (`target: default`, no Google Play services): with them it often stalled and Android
   killed the app with it ("depends on provider ... FontsProvider in dying proc"), even with EmojiCompat's
   start-up removed. If a run still fails that way, re-run it (`gh api -X POST repos/.../actions/runs/<id>/rerun`).
-  Never install a wip build on a computer or phone you use: on Windows it trusts only the public TEST ONLY update
-  key, so it would refuse every real update; wip and debug APKs aren't signed with the release key, so
+  Never install a wip build on a computer or phone you use: on Windows it trusts only that run's
+  throw-away update key, so it would refuse every real update; wip and debug APKs aren't signed with the release key, so
   releases can't update them. Test with the portable exe.
   Artifact/release downloads are blocked from the cloud workspace.
 - Index cache: `<app cache dir>/vault-<hash>.json` (file stamps + text); startup only re-reads changed
@@ -1119,9 +1190,12 @@ it; the first save of a new page writes only where no file is: one that turned u
 - GitHub Actions (`.github/workflows/build.yml`): tests + speed check, Windows (NSIS + portable exe),
   Android (APK), size check (each size also a notice, readable from the release job's annotations:
   `gh api repos/srikanth-iyer/thinky/check-runs/<job id>/annotations`); on main a Release "Build N" (N = one more than the newest release, from
-  the `number` job; also the app's version 0.1.N, which the update check compares) here AND on the public downloads repo
-  `srikanth-iyer/lean-outliner-releases` (secret `RELEASES_TOKEN`; the app checks it once a day for
-  updates). `wip/**` branches build without publishing — use them to check Windows/Android compile. GitHub's
+  the `number` job, the newest here or on the old downloads repo; also the app's version 0.1.N, which the update
+  check compares) on this repo, where the app looks once a day for updates from Build 34 on (`core/src/update.rs`
+  `DOWNLOADS`, app.js `checkUpdate`, MainActivity's APK address). Build 33 and older look on the old downloads repo
+  `srikanth-iyer/lean-outliner-releases`, so Build 34 is published there too, the last one (`release` does it
+  only while the `RELEASES_TOKEN` secret exists; delete it after Build 34, then archive that repo: archived
+  releases stay downloadable, and the Rename check needs its Build 31). `wip/**` branches build without publishing — use them to check Windows/Android compile. GitHub's
   builds take time (~27 minutes for a full build + phone test): batch features into one
   build, run the phone test once per release candidate; a newer push to a wip branch stops its older
   run (`concurrency`, never on main; the phone test's is on its job, so a push that skips it never
@@ -1149,33 +1223,45 @@ it; the first save of a new page writes only where no file is: one that turned u
   Signing (public repo, Build 34 on). No secret is a file in the repo or a repository-level secret.
   Two environments, each allowed only for `main`: `release` (required reviewer: the maintainer; secrets
   `ANDROID_KEY_PASSWORD`, `ANDROID_KEYSTORE_B64` = the locked Android keystore in base64, `UPDATE_KEY_PEM`
-  = the locked P-256 update key as PEM text) and `publish` (`RELEASES_TOKEN`, a fine-grained token with
-  Contents read/write on lean-outliner-releases only). The keys were made once (Oct 26, 2026) and must
+  = the locked P-256 update key as PEM text) and `publish` (`RELEASES_TOKEN`, Build 34 only: a fine-grained
+  token with Contents read/write on lean-outliner-releases only; deleted afterwards). The keys were made once (Oct 26, 2026) and must
   never be replaced: phones refuse an APK signed with another certificate, and installed Windows apps
   refuse an installer signed with another update key. Jobs: `update-key` (no secrets) gives the build
   the update key's public half: on main `ci/update-key.pub` (checked against the newest signed release's
-  .sig on the downloads repo), on wip a throw-away key made in that run (its private half passed to
-  `sign-wip` as a one-day artifact). `windows` and `android` build with no secrets and a read-only token.
+  .sig here or on the old downloads repo, whichever is newer), on wip a throw-away key made in that run (its private half passed to
+  `sign-wip` as a one-day artifact). `windows` and `android` build with no secrets and a read-only token, upload what they built
+  straight after the build and give its SHA-256 as an output (`sums`); `sign`, `sign-wip`, `verify` and
+  `release` check every file they get against those (and `release` the signed APK and .sig against
+  `sign`'s), so no other job of the run can swap one. The Rename check (the real Build 31 installer,
+  downloaded, then this one over it) is a job of its own, `rename-check`, that gets only the uploaded
+  installer and feeds nothing into signing; a release waits for it. It runs the old installer only if its
+  SHA-256 is Build 31's genuine one, pinned in the workflow (its .sig checked with ci/update-key.pub, Oct 31).
+  On main, `windows` and `android` restore no build cache (Swatinem/rust-cache only on wip branches), so
+  nothing another job or run put in a cache can reach what is signed. `prev-cert` (main, no secrets) reads
+  the newest release APK's certificate.
   `sign` (main only, waits for approval; a fresh runner with only scripts/ and tauri.conf.json, no build
   tools) writes the keys from the secrets into the runner's temp folder (umask 077, deleted on exit),
   checks the update key matches `ci/update-key.pub`, works out the version from the build number itself
   (`update_sig.py version N`; refuses if the build claims another), signs the installer
   (`LeanOutliner-setup.exe.sig`; also one with another key, for `verify`) and the APK, whose certificate
-  must equal the newest release's on the downloads repo. `sign-wip` does the same with throw-away keys.
+  must equal `prev-cert`'s (it opens no downloaded file while it holds the keys). `sign-wip` does the same with throw-away keys.
   `verify` (windows) runs the shipped exe's `--verify-update` on the signed installer (must pass) and on
   a changed copy, another build number, an edited version and another key (must fail). `sizes` reports
-  sizes; `release` (main only, environment `publish`) publishes here and on the downloads repo. Build
-  numbers come from the downloads repo (`number` refuses to start below build 33). Pull requests run
+  sizes; `release` (main only, environment `publish`) publishes here (and on the old downloads repo while
+  `RELEASES_TOKEN` exists). Build numbers follow the newest release here or on the old downloads repo
+  (`number` refuses to start below build 33; so does `prev-cert` look in both). Pull requests run
   only `pr.yml` (the core's tests; no secrets, never `pull_request_target`). Every action is pinned to a
-  commit; Dependabot proposes updates. The first build with updates is installed by hand.
+  commit; Dependabot proposes updates; Cargo.lock is used as is (`--locked`, `cargo fetch --locked`) and
+  npm installs without install scripts; `deny` runs cargo-deny (deny.toml) and reports without holding
+  a build back. The first build with updates is installed by hand.
 - Pull before pushing.
 
 ## Android extras
 Home-screen widgets in `android/kotlin/JournalWidget.kt`: today's journal (to-dos due *today* only, under
 "DUE TODAY", then the day's notes; Markdown cleaned to plain words: links show their name or a short
 address) and `QuickAddWidget`, a 1x1 round "+" in the look's accent colour. QuickCaptureActivity (both
-widgets' "+" and the share sheet's "Add to journal", text or pictures, Logseq quick-capture format,
-optional no-pop-up mode): a rounded card near the bottom in the look's colours, pill buttons, a preview
+widgets' "+" and the share sheet's "Add to journal", text or pictures, Logseq quick-capture format;
+always shown, nothing added until Add): a rounded card near the bottom in the look's colours, pill buttons, a preview
 of a shared picture (EXIF-turned). They read what the app stores via `setWidgetConfig`,
 `setCaptureConfig`, `setWidgetTasks` (`{day, tasks}`: a list worked out on another day isn't shown) and
 `setWidgetColors` (called by `App.setSkin` at every start and look change, with `lookColors()`: the
@@ -1220,7 +1306,7 @@ and carries on in `onResume` once allowed) downloads build N's `LeanOutliner.apk
 check, ready, install, confirm, done, error) to the page; the page saves, then `installUpdate()` abandons
 this app's earlier sessions (`mySessions`) and writes a PackageInstaller session; `UpdateReceiver` (not
 exported) starts Android's "Update this app?" box and reports its answer. Android itself refuses an APK
-not signed with `android/release.keystore`: that is the genuineness check (ours only says it sooner).
+not signed with the release key (the `ANDROID_KEYSTORE_B64` secret, never in the repo): that is the genuineness check (ours only says it sooner).
 Android doesn't restart the app. `testInstallSelf` (debuggable test builds only) hands the installer the
 app's own APK. The emulator test (step 11) downloads the newest real release and expects the app to
 refuse it (debug key), then hands over its own APK, sees Android's installer ask, cancels, and expects

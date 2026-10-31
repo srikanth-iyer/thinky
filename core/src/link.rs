@@ -1,8 +1,9 @@
 //! `leanoutliner://` links: what a link asks the app to do, and the links the app copies.
 //!   leanoutliner://page/<name>        open the app (or its open window) at that page
 //!   leanoutliner://note/<id>          … at the note with that `id::` (zoomed in, as Logseq's block links)
-//!   leanoutliner://capture?text=…&url=…&title=…&site=…&box=1   add a note (the browser bookmarklet;
-//!                                     the address becomes a neat link, `capture::md_link`)
+//!   leanoutliner://capture?text=…&url=…&title=…&site=…&box=1   the old browser bookmarklet's: still
+//!                                     read (words made inert), but the app does nothing with it since
+//!                                     Build 34, because any web page can send one (src-tauri main.rs)
 //! A name is written as JavaScript's `encodeURIComponent` writes it (the app copies links so), and
 //! read back by decoding `%xx`; a `+` stays a `+`. Any other `leanoutliner:` link is a capture, as
 //! before page and note links existed.
@@ -59,8 +60,14 @@ pub fn parse(link: &str) -> Option<Link> {
     }
     // the page's address as "[Title · Site](address)"; a selection is the note's words, and
     // without one the link is (capture::bullet)
-    let url = if url.trim().is_empty() { String::new() } else { crate::capture::md_link(&url, &title, &site) };
+    // Any web page can open such a link, so what it brings is only words: a web address only
+    // when it is http(s), the words made inert as the extension's highlights are (clip::guard,
+    // clip::defuse: no links, tags, properties, macros, boxes or to-dos), at most 8,000 letters.
+    let web = url.trim().get(..8).is_some_and(|s| s.eq_ignore_ascii_case("https://")) || url.trim().get(..7).is_some_and(|s| s.eq_ignore_ascii_case("http://"));
+    let url = if !web { String::new() } else { crate::capture::md_link(&url, &title, &site) };
     let text = if text.trim().is_empty() && url.is_empty() { title } else { text };
+    let text: String = text.chars().take(8000).collect();
+    let text = crate::clip::guard(&crate::clip::defuse(&text));
     Some(Link::Capture { text, url, boxed })
 }
 
@@ -84,4 +91,24 @@ fn decode(s: &str, plus: bool) -> String {
         i += 1;
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+/// May the app's window go to this address? Only the app's own page: Tauri serves it at
+/// `http(s)://tauri.localhost` (Windows, Android) or `tauri://localhost` (macOS, Linux); also
+/// `about:blank`, and a `blob:` of the app's own page (a file the page made, e.g. "Save as file").
+/// Anything else (a web page, a file, another app's address) is refused, so no outside page can
+/// ever sit in the app's window and reach its commands or Android's `LeanAndroid` bridge
+/// (src-tauri lib.rs, a navigation guard on every window).
+pub fn is_app_page(url: &str) -> bool {
+    let u = url.trim();
+    if u.eq_ignore_ascii_case("about:blank") {
+        return true;
+    }
+    let u = match u.get(..5) {
+        Some(b) if b.eq_ignore_ascii_case("blob:") => &u[5..],
+        _ => u,
+    };
+    ["http://tauri.localhost", "https://tauri.localhost", "tauri://localhost"].iter().any(|own| {
+        u.get(..own.len()).is_some_and(|p| p.eq_ignore_ascii_case(own)) && matches!(u[own.len()..].chars().next(), None | Some('/' | '?' | '#'))
+    })
 }

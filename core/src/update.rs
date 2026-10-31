@@ -12,7 +12,7 @@
 pub const SETUP_FILE: &str = "LeanOutliner-setup.exe";
 pub const SIG_FILE: &str = "LeanOutliner-setup.exe.sig";
 /// The public downloads page's files: `<DOWNLOADS>/build-N/<file>`.
-const DOWNLOADS: &str = "https://github.com/srikanth-iyer/lean-outliner-releases/releases/download";
+const DOWNLOADS: &str = "https://github.com/srikanth-iyer/thinky/releases/download";
 
 /// (major, minor, build), e.g. 0.1.24 → (0, 1, 24).
 pub type Version = (u32, u32, u32);

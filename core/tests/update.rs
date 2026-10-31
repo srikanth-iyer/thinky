@@ -10,8 +10,8 @@ fn only_a_build_number_is_taken_from_the_page() {
     for bad in ["build-0", "Build-24", "build-24x", "build-", "build-1234567", "build--1", "build-+3", " build-2", "build-2 ", "build-2/../x", "24", ""] {
         assert_eq!(build_number(bad), None, "{bad:?}");
     }
-    assert_eq!(asset_url(24, SETUP_FILE), "https://github.com/srikanth-iyer/lean-outliner-releases/releases/download/build-24/LeanOutliner-setup.exe");
-    assert_eq!(asset_url(24, SIG_FILE), "https://github.com/srikanth-iyer/lean-outliner-releases/releases/download/build-24/LeanOutliner-setup.exe.sig");
+    assert_eq!(asset_url(24, SETUP_FILE), "https://github.com/srikanth-iyer/thinky/releases/download/build-24/LeanOutliner-setup.exe");
+    assert_eq!(asset_url(24, SIG_FILE), "https://github.com/srikanth-iyer/thinky/releases/download/build-24/LeanOutliner-setup.exe.sig");
 }
 
 #[test]

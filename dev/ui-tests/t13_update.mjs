@@ -9,7 +9,7 @@
 import { chromium } from '/opt/npm-tools/node_modules/playwright/index.mjs';
 import { check, failures, sleep, read, write, BASE, VAULT, SHOTS } from './lib.mjs';
 
-const RELEASE = 'https://github.com/srikanth-iyer/lean-outliner-releases/releases/tag/build-24';
+const RELEASE = 'https://github.com/srikanth-iyer/thinky/releases/tag/build-24';
 
 /** Open the app at Settings → About. `update`: how the Windows commands answer; `android`: a phone
  *  (with how its update steps go) instead of the laptop. */

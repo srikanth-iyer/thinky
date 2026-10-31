@@ -7,7 +7,7 @@ capture, on the same plain Markdown files Logseq uses. Your notes stay ordinary 
 you choose; thinky has no accounts, no servers and no tracking.
 
 **Website:** https://srikanth-iyer.github.io/thinky ·
-**Download:** https://github.com/srikanth-iyer/lean-outliner-releases/releases/latest
+**Download:** https://github.com/srikanth-iyer/thinky/releases/latest
 
 (Until Build 32 the app was called Lean Outliner. The downloads, the program's file names and its
 hidden id keep that name, so updates install over older versions.)

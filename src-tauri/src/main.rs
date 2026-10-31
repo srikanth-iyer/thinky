@@ -9,19 +9,9 @@ fn cache_dir() -> Option<PathBuf> {
     Some(base?.join("com.srikanth.leanoutliner"))
 }
 
-/// Add a note to today's journal (or the capture page) of the last-opened notes folder.
-fn capture(text: &str, url: &str) -> Result<String, String> {
-    if let Some(d) = cache_dir() {
-        outline_core::app::set_cache_dir(d);
-    }
-    let root = outline_core::app::last_vault_or_why()?;
-    let (today, time) = lean_outliner_lib::win::local_now();
-    outline_core::capture::capture_to_usual(&root, text, url, false, today, &time)
-}
-
 /// The "Add to journal" box (Windows' native one: it appears at once, no web engine to start).
 /// If it can't be made (or elsewhere), the reason and any words handed to it go to the problems
-/// log, so a link's or `--capture`'s words are never lost, and the app opens instead.
+/// log, so the words handed to it are never lost, and the app opens instead.
 fn open_box(prefill: Option<(String, String)>) {
     #[cfg(windows)]
     let why = match lean_outliner_lib::capture_box::run(prefill.clone()) {
@@ -45,7 +35,9 @@ fn main() {
         if let Some(d) = cache_dir() {
             outline_core::app::set_cache_dir(d);
         }
-        lean_outliner_lib::native_host::run();
+        if lean_outliner_lib::native_host::is_our_extension(&arg(1)) {
+            lean_outliner_lib::native_host::run();
+        }
         return;
     }
     // `--hotkey`: the shortcut key's helper (hotkey.rs), started with Windows: it waits for the
@@ -95,34 +87,22 @@ fn main() {
         println!("{}", r.as_ref().map_or_else(|e| format!("refused: {e}"), |_| "genuine".to_string()));
         std::process::exit(if r.is_ok() { 0 } else { 1 });
     }
-    // `lean-outliner --capture "text" ["url"]`: straight into the journal, no window.
-    if arg(1) == "--capture" {
-        if capture(&arg(2), &arg(3)).is_err() {
-            open_box(Some((arg(2), arg(3))));
-        }
-        return;
-    }
-    // `--capture-box`: the small window (opened by the shortcut key's helper, or the portable
-    // copy's Start-menu shortcut key).
+    // `--capture-box ["words"]`: the small window (opened by the shortcut key's helper, or the
+    // portable copy's Start-menu shortcut key; words only from a program on this computer, such as
+    // CI's self-test: an open box takes them on a line of their own).
     if arg(1) == "--capture-box" {
         if let Some(d) = cache_dir() {
             outline_core::app::set_cache_dir(d);
         }
-        open_box(None);
+        let words = arg(2);
+        open_box((!words.trim().is_empty()).then(|| (words, String::new())));
         return;
     }
     use outline_core::link::Link;
     match outline_core::link::parse(&arg(1)) {
-        // `leanoutliner://capture?…` from the browser bookmarklet.
-        Some(Link::Capture { text, url, boxed }) => {
-            if boxed || capture(&text, &url).is_err() {
-                if let Some(d) = cache_dir() {
-                    outline_core::app::set_cache_dir(d);
-                }
-                open_box(Some((text, url)));
-            }
-            return;
-        }
+        // `leanoutliner://capture?…`: nothing at all (since Build 34). Any web page can send one,
+        // so no link adds a note; the Edge extension and the capture box are the ways in.
+        Some(Link::Capture { .. }) => return,
         // `leanoutliner://page/<name>`, `…/note/<id>`: to the open app if there is one (links.rs),
         // else the app starts and shows it
         Some(_) => {

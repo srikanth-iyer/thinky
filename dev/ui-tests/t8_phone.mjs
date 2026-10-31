@@ -222,9 +222,10 @@ for (const [hash, n] of [['#/todos', 5], ['#/pages', 4]]) {
   await page.evaluate((h) => { location.hash = h; }, hash);
   await sleep(700);
   const row = await page.evaluate(() => {
-    const cs = [...document.querySelectorAll('.chips .chip')].map((c) => c.getBoundingClientRect());
-    const box = document.querySelector('.chips').getBoundingClientRect();
-    return { n: cs.length, lines: new Set(cs.map((r) => Math.round(r.top))).size, inside: cs.every((r) => r.right <= box.right + 0.5), fade: document.querySelector('.chips').classList.contains('fade-end') };
+    const first = document.querySelector('.list-tools > .chips');
+    const cs = [...first.querySelectorAll('.chip')].map((c) => c.getBoundingClientRect());
+    const box = first.getBoundingClientRect();
+    return { n: cs.length, lines: new Set(cs.map((r) => Math.round(r.top))).size, inside: cs.every((r) => r.right <= box.right + 0.5), fade: first.classList.contains('fade-end') };
   });
   check(row.n === n && row.lines === 1 && row.inside && !row.fade, `${hash}: all ${n} filter buttons fit on one line`, JSON.stringify(row));
 }
@@ -262,11 +263,11 @@ check(tabRow.tabs === 'Notes|Look|Capture|About' && tabRow.inside && !tabRow.fad
 await page.setViewportSize({ width: 393, height: 851 });
 await page.evaluate(() => { location.hash = '#/todos'; });
 await sleep(600);
-const labels = await page.locator('.chips .chip').allTextContents();
+const labels = await page.locator('.chips[aria-label="Show"] .chip').allTextContents(); // (the order buttons are a row of their own, Build 34)
 check(labels.join('|') === 'Open|To do|Doing|Done|Cancelled', 'short labels in the notes’ own words; no Waiting (Build 33)', labels.join('|'));
 await page.locator('.chips [data-k="done"]').tap();
 await sleep(600);
-const onlyDone = await page.evaluate(() => ({ pressed: [...document.querySelectorAll('.chips [aria-pressed="true"]')].map((b) => b.dataset.k), done: document.querySelectorAll('.todo-item.marker-done').length, open: document.querySelectorAll('.todo-item:not(.marker-done)').length }));
+const onlyDone = await page.evaluate(() => ({ pressed: [...document.querySelectorAll('.chips[aria-label="Show"] [aria-pressed="true"]')].map((b) => b.dataset.k), done: document.querySelectorAll('.todo-item.marker-done').length, open: document.querySelectorAll('.todo-item:not(.marker-done)').length }));
 check(onlyDone.pressed.join() === 'done' && onlyDone.done > 0 && onlyDone.open === 0, '"Done" shows only finished to-dos, one filter at a time (he asked)', JSON.stringify(onlyDone));
 await page.locator('.chips [data-k="all"]').tap();
 await sleep(500);

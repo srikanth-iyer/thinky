@@ -41,6 +41,8 @@ export function assetUrl(rel) {
   const p = rel.replace(/^(\.\.\/)+/, '').replace(/^\.\//, '').replace(/^\/+/, '');
   let decoded = p;
   try { decoded = decodeURIComponent(p); } catch { /* keep as written */ }
+  // never a drive or a network share (\\server\share): only files inside the notes folder
+  if (/^\\|:/.test(decoded)) return 'data:,';
   if (T?.core?.convertFileSrc) return T.core.convertFileSrc(decoded, 'vault');
   return '/vault/' + decoded.split('/').map(encodeURIComponent).join('/');
 }

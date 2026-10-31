@@ -1,13 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window; it draws its own title bar (drag, minimise, maximise, close)",
+  "description": "The main window; it draws its own title bar (drag, minimise, maximise, close) and opens web, mail and phone links (not \"show in folder\": the app does that itself, for its own files only). Only the core parts the page uses (app: version, Android's Back; event: the app's notices and file drops; window: its own buttons), not core:default (no image, menu, tray, path or resources)",
   "windows": [
     "main"
   ],
   "permissions": [
-    "core:default",
-    "opener:default",
+    "core:app:default",
+    "core:event:default",
+    "core:window:default",
+    "opener:allow-open-url",
+    "opener:allow-default-urls",
     "core:window:allow-start-dragging",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",

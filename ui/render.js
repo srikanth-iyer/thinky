@@ -19,6 +19,10 @@ export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 
 /** Only web, mail and phone links open; anything else (javascript:, file:, …) stays text. */
 // (leanoutliner:// links open a page or a note of these notes: App.openLink)
+/** The pages a note's words link to or tag: [[Page]], #tag, #[[Page]] (the filter buttons of linked
+ *  references and of To-dos). */
+const LINKS_IN = /\[\[([^\[\]\n]+?)\]\]|(?:^|[\s(,])#([^\s#,.;:!?()\[\]"'{}]+)/g;
+export const pagesIn = (text) => { const out = []; for (const m of String(text || '').matchAll(LINKS_IN)) out.push((m[1] ?? m[2]).trim()); return out.filter(Boolean); };
 export const safeHref = (u) => (/^(https?:|mailto:|tel:|leanoutliner:)/i.test(u.trim()) ? u.trim() : null);
 
 const link = (name, label, cls = 'pl') =>
@@ -59,17 +63,26 @@ const sizeOf = (attrs, k) => Math.round(attrs?.match(new RegExp(`:${k}\\s+"?(\\d
 function image(alt, url, attrs, md) {
   const u = url.trim();
   let src = null;
-  if (/^https?:/i.test(u) || /^data:image\//i.test(u)) src = u;
-  else if (!/^[a-z]+:/i.test(u)) src = assetUrl(u);
+  // a picture on the old, open web (http://) is never fetched: anyone on the way could watch or
+  // swap it. Its address stays a plain link, which opens in the browser (Build 34)
+  if (/^http:/i.test(u)) {
+    let site = u;
+    try { site = new URL(u).host || u; } catch { /* not a whole address: shown as written */ }
+    return `<span class="pic-off" title="${esc(u)}">Picture not shown: it uses the old, open web · <a class="ext" href="${esc(u)}" target="_blank" rel="noopener">${esc(site)}</a></span>`;
+  }
+  if (/^https:/i.test(u) || /^data:image\//i.test(u)) src = u;
+  // (a file in the notes folder; never \\server\share or //server: Windows would connect there)
+  else if (!/^[a-z]+:/i.test(u) && !/^[\\/]{2}|^\\|:/.test(u)) src = assetUrl(u);
   if (!src) return esc(alt || u);
   if (!IMG.test(u) && !/^data:image\//i.test(u)) {
-    const name = decodeURIComponent(u.split('/').pop() || u);
+    let name = u.split('/').pop() || u;
+    try { name = decodeURIComponent(name); } catch { /* a stray % stays as written */ }
     return `<span class="file" title="${esc(u)}">📎 ${esc(alt || name)}</span>`;
   }
   const w = sizeOf(attrs, 'width');
   const h = sizeOf(attrs, 'height');
   const size = w ? ` width="${w}"${h ? ` height="${h}"` : ''}` : h ? ` style="height:${h}px"` : '';
-  return `<span class="pic"><img class="img${size ? ' sized' : ''}" src="${esc(src)}" alt="${esc(alt)}" loading="lazy"${size} data-md="${esc(md)}"></span>`;
+  return `<span class="pic"><img class="img${size ? ' sized' : ''}" src="${esc(src)}" alt="${esc(alt)}" loading="lazy" referrerpolicy="no-referrer"${size} data-md="${esc(md)}"></span>`;
 }
 
 /** text with the k-th (from 0) picture link `md` followed by its size the way Logseq writes it,
@@ -290,7 +303,18 @@ function quote(lines) {
 // Returns { html, marker, priority, props, dates, heading, bg } (props = the visible properties;
 // heading = 1–6 when the first line is a "#" heading, or for Logseq's auto heading (heading:: true:
 // one size smaller than its level, at depth 0 a "##"), else 0; bg = its background-color:: value).
+/** A note drawn as HTML. Never throws: if drawing it fails (a note no rule expected), it shows as
+ *  its plain words, so one odd note can't blank a whole page, the Journals list or search. */
 export function renderBlock(text, depth = 0) {
+  try {
+    return drawBlock(text, depth);
+  } catch (e) {
+    console.error('a note could not be drawn', e);
+    return { html: `<span class="raw">${esc(text)}</span>`, marker: null, priority: null, props: [], dates: [], heading: 0, bg: '' };
+  }
+}
+
+function drawBlock(text, depth = 0) {
   const lines = text.split('\n');
   const body = [];
   const props = [];

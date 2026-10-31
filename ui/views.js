@@ -2,7 +2,7 @@
 // To-dos and Calendar.
 
 import { call, today, store } from './api.js';
-import { renderBlock, datesHtml, esc, whenText } from './render.js';
+import { renderBlock, datesHtml, esc, whenText, pagesIn } from './render.js';
 import { h, pageLink, ICON, BRAND, plural } from './dom.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -41,7 +41,7 @@ export async function pagesView(app, view) {
       <button class="chip" data-o="journals" title="Also list journal days">Journals</button>
       <button class="chip" data-o="ghosts" title="Names that notes link to or tag, but that have no file yet">No file</button>
       <button class="chip" data-o="orphans" title="Only pages that nothing links to">Not linked</button>
-      <button class="chip" data-o="tree" title="Pages like Garden/notes under Garden">Namespaces</button>
+      <button class="chip" data-o="tree" title="Only pages in a namespace: Garden/notes under Garden">Namespaces</button>
     </div>
     <div class="btn-row"><button class="btn ghost small" data-a="select">Select pages</button>
       <button class="btn ghost small" data-a="random">${ICON.shuffle}<span>Random page</span></button>
@@ -68,7 +68,7 @@ export async function pagesView(app, view) {
   // what each filter turned on does, in a line under them (he asked what No file and Namespaces are;
   // the buttons' tooltips don't show on a phone)
   const SAYS = { journals: 'Journals: journal days too.', ghosts: 'No file: names your notes link to or tag that have no page yet.',
-    orphans: 'Not linked: only pages no note links to.', tree: 'Namespaces: “Garden/notes” listed under “Garden”.' };
+    orphans: 'Not linked: only pages no note links to.', tree: 'Namespaces: only pages in a namespace, “Garden/notes” under “Garden”.' };
   const say = h('p', 'note chip-say');
   tools.querySelector('.chips').after(say);
   const sayOn = () => { const on = Object.keys(SAYS).filter((k) => opt[k]); say.textContent = on.map((k) => SAYS[k]).join(' '); say.hidden = !on.length; };
@@ -83,12 +83,9 @@ export async function pagesView(app, view) {
   let shown = [];
   let lastClicked = null;
 
-  const list = () => {
-    const q = input.value.trim().toLowerCase();
-    let v = app.names.filter((n) => (opt.journals || !n.journal) && (opt.ghosts || n.exists) && (!opt.orphans || (n.exists && !n.refs && !n.journal))
-      && (!q || n.name.toLowerCase().includes(q)));
-    // the list comes A to Z, and sorting keeps that order among equals; pages with no file have no
-    // times: last, either way
+  // the order a column asks for (pages with no file have no times: last, either way; equals keep
+  // the A to Z order they came in)
+  const order = (v) => {
     const by = { links: (n) => n.refs, created: (n) => n.created, changed: (n) => n.changed }[opt.sort];
     if (!by) return opt.desc ? v.reverse() : v;
     const dir = opt.desc ? -1 : 1;
@@ -98,6 +95,12 @@ export async function pagesView(app, view) {
       return x == null ? 0 : dir * (x - y);
     });
   };
+  const list = () => {
+    const q = input.value.trim().toLowerCase();
+    const v = app.names.filter((n) => (opt.journals || !n.journal) && (opt.ghosts || n.exists) && (!opt.orphans || (n.exists && !n.refs && !n.journal))
+      && (!q || n.name.toLowerCase().includes(q)));
+    return order(v);
+  };
   const row = (n, label = n.name, depth = 0) => `<li style="--d:${depth}"${chosen.has(n.name) ? ' class="chosen"' : ''}>
     <a href="#" data-page="${esc(n.name)}"><span class="pg-name${n.exists ? '' : ' ghost'}">${selecting && n.exists ? `<input type="checkbox" tabindex="-1" ${chosen.has(n.name) ? 'checked' : ''}>` : ''}${n.icon ? `<span class="pg-ic" aria-hidden="true">${esc(n.icon)}</span>` : ''}${esc(label)}</span>
     <span class="meta c-links">${n.exists ? (n.refs ? plural(n.refs, 'link') : '') : 'no file yet'}</span>
@@ -105,38 +108,45 @@ export async function pagesView(app, view) {
     <span class="meta c-changed" title="${n.changed ? 'Changed ' + esc(fullWhen(n.changed)) : ''}">${shortWhen(n.changed)}</span></a></li>`;
   const draw = () => {
     shown = list();
-    // (Namespaces: pages under their parents, A to Z; the sorting waits until that's off)
+    // Namespaces (Build 34, he asked): only pages in one ("a/b" and its parents, "a"), under their
+    // parents, each level in the columns' order
     const tree = opt.tree && !input.value.trim();
-    const sort = tree ? 'name' : opt.sort, desc = !tree && opt.desc;
+    const sort = opt.sort, desc = opt.desc;
     table.dataset.sort = sort; // (narrow: only the column it's sorted by shows beside the names)
     for (const b of cols.querySelectorAll('[data-s]')) {
       const k = b.dataset.s, on = k === sort, c = SORTS[k];
       b.setAttribute('aria-pressed', String(on));
-      b.disabled = tree;
       b.querySelector('.dir').textContent = on ? (desc ? '↓' : '↑') : '';
-      b.title = tree ? 'With Namespaces on, pages are listed A to Z under their parents' : on ? `Sorted ${c.says[+desc]}; click for ${c.says[+!desc]}` : `Sort by ${c.label.toLowerCase()}, ${c.says[+c.desc]}`;
+      b.title = on ? `Sorted ${c.says[+desc]}; click for ${c.says[+!desc]}` : `Sort by ${c.label.toLowerCase()}, ${c.says[+c.desc]}`;
       b.setAttribute('aria-label', on ? `${c.label}, sorted ${c.says[+desc]}` : `Sort by ${c.label.toLowerCase()}`);
     }
     const files = app.names.filter((n) => n.exists && !n.journal).length;
     input.placeholder = `Filter ${files} pages`;
-    if (opt.tree && !input.value.trim()) {
-      // namespaces: "a/b/c" sits under "a" and "a/b"
+    if (tree) {
+      // "a/b/c" sits under "a/b", under "a"; a parent with no page of its own is shown greyed
       const byName = new Map(shown.map((n) => [n.name.toLowerCase(), n]));
+      const kids = new Map([['', []]]); // a parent's name (small letters) → its children
+      const add = (name) => {
+        const key = name.toLowerCase();
+        if (kids.has(key)) return;
+        kids.set(key, []);
+        const cut = name.lastIndexOf('/');
+        const parent = cut < 0 ? '' : name.slice(0, cut);
+        if (parent) add(parent);
+        kids.get(parent.toLowerCase()).push(byName.get(key) || { name, exists: false, refs: 0 });
+      };
+      for (const n of shown) if (n.name.includes('/')) add(n.name);
       const rows = [];
-      const seen = new Set();
-      const sorted = shown.slice().sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-      for (const n of sorted) {
-        const parts = n.name.split('/');
-        for (let k = 1; k < parts.length; k++) {
-          const parent = parts.slice(0, k).join('/');
-          if (seen.has(parent.toLowerCase())) continue;
-          seen.add(parent.toLowerCase());
-          rows.push(row(byName.get(parent.toLowerCase()) || { name: parent, exists: false, refs: 0 }, parts[k - 1], k - 1));
+      const walk = (key, depth) => {
+        for (const n of order(kids.get(key).sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase())))) {
+          rows.push(row(n, n.name.slice(n.name.lastIndexOf('/') + 1), depth));
+          walk(n.name.toLowerCase(), depth + 1);
         }
-        if (!seen.has(n.name.toLowerCase())) { seen.add(n.name.toLowerCase()); rows.push(row(n, parts[parts.length - 1], parts.length - 1)); }
-      }
+      };
+      walk('', 0);
+      shown = rows.length ? shown.filter((n) => kids.has(n.name.toLowerCase())) : [];
       ul.className = 'rows pg-rows tree-rows';
-      ul.innerHTML = rows.join('') || BRAND.empty('No pages match.', 'li');
+      ul.innerHTML = rows.join('') || BRAND.empty('No namespaces yet: a page named like “Garden/notes” makes one.', 'li');
     } else {
       ul.className = 'rows pg-rows';
       ul.innerHTML = shown.map((n) => row(n)).join('') || BRAND.empty('No pages match.', 'li');
@@ -312,9 +322,13 @@ export function taskClicks(app, list, tasks, reload) {
   });
 }
 
+// The to-do list's orders (Build 34, he asked: newest first by default, the other way round too, and by date)
+const TODO_ORDERS = [['recent', 'Newest', 'Pages changed most recently first'], ['oldest', 'Oldest', 'Pages changed longest ago first'], ['due', 'By date', 'Overdue, today, the next days, later, no date']];
+
 export async function todosView(app, view) {
   const opt = store.get('todoOpts', { kind: 'all' });
   if (!['all', 'todo', 'doing', 'done', 'canceled'].includes(opt.kind)) opt.kind = 'all'; // (Waiting and the Done add-on went, Build 33)
+  if (!TODO_ORDERS.some(([k]) => k === opt.sort)) opt.sort = 'recent'; // (Build 34: newest first unless he picks another)
   view.append(h('h1', 'page-title', 'To-dos'));
   const tools = h('div', 'list-tools');
   // one filter at a time (he asked: Done shows only finished ones); the words of his own workflow
@@ -322,38 +336,98 @@ export async function todosView(app, view) {
   const now = app.workflow() === 'now';
   const kinds = [['all', 'Open', 'Every open to-do'], ['todo', now ? 'Later' : 'To do', now ? 'LATER, TODO and WAITING' : 'TODO, LATER and WAITING'], ['doing', now ? 'Now' : 'Doing', 'NOW and DOING'], ['done', 'Done', 'Finished to-dos'], ['canceled', 'Cancelled', 'Cancelled to-dos']];
   tools.innerHTML = `<input class="filter" type="search" placeholder="Filter to-dos" aria-label="Filter to-dos">
-    <div class="chips" role="group" aria-label="Show">${kinds.map(([k, l, t]) => `<button class="chip" data-k="${k}" title="${t}" aria-pressed="${opt.kind === k}">${l}</button>`).join('')}</div>`;
+    <div class="chips" role="group" aria-label="Show">${kinds.map(([k, l, t]) => `<button class="chip" data-k="${k}" title="${t}" aria-pressed="${opt.kind === k}">${l}</button>`).join('')}</div>
+    <div class="chips todo-order" role="group" aria-label="Order">${TODO_ORDERS.map(([k, l, t]) => `<button class="chip" data-sort="${k}" title="${t}" aria-pressed="${opt.sort === k}">${l}</button>`).join('')}</div>
+    <div class="ref-chips todo-chips" role="group" aria-label="Pages these to-dos are on or mention"></div>`;
   const out = h('div', 'todos');
   view.append(tools, out);
   const input = $('input', tools);
+  const chipsEl = $('.todo-chips', tools);
   let tasks = [];
-  const load = async () => { tasks = await call('tasks', { done: ['done', 'canceled'].includes(opt.kind) }); draw(); };
+  // Filter buttons (Build 34, he asked, as the references' ones): the pages each to-do is on or links
+  // to, most used first. A click shows only those, a second hides those, a third lets it go.
+  const picks = new Map(); // small letters → 'in' | 'out'
+  const namesOf = new Map(); // a to-do → its page names (small letters)
+  const names = (x) => {
+    if (!namesOf.has(x)) namesOf.set(x, new Set([x.page, ...pagesIn(x.text)].map((n) => n.toLowerCase())));
+    return namesOf.get(x);
+  };
+  const ofKind = (x) => (opt.kind === 'all' ? !closed(x) : GROUPS[x.marker] === opt.kind);
+  let counts = new Map(), written = new Map(), more = false;
+  const countChips = () => {
+    counts = new Map(); written = new Map();
+    for (const x of tasks.filter(ofKind)) {
+      for (const n of names(x)) counts.set(n, (counts.get(n) || 0) + 1);
+      for (const n of [x.page, ...pagesIn(x.text)]) if (!written.has(n.toLowerCase())) written.set(n.toLowerCase(), n);
+    }
+    for (const n of [...picks.keys()]) if (!counts.has(n)) picks.delete(n);
+  };
+  const CHIPS = 24;
+  const drawChips = () => {
+    const all = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a) || a.localeCompare(b));
+    const list = more ? all : all.slice(0, CHIPS);
+    chipsEl.innerHTML = list.map((n) => {
+      const p = picks.get(n), say = p === 'in' ? 'Only these; click to hide them instead' : p === 'out' ? 'Hidden; click to stop filtering by it' : 'Click to show only these';
+      return `<button type="button" class="chip ref-chip" data-n="${esc(n)}"${p ? ` data-pick="${p}"` : ''} aria-pressed="${p ? 'true' : 'false'}" title="${esc(say)}">${p === 'out' ? '<s>' : ''}${esc(written.get(n) || n)}${p === 'out' ? '</s>' : ''} <span class="n">${counts.get(n)}</span></button>`;
+    }).join('') + (!more && all.length > CHIPS ? `<button type="button" class="chip ref-more">${all.length - CHIPS} more</button>` : '');
+    chipsEl.hidden = all.length < 2; // (one page only: nothing to choose between)
+  };
+  const load = async () => { tasks = await call('tasks', { done: ['done', 'canceled'].includes(opt.kind) }); namesOf.clear(); countChips(); drawChips(); draw(); };
   const draw = () => {
     const q = input.value.trim().toLowerCase();
     const t = num(today());
-    const list = tasks.filter((x) => (opt.kind === 'all' ? !closed(x) : GROUPS[x.marker] === opt.kind)
-      && (!q || x.text.toLowerCase().includes(q) || x.page.toLowerCase().includes(q)));
-    const ahead = app.summary?.config?.future_days ?? 7; // (config.edn :scheduled/future-days, as today's box)
-    const groups = [['Overdue', []], ['Today', []], [ahead === 1 ? 'Tomorrow' : `Next ${ahead} days`, []], ['Later', []], ['No date', []], [opt.kind === 'canceled' ? 'Cancelled' : 'Done', []]];
-    for (const x of list) {
-      const w = taskDay(x);
-      const g = closed(x) ? 5 : !Number.isFinite(w) ? 4 : w < t ? 0 : w === t ? 1 : w <= t + ahead ? 2 : 3;
-      groups[g][1].push(x);
+    const ins = [...picks].filter(([, p]) => p === 'in').map(([n]) => n), outs = [...picks].filter(([, p]) => p === 'out').map(([n]) => n);
+    const list = tasks.filter((x) => ofKind(x)
+      && (!q || x.text.toLowerCase().includes(q) || x.page.toLowerCase().includes(q))
+      && ins.every((n) => names(x).has(n)) && !outs.some((n) => names(x).has(n)));
+    let groups;
+    if (opt.sort === 'due') {
+      const ahead = app.summary?.config?.future_days ?? 7; // (config.edn :scheduled/future-days, as today's box)
+      groups = [['Overdue', []], ['Today', []], [ahead === 1 ? 'Tomorrow' : `Next ${ahead} days`, []], ['Later', []], ['No date', []], [opt.kind === 'canceled' ? 'Cancelled' : 'Done', []]];
+      for (const x of list) {
+        const w = taskDay(x);
+        const g = closed(x) ? 5 : !Number.isFinite(w) ? 4 : w < t ? 0 : w === t ? 1 : w <= t + ahead ? 2 : 3;
+        groups[g][1].push(x);
+      }
+      for (const [, g] of groups) g.sort(byDay);
+    } else {
+      // by when its page last changed (the file's time: a to-do has no time of its own), newest or
+      // oldest first; on one page, in the page's order
+      const dir = opt.sort === 'oldest' ? 1 : -1;
+      const at = (x) => x.changed ?? 0;
+      const sorted = list.slice().sort((a, b) => dir * (at(a) - at(b)) || a.page.localeCompare(b.page) || a.line - b.line);
+      groups = [[opt.sort === 'oldest' ? 'Oldest first' : 'Newest first', sorted]];
     }
-    for (const [, g] of groups) g.sort(byDay);
+    const filtering = q || picks.size;
     out.innerHTML = groups.filter(([, g]) => g.length).map(([name, g]) => `<section class="sec"><h2 class="sec-h">${name} <span class="n">${g.length}</span></h2>
       ${g.map((x) => taskRow(x)).join('')}</section>`).join('')
-      || BRAND.empty(input.value.trim() && tasks.length ? 'Nothing matches.' : { done: 'No finished to-dos.', canceled: 'No cancelled to-dos.' }[opt.kind] || 'No open to-dos here. Start a block with TODO (or press Ctrl+Enter) to make one.');
+      || BRAND.empty(filtering && tasks.length ? 'Nothing matches.' : { done: 'No finished to-dos.', canceled: 'No cancelled to-dos.' }[opt.kind] || 'No open to-dos here. Start a block with TODO (or press Ctrl+Enter) to make one.');
   };
   tools.onclick = (e) => {
+    const o = e.target.closest('[data-sort]');
+    if (o) {
+      if (o.dataset.sort === opt.sort) return;
+      opt.sort = o.dataset.sort; store.set('todoOpts', opt);
+      tools.querySelectorAll('[data-sort]').forEach((b) => b.setAttribute('aria-pressed', b === o));
+      draw();
+      return;
+    }
+    if (e.target.closest('.ref-more')) { more = true; drawChips(); return; }
+    const r = e.target.closest('.ref-chip');
+    if (r) {
+      const n = r.dataset.n, p = picks.get(n);
+      if (!p) picks.set(n, 'in'); else if (p === 'in') picks.set(n, 'out'); else picks.delete(n);
+      drawChips(); draw();
+      return;
+    }
     const c = e.target.closest('[data-k]');
     if (!c || c.dataset.k === opt.kind) return;
     const was = ['done', 'canceled'].includes(opt.kind);
     opt.kind = c.dataset.k; store.set('todoOpts', opt);
     tools.querySelectorAll('[data-k]').forEach((b) => b.setAttribute('aria-pressed', b === c));
-    if (was !== ['done', 'canceled'].includes(opt.kind)) load(); else draw();
+    if (was !== ['done', 'canceled'].includes(opt.kind)) load(); else { countChips(); drawChips(); draw(); }
   };
-  fitChips($('.chips', tools));
+  tools.querySelectorAll('.chips').forEach(fitChips);
   input.oninput = draw;
   taskClicks(app, out, () => tasks, load);
   await load();

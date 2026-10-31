@@ -168,6 +168,12 @@ pub struct TaskHit {
     pub text: String,
     #[serde(flatten)]
     pub task: Task,
+    /// Its file (inside the notes folder), for `App::tasks` to add the file's change time.
+    #[serde(skip)]
+    pub path: String,
+    /// When its page's file last changed (seconds), from `App::tasks`; the to-dos list sorts by it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changed: Option<u64>,
 }
 
 /// One entry of the All pages list.
@@ -842,6 +848,8 @@ impl Vault {
                             depth: b.depth,
                             text: b.text.clone(),
                             task: t.clone(),
+                            path: p.path.clone(),
+                            changed: None,
                         });
                     }
                 }
@@ -1107,12 +1115,16 @@ pub fn file_stem_for(name: &str) -> String {
     if let Some(rest) = t.strip_prefix('.') {
         t = format!("%2E{rest}");
     }
-    const RESERVED: [&str; 22] = [
+    const RESERVED: [&str; 30] = [
         "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2",
-        "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "COM¹", "COM²", "COM³", "LPT¹", "LPT²", "LPT³", "CONIN$",
+        "CONOUT$",
     ];
-    // Windows' reserved names, in any case (con, Nul, COM1…), as Logseq does
-    if RESERVED.contains(&t.to_ascii_uppercase().as_str()) || t.ends_with('.') {
+    // Windows' reserved names, in any case (con, Nul, COM1…), as Logseq does; also with an
+    // extension after them ("nul.txt"), which Windows 10 treats the same
+    let upper = t.to_uppercase();
+    let base = upper.split('.').next().unwrap_or("");
+    if RESERVED.contains(&upper.as_str()) || RESERVED.contains(&base) || t.ends_with('.') {
         t.push('/');
     }
     t.replace("___", "%5F%5F%5F").replace("_/", "%5F/").replace("/_", "/%5F").replace('/', "___")

@@ -7,7 +7,7 @@
 :root, [data-skin] {
   /* colours */
   --bg: #F4F6F3; --surface: #FFFFFF; --surface-2: #F7F8F6;
-  --ink: #1A2130; --ink-soft: #535D6E; --ink-faint: #8A93A2;
+  --ink: #1A2130; --ink-soft: #535D6E; --ink-faint: #656D7C; /* faint words ≥ 4.5:1 on the page and cards (Build 34, he asked; was #8A93A2) */
   --line: #DFE3E0; --line-soft: #ECEFEC;
   --accent: #0B7B66; --accent-ink: #FFFFFF; --accent-tint: #E0F2EC;
   --link: #4A3CB0; --link-line: color-mix(in srgb, var(--link) 35%, transparent);
@@ -126,7 +126,7 @@
   --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
   --hl-yellow: #FACC15; --hl-red: #F87171; --hl-pink: #F472B6; --hl-green: #4ADE80; --hl-blue: #60A5FA; --hl-purple: #C084FC; --hl-gray: #9CA3AF; --hl-tint: 24%;
   --bg: #1B1E24; --surface: #2A2F38; --surface-2: #242830;
-  --ink: #E6E9EE; --ink-soft: #B9BFC9; --ink-faint: #8E95A0;
+  --ink: #E6E9EE; --ink-soft: #B9BFC9; --ink-faint: #9198A2; /* ≥ 4.5:1 on cards (was #8E95A0) */
   --line: #454C58; --line-soft: #3A404B;
   --accent: #86C4B3; --accent-ink: #12141A; --accent-tint: #2F403D;
   --link: #B3ACE0; --tag-ink: #CFCAF0; --tag-bg: rgba(0,0,0,.22); --tag-border: 1px solid rgba(0,0,0,.35);
@@ -148,7 +148,7 @@
 [data-skin="paper"] {
   /* the app's icon in this look */ --logo-tile: #FFFEFA; --logo-ink: #2A251E; --logo-spark: #B23A26;
   --bg: #F4F2EC; --surface: #FFFEFA; --surface-2: #F8F6F0;
-  --ink: #2A251E; --ink-soft: #5E564A; --ink-faint: #8F8676;
+  --ink: #2A251E; --ink-soft: #5E564A; --ink-faint: #746C5E; /* ≥ 4.5:1 (was #8F8676) */
   --line: #DCD7CC; --line-soft: #EAE6DD;
   --accent: #B23A26; --accent-tint: #F3DED4;
   --link: #2D5B8A; --link-line: rgba(45,91,138,.35);
@@ -263,7 +263,7 @@
 [data-skin="plain"] {
   /* the app's icon in this look */ --logo-tile: #F3F3F3; --logo-ink: #171717; --logo-spark: #FF4B2B;
   --bg: #FCFCFC; --surface: #FFFFFF; --surface-2: #F3F3F3; --side-bg: #F8F8F8;
-  --ink: #171717; --ink-soft: #6F6F6F; --ink-faint: #8F8F8F;
+  --ink: #171717; --ink-soft: #5C5C5C; --ink-faint: #6D6D6D; /* ≥ 4.5:1, and still lighter than the soft words (Build 34; were #6F6F6F / #8F8F8F) */
   --line: #E2E2E2; --line-soft: #EDEDED;
   /* a calm accent in the links' own blue (he asked, Oct 28: Plain was too black and white): ticked boxes,
      the logo, the sidebar's current place, pressed buttons, selections; quotes' bar and the icons a
@@ -271,7 +271,7 @@
   --accent: var(--link); --accent-ink: #FFFFFF; --accent-tint: color-mix(in srgb, var(--accent) 11%, #FFFFFF);
   --quote-bar: color-mix(in srgb, var(--accent) 45%, transparent); --icon-ink: color-mix(in srgb, var(--accent) 55%, currentColor);
   --link: #1B6898; --link-line: rgba(27,104,152,.35); --link-deco: 0; /* its own link colour (Settings' one overrides it) */
-  --tag-bg: transparent; --tag-ink: color-mix(in srgb, var(--link) 80%, transparent); --tag-border: 0; --tag-radius: 4px; --tag-pad: 0 2px;
+  --tag-bg: transparent; --tag-ink: var(--link); /* (#tags in the links' colour, whole: 80% of it was 3.9:1, Build 34) */ --tag-border: 0; --tag-radius: 4px; --tag-pad: 0 2px;
   --mark-bg: #FEF3AC; --danger: #B3261E; --danger-tint: #FCE8E6;
   --edit-bg: #F3F3F3; --guide: rgba(46,27,5,.08); --bullet: rgba(199,199,199,.8); --bullet-ring: #DEDEDE;
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
@@ -300,7 +300,7 @@
   --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
   --hl-yellow: #FACC15; --hl-red: #F87171; --hl-pink: #F472B6; --hl-green: #4ADE80; --hl-blue: #60A5FA; --hl-purple: #C084FC; --hl-gray: #9CA3AF; --hl-tint: 24%;
   --bg: #141414; --surface: #1A1A1A; --surface-2: #1E1E1E; --side-bg: #1A1A1A;
-  --ink: #E6E6E6; --ink-soft: #ABABAB; --ink-faint: #767676;
+  --ink: #E6E6E6; --ink-soft: #ABABAB; --ink-faint: #878787; /* ≥ 4.5:1 (was #767676) */
   --line: #303030; --line-soft: #242424;
   /* the accent in the links' soft blue, as Plain */
   --accent: var(--link); --accent-ink: #141414; --accent-tint: color-mix(in srgb, var(--accent) 16%, #141414);

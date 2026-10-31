@@ -1,7 +1,7 @@
 // Small pop-up for adding a note: opened by the widgets' + buttons, or by sharing text or a
 // picture from another app ("Add to journal" in the share menu). Uses Logseq's quick capture
-// format from config.edn. With "add shared things straight away" on, shares skip the pop-up
-// (and the pop-up appears after all if that fails, with the reason).
+// format from config.edn. Every share shows the pop-up first: nothing is added until Add is
+// tapped, so another app can never add notes by itself (the no-pop-up setting went in Build 34).
 // Looks like the app: a rounded card near the bottom of the screen in the colours of the look the
 // app last used (sent with setWidgetColors), a soft text box, pill-shaped buttons, and a preview
 // of a shared picture.
@@ -102,8 +102,9 @@ class QuickCaptureActivity : AppCompatActivity() {
     if (intent?.action == Intent.ACTION_SEND) {
       val type = intent.type ?: ""
       if (type.startsWith("image/")) {
-        image = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        val got: Uri? = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
         else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_STREAM)
+        image = got?.takeIf { sharedPicture(it) }
       }
       // styled text arrives as a CharSequence, so read it that way (getStringExtra would give null)
       val subject = intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT)?.toString()?.trim().orEmpty()
@@ -126,7 +127,6 @@ class QuickCaptureActivity : AppCompatActivity() {
         input.setText(shared)
         input.setSelection(input.text.length)
       }
-      if (Journal.oneTap(this) && (img != null || shared.isNotBlank())) { add(input.text.toString()); return }
     }
     if (image == null) {
       input.requestFocus()
@@ -218,6 +218,22 @@ class QuickCaptureActivity : AppCompatActivity() {
       } catch (e: Exception) { null } catch (e: OutOfMemoryError) { null }
       runOnUiThread { if (bmp != null && !isFinishing) { view.setImageBitmap(bmp); view.visibility = View.VISIBLE } }
     }.start()
+  }
+
+  // Only a picture another app hands over (content://, from a provider that isn't this app's own,
+  // of an image type): the pop-up opens it with this app's rights, so a file:// address or one of
+  // this app's own files (its notes' index, its settings) must never be copied into the notes.
+  private fun sharedPicture(uri: Uri): Boolean {
+    return try {
+      if (uri.scheme != "content") return false
+      val authority = (uri.authority ?: return false).substringAfter('@')
+      // (another app's provider may be hidden from this one, so unknown is allowed; this app's own
+      // always shows, and its authorities start with the package name)
+      val owner = packageManager.resolveContentProvider(authority, 0)?.packageName
+      if (owner == packageName || authority.startsWith(packageName)) return false
+      val type = contentResolver.getType(uri)
+      type == null || type.startsWith("image/")
+    } catch (e: Exception) { false }
   }
 
   /** The shared file's size in bytes, or -1 if the app sharing it doesn't say. */

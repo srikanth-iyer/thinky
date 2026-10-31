@@ -65,7 +65,18 @@ await page.waitForSelector('.pg-rows li');
 check((await col('created').getAttribute('aria-pressed')) === 'true' && (await col('created').textContent()) === 'Created↑' && (await names())[0] === 'Made second', 'remembered after a reload (Created, oldest first)', await col('created').textContent());
 await page.locator('.chips [data-o="tree"]').click();
 await sleep(150);
-check(await col('created').isDisabled() && (await col('name').getAttribute('aria-pressed')) === 'true', 'Namespaces: listed A to Z under their parents (the heads wait)');
+{ // Build 34: only pages in a namespace, and the columns still sort (each level on its own)
+  const t = await page.locator('.tree-rows li').evaluateAll((lis) => lis.map((li) => li.style.getPropertyValue('--d') + ':' + li.querySelector('.pg-name').textContent.trim()));
+  check(!(await col('created').isDisabled()) && (await col('created').getAttribute('aria-pressed')) === 'true', 'Namespaces: the columns still sort', t.join('|'));
+  check(t.length && t.every((x) => !/Maths|Made first|Made second/.test(x)) && t.some((x) => x.startsWith('1:')), 'Namespaces: only pages in a namespace, under their parents', t.join('|'));
+  await col('name').click(); // A to Z
+  const az = await page.locator('.tree-rows li').evaluateAll((lis) => lis.map((li) => li.style.getPropertyValue('--d') + ':' + li.querySelector('.pg-name').textContent.trim()));
+  await col('name').click(); // Z to A
+  const za = await page.locator('.tree-rows li').evaluateAll((lis) => lis.map((li) => li.style.getPropertyValue('--d') + ':' + li.querySelector('.pg-name').textContent.trim()));
+  const tops = (l) => l.filter((x) => x.startsWith('0:'));
+  check(tops(az).length > 1 ? tops(az).join() === tops(za).slice().reverse().join() : az.length === za.length, 'Namespaces: Z to A turns each level round', az.join('|') + ' / ' + za.join('|'));
+  await col('created').click(); await col('created').click(); // back to Created, oldest first
+}
 await page.locator('.chips [data-o="tree"]').click();
 await page.locator('.chips [data-o="ghosts"]').click();
 await col('changed').click();

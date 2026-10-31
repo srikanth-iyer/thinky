@@ -26,7 +26,7 @@ const last = () => page.evaluate(() => window.__widget.at(-1) || []);
 
 const first = await page.evaluate(() => window.__widget[0] || []);
 check(first.length === 4 && JSON.stringify(first) === JSON.stringify(await tokens()), 'at start: the look’s colours (Plain night)', JSON.stringify(first));
-check(JSON.stringify(first) === JSON.stringify(['#1a1a1a', '#e6e6e6', '#767676', '#8ab4f8']), 'Plain night’s near-black page, light words', JSON.stringify(first));
+check(JSON.stringify(first) === JSON.stringify(['#1a1a1a', '#e6e6e6', '#878787', '#8ab4f8']), 'Plain night’s near-black page, light words', JSON.stringify(first));
 let all = true;
 const bad = [];
 for (const id of LOOKS) {

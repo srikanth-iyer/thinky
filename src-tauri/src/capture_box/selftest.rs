@@ -370,10 +370,11 @@ fn clicks(step: usize, ms: u64) -> Go {
             let drop = files::make_drop(std::slice::from_ref(&file));
             unsafe { SendMessageW(h, WM_DROPFILES, drop as usize, 0) };
             check(note_text().starts_with("Click test [Hello.txt](../assets/Hello_"), "A dropped file is linked by its name", note_text());
-            // the program started again by the shortcut (or the browser button), with words
+            // the program started again by the shortcut, with words (as `--capture` does when it can't
+            // add straight away)
             let exe = std::env::current_exe();
             let app_data = DIR.with(|d| d.borrow().join("appdata"));
-            let child = exe.and_then(|exe| std::process::Command::new(exe).arg("leanoutliner://capture?text=From%20a%20second%20press&box=1").env("LOCALAPPDATA", app_data).spawn());
+            let child = exe.and_then(|exe| std::process::Command::new(exe).args(["--capture-box", "From a second press"]).env("LOCALAPPDATA", app_data).spawn());
             match child {
                 Ok(c) => SECOND.with(|s| *s.borrow_mut() = Some(c)),
                 Err(e) => check(false, "(the test started the program a second time)", e.to_string()),
@@ -382,7 +383,7 @@ fn clicks(step: usize, ms: u64) -> Go {
         }
         1 => {
             // the words arrive (the box is being brought forward): an Enter right now is one meant
-            // for the browser's "Open Lean Outliner?" prompt, and must not add the note
+            // for another window, and must not add the note
             let arrived = note_text().ends_with("\nFrom a second press");
             let Some(ok) = waited(ms, 8000, arrived) else { return Go::Wait };
             check(ok, "Pressing the shortcut again hands the open box the new words, on a line of their own", note_text());
@@ -412,6 +413,30 @@ fn clicks(step: usize, ms: u64) -> Go {
             Go::Next
         }
         3 => {
+            // the small buttons (Build 34): [[ ]] makes the selected words a page link (or puts the
+            // caret between empty brackets), # starts a tag, To-do puts the mark on
+            let tool = |i: usize| with(|ui| ui.layout.tools[i]).unwrap_or_default();
+            let caret = || {
+                let (mut a, mut b) = (0u32, 0u32);
+                unsafe { SendMessageW(note(), EM_GETSEL, &mut a as *mut u32 as usize, &mut b as *mut u32 as isize) };
+                (a, b)
+            };
+            let shown = (0..3).all(|i| !tool(i).is_empty()) && with(|ui| ui.layout.note.r < ui.layout.tools[0].l).unwrap_or(false);
+            check(shown, "The small buttons ([[ ]], #, To-do) are on the box, after the text", format!("{:?}", with(|ui| ui.layout.tools)));
+            set_note("soup");
+            unsafe { SendMessageW(note(), EM_SETSEL, 0, -1) };
+            click(tool(0));
+            check(note_text() == "[[soup]]" && caret() == (8, 8), "[[ ]] turns the selected words into a page link", format!("{} {:?}", note_text(), caret()));
+            click(tool(1));
+            check(note_text() == "[[soup]] #" && caret() == (10, 10), "# starts a tag where the caret is", format!("{} {:?}", note_text(), caret()));
+            click(tool(0));
+            check(note_text() == "[[soup]] #[[]]" && caret() == (12, 12), "[[ ]] with nothing selected: the caret between the brackets", format!("{} {:?}", note_text(), caret()));
+            click(tool(2));
+            let todo = with(|ui| ui.todo && !ui.layout.pill.is_empty()).unwrap_or(false);
+            check(todo, "To-do puts the to-do mark on", note_text());
+            shot("7-small-buttons");
+            click(tool(2));
+            check(!with(|ui| ui.todo).unwrap_or(true), "…and a second click takes it off", note_text());
             // × closes it; the file was never copied
             click(with(|ui| ui.layout.close).unwrap_or_default());
             check(unsafe { IsWindow(h) } == 0, "Clicking × closes the box", "still open");

@@ -3,7 +3,7 @@
 // Saving is debounced; the backend merges changes made elsewhere meanwhile, or refuses and
 // the user chooses (the other version is kept as a backup copy).
 
-import { call, today, nowTime, noteLinkUrl } from './api.js';
+import { call, today, nowTime, noteLinkUrl, store } from './api.js';
 import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, hiddenKey, parseStamp, stampText, withPictureSize } from './render.js';
 import { pickDate, caretRect, noteMenu, menu, formBox } from './popups.js';
 import { openClash } from './clash.js';
@@ -1269,6 +1269,7 @@ export class Outline {
     ta.rows = 1;
     ta.value = shown;
     ta.setAttribute('autocapitalize', 'sentences');
+    ta.spellcheck = store.get('spellcheck', true); // (Settings → Look; the system's own spelling check)
     ta.setAttribute('aria-label', 'Block text');
     div.querySelector('.bc').replaceWith(ta);
     div.classList.remove('marker-done');
@@ -1923,7 +1924,8 @@ export class Outline {
     const wf = this.app.workflow();
     const start = wf === 'now' ? 'LATER' : 'TODO';
     if (!m) return start;
-    const next = { TODO: 'DOING', DOING: 'DONE', LATER: 'NOW', NOW: 'DONE', DONE: null };
+    // (DONE → CANCELED → none: the maintainer asked, Build 34)
+    const next = { TODO: 'DOING', DOING: 'DONE', LATER: 'NOW', NOW: 'DONE', DONE: 'CANCELED', CANCELED: null, CANCELLED: null };
     return m in next ? next[m] : start;
   }
   withMarker(text, marker) {
@@ -1932,7 +1934,8 @@ export class Outline {
     return marker ? `${marker} ${rest}` : rest;
   }
 
-  /** Ctrl+Enter: TODO → DOING → DONE → (none), or LATER → NOW → DONE with :preferred-workflow :now. */
+  /** Ctrl+Enter: TODO → DOING → DONE → CANCELED → (none), or LATER → NOW → DONE → CANCELED with
+   *  :preferred-workflow :now. */
   cycleTodo(i = this.cur) {
     if (i === null) return;
     const text = this.textOf(i);

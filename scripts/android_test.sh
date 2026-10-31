@@ -143,16 +143,33 @@ raw = b''.join(b'\x00' + bytes([200, 60, 40] * 32) for _ in range(32))
 png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 32, 32, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
 open('/tmp/shared.png', 'wb').write(png)
 "
-run adb push /tmp/shared.png /sdcard/Download/shared.png
-run adb shell am start -n "$PKG/.QuickCaptureActivity" -a android.intent.action.SEND -t image/png --eu android.intent.extra.STREAM file:///sdcard/Download/shared.png
+run adb push /tmp/shared.png /sdcard/Pictures/shared.png
+# shared the way a gallery app does: a content:// address from the phone's picture library (the
+# pop-up refuses file:// addresses: it would open them with the app's own rights)
+adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Pictures/shared.png >/dev/null 2>&1
+SHARE_URI=""
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  ID=$(adb shell content query --uri content://media/external/images/media --projection _id --where "_display_name=\'shared.png\'" 2>/dev/null | tr -d '\r' | grep -o '_id=[0-9]*' | head -1 | cut -d= -f2)
+  [ -n "$ID" ] && { SHARE_URI="content://media/external/images/media/$ID"; break; }
+  sleep 1
+done
+log "the shared picture's address: $SHARE_URI"
+run adb shell am start -n "$PKG/.QuickCaptureActivity" -a android.intent.action.SEND -t image/png --eu android.intent.extra.STREAM "$SHARE_URI"
 sleep 4; shot 10-share-picture
 run python3 scripts/ui_tap.py Add --exact
 sleep 3
 # the same picture shared again: a file of its own, the first never written over
-run adb shell am start -n "$PKG/.QuickCaptureActivity" -a android.intent.action.SEND -t image/png --eu android.intent.extra.STREAM file:///sdcard/Download/shared.png
+run adb shell am start -n "$PKG/.QuickCaptureActivity" -a android.intent.action.SEND -t image/png --eu android.intent.extra.STREAM "$SHARE_URI"
 sleep 4
 run python3 scripts/ui_tap.py Add --exact
 sleep 3
+# a file:// address (another app pointing the pop-up at a file) is refused: no picture shown
+run adb push /tmp/shared.png /sdcard/Download/shared.png
+run adb shell am start -n "$PKG/.QuickCaptureActivity" -a android.intent.action.SEND -t image/png --eu android.intent.extra.STREAM file:///sdcard/Download/shared.png
+sleep 3
+adb shell uiautomator dump /sdcard/ui-fileshare.xml >/dev/null 2>&1; adb exec-out cat /sdcard/ui-fileshare.xml > $OUT/ui-fileshare.xml 2>/dev/null
+shot 10b-file-share-refused
+adb shell input keyevent KEYCODE_BACK; sleep 1
 run adb shell ls -l /sdcard/vault/assets
 run adb shell "cat '/sdcard/vault/pages/quick capture.md'"
 ensure_app
@@ -204,20 +221,20 @@ if [ -n "$SOCK" ]; then
 fi
 
 # 11. one-click update (Settings → About → "Update now"), the real thing: Android's "Install unknown
-#     apps" screen first; once allowed, the newest release is downloaded from the public downloads
-#     page and checked (this test build is 0.1.0, so any release is newer). The release is signed
+#     apps" screen first; once allowed, the newest release is downloaded from the public repo's
+#     releases (skipped before its first, Build 34) and checked (this test build is 0.1.0, so any release is newer). The release is signed
 #     with the real key and this test build with a debug key, so the app itself must refuse it, before
 #     Android's installer. Then the steps after a good download (a test-build-only path hands Android's
 #     installer the app's own APK): Android asks to go ahead, the test cancels, and the app says so.
-LATEST=$(curl -sS -o /dev/null -w '%{redirect_url}' https://github.com/srikanth-iyer/lean-outliner-releases/releases/latest | grep -o 'build-[0-9]*$')
-log "newest release on the downloads page: ${LATEST:-none found}"
+LATEST=$(curl -sS -o /dev/null -w '%{redirect_url}' https://github.com/srikanth-iyer/thinky/releases/latest | grep -o 'build-[0-9]*$')
+log "newest release on the public repo: ${LATEST:-none yet}"
 if [ -n "$SOCK" ] && [ -n "$LATEST" ]; then
   ensure_app
   run adb shell am start -W -n "$PKG/.MainActivity" # back to the front (Back at the start left it)
   sleep 3
   connect
   # as if today's check had just found that release (no GitHub API call needed)
-  UPD=$($CDP eval "(async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); localStorage.setItem('updateCheck', JSON.stringify({ at: Date.now(), latest: { tag: '$LATEST', url: 'https://github.com/srikanth-iyer/lean-outliner-releases/releases/tag/$LATEST' } })); await window.leanApp.checkUpdate(); location.hash = '#/settings/about'; await s(2500); const b = document.querySelector('.upd [data-a=update]'); if (!b) return { stage: document.querySelector('.upd')?.dataset.stage || null, about: document.querySelector('.set-panel:not([hidden])')?.innerText.slice(0, 300) }; b.click(); await s(3000); return { stage: document.querySelector('.upd')?.dataset.stage, text: document.querySelector('.upd-out')?.textContent }; })()" | tr -d '\r')
+  UPD=$($CDP eval "(async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); localStorage.setItem('updateCheck', JSON.stringify({ at: Date.now(), latest: { tag: '$LATEST', url: 'https://github.com/srikanth-iyer/thinky/releases/tag/$LATEST' } })); await window.leanApp.checkUpdate(); location.hash = '#/settings/about'; await s(2500); const b = document.querySelector('.upd [data-a=update]'); if (!b) return { stage: document.querySelector('.upd')?.dataset.stage || null, about: document.querySelector('.set-panel:not([hidden])')?.innerText.slice(0, 300) }; b.click(); await s(3000); return { stage: document.querySelector('.upd')?.dataset.stage, text: document.querySelector('.upd-out')?.textContent }; })()" | tr -d '\r')
   log "after Update now: $UPD"
   shot 18-update-install-unknown-apps
   UNKNOWN=$(adb shell dumpsys activity activities | tr -d '\r' | grep -m1 -o 'topResumedActivity=[^}]*')
@@ -436,6 +453,7 @@ SAME=0
 for f in $SHARED; do adb exec-out cat "/sdcard/vault/assets/$f" > $OUT/asset.png 2>/dev/null; cmp -s $OUT/asset.png /tmp/shared.png && SAME=$((SAME + 1)); done
 log "shared pictures in assets: $NSHARED, the same as the picture: $SAME"
 result "a picture shared twice is kept twice, never written over" "[ '$NSHARED' = 2 ] && [ '$SAME' = 2 ]"
+result "a file:// address is never opened by the share pop-up" "[ -s $OUT/ui-fileshare.xml ] && ! grep -q 'Add a picture' $OUT/ui-fileshare.xml && [ '$NSHARED' = 2 ]"
 result "adding keeps a page's missing last line break" "python3 -c 'import sys; d=open(sys.argv[1],\"rb\").read(); sys.exit(0 if d.startswith(b\"- written before the share\\n- \") and not d.endswith(b\"\\n\") else 1)' $OUT/quick-capture.md"
 result "the look list fits the screen" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if d[\"rows\"] >= 9 and d[\"top\"] >= 0 and d[\"bottom\"] <= d[\"height\"] else 1)' '$LOOKS'"
 result "scrolling the journals loads older days" "[ -n '$BEFORE' ] && [ -n '$AFTER' ] && [ '$AFTER' -gt '$BEFORE' ]"
@@ -444,8 +462,13 @@ result "Back closes the menu drawer first and stays on the page" "python3 -c 'im
 result "Back at the start leaves the app for the home screen" "[ -n '$TOP' ] && ! echo '$TOP' | grep -q '$PKG'"
 result "the app keeps running after leaving" "[ -n '$LEFT' ]"
 result "Update now asks for Android's “Install unknown apps” first" "echo \"\$UPD\" | grep -q '\"permission\"' && echo \"\$UNKNOWN\" | grep -q 'com.android.settings'"
+if [ -n "$LATEST" ]; then
 result "allowed, the newest release downloads and the app refuses it: not signed like this test build" "[ \"\$ST\" = error ] && echo \"\$REFUSED\" | grep -q 'signed like this app'"
 result "handed a good download, Android's installer asks to go ahead; cancelled, the app says so" "echo \"\$ASKED\" | grep -qi 'packageinstaller' && echo \"\$CANCELLED\" | grep -q 'cancelled'"
+else
+  # (only before this repo's first release, Build 34: the app looks for updates here from then on)
+  log "SKIPPED the one-click update: no release on this repo yet"
+fi
 result "the widgets take each look's colours (journal widget: background, title, +, empty line, rows; the one-tap +)" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); ok=lambda x: (x[\"got\"].get(\"bg\"), x[\"got\"].get(\"title\"), x[\"got\"].get(\"row\"), x[\"got\"].get(\"empty\"), x[\"got\"].get(\"add\"), x[\"got\"].get(\"circle\")) == (x[\"want\"][\"bg\"], x[\"want\"][\"ink\"], x[\"want\"][\"ink\"], x[\"want\"][\"faint\"], x[\"want\"][\"accent\"], x[\"want\"][\"accent\"]); sys.exit(0 if len(d) == 5 and all(map(ok, d)) else 1)' '$WIDGET'"
 result "both widgets are offered to the home screen" "adb shell dumpsys appwidget | grep -qi journalwidget && adb shell dumpsys appwidget | grep -qi quickaddwidget"
 result "the app sets up its icon shortcuts Today, Add note and Search" "grep -q '{id=today' $OUT/shortcuts.txt && grep -q '{id=add' $OUT/shortcuts.txt && grep -q '{id=search' $OUT/shortcuts.txt"

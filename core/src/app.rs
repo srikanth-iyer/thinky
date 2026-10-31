@@ -1694,6 +1694,15 @@ impl App {
         Ok(p)
     }
 
+    /// The to-dos (`Vault::tasks`), each with its page file's change time (the list sorts by it).
+    pub fn tasks(&self, done: bool) -> Vec<crate::vault::TaskHit> {
+        let mut v = self.vault.tasks(done);
+        for t in &mut v {
+            t.changed = self.files.get(&t.path).map(|s| s.mtime_ns / 1_000_000_000);
+        }
+        v
+    }
+
     /// All pages (and names only linked to), each with its file's change time and when it was made
     /// (seconds; none without a file).
     pub fn pages(&self) -> Vec<crate::vault::PageEntry> {
@@ -2122,10 +2131,26 @@ pub fn save_dropped_file(root: &Path, path: &Path) -> Result<(String, String), S
 pub fn asset_file(root: &Path, p: &str) -> Option<PathBuf> {
     let p = p.trim_start_matches('/');
     let p = p.strip_prefix("../").unwrap_or(p);
-    if p.split(['/', '\\']).any(|c| c == "..") {
+    // Only plain names, joined one by one, so the path can never leave the notes folder before
+    // the disk is touched: no "..", no drive ("C:"), no \\server\share address (on Windows, opening
+    // one connects to that computer and offers the user's sign-in), no folder separator inside a part.
+    if p.starts_with('\\') || p.contains(':') {
         return None;
     }
-    let full = root.join(p).canonicalize().ok()?;
+    let mut rel = PathBuf::new();
+    for part in p.split(['/', '\\']).filter(|c| !c.is_empty() && *c != ".") {
+        if part == ".." || part.contains('\0') {
+            return None;
+        }
+        match Path::new(part).components().collect::<Vec<_>>().as_slice() {
+            [std::path::Component::Normal(_)] => rel.push(part),
+            _ => return None,
+        }
+    }
+    if rel.as_os_str().is_empty() {
+        return None;
+    }
+    let full = root.join(rel).canonicalize().ok()?;
     let base = root.canonicalize().ok()?;
     (full.starts_with(&base) && full.is_file()).then_some(full)
 }
@@ -2232,7 +2257,7 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
             let val = s("value");
             to_value(app.vault.with_property(&s("key"), (!val.is_empty()).then_some(val.as_str())))
         }
-        "tasks" => to_value(app.vault.tasks(b("done"))),
+        "tasks" => to_value(app.tasks(b("done"))),
         "unlinked" => {
             let (groups, more) = app.vault.unlinked_refs(&s("name"), 300);
             Ok(json!({ "groups": groups, "more": more }))

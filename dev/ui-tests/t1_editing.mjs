@@ -56,6 +56,9 @@ await sleep(400);
 check((await ed().inputValue()).startsWith('DONE '), 'Ctrl+Enter → DONE');
 await page.keyboard.press('Control+Enter');
 await sleep(150);
+check((await ed().inputValue()).startsWith('CANCELED '), 'Ctrl+Enter → CANCELED', await ed().inputValue());
+await page.keyboard.press('Control+Enter');
+await sleep(150);
 check((await ed().inputValue()) === 'cooked in bamboo steamers ', 'Ctrl+Enter → no marker', await ed().inputValue());
 
 console.log('scheduled date from the / menu');

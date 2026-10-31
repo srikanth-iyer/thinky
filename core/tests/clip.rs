@@ -63,7 +63,7 @@ fn quick_captures_link_neatly() {
     // a bare address in typed words becomes a neat link
     let b = capture::bullet(&cfg, "great read https://www.kitchenweekly.org/x", "", false, day, "14:05");
     assert!(b.contains("great read from [kitchenweekly.org](https://www.kitchenweekly.org/x)"), "{b}");
-    // the bookmarklet's link carries the title already: kept as it is
+    // a link that carries the title already: kept as it is
     let b = capture::bullet(&cfg, "a passage", "[How Bread Rises · Kitchen Weekly](https://q.org/x)", false, day, "14:05");
     assert!(b.contains("a passage from [How Bread Rises · Kitchen Weekly](https://q.org/x)"), "{b}");
     // no words: the link is the note, without a dangling "from"
@@ -221,4 +221,45 @@ fn copied_words_keep_their_page() {
     assert_eq!(with_source("see https://www.kitchenweekly.org/how-bread-rises/", u), "see https://www.kitchenweekly.org/how-bread-rises/");
     assert_eq!(with_source("words", None), "words");
     assert_eq!(with_source("  ", u), "  ");
+}
+
+/// Security review (Oct 30, 2026): a web page's words can't become note structure, links, macros,
+/// tasks or dates, whichever way they arrive (highlights, the journal button, a page's title).
+#[test]
+fn web_words_stay_words() {
+    use outline_core::clip::{answer, defuse, safe_url};
+    use serde_json::json;
+    // inline: links, block references, macros, properties and tags get a zero-width space
+    assert_eq!(defuse("see [[x]] ((id)) {{query a}} k::v #tag a#b"), "see [\u{200b}[x]\u{200b}] (\u{200b}(id)) {\u{200b}{query a}} k:\u{200b}:v #\u{200b}tag a#b");
+    // whole lines: dates, drawers and a to-do word or priority at the start
+    let g = guard("TODO buy this\nSCHEDULED: <2026-11-01 Sun>\nDEADLINE: <2026-11-02>\n:LOGBOOK:\nhidden\n:END:");
+    assert_eq!(g, "\u{200b}TODO buy this\n\u{200b}SCHEDULED: <2026-11-01 Sun>\n\u{200b}DEADLINE: <2026-11-02>\n\u{200b}:LOGBOOK:\nhidden\n\u{200b}:END:");
+    assert_eq!(guard("[#A] urgent"), "\u{200b}[#A] urgent");
+    assert_eq!(guard("not a TODO here"), "not a TODO here");
+    // words the extension already made safe stay as they are (one invisible space, never two)
+    let safe = "#\u{200b}1 [\u{200b}[x]\u{200b}] k:\u{200b}:v";
+    assert_eq!(defuse(safe), safe);
+    // Logseq's other ways into HTML: @@html: …@@ inline, a hiccup line [:div …]
+    assert_eq!(defuse("@@html: <b>x</b>@@"), "@\u{200b}@html: <\u{200b}b>x<\u{200b}/b>@\u{200b}@");
+    assert_eq!(guard("[:div {:class \"x\"} \"hi\"]"), "\u{200b}[:div {:class \"x\"} \"hi\"]");
+    // a link's address can't break the line
+    assert_eq!(safe_url("https://x.org/a b\n- (c)"), "https://x.org/a%20b%0A-%20%28c%29");
+    let n = highlight_note(&hl("x {{embed ((u))}}", "https://x.org/p\n- injected"));
+    assert!(!n.contains('\n') && !n.contains("{{") && !n.contains("(("), "{n}");
+    // the journal button goes through the same rules
+    let v = vault("web-words");
+    open(&v); // sets the cache folder
+    let j = answer(&json!({"cmd": "journal", "text": "x\nid:: 6528aaaa-bbbb-4ccc-8ddd-eeeeffff6666\n- child\n{{query (todo)}}", "url": "https://q.org/a", "title": "T [[x]]", "site": "Q"}), Ok(v.clone()), TODAY, "10:02");
+    assert_eq!(j["ok"], true, "{j}");
+    let text = get(&v, "pages/quick capture.md"); // (Logseq's default place for quick captures)
+    assert!(!text.contains("\nid::") && !text.contains("\t- child") && !text.contains("{{query") && !text.contains("[[x]]"), "{text}");
+    // a message that isn't JSON gets an answer, not silence; an error never names the folder's path
+    let mut framed = 3u32.to_ne_bytes().to_vec();
+    framed.extend(b"{x]");
+    let mut out = vec![];
+    outline_core::clip::serve(&mut framed.as_slice(), &mut out, || Ok(v.clone()), || (TODAY, "10:03".into()));
+    assert!(String::from_utf8_lossy(&out).contains("\"ok\":false"), "{}", String::from_utf8_lossy(&out));
+    let e = answer(&json!({"cmd": "hello"}), Err("Your notes folder (D:\\Notes) can’t be reached right now.".into()), TODAY, "");
+    assert!(!e["error"].as_str().unwrap().contains("D:\\"), "{e}");
+    let _ = std::fs::remove_dir_all(&v);
 }

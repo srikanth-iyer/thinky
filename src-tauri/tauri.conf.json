@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' ipc: http://ipc.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https: http: vault: http://vault.localhost; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'"
+      "csp": "default-src 'self' ipc: http://ipc.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https: vault: http://vault.localhost; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'"
     }
   },
   "bundle": {

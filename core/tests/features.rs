@@ -380,6 +380,10 @@ fn assets_and_saves_keep_file_shape() {
     assert!(app.asset_file(&link).is_some());
     assert!(app.asset_file("../../etc/passwd").is_none());
     assert!(app.asset_file("assets/../../x").is_none());
+    // never a drive or a network share (on Windows, opening \\server\share connects there)
+    for bad in ["\\\\evil.example\\s\\a.png", "//evil.example/s/a.png", "\\evil\\a.png", "C:\\Windows\\win.ini", "C:/x.png", "assets/a:b.png", "/etc/passwd", "", "."] {
+        assert!(app.asset_file(bad).is_none(), "{bad}");
+    }
 
     // a file without a final line break, with a byte-order mark, keeps both when edited
     std::fs::write(v.join("pages/Bom.md"), "\u{feff}- one\n- two").unwrap();
@@ -767,4 +771,17 @@ fn the_file_name_check_follows_files_coming_and_going() {
     assert_eq!(vlt.page_info("b").path.as_deref(), Some("pages/b (2).md"));
     vlt.remove("pages/b.md");
     assert_eq!(vlt.page_info("b").path.as_deref(), Some("pages/b.md"));
+}
+
+#[test]
+fn folder_settings_stay_inside_the_notes_folder() {
+    let c = Config::from_edn(r#"{:pages-directory "../../Download" :journals-directory "C:\\Windows" :journal/file-name-format "'../x'yyyy"}"#);
+    assert_eq!((c.pages_dir.as_str(), c.journals_dir.as_str()), ("pages", "journals"));
+    let rel = c.journal_rel_path((2026, 10, 30));
+    assert_eq!(rel, "journals/2026_10_30.md");
+    let c = Config::from_edn(r#"{:pages-directory "notes/pages/" :journals-directory "Diary"}"#);
+    assert_eq!((c.pages_dir.as_str(), c.journals_dir.as_str()), ("notes/pages", "Diary"));
+    for bad in ["/x", "\\\\srv\\x", "a/../b", "..", "D:x", "a//b"] {
+        assert_eq!(outline_core::inside_folder(bad.to_string()), None, "{bad}");
+    }
 }

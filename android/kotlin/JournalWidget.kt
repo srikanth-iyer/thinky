@@ -44,10 +44,9 @@ object Journal {
       .putString("file", fileFormat).putString("title", titleFormat).apply()
   }
 
-  /** Quick capture format from config.edn (as JSON: text, media, today, page, pagesDir, oneTap). */
+  /** Quick capture format from config.edn (as JSON: text, media, today, page, pagesDir). */
   fun saveCapture(ctx: Context, json: String) { prefs(ctx).edit().putString("capture", json).apply() }
   private fun capture(ctx: Context): JSONObject = try { JSONObject(prefs(ctx).getString("capture", "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
-  fun oneTap(ctx: Context): Boolean = capture(ctx).optBoolean("oneTap", false)
 
   /** To-dos due today, sent by the app: JSON {day: "2026-10-26", tasks: [{text, page}]}. */
   fun saveTasks(ctx: Context, json: String) { prefs(ctx).edit().putString("tasks", json).apply() }
@@ -69,7 +68,12 @@ object Journal {
     val vault = vault(ctx) ?: return null
     val dir = p.getString("dir", "journals") ?: "journals"
     val fmt = p.getString("file", "yyyy_MM_dd") ?: "yyyy_MM_dd"
-    return File(File(vault, dir), format(fmt, Calendar.getInstance()) + ".md")
+    // the core's rule (config::journal_rel_path): a name that would leave the journals folder falls
+    // back to yyyy_MM_dd; the folder came from the core, already checked to be inside the notes folder
+    var stem = format(fmt, Calendar.getInstance())
+    if (stem.isEmpty() || stem.startsWith(".") || stem.any { it == '/' || it == '\\' || it == ':' || it == '\u0000' }) stem = format("yyyy_MM_dd", Calendar.getInstance())
+    if (dir.split('/', '\\').any { it == ".." } || dir.startsWith("/")) return null
+    return File(File(vault, dir), "$stem.md")
   }
 
   fun todayTitle(ctx: Context): String =

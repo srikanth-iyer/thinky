@@ -436,6 +436,8 @@ pub struct Metrics {
     pub list_line_h: i32,
     /// height of the footer's message (one line, or an error over several)
     pub foot_h: i32,
+    /// widths of the small buttons at the right of the first line ([[ ]], #, To-do; 0: not shown)
+    pub tool_w: [i32; 3],
 }
 
 /// Where everything goes, in device pixels from the box's top left corner. Sizes are in CSS-like
@@ -448,6 +450,8 @@ pub struct Layout {
     pub tile: Rect,
     /// the to-do mark (empty when off)
     pub pill: Rect,
+    /// the small buttons at the right of the first line: [[ ]], #, To-do (empty when not shown)
+    pub tools: [Rect; 3],
     /// the note's text box
     pub note: Rect,
     /// the page list's search field (its frame) and the text box in it (empty when closed)
@@ -474,9 +478,24 @@ pub fn layout(m: &Metrics) -> Layout {
         x = pill.r + px(8.0);
     }
     let line_h = m.line_h.max(1);
+    // the small buttons (Build 34, he asked: on the box itself, tiny), right to left from the
+    // right edge, level with the + button; the text stops before them
+    let mut tools = [Rect::default(); 3];
+    let mut right = w - px(18.0);
+    if m.tool_w.iter().any(|&t| t > 0) {
+        let mut r = right;
+        for i in (0..3).rev() {
+            if m.tool_w[i] <= 0 {
+                continue;
+            }
+            tools[i] = Rect::new(r - m.tool_w[i], mid - px(11.0), r, mid - px(11.0) + px(22.0));
+            r = tools[i].l - px(4.0);
+        }
+        right = r + px(4.0) - px(10.0);
+    }
     // the first line sits level with the + button
     let top = if line_h < tile.h() { mid - line_h / 2 } else { tile.t };
-    let note = Rect::new(x, top, w - px(18.0), top + line_h * m.lines.clamp(1, MAX_LINES));
+    let note = Rect::new(x, top, right, top + line_h * m.lines.clamp(1, MAX_LINES));
     let mut y = tile.b.max(note.b) + px(12.0);
     let (mut search, mut search_text, mut rows) = (Rect::default(), Rect::default(), Rect::default());
     let row_h = px(30.0).max(m.list_line_h + px(10.0));
@@ -494,7 +513,7 @@ pub fn layout(m: &Metrics) -> Layout {
     let foot = Rect::new(0, y, w, y + line + px(6.0) + inner + px(6.0));
     let ct = foot.t + line + px(6.0) + (inner - px(26.0)) / 2;
     let close = Rect::new(w - px(8.0) - px(26.0), ct, w - px(8.0), ct + px(26.0));
-    Layout { w, h: foot.b, tile, pill, note, search, search_text, rows, row_h, foot, close }
+    Layout { w, h: foot.b, tile, pill, tools, note, search, search_text, rows, row_h, foot, close }
 }
 
 // ----- the page list -----

@@ -30,13 +30,14 @@ pub fn folder_name_problem(name: &str) -> Option<&'static str> {
     if n.ends_with('.') {
         return Some("A folder’s name can’t end with a dot (Windows doesn’t allow it).");
     }
-    const RESERVED: [&str; 22] = [
+    const RESERVED: [&str; 30] = [
         "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2",
-        "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "COM¹", "COM²", "COM³", "LPT¹", "LPT²", "LPT³", "CONIN$",
+        "CONOUT$",
     ];
     // (Windows keeps these names, in any capitals, also with something after a dot: "con.txt")
     let stem = n.split('.').next().unwrap_or(n).trim_end();
-    if RESERVED.contains(&stem.to_ascii_uppercase().as_str()) {
+    if RESERVED.contains(&stem.to_uppercase().as_str()) {
         return Some("Windows keeps that name for itself: please choose another.");
     }
     if n.chars().count() > 120 {

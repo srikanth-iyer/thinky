@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 // Settings → Capture → "Highlights from Edge" in the Windows app: Set up puts the extension's files
 // in place (native_host.rs) and shows the steps for Edge's "Load unpacked"; once set up it says so.
 // The app's own commands are stand-ins (window.__TAURI__, as in t13_update); everything else goes
@@ -6,7 +7,9 @@ import { chromium } from '/opt/npm-tools/node_modules/playwright/index.mjs';
 import { check, failures, sleep, BASE, VAULT, SHOTS } from './lib.mjs';
 
 const browser = await chromium.launch();
-const page = await (await browser.newContext({ viewport: { width: 1100, height: 1400 } })).newPage();
+const ctx = await browser.newContext({ viewport: { width: 1100, height: 1400 } });
+await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE });
+const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -40,7 +43,17 @@ await page.waitForSelector('[data-a="setup"]');
 const card = page.locator('.card', { has: page.locator('[data-a="setup"]') });
 check(await card.locator('h2').textContent() === 'Highlights from Edge', 'the card is there on Windows');
 check(await card.locator('.steps').isHidden(), 'the steps wait for Set up');
-check(await page.locator('h3', { hasText: 'A bookmark button (without the extension)' }).count() === 1, 'the bookmark button stays, below');
+check(await page.locator('.bookmarklet, [href^="javascript:"]').count() === 0 && !/bookmark/i.test(await page.textContent('.view')), 'no bookmark button: web pages can\'t add notes (removed, Build 34)');
+check(await page.locator('h2', { hasText: 'Capture from anywhere on the laptop' }).count() === 1, 'the shortcut key card stays');
+// the extension's keys (Build 34): Highlight is Ctrl+Shift+H, as the manifest says, and where to change them
+const manifest = JSON.parse(fs.readFileSync(new URL('../../browser/manifest.json', import.meta.url), 'utf8'));
+check(manifest.commands.highlight.suggested_key.default === 'Ctrl+Shift+H' && manifest.commands.journal.suggested_key.default === 'Alt+Shift+J', 'the extension suggests Ctrl+Shift+H for Highlight (J stays Alt+Shift: Ctrl+Shift+J is Edge’s developer tools)');
+const how = await card.locator('.how').textContent();
+check(/Ctrl\s*\+\s*Shift\s*\+\s*H/.test(how), 'the card names Ctrl+Shift+H', how);
+check((await card.locator('.ext-keys').textContent()) === 'edge://extensions/shortcuts', 'and where to change the keys', await card.locator('.keys-how').textContent());
+await card.locator('[data-a="copykeys"]').click();
+await sleep(200);
+check(await page.evaluate(() => navigator.clipboard.readText()) === 'edge://extensions/shortcuts', 'Copy address copies it');
 await page.click('[data-a="setup"]');
 await page.waitForSelector('.steps:not([hidden])');
 check(await page.evaluate(() => window.__calls.includes('browser_setup')), 'Set up asks the app');

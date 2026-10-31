@@ -47,8 +47,14 @@ code, pre { font-family: var(--font-mono); }
 #histbar button:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
 #histbar button:disabled { opacity: .3; cursor: default; }
 #histbar svg { width: 22px; height: 22px; }
-.hb-app { flex: none; display: flex; align-items: center; margin-right: 6px; }
-.hb-logo { display: grid; place-items: center; width: 22px; height: 34px; margin: 0 7px 0 2px; pointer-events: none; } /* (it moves the window) */
+/* The logo and the buttons above the sidebar (sidebar, Search, Home, Back, Forward, Go to date): seven boxes
+   of one width, spread evenly from the sidebar's left inset to its right one (the maintainer asked, Build 34), so
+   the gaps match and the last sits at the sidebar's edge; by its full width (--side-now), so nothing moves
+   when the sidebar hides. At least 2px apart in a narrow sidebar. */
+#histbar { --hb-gap: max(2px, calc((var(--side-now) - 20px - 7 * 31px) / 6)); }
+.hb-app { flex: none; display: flex; align-items: center; gap: var(--hb-gap); margin-right: var(--hb-gap); }
+.hb-logo { display: grid; place-items: center; width: 31px; height: 34px; margin: 0; pointer-events: none; } /* (it moves the window) */
+#histbar .hb-nav[data-p="0"] > button + button { margin-left: var(--hb-gap); }
 #histbar .hb-logo .logo { width: 20px; height: 20px; }
 #histbar [data-a="side"][aria-expanded="false"] { color: var(--ink-faint); }
 #histbar .drag { flex: 1; align-self: stretch; }
@@ -436,6 +442,8 @@ a.tag .hash { display: var(--hash); }
 .bc .center { text-align: center; }
 .bc .verse { white-space: pre-wrap; } /* #+BEGIN_VERSE: the lines' spaces kept */
 .bc .file, .bc .ext-off { color: var(--ink-soft); }
+/* a picture from the old, open web (http://), never fetched (render.js image) */
+.bc .pic-off { color: var(--ink-soft); font-size: .92em; }
 /* formulas */
 .math { font-family: "Newsreader", Georgia, serif; font-size: 1.04em; white-space: nowrap; }
 .math.display { display: block; text-align: center; margin: 6px 0; white-space: normal; font-size: 1.12em; }
@@ -510,7 +518,15 @@ a.tag .hash { display: var(--hash); }
 .ref-tbtn svg { width: 16px; height: 16px; }
 .ref-tbtn:hover { opacity: 1; color: var(--ink); background: var(--surface-2); }
 .ref-tbtn[aria-expanded="true"] { opacity: 1; color: var(--accent); background: var(--accent-tint); }
-.ref-tools { display: flex; margin: -2px 0 16px; font-family: var(--sec-font); }
+.ref-tools { display: flex; flex-wrap: wrap; margin: -2px 0 16px; font-family: var(--sec-font); }
+/* the pages these references mention, as buttons (App.refTools): a click shows only those, again hides them */
+.ref-chips { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ref-chips[hidden] { display: none; }
+.ref-chip { font-size: 13px; padding: 2px 10px; }
+.ref-chip .n { opacity: .65; font-size: .9em; margin-left: 2px; }
+.ref-chip[data-pick="out"] { background: var(--danger-tint); border-color: transparent; color: var(--ink-soft); }
+.ref-more { font-size: 13px; padding: 2px 10px; border-style: dashed; }
+@media (pointer: coarse) { .ref-chip, .ref-more { min-height: 34px; } }
 .ref-find { position: relative; flex: 1 1 220px; max-width: 340px; display: flex; align-items: center; }
 .ref-find svg { position: absolute; left: 10px; width: 15px; height: 15px; color: var(--ink-faint); pointer-events: none; }
 .ref-filter { width: 100%; min-width: 0; font: inherit; font-size: 14px; line-height: 1.3; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px 6px 31px; }
@@ -662,6 +678,8 @@ a.tag .hash { display: var(--hash); }
 .disclose { font: inherit; font-weight: 600; border: 0; background: none; color: inherit; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .disclose::before { content: ""; border-left: 5px solid currentColor; border-top: 4.5px solid transparent; border-bottom: 4.5px solid transparent; transition: transform .12s; }
 .disclose[aria-expanded="true"]::before { transform: rotate(90deg); }
+/* "Linked references" folded from its heading (app.js foldableRefs): only the heading shows */
+.sec.shut > :not(.sec-h), .sec.shut .ref-acts { display: none !important; }
 .more { display: block; margin: 8px auto 0; }
 
 /* ---------- the hand: everything clickable shows it under the mouse ---------- */
@@ -1035,7 +1053,6 @@ input.inline { padding: 3px 7px; width: 170px; }
 .card kbd { font-family: var(--font-mono); font-size: 11.5px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .card .ext-folder { word-break: break-all; }
 .card .ext-state { color: var(--accent); }
-.bookmarklet { text-decoration: none; cursor: grab; }
 .filter.key { width: 240px; margin: 0; font-family: var(--font-mono); cursor: pointer; }
 table.keys { border-collapse: collapse; font-size: 13.5px; margin-top: 8px; width: 100%; }
 table.keys td { padding: 5px 4px; border-top: 1px solid var(--line-soft); vertical-align: top; }

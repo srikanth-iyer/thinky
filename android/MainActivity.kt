@@ -222,7 +222,7 @@ class MainActivity : TauriActivity() {
     val apk = File(dir, "LeanOutliner.apk")
     try {
       updateEvent("download")
-      val c = URL("https://github.com/srikanth-iyer/lean-outliner-releases/releases/download/build-$n/LeanOutliner.apk").openConnection() as HttpURLConnection
+      val c = URL("https://github.com/srikanth-iyer/thinky/releases/download/build-$n/LeanOutliner.apk").openConnection() as HttpURLConnection
       c.connectTimeout = 20000
       c.readTimeout = 30000
       val code = c.responseCode // after GitHub's redirect to its download server (https only)

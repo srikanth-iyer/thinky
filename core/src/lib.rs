@@ -29,7 +29,7 @@ pub mod start;
 mod vault;
 
 pub use parse::{parse_page, Block, ParsedPage};
-pub use config::Config;
+pub use config::{inside_folder, Config};
 pub use doc::{block_lines, content_hash, join_doc, split_doc, Doc, DocBlock};
 pub use vault::{file_stem_for, page_name_from_stem, BlockHit, PageInfo, RefGroup, RefHit, RefNote, SearchHit, TaskHit, Vault, REF_KIDS, SEARCH_PAGES};
 
