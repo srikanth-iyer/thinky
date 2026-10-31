@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>thinky code signing policy</title>
+<meta name="description" content="How thinky's Windows and Android releases are built and signed, who approves them, and what the app changes on your computer.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+<header class="top"><img src="icon.svg" alt=""><h1>Code signing policy</h1></header>
+<p class="sub">How thinky's releases are built and signed.</p>
+
+<h2>Windows</h2>
+<p>Free code signing provided by <a href="https://signpath.io">SignPath.io</a>, certificate by <a href="https://signpath.org">SignPath Foundation</a>. (We have applied to SignPath Foundation's programme for open-source projects. Until the first release they sign, the Windows files are unsigned and Windows may warn before installing them.)</p>
+<p>Only thinky's own programs are signed: the installer and the portable program, built by GitHub Actions from the <a href="https://github.com/srikanth-iyer/thinky">public source code</a> on the <code>main</code> branch. Nothing built on a personal computer is ever signed. Every release is approved by hand before it is signed.</p>
+<p>Separately, each Windows update carries a signature from thinky's own update key, and the installed app refuses any update that doesn't carry it.</p>
+
+<h2>Android</h2>
+<p>The Android app is signed with thinky's own release key, kept as a protected secret of the build and used only after the maintainer approves a release. Android only installs an update signed with the same key as the app you have.</p>
+
+<h2>Team and roles</h2>
+<ul>
+<li><strong>Committers and reviewers:</strong> <a href="https://github.com/srikanth-iyer">Srikanth Iyer</a>. Most of the code is written with Claude, Anthropic's AI assistant, and goes in only after the project's automated tests pass. Changes from anyone else come as pull requests, which are reviewed before they are merged.</li>
+<li><strong>Approvers:</strong> <a href="https://github.com/srikanth-iyer">Srikanth Iyer</a> approves every release before it is signed.</li>
+</ul>
+
+<h2>Privacy</h2>
+<p>thinky doesn't send your notes or anything about you anywhere. It uses the network only to check GitHub for a newer release once a day, to load pictures from the web that your notes show, and when you click a link or a button that says so. The <a href="privacy.html">privacy policy</a> has the details.</p>
+
+<h2>What thinky changes on your computer</h2>
+<ul>
+<li>The Windows installer puts thinky in your own user folder (no administrator rights), adds Start-menu shortcuts and registers <code>leanoutliner://</code> links, so a link to a thinky page opens the app.</li>
+<li>If you choose a shortcut key in Settings › Capture, a tiny helper starts with Windows to listen for it; Settings says so, and removing the key turns it off.</li>
+<li>If you click <em>Set up</em> under Settings › Capture › Highlights from Edge, thinky registers itself so the Edge extension can reach it.</li>
+<li><strong>Uninstalling:</strong> Windows Settings › Apps › Installed apps › thinky › Uninstall. It removes the program, its shortcuts, the helper, the links and the Edge registration. Your notes folder is never touched; thinky's own settings stay in your user folder until you delete them. On Android, uninstall thinky like any app.</li>
+</ul>
+</main>
+<footer>
+<p><a href="./">Home</a> · <a href="changelog.html">Changelog</a> · <a href="privacy.html">Privacy</a> · <a href="code-signing.html">Code signing policy</a> · <a href="https://github.com/srikanth-iyer/thinky">Source</a></p>
+</footer>
+</body>
+</html>
