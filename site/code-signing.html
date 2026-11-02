@@ -14,8 +14,8 @@
 <p class="sub">How thinky's releases are built and signed.</p>
 
 <h2>Windows</h2>
-<p>Free code signing provided by <a href="https://signpath.io">SignPath.io</a>, certificate by <a href="https://signpath.org">SignPath Foundation</a>. (We have applied to SignPath Foundation's programme for open-source projects. Until the first release they sign, the Windows files are unsigned and Windows may warn before installing them.)</p>
-<p>Only thinky's own programs are signed: the installer and the portable program, built by GitHub Actions from the <a href="https://github.com/srikanth-iyer/thinky">public source code</a> on the <code>main</code> branch. Nothing built on a personal computer is ever signed. Every release is approved by hand before it is signed.</p>
+<p>The Windows files aren't signed with a code-signing certificate yet, so Windows may warn before installing them: choose <em>More info</em>, then <em>Run anyway</em>. When they are signed, this page will say who signs them.</p>
+<p>Every release is built by GitHub Actions from the <a href="https://github.com/srikanth-iyer/thinky">public source code</a> on the <code>main</code> branch and approved by hand before it is published. Nothing built on a personal computer is ever released. Once code signing starts, only thinky's own programs will be signed: the installer and the portable program.</p>
 <p>Separately, each Windows update carries a signature from thinky's own update key, and the installed app refuses any update that doesn't carry it.</p>
 
 <h2>Android</h2>
