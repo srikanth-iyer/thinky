@@ -5,7 +5,16 @@ each one the code exactly as it was released at its last build. Later releases a
 the top. (Until Build 32 the app was called Lean Outliner; its downloads and hidden id keep that
 name, so updates install over older builds.)
 
-## Build 34 — not released yet (October 31, 2026)
+## Build 35 (November 2026)
+
+### New
+- The browser extension, thinky highlights, can now come from the Edge Add-ons store or the Chrome Web Store, besides being loaded by hand: thinky answers all three. Settings → Capture → "Highlights from your browser" (it was "Highlights from Edge") has a button for each store, and where to change its keys in Edge and in Chrome.
+- The downloads are named thinky: `thinky-setup.exe`, `thinky-portable.exe` and `thinky.apk`. Each release also has them under the old Lean Outliner names, so older builds still find their updates.
+
+### Under the hood
+- Newer GitHub Actions for the builds (Node 24).
+
+## Build 34 (October 31, 2026)
 
 ### New
 - To-dos: newest first (or oldest first, or by date as before), and buttons for the pages they're on or mention: a click shows only those, a second hides them.

@@ -219,17 +219,25 @@ class MainActivity : TauriActivity() {
     val dir = File(cacheDir, "update-apk")
     dir.deleteRecursively()
     dir.mkdirs()
-    val apk = File(dir, "LeanOutliner.apk")
+    val apk = File(dir, "thinky.apk")
     try {
       updateEvent("download")
-      val c = URL("https://github.com/srikanth-iyer/thinky/releases/download/build-$n/LeanOutliner.apk").openConnection() as HttpURLConnection
-      c.connectTimeout = 20000
-      c.readTimeout = 30000
-      val code = c.responseCode // after GitHub's redirect to its download server (https only)
+      // thinky.apk since Build 35; a release before it has only its old name
+      var c: HttpURLConnection? = null
+      var code = 404
+      for (name in listOf("thinky.apk", "LeanOutliner.apk")) {
+        c?.disconnect()
+        c = URL("https://github.com/srikanth-iyer/thinky/releases/download/build-$n/$name").openConnection() as HttpURLConnection
+        c.connectTimeout = 20000
+        c.readTimeout = 30000
+        code = c.responseCode // after GitHub's redirect to its download server (https only)
+        if (code != 404) break
+      }
+      val conn = c!!
       if (code != 200) throw Exception(if (code == 404) "it isn’t on the downloads page" else "the downloads page answered $code")
-      if (c.url.protocol != "https") throw Exception("not a secure connection")
-      val total = c.contentLengthLong
-      c.inputStream.use { input ->
+      if (conn.url.protocol != "https") throw Exception("not a secure connection")
+      val total = conn.contentLengthLong
+      conn.inputStream.use { input ->
         apk.outputStream().use { out ->
           val buf = ByteArray(64 * 1024)
           var got = 0L
@@ -303,7 +311,7 @@ class MainActivity : TauriActivity() {
         params.setAppPackageName(packageName)
         id = pi.createSession(params)
         pi.openSession(id).use { s ->
-          s.openWrite("LeanOutliner.apk", 0, apk.length()).use { out ->
+          s.openWrite("thinky.apk", 0, apk.length()).use { out ->
             apk.inputStream().use { it.copyTo(out) }
             s.fsync(out)
           }
@@ -381,7 +389,7 @@ class MainActivity : TauriActivity() {
     @JavascriptInterface fun testInstallSelf() {
       if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return
       val dir = File(cacheDir, "update-apk").apply { deleteRecursively(); mkdirs() }
-      val apk = File(dir, "LeanOutliner.apk")
+      val apk = File(dir, "thinky.apk")
       File(applicationInfo.sourceDir).copyTo(apk, overwrite = true)
       updateApk = apk
       this@MainActivity.installUpdate()

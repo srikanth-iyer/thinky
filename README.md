@@ -9,8 +9,10 @@ you choose; thinky has no accounts, no servers and no tracking.
 **Website:** https://srikanth-iyer.github.io/thinky ·
 **Download:** https://github.com/srikanth-iyer/thinky/releases/latest
 
-(Until Build 32 the app was called Lean Outliner. The downloads, the program's file names and its
-hidden id keep that name, so updates install over older versions.)
+(Until Build 32 the app was called Lean Outliner. Since Build 35 the downloads are named thinky
+(`thinky-setup.exe`, `thinky-portable.exe`, `thinky.apk`); each release also carries them under the
+old names for older builds. The program's file name and its hidden id keep the old name, so updates
+install over older versions.)
 
 ## Use it with your Logseq notes
 
@@ -37,7 +39,7 @@ Org-mode (`.org`) files or whiteboards, or Logseq's newer database version.
 - Works next to sync apps (Google Drive, Syncthing…): changes made elsewhere are merged, a real
   clash shows both versions side by side, and nothing is ever silently overwritten.
 - Quick capture: a shortcut key and a browser button on Windows, widgets, a Quick Settings tile and
-  the share sheet on Android, and highlights from Edge.
+  the share sheet on Android, and highlights from Edge or Chrome.
 - Tabs and two pages side by side, page history, safety copies, many looks.
 
 ## Building

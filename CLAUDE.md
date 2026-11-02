@@ -14,9 +14,11 @@ Name: **thinky** (all lowercase, always, even at the start of a sentence; the ma
 Android app's label); the hidden identifier `com.srikanth.leanoutliner`, the `leanoutliner://` link
 scheme, the cargo package and exe `lean-outliner(.exe)`, the repo names, hidden window classes/titles
 (`LeanOutlinerHotkey`, "Lean Outliner shortcut key…", the Run value's name, `LeanOutlinerLinks`, the
-capture box's owner) and the release asset names `LeanOutliner-setup.exe(.sig)`/`LeanOutliner.apk`
-stay: installed apps look for those names to update (core/src/update.rs, MainActivity), and updates
-must install over older builds. `api.js` `APP_NAME` is the one place new code takes the name from.
+capture box's owner) stay. The release files are named thinky since Build 35 (`thinky-setup.exe(.sig)`,
+`thinky-portable.exe`, `thinky.apk`: core/src/update.rs, MainActivity, site links); each release also
+carries copies under the old names `LeanOutliner-setup.exe(.sig)`/`-portable.exe`/`LeanOutliner.apk`
+(the old .sig signed for the old name), because Build 34 and older look for those to update; drop them
+only when the maintainer says so. Updates must install over older builds. `api.js` `APP_NAME` is the one place new code takes the name from.
 Brand (the maintainer's picks on the "thnki + thinky · scribble to spark" board): `ui/brand/` — `icon.svg` (the
 "scribble to spark" icon: cream tile #F4EEE3, ink #1D1A2E, red spark #FF4B2B; the designer's three
 drawings by size: `icon.svg` fine lines for 128px and up, `icon-mid.svg` ~40–96px, `icon-small.svg`
@@ -150,6 +152,12 @@ whole link colour (shown to the maintainer as before/after pictures; t19 measure
 extension's Highlight key Ctrl+Shift+H for a new setup (`browser/manifest.json`; an existing one keeps
 its key; popup.js shows the real one from `chrome.commands`), Settings → Capture lists the keys and gives
 `edge://extensions/shortcuts` to copy.
+Build 35 (Nov 2, 2026): the downloads named thinky (above, "Name"; CI signs the installer under both
+names, `release` copies the files to the old names after checking them; MainActivity tries thinky.apk,
+then the old name); the browser extension from the Edge and Chrome stores (clip.rs ids; Settings →
+Capture → "Highlights from your browser": Set up, then "Get it for Edge"/"Get it for Chrome" open the
+store pages, `STORES` in settings.js, the same ids, t16_settings checks; loading it unpacked folded
+below; the keys' addresses for Edge and Chrome); the newer GitHub Actions (Node 24, Dependabot's).
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 
@@ -206,8 +214,11 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     `write_atomic_checked` (Expect::Bytes / Missing, 3 tries). Messages (`answer`, `serve`, `read_message`
     / `message_bytes`: 4-byte native-endian length + JSON, ≤8 MB): `hello`, `clip`, `journal` (the usual
     quick capture with a neat link to the passage); always `{ok, …}` or `{ok: false, error}`.
-    `HOST_NAME` com.srikanth.leanoutliner, `EXTENSION_ID` fjgdgmpheeihnlbpmbajkmoapjfieggg (fixed by the
-    public `key` in browser/manifest.json; its private key was thrown away: unpacked loading needs none).
+    `HOST_NAME` com.srikanth.leanoutliner; the extensions answered (`EXTENSION_IDS`, `is_our_origin`, the
+    host manifest's allowed_origins): `EXTENSION_ID` fjgdgmpheeihnlbpmbajkmoapjfieggg (unpacked; fixed by
+    the public `key` in browser/manifest.json, whose private key was thrown away), and since Build 35 the
+    store copies, `EDGE_STORE_ID` cpdmmmcipjfebaemgdnbamipolboaokn (Edge Add-ons) and `CHROME_STORE_ID`
+    ggainimehhgjmblabbjkiemfhhlhcgnk (Chrome Web Store); the store zip is browser/ without `key`.
   - `log.rs`
     problems log (`<cache>/problems.log`) · `app.rs` `App` + `dispatch(cmd, args)` = the whole API
   - `app/pictures.rs` (child of app.rs, uses its private parts): "Check this folder" lists pictures in
@@ -310,11 +321,11 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   `native_host.rs` the browser extension's receiver (Build 32): Edge starts the exe with
   `chrome-extension://<id>/` as its first argument (main.rs, first, before Tauri) → `clip::serve` on
   stdin/stdout with the last notes folder (`LEAN_CLIP_VAULT` overrides it, for tests), then exits;
-  nothing stays running. `setup` (Settings → Capture → "Highlights from Edge" → Set up, commands
+  nothing stays running. `setup` (Settings → Capture → "Highlights from your browser" → Set up, commands
   `browser_setup`/`browser_status`; Windows only, the files are `include_bytes!` on Windows only):
   browser/ → `%LOCALAPPDATA%\com.srikanth.leanoutliner\browser-extension\` (Explorer shows it, for
-  Edge's "Load unpacked"), `native-host.json` beside it (`clip::host_manifest`: this exe, only the
-  extension's id), its path as the default value of `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\
+  Edge's "Load unpacked"), `native-host.json` beside it (`clip::host_manifest`: this exe, only our
+  extensions' ids), its path as the default value of `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\
   com.srikanth.leanoutliner` (and Chrome's); files written only when they differ. Once set up, each
   start (`refresh`, a thread) brings files and manifest up to date (Edge reloads an unpacked
   extension's files when it restarts). Uninstalling (hooks.nsh) removes both registry keys.
@@ -1085,7 +1096,7 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
   defuses the name. The extension's page.js does the same first (`safe`), skips words the reader
   can't see, and its toast is in a closed shadow root; background.js answers only its own pages
   (`sender.id`, not a tab). (tests/clip.rs `web_words_stay_words`, tests/pages.rs)
-- The native host runs only when Edge starts it for this extension (`native_host::is_our_extension`);
+- The native host runs only when Edge or Chrome starts it for one of our extensions (`native_host::is_our_extension` → `clip::is_our_origin`: the unpacked id and the two store ids);
   `LEAN_CLIP_VAULT` works only in debug builds; its errors never name the folder.
 - Files from the notes folder (`vault://`, the dev server's `/vault/`): `app::asset_file` builds the
   path from plain names only, before touching the disk (no `..`, no drive, no `\\server\share`:
@@ -1243,7 +1254,8 @@ window can't be sent to another page.
   tools) writes the keys from the secrets into the runner's temp folder (umask 077, deleted on exit),
   checks the update key matches `ci/update-key.pub`, works out the version from the build number itself
   (`update_sig.py version N`; refuses if the build claims another), signs the installer
-  (`LeanOutliner-setup.exe.sig`; also one with another key, for `verify`) and the APK, whose certificate
+  (`thinky-setup.exe.sig`, and `LeanOutliner-setup.exe.sig` for the same bytes under the old name, checked
+  with `update_sig.py check`; also one with another key, for `verify`) and the APK, whose certificate
   must equal `prev-cert`'s (it opens no downloaded file while it holds the keys). `sign-wip` does the same with throw-away keys.
   `verify` (windows) runs the shipped exe's `--verify-update` on the signed installer (must pass) and on
   a changed copy, another build number, an edited version and another key (must fail). `sizes` reports

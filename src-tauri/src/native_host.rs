@@ -22,10 +22,11 @@ pub fn is_host_call(arg1: &str) -> bool {
     arg1.starts_with("chrome-extension://")
 }
 
-/// Is it our extension that started it? Edge passes the caller's origin as the first argument;
-/// only the one extension the host manifest allows is answered (anything else: nothing is read).
+/// Is it our extension that started it? The browser passes the caller's origin as the first
+/// argument; only the extensions the host manifest allows are answered (the unpacked one and the
+/// Edge and Chrome store copies; anything else: nothing is read).
 pub fn is_our_extension(arg1: &str) -> bool {
-    arg1.trim_end_matches('/') == format!("chrome-extension://{}", outline_core::clip::EXTENSION_ID)
+    outline_core::clip::is_our_origin(arg1)
 }
 
 /// Answer the extension until Edge closes the pipe. The notes folder is the one last opened in

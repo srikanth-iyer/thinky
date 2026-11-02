@@ -21,7 +21,9 @@ async function start({ update = {}, version = '0.1.20', latest = 'build-24', and
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => console.error('CSP blocked ' + e.violatedDirective + ' ' + e.blockedURI)));
-  const assets = [{ name: 'LeanOutliner-setup.exe', size: 2192007 }, { name: 'LeanOutliner.apk', size: 7888095 }, { name: 'LeanOutliner-setup.exe.sig', size: 239 }];
+  // (Build 35: the thinky names come first; the old names' sizes here are off on purpose, so the
+  // sizes said below show the thinky files were read)
+  const assets = [{ name: 'thinky-setup.exe', size: 2192007 }, { name: 'thinky.apk', size: 7888095 }, { name: 'thinky-setup.exe.sig', size: 239 }, { name: 'LeanOutliner-setup.exe', size: 5000000 }, { name: 'LeanOutliner.apk', size: 5000000 }, { name: 'LeanOutliner-setup.exe.sig', size: 239 }];
   await page.route('https://api.github.com/**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ tag_name: latest, html_url: RELEASE, assets }) }));
   await page.addInitScript(({ update, version, android }) => {
     window.__calls = [];

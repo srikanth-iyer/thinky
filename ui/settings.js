@@ -505,7 +505,7 @@ function captureCard(app) {
   const card = h('div', 'card');
   const where = free('where', (n) => document.querySelector(`[name="${n}"]`)); // (one choice per copy of Settings)
   card.innerHTML = `<h2>Quick capture</h2>
-    <p class="note">What gets added when you share something to the app (phone share menu, the widget’s +, the shortcut key and “Send to today’s journal” from Edge on the laptop). Same settings as Logseq’s, kept in <code>logseq/config.edn</code>, so Logseq uses them too.
+    <p class="note">What gets added when you share something to the app (phone share menu, the widget’s +, the shortcut key and “Send to today’s journal” from the browser extension on the laptop). Same settings as Logseq’s, kept in <code>logseq/config.edn</code>, so Logseq uses them too.
     <br><code>{time}</code> = time, <code>{date}</code> = today’s date, <code>{text}</code> = what you shared or typed, <code>{url}</code> = its web address (or the picture).</p>
     <label class="field">Shared text and links<input data-f="text" value="${esc(c.capture_text)}"></label>
     <label class="field">Shared pictures<input data-f="media" value="${esc(c.capture_media)}"></label>
@@ -534,32 +534,44 @@ function captureCard(app) {
 }
 
 
-// The Edge extension (browser/ in the repo; native_host.rs in the app): set up here, then loaded in
-// Edge once by hand ("Load unpacked": an extension that isn't from the add-ons store).
+// The browser extension (browser/ in the repo; native_host.rs in the app): Set up registers the app as
+// its receiver for Edge and Chrome; the extension itself comes from the Edge Add-ons store or the
+// Chrome Web Store (their ids: clip.rs EXTENSION_IDS), or is loaded unpacked from the folder Set up
+// fills ("Load unpacked", for testing or before the stores have it).
+const STORES = {
+  edge: 'https://microsoftedge.microsoft.com/addons/detail/cpdmmmcipjfebaemgdnbamipolboaokn',
+  chrome: 'https://chromewebstore.google.com/detail/ggainimehhgjmblabbjkiemfhhlhcgnk',
+};
 function browserCard(app) {
   const card = h('div', 'card');
-  card.innerHTML = `<h2>Highlights from Edge</h2>
-    <p class="note">With the ${BRAND.word} extension in Edge you highlight passages as you read, then send them all at once to the article’s own page in your notes (one page per article, the day’s highlights under the date, each linked to its place in the article).</p>
+  card.innerHTML = `<h2>Highlights from your browser</h2>
+    <p class="note">With the ${BRAND.word} extension in Edge or Chrome you highlight passages as you read, then send them all at once to the article’s own page in your notes (one page per article, the day’s highlights under the date, each linked to its place in the article).</p>
     <ul class="note how">
       <li>Highlight: select text, then right-click → <b>Highlight for thinky</b>, or press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd>.</li>
-      <li>Send: click the extension’s button next to Edge’s address bar (or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd>), then <b>Send</b>.</li>
+      <li>Send: click the extension’s button next to the address bar (or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd>), then <b>Send</b>.</li>
       <li>One passage to today’s journal: right-click → <b>Send to today’s journal</b>, or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>.</li>
     </ul>
-    <p class="note keys-how">These are the keys of a new setup (an extension set up before Build 34 keeps <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd> for Highlight). To see or change them, open <code class="ext-keys">edge://extensions/shortcuts</code> in Edge <button class="btn ghost small" data-a="copykeys">Copy address</button> (Edge doesn’t let a page open it for you).</p>
+    <p class="note keys-how">These are the keys of a new setup (an extension set up before Build 34 keeps <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd> for Highlight). To see or change them, open <code class="ext-keys">edge://extensions/shortcuts</code> in Edge <button class="btn ghost small" data-a="copykeys">Copy address</button> or <code class="ext-keys-chrome">chrome://extensions/shortcuts</code> in Chrome <button class="btn ghost small" data-a="copykeyschrome">Copy address</button> (a browser doesn’t let a page open these for you).</p>
     <p class="note ext-state" role="status" hidden></p>
     <div class="btn-row"><button class="btn" data-a="setup">Set up</button></div>
-    <ol class="note steps" hidden>
-      <li>In Edge, open <code>edge://extensions</code> <button class="btn ghost small" data-a="copyext">Copy address</button></li>
-      <li>Turn on <b>Developer mode</b> (on the left, near the bottom).</li>
-      <li>Click <b>Load unpacked</b> and choose the folder that just opened in Explorer: <code class="ext-folder"></code> <button class="btn ghost small" data-a="copyfolder">Copy</button></li>
-      <li>Click the puzzle-piece button next to Edge’s address bar and pin <b>thinky highlights</b>, so its button stays in view.</li>
-    </ol>`;
+    <div class="steps" hidden>
+      <p class="note">Then add the extension to your browser:</p>
+      <div class="btn-row"><button class="btn" data-a="edge">Get it for Edge</button><button class="btn" data-a="chrome">Get it for Chrome</button></div>
+      <details class="note unpacked"><summary>Or load it by hand (Edge)</summary>
+        <ol class="note">
+          <li>In Edge, open <code>edge://extensions</code> <button class="btn ghost small" data-a="copyext">Copy address</button></li>
+          <li>Turn on <b>Developer mode</b> (on the left, near the bottom).</li>
+          <li>Click <b>Load unpacked</b> and choose the folder that just opened in Explorer: <code class="ext-folder"></code> <button class="btn ghost small" data-a="copyfolder">Copy</button></li>
+        </ol>
+      </details>
+      <p class="note">Then click the puzzle-piece button next to the address bar and pin <b>thinky highlights</b>, so its button stays in view.</p>
+    </div>`;
   const state = $('.ext-state', card), steps = $('.steps', card), btn = $('[data-a="setup"]', card);
   const show = (st) => {
     if (st.folder) $('.ext-folder', card).textContent = st.folder;
     if (st.set_up) {
       state.hidden = false;
-      state.textContent = 'Set up. After thinky updates, restart Edge to get the newest extension.';
+      state.textContent = 'Set up: the extension in Edge or Chrome can now reach your notes.';
       btn.textContent = 'Show the steps again';
     }
   };
@@ -571,8 +583,11 @@ function browserCard(app) {
     finally { btn.disabled = false; }
   };
   const copy = async (t) => { try { await navigator.clipboard.writeText(t); app.toast('Copied', 1200); } catch { app.toast('Couldn’t copy'); } };
+  $('[data-a="edge"]', card).onclick = () => app.openUrl(STORES.edge);
+  $('[data-a="chrome"]', card).onclick = () => app.openUrl(STORES.chrome);
   $('[data-a="copyext"]', card).onclick = () => copy('edge://extensions');
   $('[data-a="copykeys"]', card).onclick = () => copy('edge://extensions/shortcuts');
+  $('[data-a="copykeyschrome"]', card).onclick = () => copy('chrome://extensions/shortcuts');
   $('[data-a="copyfolder"]', card).onclick = () => copy($('.ext-folder', card).textContent);
   return card;
 }
@@ -868,7 +883,8 @@ async function updateBox(app) {
     const name = `Build ${esc(String(app.latest.tag).replace(/^build-/, ''))}`;
     if (!how.can) return draw('newer', `A newer version (${name}) is ready: get it from${page()}.${how.msg ? ' ' + esc(how.msg) : ''}`); // why not (update.rs)
     // how much it downloads (on the phone he may want to wait for Wi-Fi)
-    const bytes = app.latest.sizes?.[isAndroid ? 'LeanOutliner.apk' : 'LeanOutliner-setup.exe'];
+    const sz = app.latest.sizes || {}; // (thinky-… since Build 35; the old names before it)
+    const bytes = isAndroid ? sz['thinky.apk'] ?? sz['LeanOutliner.apk'] : sz['thinky-setup.exe'] ?? sz['LeanOutliner-setup.exe'];
     const size = bytes ? `about ${Math.max(1, Math.round(bytes / 1e6))} MB` : isAndroid ? 'about 8 MB' : 'about 2 MB';
     draw('newer', `A newer version (${name}) is ready. <b>Update now</b> downloads it (${size}), checks it’s genuine and installs it${isAndroid ? '' : `, then restarts ${BRAND.word}`}. Your notes are saved first. You can also get it from${page()}.`,
       '<button class="btn" data-a="update">Update now</button>');

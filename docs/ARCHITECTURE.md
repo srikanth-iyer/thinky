@@ -270,8 +270,10 @@ anyone else's change".
 | Inside the app | Ordinary editing: the phone "+" → `App.addNote` → `Outline.addAtEnd`, saved like any note. (`dispatch` also has `capture` / `append_journal` commands, but no UI uses them; only tests do.) |
 | Phone widget "+", share sheet, Quick Settings tile | `QuickCaptureActivity` (always shown; Add) → `LeanCore.capture` → the app's Rust code (`android_capture.rs` → `capture.rs`) |
 
-Browser highlights (Build 32) go through the Edge extension and its native host (`clip.rs`), not
-links: no web page can add a note.
+Browser highlights (Build 32) go through the browser extension and its native host (`clip.rs`), not
+links: no web page can add a note. The host answers only our extension: loaded unpacked, or (Build 35)
+installed from the Edge Add-ons store or the Chrome Web Store, each with its own id (`clip::EXTENSION_IDS`;
+Settings' store buttons use the same ids, `STORES` in `ui/settings.js`).
 
 ---
 

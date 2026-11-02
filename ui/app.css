@@ -1047,9 +1047,11 @@ html.welcome #topbar:not(.has-winctl) { display: none; }
 input.inline { padding: 3px 7px; width: 170px; }
 .radio { display: flex; flex-direction: column; gap: 6px; font-size: 14px; margin: 6px 0; }
 .note.small { font-size: 12.5px; }
-/* Settings → Capture → Highlights from Edge: its lists, keys and the folder's path */
-.card ul.how, .card ol.steps { padding-left: 22px; margin: 8px 0 12px; }
-.card ul.how li, .card ol.steps li { margin: 5px 0; }
+/* Settings → Capture → Highlights from your browser: its lists, keys, the store buttons and the folder's path */
+.card ul.how, .card .unpacked ol { padding-left: 22px; margin: 8px 0 12px; }
+.card ul.how li, .card .unpacked ol li { margin: 5px 0; }
+.card .unpacked { margin: 10px 0; }
+.card .unpacked summary { cursor: pointer; }
 .card kbd { font-family: var(--font-mono); font-size: 11.5px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .card .ext-folder { word-break: break-all; }
 .card .ext-state { color: var(--accent); }

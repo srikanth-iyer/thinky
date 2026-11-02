@@ -1,9 +1,9 @@
 {
   "note": "Reference sizes (bytes) and speeds (ms) for the automatic check in .github/workflows/build.yml. Update when a growth is intended (and agreed).",
   "sizes": {
-    "LeanOutliner-setup.exe": 2610000,
-    "LeanOutliner-portable.exe": 8360000,
-    "LeanOutliner.apk": 8450000
+    "thinky-setup.exe": 2610000,
+    "thinky-portable.exe": 8360000,
+    "thinky.apk": 8450000
   },
   "size_warn_ratio": 1.1,
   "bench": {

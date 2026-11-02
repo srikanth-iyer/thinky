@@ -202,6 +202,16 @@ fn messages_round_trip_and_get_answers() {
     let e = answer(&json!({"cmd": "hello"}), Err("Open thinky once first.".into()), TODAY, "");
     assert_eq!((e["ok"].clone(), e["error"].clone()), (json!(false), json!("Open thinky once first.")));
     assert!(host_manifest("C:\\x\\lean-outliner.exe").contains(&format!("chrome-extension://{EXTENSION_ID}/")));
+    // the store copies are answered too, and only ours
+    let m: serde_json::Value = serde_json::from_str(&host_manifest("C:\\x\\lean-outliner.exe")).unwrap();
+    let origins: Vec<&str> = m["allowed_origins"].as_array().unwrap().iter().map(|o| o.as_str().unwrap()).collect();
+    assert_eq!(origins, ["chrome-extension://fjgdgmpheeihnlbpmbajkmoapjfieggg/", "chrome-extension://cpdmmmcipjfebaemgdnbamipolboaokn/", "chrome-extension://ggainimehhgjmblabbjkiemfhhlhcgnk/"]);
+    for o in &origins {
+        assert!(outline_core::clip::is_our_origin(o) && outline_core::clip::is_our_origin(o.trim_end_matches('/')), "{o}");
+    }
+    for o in ["chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/", "chrome-extension://", "https://cpdmmmcipjfebaemgdnbamipolboaokn/", "chrome-extension://cpdmmmcipjfebaemgdnbamipolboaokn/x", ""] {
+        assert!(!outline_core::clip::is_our_origin(o), "{o}");
+    }
     let _ = std::fs::remove_dir_all(&v);
 }
 

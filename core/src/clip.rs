@@ -377,19 +377,35 @@ fn add_under_day(blocks: &mut Vec<DocBlock>, day: &str, notes: &[String]) -> usi
 
 // ---------------------------------------------------------------- talking to the extension
 
-/// The name Edge knows the receiver by (its native messaging host), and the only extension it
-/// answers: the one in `browser/`, whose fixed id comes from the public key in its manifest.
+/// The name the browser knows the receiver by (its native messaging host), and the only extensions
+/// it answers: the one in `browser/` loaded unpacked (its fixed id comes from the public key in its
+/// manifest), and the same extension installed from the Edge Add-ons store and the Chrome Web Store
+/// (each store gives it an id of its own).
 pub const HOST_NAME: &str = "com.srikanth.leanoutliner";
 pub const EXTENSION_ID: &str = "fjgdgmpheeihnlbpmbajkmoapjfieggg";
+pub const EDGE_STORE_ID: &str = "cpdmmmcipjfebaemgdnbamipolboaokn";
+pub const CHROME_STORE_ID: &str = "ggainimehhgjmblabbjkiemfhhlhcgnk";
+pub const EXTENSION_IDS: [&str; 3] = [EXTENSION_ID, EDGE_STORE_ID, CHROME_STORE_ID];
+/// The extension's pages in the two stores (they open once it is published there).
+pub const EDGE_STORE_URL: &str = "https://microsoftedge.microsoft.com/addons/detail/cpdmmmcipjfebaemgdnbamipolboaokn";
+pub const CHROME_STORE_URL: &str = "https://chromewebstore.google.com/detail/ggainimehhgjmblabbjkiemfhhlhcgnk";
 
-/// The host manifest Edge reads (named in the registry): this program, for that extension only.
+/// Is this caller's origin (`chrome-extension://<id>/`, as the browser passes it) one of ours?
+pub fn is_our_origin(origin: &str) -> bool {
+    origin
+        .trim_end_matches('/')
+        .strip_prefix("chrome-extension://")
+        .is_some_and(|id| EXTENSION_IDS.contains(&id))
+}
+
+/// The host manifest the browser reads (named in the registry): this program, for our extensions only.
 pub fn host_manifest(exe: &str) -> String {
     serde_json::to_string_pretty(&serde_json::json!({
         "name": HOST_NAME,
         "description": "thinky: adds highlights from the browser to your notes",
         "path": exe,
         "type": "stdio",
-        "allowed_origins": [format!("chrome-extension://{EXTENSION_ID}/")],
+        "allowed_origins": EXTENSION_IDS.iter().map(|id| format!("chrome-extension://{id}/")).collect::<Vec<_>>(),
     }))
     .unwrap_or_default()
 }

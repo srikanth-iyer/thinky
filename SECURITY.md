@@ -24,8 +24,9 @@ Only the newest release is supported; the app updates itself (Settings › About
 
 ## Known limits
 
-- The Edge extension's ID is fixed by the public key in `browser/manifest.json`, so another unpacked
-  extension can claim it and talk to thinky's receiver. The receiver only ever adds highlights as
+- thinky's receiver answers three extension IDs: the store copies' (Edge Add-ons, Chrome Web Store)
+  and the one loaded by hand, whose ID is fixed by the public key in `browser/manifest.json`, so
+  another unpacked extension can claim it and talk to thinky's receiver. The receiver only ever adds highlights as
   plain words (no links, tags, properties or HTML) to the last notes folder, so the worst it can do
   is add notes.
 - Pictures on `https://` websites that a note links to are loaded from those websites when the note

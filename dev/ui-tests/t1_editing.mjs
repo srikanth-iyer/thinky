@@ -116,7 +116,7 @@ check(await page.locator('#ac:not([hidden]) li', { hasText: 'Meeting' }).count()
 await page.keyboard.press('Enter');
 await sleep(1500);
 f = read('pages/Maths.md');
-check(/- meeting\n\t- Attendees::\n\t- Notes from \[\[October \d+\w\w, 20\d\d\]\]\n/.test(f), 'template blocks inserted with today filled in', f);
+check(/- meeting\n\t- Attendees::\n\t- Notes from \[\[[A-Z][a-z]+ \d+\w\w, 20\d\d\]\]\n/.test(f), 'template blocks inserted with today filled in', f);
 await page.keyboard.press('Escape');
 await page.keyboard.press('Escape');
 

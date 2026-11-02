@@ -2,15 +2,17 @@
 //! (src-tauri/src/update.rs on Windows, android/MainActivity.kt on Android) so they can be tested:
 //! where a build's files are, what exactly is signed, and which versions are accepted.
 //!
-//! A release "build-N" (app version 0.1.N, N = the build number) carries `LeanOutliner-setup.exe`
-//! and its signature file `LeanOutliner-setup.exe.sig`: JSON `{"file", "version", "sha256", "sig"}`
+//! A release "build-N" (app version 0.1.N, N = the build number) carries `thinky-setup.exe`
+//! and its signature file `thinky-setup.exe.sig`: JSON `{"file", "version", "sha256", "sig"}`
 //! made by CI (scripts/update_sig.py), where `sig` is an ECDSA P-256 / SHA-256 signature (base64 of
 //! the raw r‖s) of [`signed_text`]. Signing that short text rather than only the file ties the
 //! version to it: an older genuine installer can't be passed off as a newer build.
 
-/// The Windows installer and its signature file, as named on the downloads page.
-pub const SETUP_FILE: &str = "LeanOutliner-setup.exe";
-pub const SIG_FILE: &str = "LeanOutliner-setup.exe.sig";
+/// The Windows installer and its signature file, as named on the downloads page (since Build 35;
+/// releases also carry the same installer as `LeanOutliner-setup.exe` with its own signature file,
+/// signed for that name, for Build 34 and older, which look for it).
+pub const SETUP_FILE: &str = "thinky-setup.exe";
+pub const SIG_FILE: &str = "thinky-setup.exe.sig";
 /// The public downloads page's files: `<DOWNLOADS>/build-N/<file>`.
 const DOWNLOADS: &str = "https://github.com/srikanth-iyer/thinky/releases/download";
 
