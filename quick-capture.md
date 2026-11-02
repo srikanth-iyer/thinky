@@ -1,0 +1,4 @@
+- written before the share
+- [[quick capture]] **17:01**: Shared from another app
+- [[quick capture]] **17:01**: ![shared](../assets/shared_1793638908678.png)
+- [[quick capture]] **17:01**: ![shared](../assets/shared_1793638917668.png)
