@@ -181,6 +181,46 @@ impl App {
         out
     }
 
+    /// Notes linking to a file in `assets/` that isn't there (Build 36, he asked: a picture from the
+    /// phone that never reached Drive): (page name, the file as written), by page then file. Only
+    /// links written as `…/assets/<name>` (Logseq's `../assets/`, any depth) in pages and journals;
+    /// `%20`-style escapes are read; a `#` or `?` after the name and code spans don't count.
+    pub fn missing_pictures(&self) -> Vec<(String, String)> {
+        let assets = self.root.join("assets");
+        let mut out: Vec<(String, String)> = vec![];
+        let mut seen: HashSet<(String, String)> = HashSet::new();
+        let mut there: HashMap<String, bool> = HashMap::new();
+        for (rel, text) in &self.contents {
+            for line in text.lines() {
+                // (code spans: `...` dropped, so an example of a link isn't counted)
+                let plain: String = line.split('`').step_by(2).collect::<Vec<_>>().join(" ");
+                let mut rest = plain.as_str();
+                while let Some(i) = rest.find("../assets/") {
+                    // (the link as written, back to its start: a web address isn't a file here)
+                    let start = rest[..i].rfind(['(', '"', '\'', ' ', '\t', '[', '<', '=']).map_or(0, |s| s + 1);
+                    let web = rest[start..i].contains("://");
+                    let after = &rest[i + "../assets/".len()..];
+                    let end = after.find([')', ']', '"', '\'', '>', '\n', '#', '?']).unwrap_or(after.len());
+                    let name = after[..end].trim();
+                    rest = &after[end..];
+                    if web || name.is_empty() || name.contains("..") {
+                        continue;
+                    }
+                    let file = crate::vault::percent_decode_pub(name);
+                    let ok = *there.entry(file.clone()).or_insert_with(|| assets.join(&file).exists());
+                    if !ok {
+                        let page = self.vault.title_from_path(rel).0;
+                        if seen.insert((page.clone(), file.clone())) {
+                            out.push((page, file));
+                        }
+                    }
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
     /// Move pictures to the bin. Each is checked again right before: a picture in assets/, still
     /// there, not changed in the last 3 days, and still unused, by the notes as they are on disk now
     /// (one may have started using it since the check). Nothing is deleted: each file is moved into

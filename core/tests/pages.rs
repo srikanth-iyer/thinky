@@ -467,3 +467,63 @@ fn only_the_apps_own_page_may_be_shown() {
         assert!(!link::is_app_page(bad), "{bad}");
     }
 }
+
+// ---------------------------------------------------------------- properties renamed (Build 36)
+
+#[test]
+fn a_property_renamed_everywhere() {
+    cache();
+    let v = vault("prop");
+    // page properties and notes' properties; CRLF and no last line break kept
+    put(&v, "pages/Paper.md", "authors:: [[Mitchell]]\r\ntype:: book\r\n\r\n- read it\r\n  authors:: Crutchfield\r\n- authors:: on the first line counts too\r\n  Authors:: Das\r\n- words with authors:: inside aren't a property\r\n  author:: Hanson\r\n  Authors:: Lee");
+    put(&v, "pages/Other.md", "- nothing here\n");
+    let other = get(&v, "pages/Other.md");
+    let mut app = App::open(&v).unwrap();
+    let r = app.rename_property("authors", "author").unwrap();
+    assert_eq!((r.files_changed, r.lines, r.skipped.len()), (1, 5, 0));
+    // a note that already had author:: — the values join on that line, the old line goes
+    assert_eq!(
+        get(&v, "pages/Paper.md"),
+        "author:: [[Mitchell]]\r\ntype:: book\r\n\r\n- read it\r\n  author:: Crutchfield\r\n- author:: on the first line counts too\r\n  author:: Das\r\n- words with authors:: inside aren't a property\r\n  author:: Hanson, Lee"
+    );
+    assert_eq!(get(&v, "pages/Other.md"), other, "a file without it isn't touched");
+    assert!(app.vault.all_property_keys().iter().all(|(k, _)| k != "authors"));
+    // refused: the same name, a bad name, Logseq's own
+    assert!(app.rename_property("author", "Author").is_err());
+    assert!(app.rename_property("author", "two words").is_err());
+    assert!(app.rename_property("id", "ids").is_err());
+    let _ = std::fs::remove_dir_all(&v);
+}
+
+#[test]
+fn a_property_renamed_keeps_every_other_byte() {
+    cache();
+    let v = vault("prop2");
+    // tabs, a byte-order mark, a journal, page properties merging into one the page had, an empty
+    // value, a value with commas, and the name inside words or code (left alone)
+    let j = "\u{feff}- note\n  authors:: A, B\n\t- child `authors:: not this`\n\t  Authors::\n";
+    put(&v, "journals/2026_11_05.md", j);
+    put(&v, "pages/Both.md", "author:: Old\nauthors:: New\ntype:: x\n\n- body mentions authors:: in words\n");
+    put(&v, "pages/Clean.md", "- authors are people\n");
+    let clean = get(&v, "pages/Clean.md");
+    let mut app = App::open(&v).unwrap();
+    let r = app.rename_property("Authors", "author").unwrap();
+    assert_eq!((r.files_changed, r.lines), (2, 3), "{r:?}");
+    assert_eq!(get(&v, "journals/2026_11_05.md"), "\u{feff}- note\n  author:: A, B\n\t- child `authors:: not this`\n\t  author::\n");
+    assert_eq!(get(&v, "pages/Both.md"), "author:: Old, New\ntype:: x\n\n- body mentions authors:: in words\n");
+    assert_eq!(get(&v, "pages/Clean.md"), clean);
+    // the index knows at once: the new name's notes, and no old name left
+    let hits: usize = app.vault.with_property("author", None).iter().map(|g| g.hits.len()).sum();
+    assert!(hits >= 2, "{hits}");
+    assert!(app.vault.files_with_property("authors").is_empty());
+    // nothing left to do: no file changes
+    let r = app.rename_property("authors", "author").unwrap();
+    assert_eq!((r.files_changed, r.lines), (0, 0));
+    // through the app's command, as the window calls it
+    let mut st = Some(app);
+    let out = dispatch(&mut st, "rename_property", json!({"key": "type", "new_key": "kind"})).unwrap();
+    assert_eq!(out["files_changed"], 1);
+    assert!(get(&v, "pages/Both.md").contains("\nkind:: x\n"));
+    assert!(dispatch(&mut st, "rename_property", json!({"key": "kind", "new_key": "collapsed"})).is_err(), "Logseq's own names are refused");
+    let _ = std::fs::remove_dir_all(&v);
+}

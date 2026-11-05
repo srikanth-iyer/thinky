@@ -605,6 +605,19 @@ a.tag .hash { display: var(--hash); }
 .rows li.chosen a { background: var(--accent-tint); }
 .rows input[type="checkbox"] { margin: 0 2px 0 0; }
 .tree-rows li a, .tree li { padding-left: calc(var(--d, 0) * 18px + 4px); }
+/* Namespaces (Build 36): a fold arrow before each parent (a gap of its width before a subpage), the
+   parent's name bold with its count of subpages, the subpages a shade softer */
+.tree-rows li { display: flex; align-items: stretch; padding-left: calc(var(--d, 0) * 18px); }
+.tree-rows li a { flex: 1; min-width: 0; padding-left: 2px; }
+.ns-fold, .ns-fold-gap { flex: none; width: 24px; }
+.ns-fold { border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink-faint); display: grid; place-items: center; border-radius: 6px; }
+.ns-fold:hover { background: var(--surface-2); color: var(--ink); }
+.ns-fold::before { content: ""; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 6px solid currentColor; transform: rotate(-90deg); transition: transform .12s ease; }
+.ns-fold[aria-expanded="true"]::before { transform: none; }
+.ns-parent .pg-name { font-weight: 600; }
+.ns-sub .pg-name:not(.ghost) { color: var(--ink-soft); }
+.ns-n { font-weight: 400; font-size: 12px; color: var(--ink-faint); background: var(--surface-2); border-radius: 9px; padding: 0 6px; margin-left: 4px; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .ns-fold::before { transition: none; } }
 /* All pages as a table (views.js pagesView), as Logseq's: the columns' heads sort it (again: the
    other way round); a narrow side or a phone shows only the column it's sorted by */
 .pg-table { container-type: inline-size; --pg-cols: minmax(0, 1fr) 84px 128px 128px; }
@@ -1479,3 +1492,25 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 .add-end:hover, .add-end:focus-visible { opacity: .9; background: color-mix(in srgb, var(--ink) 5%, transparent); }
 .add-end[hidden] { display: none; }
 @media (pointer: coarse) { .add-end { width: 40px; height: 34px; margin-left: -14.5px; margin-bottom: -36px; opacity: .5; } .add-end svg { width: 15px; height: 15px; } }
+
+/* the phone's pull-down to refresh (Build 36; App.pullToRefresh): a small round mark that comes down
+   with the finger from under the top bar, the accent once letting go will refresh */
+.pull-mark { position: fixed; z-index: 60; left: 50%; top: calc(var(--topbar-h, 0px) - 34px); width: 30px; height: 30px; margin-left: -15px;
+  border-radius: 50%; background: var(--surface); box-shadow: 0 2px 8px rgba(0,0,0,.18); pointer-events: none; opacity: 0;
+  transform: translateY(calc(var(--pull, 0px) * .8)) rotate(calc(var(--pull, 0px) * 3deg)); }
+.pull-mark::before { content: ""; position: absolute; inset: 7px; border: 2.5px solid var(--ink-faint); border-right-color: transparent; border-radius: 50%; }
+.pull-mark.on { opacity: 1; }
+.pull-mark.ready::before { border-color: var(--accent); border-right-color: transparent; }
+
+/* a to-do's parents' links, beside its page (Build 36): faint, the links themselves a shade softer */
+.todo-item .where .under { color: var(--ink-faint); }
+.todo-item .where .under a { opacity: .85; }
+
+/* the note menu's Show hidden properties box (Build 36; editor.js showHidden) */
+.hid-props { border-collapse: collapse; margin-top: 8px; font-size: 13.5px; }
+.hid-props th { text-align: left; font-weight: 600; padding: 3px 12px 3px 0; color: var(--ink-soft); vertical-align: top; }
+.hid-props td { padding: 3px 0; overflow-wrap: anywhere; }
+
+/* Settings → Check this folder → Missing pictures (Build 36): the files under each page's name */
+.missing-box .rows a { flex-wrap: wrap; }
+.missing-box .rows .meta { white-space: normal; overflow-wrap: anywhere; text-align: right; margin-left: auto; font-family: var(--mono, monospace); font-size: 12px; }

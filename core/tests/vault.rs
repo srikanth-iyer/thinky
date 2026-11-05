@@ -389,3 +389,43 @@ fn tags_count_pages_and_hash_tags_in_notes() {
     assert_eq!(get("include"), None, "not in a code block");
     assert_eq!(tags[0].0.to_lowercase(), "reading", "the most used first");
 }
+
+#[test]
+fn todos_carry_their_parents_links() {
+    // Build 36: a [[page]] written once on a parent, its to-dos under it
+    let mut v = Vault::new();
+    v.upsert(
+        "journals/2026_11_05.md",
+        "- [[thinky]]\n\t- TODO fold namespaces\n\t- a group about [[Claude Code]]\n\t\t- TODO check pictures [[thinky]]\n- TODO alone\n",
+    );
+    let t = v.tasks(false);
+    let under = |words: &str| t.iter().find(|x| x.text.contains(words)).unwrap().under.clone();
+    assert_eq!(under("fold namespaces"), vec!["thinky".to_string()]);
+    // nearest parent first; its own link isn't repeated
+    assert_eq!(under("check pictures"), vec!["Claude Code".to_string()]);
+    assert!(under("alone").is_empty(), "a top-level to-do has nothing above it");
+}
+
+#[test]
+fn todos_parents_links_edge_cases() {
+    let mut v = Vault::new();
+    v.upsert(
+        "pages/Plans.md",
+        // three levels up, a tag and a property link on parents, repeats in other capitals, a
+        // sibling's link that mustn't leak, and a done to-do (only with done)
+        "- [[Alpha]] #beta\n\t- project:: [[Gamma]]\n\t  more words [[alpha]]\n\t\t- TODO deep one\n\t\t- DONE finished [[Delta]]\n\t- sibling with [[Leak]]\n\t- TODO second level\n- TODO [[Alpha]] at the top\n\t- TODO child of a to-do\n",
+    );
+    let open = v.tasks(false);
+    let all = v.tasks(true);
+    let under = |t: &[TaskHit], w: &str| t.iter().find(|x| x.text.contains(w)).unwrap_or_else(|| panic!("{w}")).under.iter().map(|s| s.to_lowercase()).collect::<Vec<_>>();
+    // nearest first: the parent's two (in its own order), then the grandparent's (beta; alpha once)
+    let deep = under(&open, "deep one");
+    let mut near = deep[..2].to_vec();
+    near.sort();
+    assert_eq!((near, &deep[2..]), (vec!["alpha".to_string(), "gamma".to_string()], &["beta".to_string()][..]), "{deep:?}");
+    assert_eq!(under(&open, "second level"), vec!["alpha", "beta"], "a sibling's links don't count");
+    assert!(under(&open, "at the top").is_empty());
+    assert_eq!(under(&open, "child of a to-do"), vec!["alpha"], "a to-do's own links pass to the to-dos under it");
+    assert!(open.iter().all(|x| !x.text.contains("finished")));
+    assert_eq!(under(&all, "finished"), deep, "done ones carry them too");
+}

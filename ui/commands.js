@@ -76,6 +76,7 @@ export function commandList(app, ed) {
     add('Go', 'next-day', 'Next journal day', () => app.runAction('go/next-journal'), { key: 'go/next-journal' });
     add('Go', 'prev-day', 'Previous journal day', () => app.runAction('go/prev-journal'), { key: 'go/prev-journal' });
   }
+  if (open) add('Go', 'refresh', 'Refresh: show the notes as their files are now', () => app.refreshNow(), { key: 'ui/refresh', also: 'reload update sync' });
   add('Go', 'back', 'Back', () => app.back(), { key: 'go/backward' });
   add('Go', 'forward', 'Forward', () => app.forward(), { key: 'go/forward' });
   if (open) {

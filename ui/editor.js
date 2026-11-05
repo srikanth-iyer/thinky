@@ -5,12 +5,14 @@
 
 import { call, today, nowTime, noteLinkUrl, store } from './api.js';
 import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, hiddenKey, parseStamp, stampText, withPictureSize } from './render.js';
-import { pickDate, caretRect, noteMenu, menu, formBox } from './popups.js';
+import { pickDate, caretRect, noteMenu, menu, formBox, confirmBox } from './popups.js';
 import { openClash } from './clash.js';
 
 // Logseq bookkeeping, never shown in the editing box (Logseq hides these too): ids, folding, a note's
 // background colour, auto heading and number list
 const HIDE = /^\s*(id|collapsed|heading|background[-_]color|logseq\.order-list-type)::/i;
+/** A note's hidden properties (render.js hiddenKey: id::, collapsed::, colours…) as [key, value], in order. */
+const hiddenProps = (t) => t.split('\n').slice(1).map((l) => l.match(PROP)).filter((m) => m && hiddenKey(m[1].toLowerCase())).map((m) => [m[1], (m[2] || '').trim()]);
 const COLLAPSED_RE = /\ncollapsed:: true(?=\n|$)/;
 /** The note says it's folded in its page (collapsed:: true; it shows so only with sub-notes). */
 export const foldedIn = (text) => COLLAPSED_RE.test('\n' + text.split('\n').slice(1).join('\n'));
@@ -1110,6 +1112,9 @@ export class Outline {
     items.push({ id: 'copy', label: 'Copy' }, { id: 'copytext', label: 'Copy as text', hint: 'plain Markdown' });
     // a leanoutliner://note/<id> link that opens the app right at this note (it gets an id:: if needed)
     if (!inSel && (rw || idIn(t0))) items.push({ id: 'link', label: 'Copy link to this note' });
+    // Build 36 (he asked): the properties Logseq keeps for itself (id::, collapsed::…), never shown on the page
+    const hid = inSel ? [] : hiddenProps(this.blocks[i].text);
+    if (hid.length) items.push({ id: 'hidden', label: 'Show hidden properties', hint: String(hid.length) });
     if (rw) {
       items.push('-', { id: 'number', label: 'Numbered list', checked: tops.some((j) => NUMBERED.test(this.textOf(j))) });
       items.push({ id: 'todo', label: 'Next to-do state', hint: `${now || 'none'} → ${this.nextMarker(now) || 'none'}` });
@@ -1152,6 +1157,7 @@ export class Outline {
       case 'copy': this.copyText(this.blocksText(lo, hi)); return;
       case 'copytext': this.copyText(this.blocksText(lo, hi, true), 'Copied as text'); return;
       case 'link': this.copyNoteLink(i); return;
+      case 'hidden': this.showHidden(i); return;
       case 'cut': this.cutNotes(lo, hi).then((cut) => { if (cut) this.undoToast(`Cut ${what}.`); }); return;
       case 'delete': if (this.removeNotes(lo, hi)) this.undoToast(`Deleted ${what}.`); return;
       case 'number': {
@@ -1717,6 +1723,18 @@ export class Outline {
   }
   async copySel() { return this.copyText(this.selText()); }
   /** Put text on the clipboard; msg: the message after (null: none). true when it got there. */
+  /** The note's hidden properties (Build 36), read-only in a small box; Copy puts them on the
+   *  clipboard as written. Changing them stays a job for its file (or Logseq): they're its bookkeeping. */
+  async showHidden(i) {
+    const hid = hiddenProps(this.blocks[i]?.text || '');
+    if (!hid.length) return;
+    const rows = hid.map(([k, v]) => `<tr><th scope="row">${esc(k)}</th><td><code>${esc(v)}</code></td></tr>`).join('');
+    const copy = await confirmBox({ title: 'Hidden properties',
+      body: `<p>Kept in the file for Logseq and thinky (links to this note, folding, colours…), not shown on the page.</p><table class="hid-props">${rows}</table>`,
+      ok: 'Copy', cancel: 'Close' });
+    if (copy) this.copyText(hid.map(([k, v]) => `${k}:: ${v}`).join('\n'));
+  }
+
   async copyText(text, msg = 'Copied') {
     let ok = true;
     try { await navigator.clipboard.writeText(text); }

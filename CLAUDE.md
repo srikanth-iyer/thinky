@@ -158,6 +158,23 @@ then the old name); the browser extension from the Edge and Chrome stores (clip.
 Capture → "Highlights from your browser": Set up, then "Get it for Edge"/"Get it for Chrome" open the
 store pages, `STORES` in settings.js, the same ids, t16_settings checks; loading it unpacked folded
 below; the keys' addresses for Edge and Chrome); the newer GitHub Actions (Node 24, Dependabot's).
+Build 36 (the maintainer's notes of Nov 4 and 5; tested by t20_build36, t15_pages, core tests/vault.rs
+`todos_carry_their_parents_links`, tests/pages.rs `a_property_renamed_everywhere`, tests/pictures.rs
+`links_to_pictures_that_arent_there`): Namespaces (views.js `draw`, tree branch) list a top-level
+namespace only with ≥ 2 pages under it (`under`), each parent folds (`.ns-fold`; `nsOpen` in the
+store, folded by default), parents bold with a count (`.ns-parent`, `.ns-n`), subpages softer.
+`ui/refresh` (Ctrl+R, F5, Ctrl+Shift+R; checked before the typing stop so the WebView never reloads the
+window) and the phone's pull-down (`App.pullToRefresh`, 72 px from the top; not from a textarea, a dot,
+a pop-up, the sidebar) run `App.refreshNow`: flush, `rescan`, then each outline read again unless it has
+unsaved typing or a clash (`refresh` for one being edited), place kept, "Up to date". To-dos: `TaskHit.under`
+= links of the notes above (nearest first, its own left out; vault.rs `tasks`), counted by the page
+buttons and the filter, shown as "· under …" (`taskRow`). Note menu: "Show hidden properties" when the
+note has some (`hiddenProps`, render.js `hiddenKey`), a read-only box with Copy (`showHidden`).
+Properties: a key's page has "Rename or merge…" → `rename_property` (app.rs; `rename_prop_in_text`:
+whole `key:: value` lines, the first line too, as Logseq reads them; a note with both merges the values
+into its existing line, the file's shape kept; id, collapsed, title, alias, heading, background-color
+refused). Check this folder: `missing_pictures` (pictures.rs; `…/assets/<name>` links in pages and
+journals whose file isn't there; code spans skipped) → Settings' "Missing pictures" (`missingBox`).
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

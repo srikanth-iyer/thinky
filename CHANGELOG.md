@@ -5,6 +5,16 @@ each one the code exactly as it was released at its last build. Later releases a
 the top. (Until Build 32 the app was called Lean Outliner; its downloads and hidden id keep that
 name, so updates install over older builds.)
 
+## Build 36 (November 2026)
+
+### New
+- All pages → Namespaces: each namespace folds and unfolds with an arrow (folded at first, and remembered), the parent page in bold with how many pages are under it. A namespace shows only when it has two or more pages under it.
+- Ctrl+R and F5 (Ctrl+Shift+R too) show the notes as their files are now, keeping your place, instead of reloading the whole window. On a phone, pull the page down from its top. Typing that's still saving is saved first.
+- To-dos count the links of the notes they sit under: write `[[page]]` once on a parent note, put the to-dos under it, and that page's button on To-dos finds them (each shows "under page").
+- The note menu (a dot's right-click, or press and hold): Show hidden properties lists a note's `id::`, `collapsed::` and the like, with Copy.
+- Properties: a property's page has Rename or merge…, which renames it in every note (`authors::` → `author::`). A note that has both keeps one line with both values.
+- Settings → Notes → Check this folder also lists notes that link to a picture missing from `assets`, such as one added on another device that never synced.
+
 ## Build 35 (November 2026)
 
 ### New

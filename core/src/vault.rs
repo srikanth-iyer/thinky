@@ -174,6 +174,11 @@ pub struct TaskHit {
     /// When its page's file last changed (seconds), from `App::tasks`; the to-dos list sorts by it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub changed: Option<u64>,
+    /// Pages linked by the notes it sits under (parent first, then further up), not by itself
+    /// (Build 36: a `[[page]]` written once on a parent with its to-dos under it; deduplicated
+    /// case-insensitively, the to-do's own links left out).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub under: Vec<String>,
 }
 
 /// One entry of the All pages list.
@@ -259,6 +264,11 @@ pub struct Vault {
     /// Every file above (both kinds), by its path in small letters, with how many have it (names
     /// that differ only in capitals are one file on Windows and Android): see `free_rel`.
     lc_paths: HashMap<String, u32>,
+}
+
+/// `percent_decode` for the rest of the core (pictures.rs: a picture's file name in a link).
+pub fn percent_decode_pub(s: &str) -> String {
+    percent_decode(s)
 }
 
 fn percent_decode(s: &str) -> String {
@@ -838,9 +848,23 @@ impl Vault {
     pub fn tasks(&self, done: bool) -> Vec<TaskHit> {
         let mut out = vec![];
         for p in self.pages.values() {
-            for b in &p.parsed.blocks {
+            // the notes above the current one: (depth, index into blocks), nearest last
+            let mut above: Vec<(usize, usize)> = vec![];
+            for (i, b) in p.parsed.blocks.iter().enumerate() {
+                while above.last().is_some_and(|&(d, _)| d >= b.depth) {
+                    above.pop();
+                }
                 if let Some(t) = &b.task {
                     if done || t.is_open() {
+                        let mut under: Vec<String> = vec![];
+                        for &(_, j) in above.iter().rev() {
+                            for r in &p.parsed.blocks[j].refs {
+                                let k = key(r);
+                                if !b.refs.iter().any(|o| key(o) == k) && !under.iter().any(|o| key(o) == k) {
+                                    under.push(r.clone());
+                                }
+                            }
+                        }
                         out.push(TaskHit {
                             page: p.name.clone(),
                             journal: p.journal,
@@ -850,9 +874,11 @@ impl Vault {
                             task: t.clone(),
                             path: p.path.clone(),
                             changed: None,
+                            under,
                         });
                     }
                 }
+                above.push((b.depth, i));
             }
         }
         out.sort_by(|a, b| b.journal.cmp(&a.journal).then(a.page.to_lowercase().cmp(&b.page.to_lowercase())).then(a.line.cmp(&b.line)));
@@ -1074,6 +1100,18 @@ impl Vault {
     }
 
     /// Distinct property keys used anywhere, with counts.
+    /// Files (inside the notes folder) with a property named `key` (any capitals) on the page or a note.
+    pub fn files_with_property(&self, key: &str) -> Vec<String> {
+        let k = key.to_lowercase();
+        let mut v: Vec<String> = self.pages.values()
+            .filter(|p| p.parsed.props.iter().chain(p.parsed.blocks.iter().flat_map(|b| b.props.iter())).any(|(pk, _)| *pk == k))
+            .map(|p| p.path.clone())
+            .filter(|r| !r.is_empty())
+            .collect();
+        v.sort();
+        v
+    }
+
     pub fn all_property_keys(&self) -> Vec<(String, usize)> {
         let mut m: HashMap<&str, usize> = HashMap::new();
         for p in self.pages.values() {
