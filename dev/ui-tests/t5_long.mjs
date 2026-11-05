@@ -36,6 +36,7 @@ for (const [name, hash, title] of [['3,000 blocks', '#/page/Big%20page', 'Big pa
 await page.evaluate(() => { location.hash = '#/page/Big%20page'; });
 await sleep(1500);
 await page.locator('.outline .blk > .bc', { hasText: 'block 2999 ' }).first().click();
+await page.waitForSelector('textarea.ed', { timeout: 10000 }); // (a slow machine takes longer to open it)
 const lag = await page.evaluate(async () => {
   const ta = document.querySelector('textarea.ed');
   const t0 = performance.now();
