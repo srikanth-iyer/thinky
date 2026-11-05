@@ -88,6 +88,7 @@ check(names.includes('Orphan page') && !names.includes('Marta Pell'), 'only page
 await page.locator('[data-o="orphans"]').click();
 await page.locator('[data-o="tree"]').click();
 await sleep(200);
+for (let k = 0; k < 6 && await page.locator('.ns-fold[aria-expanded="false"]').count(); k++) { await page.locator('.ns-fold[aria-expanded="false"]').first().click(); await sleep(60); } // (Build 36: folded at first)
 const tree = await page.locator('.tree-rows li').evaluateAll((lis) => lis.map((li) => li.style.getPropertyValue('--d') + ':' + li.textContent.trim().split('\n')[0].trim()));
 check(tree.some((t) => t.startsWith('1:') && t.includes('Spice jars')) && tree.some((t) => t.startsWith('2:') && t.includes('notes')), 'namespace tree nests APRON/Spice jars/notes', tree.join('|'));
 await page.locator('[data-o="tree"]').click();

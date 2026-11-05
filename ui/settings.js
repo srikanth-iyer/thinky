@@ -118,6 +118,7 @@ function folderCard(app) {
       if (r.non_utf8.length) html += `<p class="note"><b>${count(r.non_utf8, 'file isn’t', 'files aren’t')} plain text</b> (shown read-only, never changed):</p>${list(r.non_utf8)}`;
       html += `<p class="note">Longest pages: ${r.biggest.map(([n, b]) => `${esc(n)} (${b} blocks)`).join(', ')}.<br>Most linked: ${r.most_linked.map(([n, c]) => `${esc(n)} (${c})`).join(', ')}.</p>`;
       out.innerHTML = html;
+      out.append(missingBox(app, r));
       out.append(picturesBox(app, r));
     } catch (e) { out.innerHTML = `<p class="err">${esc(e)}</p>`; }
     chk.disabled = false;
@@ -140,6 +141,24 @@ function free(base, taken = (id) => document.getElementById(id)) {
  *  ticked), and a button that moves the ticked ones to the bin (the app checks each one again first,
  *  see core/src/app/pictures.rs). Pictures from the last 3 days aren't listed: a note using one may
  *  still be on its way. */
+/** Notes that link to a picture missing from assets (Build 36, he asked): each page (a click opens
+ *  it) with the files it lacks. A picture saved on the phone may still be syncing, or never got there. */
+function missingBox(app, r) {
+  const box = h('div', 'missing-box');
+  const miss = r.missing_pictures || [];
+  if (!miss.length) {
+    box.innerHTML = '<p class="note">✓ Every picture a note links to is in <code>assets</code>.</p>';
+    return box;
+  }
+  const by = new Map();
+  for (const [page, file] of miss) by.set(page, [...(by.get(page) || []), file]);
+  box.innerHTML = `<h3>Missing pictures</h3>
+    <p class="note">${miss.length === 1 ? 'A note links to a picture that isn’t' : `Notes link to ${miss.length} pictures that aren’t`} in <code>assets</code> on this device. A picture added on another device may still be syncing (check your sync app there), or it never got here.</p>
+    <ul class="rows">${[...by].map(([page, files]) => `<li><a href="#" data-page="${esc(page)}">${esc(page)}<span class="meta">${files.map(esc).join('<br>')}</span></a></li>`).join('')}</ul>`;
+  box.addEventListener('click', (e) => app.linkClick(e));
+  return box;
+}
+
 function picturesBox(app, r) {
   const box = h('div', 'pics-box');
   const list = (items) => `<div class="path">${items.map(esc).join('<br>')}</div>`;
@@ -794,7 +813,7 @@ function keysCard(app) {
     ['Search', 'go/search'], ['Journals', 'go/journals'], ['All pages', 'go/all-pages'], ['To-dos', 'go/todos'],
     ['Go to a date', 'go/date'], ['Next / previous journal day', 'go/next-journal'], ['Back', 'go/backward'], ['Forward', 'go/forward'],
     ['Hide or show the sidebar', 'ui/toggle-left-sidebar'], ['Wide mode (notes use the whole width)', 'ui/toggle-wide-mode'], ['Move a block up', 'editor/move-block-up'], ['Move a block down', 'editor/move-block-down'],
-    ['Fold or unfold all', 'editor/toggle-open-blocks'], ['Highlight', 'editor/highlight'], ['Bigger / smaller text', 'ui/text-bigger'],
+    ['Fold or unfold all', 'editor/toggle-open-blocks'], ['Highlight', 'editor/highlight'], ['Bigger / smaller text', 'ui/text-bigger'], ['Refresh (the notes as their files are now)', 'ui/refresh'],
     ['Select the words, then the note, then its parent', 'editor/select-parent'], ['Select every note on the page', 'editor/select-all-blocks'],
   ];
   card.innerHTML = `<h2>Keyboard shortcuts</h2><p class="note">Also: Enter new block · Shift+Enter new line · Tab / Shift+Tab indent · Ctrl+Enter to-do · Esc select block (then Shift+↑↓ to select more) · Ctrl+Z undo · / commands · [[ link · (( block reference · # tag · :: property · Ctrl+Shift+V paste as plain words. Change these in <code>logseq/config.edn</code> (<code>:shortcuts</code>), like in Logseq.</p>

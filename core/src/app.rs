@@ -207,6 +207,17 @@ pub struct PageTarget {
     pub title: Option<String>,
 }
 
+/// What `rename_property` did.
+#[derive(Debug, Serialize)]
+pub struct PropRenameRes {
+    /// Files whose property lines changed.
+    pub files_changed: usize,
+    /// Property lines renamed (or merged into a line the note already had).
+    pub lines: usize,
+    /// Files that use the old name but couldn't be changed (unreadable, or saved elsewhere at every try).
+    pub skipped: Vec<String>,
+}
+
 #[derive(Serialize)]
 pub struct RenameRes {
     pub name: String,
@@ -639,6 +650,72 @@ fn b64_decode(s: &str) -> Result<Vec<u8>, String> {
         }
     }
     Ok(out)
+}
+
+/// One note's (or the page's) property lines with `old` (lowercase) renamed to `new`, every other
+/// byte kept; when the same note already has `new`, `old`'s value is added to that line after a
+/// comma (", ") and `old`'s line goes. Only whole `key:: value` lines count (a note's first line
+/// too, as Logseq reads it). Returns the new text and how many lines changed, or None.
+fn rename_prop_lines(text: &str, old: &str, new: &str) -> Option<(String, usize)> {
+    let mut lines: Vec<String> = text.split_inclusive('\n').map(str::to_string).collect();
+    let start = 0;
+    let key_of = |l: &str| crate::parse::property(l.trim_start().trim_end_matches(['\n', '\r'])).map(|(k, _)| k);
+    let target = lines.iter().enumerate().skip(start).find(|(_, l)| key_of(l).as_deref() == Some(&new.to_lowercase())).map(|(i, _)| i);
+    let mut n = 0;
+    let mut drop = vec![];
+    for i in start..lines.len() {
+        if key_of(&lines[i]).as_deref() != Some(old) {
+            continue;
+        }
+        let l = lines[i].clone();
+        let lead = l.len() - l.trim_start().len();
+        let body = &l[lead..];
+        let cut = body.find("::").unwrap_or(0);
+        if let Some(j) = target {
+            // merge into the line the note already has: its value, then this one's
+            let end = |s: &str| s.len() - s.trim_end_matches(['\n', '\r']).len();
+            let val = body[cut + 2..].trim_end_matches(['\n', '\r']).trim();
+            if !val.is_empty() {
+                let tl = lines[j].clone();
+                let (keep, nl) = tl.split_at(tl.len() - end(&tl));
+                let joined = if keep.trim_end().ends_with("::") { format!("{} {val}", keep.trim_end()) } else { format!("{}, {val}", keep.trim_end()) };
+                lines[j] = format!("{joined}{nl}");
+            }
+            drop.push(i);
+        } else {
+            lines[i] = format!("{}{new}{}", &l[..lead], &body[cut..]);
+        }
+        n += 1;
+    }
+    // (the text's end stays as it was: with or without a last line break)
+    let ended = text.ends_with('\n');
+    for i in drop.into_iter().rev() {
+        lines.remove(i);
+    }
+    let mut out = lines.concat();
+    if !ended {
+        while out.ends_with(['\n', '\r']) {
+            out.pop();
+        }
+    }
+    (n > 0).then_some((out, n))
+}
+
+/// A property renamed in one file's text (page properties and every note's), the file's shape kept.
+fn rename_prop_in_text(text: &str, old: &str, new: &str) -> Option<(String, usize)> {
+    let mut doc = split_doc(text);
+    let mut n = 0;
+    if let Some((p, k)) = rename_prop_lines(&doc.preamble, old, new) {
+        doc.preamble = p;
+        n += k;
+    }
+    for b in &mut doc.blocks {
+        if let Some((tx, k)) = rename_prop_lines(&b.text, old, new) {
+            b.text = tx;
+            n += k;
+        }
+    }
+    (n > 0).then(|| (keep_shape(Some(text), join_doc(&doc), doc.crlf), n))
 }
 
 /// Apply a page rename to one file's text. None when nothing changed.
@@ -1513,6 +1590,41 @@ impl App {
         Ok(RenameRes { favorites: self.vault.config.favorites.clone(), name: new, files_changed: changed, skipped })
     }
 
+    /// Rename property `old` to `new` in every file that has it (Build 36, he asked: author/authors),
+    /// as Merge into… in Properties. A note that has both keeps one `new::` line with both values.
+    /// Each file is changed safely (`rewrite`: a version saved elsewhere meanwhile is read again);
+    /// files that can't be are listed. Logseq's own bookkeeping names (id, collapsed…) are refused.
+    pub fn rename_property(&mut self, old: &str, new: &str) -> Result<PropRenameRes, String> {
+        let old = old.trim().to_lowercase();
+        let new = new.trim().to_string();
+        let ok = |k: &str| !k.is_empty() && k.chars().all(|c| c.is_alphanumeric() || "-_./".contains(c));
+        if !ok(&old) || !ok(&new) {
+            return Err("A property name has only letters, digits and - _ . / (no spaces).".into());
+        }
+        if old == new.to_lowercase() {
+            return Err("That's the same name.".into());
+        }
+        const KEPT: [&str; 6] = ["id", "collapsed", "title", "alias", "heading", "background-color"];
+        if KEPT.contains(&old.as_str()) || KEPT.contains(&new.to_lowercase().as_str()) {
+            return Err(format!("“{}” is a property thinky and Logseq use themselves, so it can't be renamed or merged.", if KEPT.contains(&old.as_str()) { old.clone() } else { new.clone() }));
+        }
+        let (mut files, mut lines, mut skipped) = (0, 0, vec![]);
+        for rel in self.vault.files_with_property(&old) {
+            let mut k = 0;
+            match rewrite(&self.root.join(&rel), "", 3, |cur| Ok(cur.and_then(|c| rename_prop_in_text(c, &old, &new)).map(|(t, n)| { k = n; t }))) {
+                Ok(Rewrite::Done(_, t)) => {
+                    self.record_write(&rel, &t);
+                    files += 1;
+                    lines += k;
+                }
+                Ok(Rewrite::Left(_)) => {}
+                _ => skipped.push(rel),
+            }
+        }
+        self.write_cache();
+        Ok(PropRenameRes { files_changed: files, lines, skipped })
+    }
+
     /// Before renaming page `old` to `new`: Ok(None) when `new` is free (a plain rename), Ok(Some(its
     /// name)) when another page already has that name (or alias: then that page): the two can be
     /// merged (`merge_pages`); Err when the name can't be used (says why).
@@ -2271,6 +2383,7 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
         // renaming to a name a page already has: merge the two (as Logseq does), with an Undo
         "rename_target" => to_value(app.rename_target(&s("name"), &s("new_name"))?),
         "merge_pages" => to_value(app.merge_pages(&s("name"), &s("into"))?),
+        "rename_property" => to_value(app.rename_property(&s("key"), &s("new_key"))?),
         "undo_merge" => Ok(json!(app.undo_merge(args.get("undo").and_then(Value::as_u64).unwrap_or(0))?)),
         // a page's file (the Windows app shows it in Explorer)
         "page_file" => Ok(json!(app.page_file(&s("name"))?.display().to_string())),
@@ -2416,6 +2529,8 @@ pub struct CheckReport {
     pub pictures_unreadable: Vec<String>,
     /// Pictures changed in the last 3 days, left out (a note using one may still be on its way).
     pub pictures_recent: usize,
+    /// Notes linking to a picture (any file) in assets/ that isn't there: (page, file). See pictures.rs.
+    pub missing_pictures: Vec<(String, String)>,
 }
 
 /// "Page (1).md", "Page (conflict 2026-…).md", "Page [Conflict].md": a sync copy of "Page.md"?
@@ -2473,6 +2588,7 @@ pub fn check_vault_at(root: &Path, now: u64) -> Result<CheckReport, String> {
         unused_pictures_bytes: pics.bytes,
         pictures_unreadable: pics.unreadable,
         pictures_recent: pics.recent,
+        missing_pictures: app.missing_pictures(),
         files: app.files.len(),
         pages: app.vault.page_count(),
         load_ms,

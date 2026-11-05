@@ -252,6 +252,7 @@ const DEFAULT_KEYS = {
   'ui/text-bigger': ['mod+=', 'mod+plus'],
   'ui/text-smaller': ['mod+-'],
   'ui/text-reset': ['mod+0'],
+  'ui/refresh': ['mod+r', 'f5', 'mod+shift+r'], // (Build 36: re-read the pages shown, not the whole window)
 };
 const KEYNAME = { arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right', '[': 'open-square-bracket', ']': 'close-square-bracket', '\\': 'backslash', ' ': 'space', '+': 'plus', escape: 'esc' };
 const parseChord = (s) => {
@@ -2374,6 +2375,7 @@ class App {
     if (act('go/search')) { e.preventDefault(); this.openSearch(); return; }
     // (not when the note being edited already used the key, e.g. :editor/highlight set to ctrl+h)
     if ((act('go/search-in-page') || act('go/replace-in-page')) && this.pane.outlines.length && !e.defaultPrevented) { e.preventDefault(); this.find.open(act('go/replace-in-page')); return; }
+    if (act('ui/refresh')) { e.preventDefault(); this.refreshNow(); return; }
     if (act('go/backward')) { e.preventDefault(); this.back(); return; }
     if (act('go/forward')) { e.preventDefault(); this.forward(); return; }
     for (const a of ['ui/text-bigger', 'ui/text-smaller', 'ui/text-reset']) if (act(a)) { e.preventDefault(); this.runAction(a); return; }
@@ -2486,6 +2488,7 @@ class App {
       'ui/text-bigger': () => this.toast(`Text size ${Math.round(this.textSize(this.textSize() + 0.05) * 100)}%`, 900),
       'ui/text-smaller': () => this.toast(`Text size ${Math.round(this.textSize(this.textSize() - 0.05) * 100)}%`, 900),
       'ui/text-reset': () => { this.textSize(1); this.toast('Text size 100%', 900); },
+      'ui/refresh': () => this.refreshNow(),
     })[name]?.();
   }
 
@@ -2744,6 +2747,30 @@ class App {
     for (const o of this.outlines) if (o.name.toLowerCase() === n) await o.reload();
   }
 
+  /** Ctrl+R / F5 / the phone's pull-down (Build 36, he asked): the notes as their files are now,
+   *  without reloading the window. Typing waiting to save is saved first; then every changed file is
+   *  taken in (as when the file watcher tells, in case it missed one: a late Drive Sync), and the
+   *  pages shown are read again, keeping the reading place. Not a page with unsaved typing or a
+   *  clash (its own save takes the other side in, as always), nor a note being edited with typing. */
+  async refreshNow() {
+    if (!this.vaultOpen || this.refreshing) return;
+    this.refreshing = true;
+    try {
+      await Promise.all(this.outlines.map((o) => o.flush().catch(() => {})));
+      while (this.scanning) await new Promise((r) => setTimeout(r, 50)); // (one already running)
+      await this.rescan();
+      let kept = 0;
+      for (const o of [...this.outlines]) {
+        if (!this.outlines.includes(o)) continue;
+        if (o.dirty || o.saving || o.conflict) { kept++; continue; }
+        const at = this.readingPlace(o);
+        const done = await (o.cur !== null ? o.refresh() : o.reload()).catch(() => false);
+        if (done && o.cur === null) this.backToPlace(o, at);
+      }
+      this.toast(kept ? 'Up to date (a page with typing still saving was left as it is)' : 'Up to date', 1400);
+    } finally { this.refreshing = false; }
+  }
+
   async rescan() {
     if (!this.vaultOpen || this.scanning) return;
     this.scanning = true;
@@ -2789,6 +2816,38 @@ class App {
   /** Android's Back button / gesture, handled here instead of by the browser inside the app: first
    *  close whatever is open (a pop-up, the search, the menu drawer, the note being edited), then go
    *  back a page, and only at the start leave the app (to the home screen, like other apps). */
+  /** On a touch screen, pulling the page down from its top (past 72 px) refreshes it (refreshNow), as
+   *  in a phone's browser. A mark slides down with the finger and turns to the accent when letting go
+   *  will refresh. Not from a note being edited, a dot (dragging notes), a pop-up or the search. */
+  pullToRefresh() {
+    if (!matchMedia('(pointer: coarse)').matches) return;
+    const mark = h('div', 'pull-mark');
+    mark.setAttribute('aria-hidden', 'true');
+    document.body.append(mark);
+    const FAR = 72;
+    let y0 = null, x0 = 0, d = 0;
+    const atTop = () => (document.scrollingElement?.scrollTop ?? 0) <= 0; // (a phone scrolls the whole page)
+    const reset = () => { y0 = null; d = 0; mark.style.removeProperty('--pull'); mark.classList.remove('ready', 'on'); };
+    addEventListener('touchstart', (e) => {
+      reset();
+      const t = e.target;
+      if (e.touches.length !== 1 || !atTop() || t.closest?.('textarea, input, .bul, .pop, .modal-back, #search, #side, .menu')) return;
+      y0 = e.touches[0].clientY; x0 = e.touches[0].clientX;
+    }, { passive: true });
+    addEventListener('touchmove', (e) => {
+      if (y0 === null) return;
+      const dy = e.touches[0].clientY - y0, dx = Math.abs(e.touches[0].clientX - x0);
+      if (dy < 0 || dx > dy || !atTop()) { if (dy < -4 || dx > 24) reset(); return; } // (a scroll or a sideways swipe)
+      d = dy;
+      mark.classList.add('on');
+      mark.style.setProperty('--pull', `${Math.min(d, FAR + 24)}px`);
+      mark.classList.toggle('ready', d >= FAR);
+    }, { passive: true });
+    const end = () => { const go = y0 !== null && d >= FAR; reset(); if (go) this.refreshNow(); };
+    addEventListener('touchend', end, { passive: true });
+    addEventListener('touchcancel', reset, { passive: true });
+  }
+
   async listenBack() {
     const listen = isAndroid && window.__TAURI__?.app?.onBackButtonPress;
     if (!listen) return; // elsewhere, or an older app: Back simply goes back a page
@@ -2823,6 +2882,7 @@ class App {
 
   async start() {
     this.listenBack();
+    this.pullToRefresh();
     // script problems go to the problems log (Settings), each one at most once a minute, so a
     // problem that repeats can't push everything else out of it
     const sent = new Map();

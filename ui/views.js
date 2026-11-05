@@ -4,6 +4,7 @@
 import { call, today, store } from './api.js';
 import { renderBlock, datesHtml, esc, whenText, pagesIn } from './render.js';
 import { h, pageLink, ICON, BRAND, plural } from './dom.js';
+import { promptBox } from './popups.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -68,7 +69,7 @@ export async function pagesView(app, view) {
   // what each filter turned on does, in a line under them (he asked what No file and Namespaces are;
   // the buttons' tooltips don't show on a phone)
   const SAYS = { journals: 'Journals: journal days too.', ghosts: 'No file: names your notes link to or tag that have no page yet.',
-    orphans: 'Not linked: only pages no note links to.', tree: 'Namespaces: only pages in a namespace, “Garden/notes” under “Garden”.' };
+    orphans: 'Not linked: only pages no note links to.', tree: 'Namespaces: groups of two or more pages named like “Garden/notes”, under “Garden”. The arrows fold and unfold them.' };
   const say = h('p', 'note chip-say');
   tools.querySelector('.chips').after(say);
   const sayOn = () => { const on = Object.keys(SAYS).filter((k) => opt[k]); say.textContent = on.map((k) => SAYS[k]).join(' '); say.hidden = !on.length; };
@@ -80,6 +81,8 @@ export async function pagesView(app, view) {
   fitChips($('.chips', tools));
   let selecting = false;
   const chosen = new Set();
+  // the namespaces unfolded in the Namespaces list (small letters; everything else folded)
+  const nsOpen = new Set(store.get('nsOpen', []));
   let shown = [];
   let lastClicked = null;
 
@@ -101,8 +104,12 @@ export async function pagesView(app, view) {
       && (!q || n.name.toLowerCase().includes(q)));
     return order(v);
   };
-  const row = (n, label = n.name, depth = 0) => `<li style="--d:${depth}"${chosen.has(n.name) ? ' class="chosen"' : ''}>
-    <a href="#" data-page="${esc(n.name)}"><span class="pg-name${n.exists ? '' : ' ghost'}">${selecting && n.exists ? `<input type="checkbox" tabindex="-1" ${chosen.has(n.name) ? 'checked' : ''}>` : ''}${n.icon ? `<span class="pg-ic" aria-hidden="true">${esc(n.icon)}</span>` : ''}${esc(label)}</span>
+  // ns (the Namespaces list only): { sub: pages under this one, open } → a fold arrow before it, and
+  // a parent's name in bold with its count of subpages
+  const row = (n, label = n.name, depth = 0, ns = null) => `<li style="--d:${depth}" class="${[chosen.has(n.name) && 'chosen', ns && (ns.sub ? 'ns-parent' : 'ns-sub')].filter(Boolean).join(' ')}">${ns ? (ns.sub
+      ? `<button type="button" class="ns-fold" data-ns="${esc(n.name.toLowerCase())}" aria-expanded="${ns.open}" aria-label="${ns.open ? 'Fold' : 'Unfold'} ${esc(n.name)}" title="${ns.open ? 'Hide' : 'Show'} its ${plural(ns.sub, 'page')}"></button>`
+      : '<span class="ns-fold-gap" aria-hidden="true"></span>') : ''}
+    <a href="#" data-page="${esc(n.name)}"><span class="pg-name${n.exists ? '' : ' ghost'}">${selecting && n.exists ? `<input type="checkbox" tabindex="-1" ${chosen.has(n.name) ? 'checked' : ''}>` : ''}${n.icon ? `<span class="pg-ic" aria-hidden="true">${esc(n.icon)}</span>` : ''}${esc(label)}${ns?.sub ? ` <span class="ns-n">${ns.sub}</span>` : ''}</span>
     <span class="meta c-links">${n.exists ? (n.refs ? plural(n.refs, 'link') : '') : 'no file yet'}</span>
     <span class="meta c-created" title="${n.created ? 'Created ' + esc(fullWhen(n.created)) : ''}">${shortWhen(n.created)}</span>
     <span class="meta c-changed" title="${n.changed ? 'Changed ' + esc(fullWhen(n.changed)) : ''}">${shortWhen(n.changed)}</span></a></li>`;
@@ -136,17 +143,27 @@ export async function pagesView(app, view) {
         kids.get(parent.toLowerCase()).push(byName.get(key) || { name, exists: false, refs: 0 });
       };
       for (const n of shown) if (n.name.includes('/')) add(n.name);
+      // Build 36 (he asked, Nov 4): a namespace only when it holds more than one page under it
+      // ("a" with only "a/b" isn't one); each parent folds (its subpages hidden, remembered, folded
+      // at first so the list is short), and parents stand out from their subpages
+      const under = (key) => kids.get(key).reduce((s, c) => s + 1 + under(c.name.toLowerCase()), 0);
+      kids.set('', kids.get('').filter((n) => under(n.name.toLowerCase()) > 1));
       const rows = [];
       const walk = (key, depth) => {
         for (const n of order(kids.get(key).sort((x, y) => x.name.toLowerCase().localeCompare(y.name.toLowerCase())))) {
-          rows.push(row(n, n.name.slice(n.name.lastIndexOf('/') + 1), depth));
-          walk(n.name.toLowerCase(), depth + 1);
+          const k = n.name.toLowerCase(), sub = under(k), open = sub > 0 && nsOpen.has(k);
+          rows.push(row(n, n.name.slice(n.name.lastIndexOf('/') + 1), depth, { sub, open }));
+          if (open) walk(k, depth + 1);
         }
       };
       walk('', 0);
-      shown = rows.length ? shown.filter((n) => kids.has(n.name.toLowerCase())) : [];
+      // the pages that show (Select all shown takes these); the namespaces' own lists live in kids
+      const seen = new Set();
+      const mark = (key) => { for (const c of kids.get(key)) { const k = c.name.toLowerCase(); seen.add(k); if (nsOpen.has(k)) mark(k); } };
+      mark('');
+      shown = shown.filter((n) => seen.has(n.name.toLowerCase()));
       ul.className = 'rows pg-rows tree-rows';
-      ul.innerHTML = rows.join('') || BRAND.empty('No namespaces yet: a page named like “Garden/notes” makes one.', 'li');
+      ul.innerHTML = rows.join('') || BRAND.empty('No namespaces yet: two pages named like “Garden/notes” and “Garden/ideas” make one.', 'li');
     } else {
       ul.className = 'rows pg-rows';
       ul.innerHTML = shown.map((n) => row(n)).join('') || BRAND.empty('No pages match.', 'li');
@@ -173,6 +190,15 @@ export async function pagesView(app, view) {
     }
   };
   ul.addEventListener('click', (e) => {
+    const f = e.target.closest('.ns-fold');
+    if (f) {
+      const k = f.dataset.ns;
+      if (nsOpen.has(k)) nsOpen.delete(k); else nsOpen.add(k);
+      store.set('nsOpen', [...nsOpen]);
+      draw();
+      ul.querySelector(`.ns-fold[data-ns="${CSS.escape(k)}"]`)?.focus(); // (the keyboard stays on it)
+      return;
+    }
     const a = e.target.closest('a[data-page]');
     if (!a) return;
     e.preventDefault();
@@ -255,6 +281,25 @@ export async function propsView(app, view, key) {
     return;
   }
   view.append(h('h1', 'page-title', esc(key)));
+  // Build 36 (he asked: author and authors as one): rename it in every note; a name already used
+  // merges the two (core app.rs rename_property)
+  const tools = h('div', 'btn-row');
+  tools.innerHTML = '<button class="btn ghost small" data-a="rename">Rename or merge…</button>';
+  view.append(tools);
+  tools.onclick = async (e) => {
+    if (!e.target.closest('[data-a="rename"]')) return;
+    const keys = (await call('props').catch(() => [])).map(([k]) => k).filter((k) => k !== key.toLowerCase());
+    const like = keys.filter((k) => k.startsWith(key.toLowerCase().slice(0, 4)) || key.toLowerCase().startsWith(k.slice(0, 4))).slice(0, 3);
+    const to = (await promptBox({ title: `Rename “${key}” in every note`,
+      body: `Type the name to use instead. If it's a name already used${like.length ? ` (such as ${like.map((k) => `<code>${esc(k)}</code>`).join(', ')})` : ''}, the two become one: a note with both keeps one line with both values.`,
+      value: like[0] || key, ok: 'Rename' }))?.trim();
+    if (!to || to.toLowerCase() === key.toLowerCase()) return;
+    let r;
+    try { r = await call('rename_property', { key, new_key: to }); } catch (err) { app.toast(String(err), 7000); return; }
+    for (const o of [...app.outlines]) await o.reload?.().catch(() => {}); // (pages open elsewhere show the new name)
+    app.toast(`Renamed in ${plural(r.files_changed, 'file')} (${plural(r.lines, 'line')})${r.skipped.length ? `; ${plural(r.skipped.length, 'file')} couldn’t be changed: ${r.skipped.join(', ')}` : ''}`, r.skipped.length ? 9000 : 3200);
+    app.go('props', to.toLowerCase());
+  };
   const input = h('input', 'filter');
   input.type = 'search';
   input.placeholder = `Only where ${key} contains…`;
@@ -291,7 +336,7 @@ export function taskRow(x) {
   const prio = x.priority ? `<span class="prio p${x.priority}">${x.priority}</span>` : '';
   return `<div class="todo-item${open ? '' : ' marker-done'}" data-page="${esc(x.page)}" data-line="${x.line}">
     <input type="checkbox" class="todo" ${open ? '' : 'checked'} aria-label="Done">
-    <div class="bc">${label}${prio}${r.html}${datesHtml(r.dates, open)}<div class="where">${pageLink(x.page)}</div></div></div>`;
+    <div class="bc">${label}${prio}${r.html}${datesHtml(r.dates, open)}<div class="where">${pageLink(x.page)}${x.under?.length ? ` <span class="under" title="Linked by the notes it sits under">· under ${x.under.map((n) => pageLink(n)).join(', ')}</span>` : ''}</div></div></div>`;
 }
 
 /** Clicks in a list of taskRow()s: the box ticks the to-do off (or back on) in its file, anything
@@ -349,7 +394,7 @@ export async function todosView(app, view) {
   const picks = new Map(); // small letters → 'in' | 'out'
   const namesOf = new Map(); // a to-do → its page names (small letters)
   const names = (x) => {
-    if (!namesOf.has(x)) namesOf.set(x, new Set([x.page, ...pagesIn(x.text)].map((n) => n.toLowerCase())));
+    if (!namesOf.has(x)) namesOf.set(x, new Set([x.page, ...pagesIn(x.text), ...(x.under || [])].map((n) => n.toLowerCase())));
     return namesOf.get(x);
   };
   const ofKind = (x) => (opt.kind === 'all' ? !closed(x) : GROUPS[x.marker] === opt.kind);
@@ -358,7 +403,7 @@ export async function todosView(app, view) {
     counts = new Map(); written = new Map();
     for (const x of tasks.filter(ofKind)) {
       for (const n of names(x)) counts.set(n, (counts.get(n) || 0) + 1);
-      for (const n of [x.page, ...pagesIn(x.text)]) if (!written.has(n.toLowerCase())) written.set(n.toLowerCase(), n);
+      for (const n of [x.page, ...pagesIn(x.text), ...(x.under || [])]) if (!written.has(n.toLowerCase())) written.set(n.toLowerCase(), n);
     }
     for (const n of [...picks.keys()]) if (!counts.has(n)) picks.delete(n);
   };
@@ -378,7 +423,7 @@ export async function todosView(app, view) {
     const t = num(today());
     const ins = [...picks].filter(([, p]) => p === 'in').map(([n]) => n), outs = [...picks].filter(([, p]) => p === 'out').map(([n]) => n);
     const list = tasks.filter((x) => ofKind(x)
-      && (!q || x.text.toLowerCase().includes(q) || x.page.toLowerCase().includes(q))
+      && (!q || x.text.toLowerCase().includes(q) || x.page.toLowerCase().includes(q) || (x.under || []).some((n) => n.toLowerCase().includes(q)))
       && ins.every((n) => names(x).has(n)) && !outs.some((n) => names(x).has(n)));
     let groups;
     if (opt.sort === 'due') {

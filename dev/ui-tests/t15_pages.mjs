@@ -65,6 +65,8 @@ await page.waitForSelector('.pg-rows li');
 check((await col('created').getAttribute('aria-pressed')) === 'true' && (await col('created').textContent()) === 'Created↑' && (await names())[0] === 'Made second', 'remembered after a reload (Created, oldest first)', await col('created').textContent());
 await page.locator('.chips [data-o="tree"]').click();
 await sleep(150);
+// (Build 36: namespaces start folded; unfold every level)
+for (let i = 0; i < 6 && await page.locator('.ns-fold[aria-expanded="false"]').count(); i++) { await page.locator('.ns-fold[aria-expanded="false"]').first().click(); await sleep(60); }
 { // Build 34: only pages in a namespace, and the columns still sort (each level on its own)
   const t = await page.locator('.tree-rows li').evaluateAll((lis) => lis.map((li) => li.style.getPropertyValue('--d') + ':' + li.querySelector('.pg-name').textContent.trim()));
   check(!(await col('created').isDisabled()) && (await col('created').getAttribute('aria-pressed')) === 'true', 'Namespaces: the columns still sort', t.join('|'));

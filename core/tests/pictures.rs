@@ -348,3 +348,41 @@ fn a_picture_in_the_bin_can_be_put_back() {
     }
     let _ = std::fs::remove_dir_all(&v);
 }
+
+#[test]
+fn links_to_pictures_that_arent_there() {
+    // Build 36: a picture the phone saved that never reached this copy of the folder
+    let v = tmp_vault("missing");
+    pic(&v, "assets/here.png", 10);
+    pic(&v, "assets/My pic.png", 10);
+    put(&v, "journals/2026_10_28.md", b"- capture ![shot](../assets/Screenshot_1793151566840.jpg){:height 236}\n- fine ![x](../assets/here.png)\n- spaces ![y](../assets/My%20pic.png)\n- an example `![z](../assets/gone.png)` in code\n");
+    put(&v, "pages/A___B.md", b"- ![w](../../assets/also-gone.png) and again ![w](../../assets/also-gone.png)\n");
+    let r = check_vault(&v).unwrap();
+    assert_eq!(
+        r.missing_pictures,
+        vec![("A/B".to_string(), "also-gone.png".to_string()), ("Oct 28th, 2026".to_string(), "Screenshot_1793151566840.jpg".to_string())]
+    );
+    let _ = std::fs::remove_dir_all(&v);
+}
+
+#[test]
+fn missing_pictures_edge_cases() {
+    let v = tmp_vault("missing2");
+    pic(&v, "assets/sub/inner.png", 10);
+    pic(&v, "assets/a+b.png", 10);
+    put(&v, "assets/doc.pdf", b"%PDF");
+    put(
+        &v,
+        "pages/Mixed.md",
+        // present: a subfolder, a "+" in the name, a #page after a PDF, a ?query; missing: another
+        // subfolder file, a file link (not a picture), an HTML img; never: an outside link, a "..", a
+        // URL that only mentions assets
+        b"- ![i](../assets/sub/inner.png) ![p](../assets/a+b.png) [pdf](../assets/doc.pdf#page=2) ![q](../assets/a+b.png?v=1)\n- ![g](../assets/sub/gone.png) [f](../assets/report.docx) <img src=\"../assets/html-gone.png\">\n- ![o](https://example.com/../assets/web.png) ![e](../assets/../escape.png)\n",
+    );
+    // old copies and the bin aren't notes
+    put(&v, "logseq/bak/pages/Mixed/2026.md", b"- ![b](../assets/in-a-backup.png)\n");
+    let r = check_vault(&v).unwrap();
+    let files: Vec<&str> = r.missing_pictures.iter().map(|(_, f)| f.as_str()).collect();
+    assert_eq!(files, vec!["html-gone.png", "report.docx", "sub/gone.png"], "{:?}", r.missing_pictures);
+    let _ = std::fs::remove_dir_all(&v);
+}
