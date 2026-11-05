@@ -1152,6 +1152,10 @@ window can't be sent to another page.
 
 ## Build & test
 - Here: `cargo test -p outline_core`; speed: `cargo run --release -p outline_core --example bench`.
+  CI (build.yml `ui-tests`, from Build 37): all of them on every build, in four groups on four machines
+  (Playwright 1.63.0 installed into /opt/npm-tools there, Pillow from apt); main signs only after all four
+  pass, then the `release` environment waits 30 minutes (no reviewer since Nov 5, 2026: cancel the run to
+  stop a release). A new test goes into run.sh's list AND one of the four groups.
   UI: `dev/ui-tests/run.sh [test…]` (Playwright against the dev server, fresh sample vault per test,
   screenshots in `$UI_TEST_DIR/shots`; Playwright import `/opt/npm-tools/node_modules/playwright/index.mjs`).
   Run them all after UI changes; they catch CSP blocks too. Two copies of the project (git worktrees)
