@@ -1151,9 +1151,62 @@ class App {
     const key = pv.info.name.toLowerCase() + '/';
     const kids = this.names.filter((n) => n.name.toLowerCase().startsWith(key) && (n.exists || n.refs));
     if (kids.length && zoomLine === null) {
+      // Build 37 (he asked, Nov 6): sorted like Linked references (the same Sort button and menu, kept per
+      // page under "ns:<page>"); each level of the tree sorts on its own, so a sub-subpage stays under its
+      // parent. A parent that's only a name in the path (no file) sorts by its newest subpage.
       const sec = h('section', 'sec');
-      sec.innerHTML = `<h2 class="sec-h">Pages in ${esc(pv.info.name)} <span class="n">${kids.length}</span></h2>
-        <ul class="tree">${kids.map((n) => { const rest = n.name.slice(key.length); const depth = rest.split('/').length - 1; return `<li style="--d:${depth}">${pageLink(n.name, rest.split('/').pop())}</li>`; }).join('')}</ul>`;
+      const host = 'ns:' + pv.info.name;
+      sec.innerHTML = `<h2 class="sec-h has-acts"><span class="sec-t">Pages in ${esc(pv.info.name)} <span class="n">${kids.length}</span></span><span class="ref-acts"><button type="button" class="ref-tbtn ref-s"></button></span></h2><ul class="tree"></ul>`;
+      const sortBtn = $('.ref-s', sec), ul = $('.tree', sec);
+      const draw = () => {
+        const sort = refPrefs(host).sort, [by, way] = REF_SORTS[sort];
+        // the tree: each subpage under its parent path ("a/b/c" under "a/b")
+        const byName = new Map(kids.map((n) => [n.name.toLowerCase(), n]));
+        const childrenOf = new Map(); // parent path (small letters) → its direct children's paths
+        for (const n of kids) {
+          const parts = n.name.slice(key.length).split('/');
+          for (let d = 0; d < parts.length; d++) {
+            const parent = (key + parts.slice(0, d).join('/')).replace(/\/$/, '').toLowerCase();
+            const me = (key + parts.slice(0, d + 1).join('/')).toLowerCase();
+            if (!childrenOf.has(parent)) childrenOf.set(parent, new Set());
+            childrenOf.get(parent).add(me);
+          }
+        }
+        const newest = new Map(); // a path → its own time, or its newest subpage's
+        const timeOf = (p) => {
+          if (newest.has(p)) return newest.get(p);
+          let t = byName.get(p)?.[by] || 0;
+          for (const c of childrenOf.get(p) || []) t = Math.max(t, timeOf(c));
+          newest.set(p, t);
+          return t;
+        };
+        const label = (p) => byName.get(p)?.name.split('/').pop() ?? p.split('/').pop();
+        const rows = [];
+        const walk = (p, depth) => {
+          const cs = [...(childrenOf.get(p) || [])].sort((a, b) => by === 'name'
+            ? way * label(a).localeCompare(label(b), undefined, { sensitivity: 'base', numeric: true })
+            : way * (timeOf(a) - timeOf(b)) || label(a).localeCompare(label(b)));
+          for (const c of cs) {
+            const n = byName.get(c);
+            rows.push(`<li style="--d:${depth}">${n ? pageLink(n.name, label(c)) : esc(label(c))}</li>`);
+            walk(c, depth + 1);
+          }
+        };
+        walk(key.replace(/\/$/, '').toLowerCase(), 0);
+        ul.innerHTML = rows.join('');
+        sortBtn.innerHTML = by === 'name' ? ICON.sortName : ICON.sortChanged;
+        sortBtn.dataset.sort = sort;
+        const t = `Sorted: ${REF_SORTS[sort][2].toLowerCase()} (click to change)`;
+        sortBtn.title = t; sortBtn.setAttribute('aria-label', t);
+      };
+      sortBtn.onclick = () => {
+        const now = refPrefs(host).sort;
+        const item = (k, label) => ({ label, hint: k === now ? '✓' : '', run: () => { setRefPrefs(host, { ...refPrefs(host), sort: k }); draw(); } });
+        menu(sortBtn, [{ head: 'Last changed' }, item('changed', 'Newest first'), item('changed-old', 'Oldest first'),
+          { head: 'Name' }, item('name', 'A to Z'), item('name-za', 'Z to A'),
+          { head: 'Date created' }, item('created', 'Newest first'), item('created-old', 'Oldest first')], { cls: 'sort-menu' });
+      };
+      draw();
       view.append(sec);
     }
     if (pv.tagged.length) {
