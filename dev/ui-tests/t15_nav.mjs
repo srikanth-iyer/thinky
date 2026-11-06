@@ -31,7 +31,8 @@ const allErrors = [];
 const hashNow = () => page.evaluate(() => decodeURIComponent(location.hash));
 const box = (sel) => page.evaluate((s) => { const r = document.querySelector(s)?.getBoundingClientRect(); return r ? { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height), r: Math.round(r.right), b: Math.round(r.bottom) } : null; }, sel);
 /** The strip's buttons, each with where it is across the window. */
-const stripXs = () => page.$$eval('#histbar button', (bs) => bs.filter((b) => b.offsetParent).map((b) => `${b.dataset.a || b.dataset.h || 'tab'}@${Math.round(b.getBoundingClientRect().left)}`).join(' '));
+// (not the tabs' "+": since Build 37 it always shows, just right of the sidebar, so it moves with its edge)
+const stripXs = () => page.$$eval('#histbar button:not(.tab-new)', (bs) => bs.filter((b) => b.offsetParent).map((b) => `${b.dataset.a || b.dataset.h || 'tab'}@${Math.round(b.getBoundingClientRect().left)}`).join(' '));
 const menuItems = () => page.$$eval('.pop.menu button', (bs) => bs.map((b) => [...b.childNodes].filter((n) => !n.classList?.contains('mhint')).map((n) => n.textContent).join('').trim()));
 const pickMenu = (label) => page.locator('.pop.menu button', { hasText: label }).click();
 /** Back to one side with one tab on the Journals list. */
@@ -48,6 +49,10 @@ const icon = await page.evaluate(() => Math.round(document.querySelector('#histb
 const steps = gaps.slice(1).map((x, k) => x - gaps[k]);
 check(icon >= 22 && Math.max(...steps) - Math.min(...steps) <= 1, 'big icons, evenly spaced', `${gaps} icon ${icon}`);
 const hb = await box('#histbar'), sd = await box('#side');
+{ // Build 37: the "+" just right of the sidebar, at the notes' top-left corner
+  const plus = await box('#histbar .tab-new[data-p="0"]');
+  check(plus && plus.x === sd.r + 6, 'the tabs\u2019 "+" starts just right of the sidebar', JSON.stringify({ plus, side: sd.r }));
+}
 check(hb.x === 0 && hb.w === 1280 && sd.y >= hb.b - 1, 'the strip runs across the whole window, the sidebar below it', JSON.stringify({ hb, sd }));
 await page.locator('#histbar [data-a="search"]').click();
 await sleep(200);
