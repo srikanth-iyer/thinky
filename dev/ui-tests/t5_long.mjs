@@ -39,11 +39,22 @@ await page.evaluate(() => { location.hash = '#/pages'; });
 await sleep(500);
 await page.evaluate(() => { location.hash = '#/page/Big%20page'; });
 await page.waitForFunction(() => document.querySelector('.page-head .page-title')?.textContent === 'Big page' && document.querySelectorAll('.outline .blk').length >= 3000, null, { timeout: 30000 });
-await sleep(500);
-// (a slow machine may still be drawing the page when the click lands: click again until it opens)
+// (its last note brought into view first: rows far below may be drawn only when near the screen;
+// a slow machine may still be drawing the page when the click lands: tried again, and if it still
+// fails, what the page showed is printed)
 for (let k = 0; ; k++) {
-  await page.locator('.outline .blk > .bc', { hasText: 'block 2999 ' }).first().click();
-  try { await page.waitForSelector('textarea.ed', { timeout: 5000 }); break; } catch (e) { if (k === 2) throw e; }
+  await page.evaluate(() => [...document.querySelectorAll('.outline .blk')].at(-1)?.scrollIntoView({ block: 'center' }));
+  await sleep(500);
+  try {
+    await page.locator('.outline .blk > .bc', { hasText: 'block 2999 ' }).first().click({ timeout: 10000 });
+    await page.waitForSelector('textarea.ed', { timeout: 5000 });
+    break;
+  } catch (e) {
+    if (k === 2) {
+      console.log('  page then:', JSON.stringify(await page.evaluate(() => ({ hash: location.hash, title: document.querySelector('.page-head .page-title')?.textContent, rows: document.querySelectorAll('.outline .blk').length, last: [...document.querySelectorAll('.outline .blk > .bc')].at(-1)?.textContent.slice(0, 40) }))));
+      throw e;
+    }
+  }
 }
 const lag = await page.evaluate(async () => {
   const ta = document.querySelector('textarea.ed');
