@@ -1112,6 +1112,11 @@ export class Outline {
     items.push({ id: 'copy', label: 'Copy' }, { id: 'copytext', label: 'Copy as text', hint: 'plain Markdown' });
     // a leanoutliner://note/<id> link that opens the app right at this note (it gets an id:: if needed)
     if (!inSel && (rw || idIn(t0))) items.push({ id: 'link', label: 'Copy link to this note' });
+    // Build 37 (he asked, Nov 5): what Ctrl+click / Shift+click on a dot already do, in the menu too
+    // (laptop: phones and narrow windows have no tabs)
+    if (!inSel && this.app.tabs?.on && i !== this.root) {
+      items.push({ id: 'opentab', label: 'Open in a new tab', hint: 'Ctrl+click' }, { id: 'openside', label: 'Open to the side', hint: 'Shift+click' });
+    }
     // Build 36 (he asked): the properties Logseq keeps for itself (id::, collapsed::…), never shown on the page
     const hid = inSel ? [] : hiddenProps(this.blocks[i].text);
     if (hid.length) items.push({ id: 'hidden', label: 'Show hidden properties', hint: String(hid.length) });
@@ -1157,6 +1162,11 @@ export class Outline {
       case 'copy': this.copyText(this.blocksText(lo, hi)); return;
       case 'copytext': this.copyText(this.blocksText(lo, hi, true), 'Copied as text'); return;
       case 'link': this.copyNoteLink(i); return;
+      case 'opentab': case 'openside':
+        this.flush();
+        this.app.tabs.how = v === 'opentab' ? 'tab' : 'side';
+        this.app.go('zoom', this.name, { line: this.lineOf(i) });
+        return;
       case 'hidden': this.showHidden(i); return;
       case 'cut': this.cutNotes(lo, hi).then((cut) => { if (cut) this.undoToast(`Cut ${what}.`); }); return;
       case 'delete': if (this.removeNotes(lo, hi)) this.undoToast(`Deleted ${what}.`); return;

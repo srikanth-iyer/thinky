@@ -56,6 +56,34 @@ await sleep(400);
 const tagRows = await page.locator('main').innerText();
 check(/Authors/.test(tagRows) && !/(^|\n)\s*author\b/.test(tagRows), 'only "Authors" is listed, not "author" as well', tagRows.slice(0, 400));
 
+console.log('Tabs: the "+" always shows; the dot menu opens a note in a new tab or to the side');
+await go(page, '#/page/Garden');
+await page.waitForSelector('.outline .blk');
+const plus = page.locator('#histbar .tab-new[data-p="0"]');
+check(await plus.isVisible() && !(await page.locator('#histbar .tabs[data-p="0"]').isVisible()), 'with one tab: the "+" shows, no tabs yet');
+const plusBox = await plus.boundingBox(), sideBox = await page.locator('#side').boundingBox();
+check(plusBox && sideBox && plusBox.x >= sideBox.x + sideBox.width - 2, 'the "+" sits right of the sidebar', JSON.stringify([plusBox, sideBox]));
+await plus.click();
+await sleep(300);
+check(await page.locator('#histbar .tabs[data-p="0"] .tab').count() === 2, 'a click opens a second tab; the tabs show');
+const plus2 = await plus.boundingBox(), lastTab = await page.locator('#histbar .tabs[data-p="0"] .tab').last().boundingBox();
+check(plus2.x >= lastTab.x + lastTab.width - 2, 'the "+" moves to after the last tab', JSON.stringify([plus2, lastTab]));
+// back to Garden in the first tab; then the dot menu on a note
+await page.locator('#histbar .tabs[data-p="0"] .tab').first().click();
+await sleep(300);
+await page.locator('.outline .blk > .bul').first().click({ button: 'right' });
+await page.waitForSelector('.note-menu');
+await page.locator('.note-menu .nm-item', { hasText: 'Open in a new tab' }).click();
+await sleep(400);
+check(await page.locator('#histbar .tabs[data-p="0"] .tab').count() === 3 && /zoom/.test(await page.evaluate(() => location.hash)), '"Open in a new tab": a third tab, on that note', await page.evaluate(() => location.hash));
+await page.locator('#histbar .tabs[data-p="0"] .tab').first().click();
+await sleep(300);
+await page.locator('.outline .blk > .bul').first().click({ button: 'right' });
+await page.waitForSelector('.note-menu');
+await page.locator('.note-menu .nm-item', { hasText: 'Open to the side' }).click();
+await sleep(400);
+check(await page.locator('#histbar .tabs[data-p="1"]').isVisible(), '"Open to the side": a second side opens');
+
 check(!errors.length, 'no script errors', errors.join('\n'));
 await browser.close();
 process.exit(failures() ? 1 : 0);

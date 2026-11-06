@@ -364,8 +364,11 @@ export class Tabs {
     const had = document.activeElement?.closest?.('#histbar .tab'); // (the keyboard was on a tab: it stays on the strip)
     document.querySelectorAll('#histbar .tabs').forEach((box) => {
       const p = this.panes[+box.dataset.p], plus = box.nextElementSibling;
-      if ((!many || !p) && box.hidden && !box.firstChild) return; // (one tab: nothing to show, as before)
-      box.hidden = plus.hidden = !many || !p;
+      // Build 37 (he asked, Nov 5): the "+" always shows (as in browsers), just right of the sidebar
+      // with one tab, after the last tab with several; the tabs themselves only when there are several
+      plus.hidden = !p || !this.on; // (not on phones or in narrow windows, where there are no tabs)
+      if ((!many || !p) && box.hidden && !box.firstChild) return; // (one tab: no tabs to show, as before)
+      box.hidden = !many || !p;
       box.innerHTML = box.hidden ? '' : p.tabs.map((t, k) => this.tabHtml(t, k, k === p.cur, p.el.id)).join('');
       const cur = box.querySelector('.tab.cur'); // very many tabs scroll sideways: the shown one stays in sight
       if (!cur) return;
@@ -374,6 +377,32 @@ export class Tabs {
       else if (c.right > b.right) box.scrollLeft += c.right - b.right;
     });
     if (had && !had.isConnected) document.querySelector(`#histbar .tabs[data-p="${this.act}"] .tab.cur`)?.focus({ preventScroll: true });
+    this.alignStrip();
+    // (the strip may have moved right with the sidebar's edge: the shown tab is kept in sight again)
+    document.querySelectorAll('#histbar .tabs').forEach((box) => {
+      const cur = box.hidden ? null : box.querySelector('.tab.cur');
+      if (!cur) return;
+      const b = box.getBoundingClientRect(), c = cur.getBoundingClientRect();
+      if (c.left < b.left) box.scrollLeft -= b.left - c.left;
+      else if (c.right > b.right) box.scrollLeft += c.right - b.right;
+    });
+  }
+  /** Build 37 (he asked, Nov 5): the left side's tabs (or its "+" alone) start just right of the
+   *  sidebar, at the page's top-left corner, wherever the sidebar's edge is; with the sidebar hidden,
+   *  right after Back and Forward as before. Done again when the sidebar or the window changes size. */
+  alignStrip() {
+    const box = document.querySelector('#histbar .tabs[data-p="0"]'), plus = box?.nextElementSibling;
+    if (!box || !plus) return;
+    const first = !box.hidden ? box : !plus.hidden ? plus : null;
+    for (const el of [box, plus]) if (el !== first) el.style.marginLeft = '';
+    if (!first) return;
+    const side = document.getElementById('side');
+    const shown = side && !document.body.classList.contains('side-hidden') && side.getBoundingClientRect().width > 0;
+    first.style.marginLeft = '';
+    if (!shown || !this.on) return;
+    const edge = side.getBoundingClientRect().right, left = first.getBoundingClientRect().left;
+    const base = parseFloat(getComputedStyle(first).marginLeft) || 0;
+    if (left < edge + 6) first.style.marginLeft = `${base + edge + 6 - left}px`;
   }
   /** A page's name (as the page writes it), its icon:: emoji or a small picture, for a tab. */
   label(place) {
@@ -410,6 +439,12 @@ export class Tabs {
   // ----- mouse and keys -----
   bind() {
     const hb = document.getElementById('histbar');
+    // the strip follows the sidebar's edge (alignStrip): its width dragged, shown or hidden, the window resized
+    const side = document.getElementById('side');
+    if (side && typeof ResizeObserver === 'function') new ResizeObserver(() => this.alignStrip()).observe(side);
+    side?.addEventListener('transitionend', () => this.alignStrip());
+    window.addEventListener('resize', () => this.alignStrip());
+    new MutationObserver(() => this.alignStrip()).observe(document.body, { attributes: true, attributeFilter: ['class'] });
     hb.addEventListener('pointerdown', (e) => {
       // a side's part of the strip (its Home/Back/Forward, tabs, "+") makes that side the active one;
       // the keyboard leaves the other side (as a click on this side's page would take it)

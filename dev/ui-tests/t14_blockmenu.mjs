@@ -49,7 +49,7 @@ const m1 = await page.evaluate(() => {
   };
 });
 check(m1.role === 'menu' && m1.sw.join() === 'yellow,red,pink,green,blue,purple,gray,' && m1.heads.join() === '1,2,3,4,5,6,auto,0', 'a row of colours (Logseq’s, and none) and a row of headings (H1–H6, auto, none)', JSON.stringify(m1));
-check(m1.items.join('|') === 'Select|Cut|Delete|Copy|Copy as text|Copy link to this note|Numbered list|Next to-do state', 'then Select, Cut, Delete, Copy, Copy as text, Copy link to this note, Numbered list, Next to-do state', m1.items.join('|'));
+check(m1.items.join('|') === 'Select|Cut|Delete|Copy|Copy as text|Copy link to this note|Open in a new tab|Open to the side|Numbered list|Next to-do state', 'then Select, Cut, Delete, Copy, Copy as text, Copy link to this note, Open in a new tab, Open to the side (Build 37), Numbered list, Next to-do state', m1.items.join('|'));
 check(m1.focus && m1.named && m1.marked.join() === 'gamma', 'real buttons with names; the keyboard is in the menu; the note it’s for is marked', JSON.stringify(m1));
 await page.keyboard.press('Escape');
 await sleep(200);
