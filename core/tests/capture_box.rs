@@ -777,3 +777,27 @@ fn small_buttons_sit_right_of_the_text() {
     assert_eq!(big.tools[2].r, 960 - 27);
     assert_eq!(big.tools[0].h(), 33);
 }
+
+/// Build 37: Android's "Add to thinky" (words selected in another app) adds through
+/// capture_to_usual after clip::defuse (src-tauri android_capture.rs, "plain"): the words land in
+/// the usual place as plain words, never a link, tag, property or block reference.
+#[test]
+fn selected_words_land_as_plain_words() {
+    let v = std::env::temp_dir().join(format!("lean-selected-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&v);
+    for d in ["pages", "journals", "logseq"] {
+        std::fs::create_dir_all(v.join(d)).unwrap();
+    }
+    // (his settings: quick captures go to today's journal; with others they go where those say)
+    std::fs::write(v.join("logseq/config.edn"), "{:quick-capture-options {:insert-today? true}}").unwrap();
+    let words = "see [[Some Page]] and #tag, ((ref)) or key:: value";
+    let rel = outline_core::capture::capture_to_usual(&v, &outline_core::clip::defuse(words), "", false, (2026, 11, 6), "21:10").unwrap();
+    let text = std::fs::read_to_string(v.join(&rel)).unwrap();
+    assert!(rel.starts_with("journals/"), "today's journal: {rel}");
+    assert!(!text.contains("[[Some Page]]") && !text.contains("#tag") && !text.contains("((ref))") && !text.contains("key::"), "{text}");
+    assert!(text.replace('\u{200b}', "").contains(words), "{text}");
+    let mut vault = outline_core::Vault::new();
+    vault.upsert(&rel, &text);
+    assert!(vault.linked_refs("Some Page").is_empty() && vault.pages_tagged("tag").is_empty(), "no link or tag made");
+    let _ = std::fs::remove_dir_all(&v);
+}

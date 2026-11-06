@@ -365,6 +365,29 @@ fn links_to_pictures_that_arent_there() {
     let _ = std::fs::remove_dir_all(&v);
 }
 
+/// Build 37 (found Nov 6 in his vault): names with brackets, apostrophes or "#" were cut short at
+/// that character and listed as missing although the file was there.
+#[test]
+fn missing_pictures_names_with_brackets_quotes_and_hashes() {
+    let v = tmp_vault("missing3");
+    put(&v, "assets/Book_(Agents)_Title_(2008)_1706949893435_0.pdf", b"%PDF");
+    put(&v, "assets/Guide_You'll_Ever_Need_(2021)_0.epub", b"x");
+    put(&v, "assets/(final version)intro assignment #1.pdf", b"%PDF");
+    put(&v, "assets/Paper_(2003)._1678798465208_0.pdf", b"%PDF");
+    pic(&v, "assets/shot (1).png", 10);
+    put(
+        &v,
+        "pages/hls__Book.md",
+        // a file:: property, a Markdown link, a picture with a size after it, the same through
+        // "../../", an HTML img with a quote, and one that really is missing (brackets and all)
+        b"file:: [Book.pdf](../assets/Book_(Agents)_Title_(2008)_1706949893435_0.pdf)\n\n- [g](../assets/Guide_You'll_Ever_Need_(2021)_0.epub) and [a](../assets/(final version)intro assignment #1.pdf)\n- ![s](../assets/shot (1).png){:height 200} ![s2](../../assets/Paper_(2003)._1678798465208_0.pdf)\n- <img src=\"../assets/shot (1).png\"> ![gone](../assets/Lost_(1999)_pic.png)\n",
+    );
+    let r = check_vault(&v).unwrap();
+    let files: Vec<&str> = r.missing_pictures.iter().map(|(_, f)| f.as_str()).collect();
+    assert_eq!(files, vec!["Lost_(1999)_pic.png"], "{:?}", r.missing_pictures);
+    let _ = std::fs::remove_dir_all(&v);
+}
+
 #[test]
 fn missing_pictures_edge_cases() {
     let v = tmp_vault("missing2");

@@ -175,6 +175,37 @@ whole `key:: value` lines, the first line too, as Logseq reads them; a note with
 into its existing line, the file's shape kept; id, collapsed, title, alias, heading, background-color
 refused). Check this folder: `missing_pictures` (pictures.rs; `…/assets/<name>` links in pages and
 journals whose file isn't there; code spans skipped) → Settings' "Missing pictures" (`missingBox`).
+Build 37 (the maintainer's notes of Nov 5 and 6; tested by t21_build37, t14_blockmenu, t13_tabs, t19_build34,
+t20_build36, t8_phone, core tests/backup.rs, tests/folder_settings.rs, tests/pictures.rs
+`missing_pictures_names_with_brackets_quotes_and_hashes`, tests/vault.rs `tags_merge_with_their_aliases`,
+tests/capture_box.rs `selected_words_land_as_plain_words`): tabs.js `paint` shows the left side's "+" whenever
+tabs are on (laptop), `alignStrip` starts it (or the tabs) at the sidebar's right edge (ResizeObserver on #side,
+body class changes, resize). Note menu: `opentab`/`openside` (editor.js, laptop only) set `tabs.how` then
+`go('zoom')`. Filter buttons: `ui/chips.js` `makeChips` (picks Map in/out; click toggles "in", right-click /
+500 ms hold / Shift+F10 toggles "out"; chosen first with `.chip-x`; two rows then "N more" by offsetTop; `find`
+narrows by name; `passes(names)`), used by `App.refTools` (counts recounted from the typed words) and
+`todosView` (`.todo-bar`: kinds left, `.seg.todo-order` right with ⇅; `.todo-f` funnel → `.todo-panel` with
+`.chip-find-in`; closing clears the picks; `todoOpts.panel` remembered). "Pages in …" (app.js page view):
+`draw` builds a tree per level, sorted with `REF_SORTS` (prefs host `ns:<page>`; a parent without a file sorts
+by its newest subpage and isn't a link). "Pages tagged with …": `.tagged-sec`, `foldableRefs` host
+`tagged:<page>`, filter box, sort menu, names `text-overflow: ellipsis`. Tags list: vault.rs `all_tags` keys by
+`resolve`, shown under the page's own name. Property display: `logseq/thinky.json` ("propertyDisplay": {key:
+{show: show|quiet|icon|hidden, icon, mark}}) via `App::folder_settings`/`set_folder_setting` (re-read before a
+write; a broken file is never overwritten); render.js `setPropRules` (with config.rs `hidden_props` from
+`:block-hidden-properties`), `hiddenKey` includes rule-hidden and config-hidden keys (`builtinHidden` = the fixed
+list), `propsHtml` (quiet row, `.prop-icon` with title), renderBlock's `mark` → editor `div.dataset.mark`
+(`--mk` = the look's `--hl-<colour>`); Settings → Look `propDisplayCard`; `App.loadFolderSettings` on open and
+Refresh. Backups: core app/backup.rs (`backup_zip`: stored zip written by hand (CRC32, no compression,
+under 4 GB), `thinky-backups.json` holds the fingerprint and file list, keep the newest N; `backup_git`: mirror
+into a git clone outside the notes folder, add/commit/push via the `git` program, a failed push is retried next
+time; both refuse a folder inside the notes folder and a notes folder with no notes; ≥ 20 (or a tenth) gone →
+warning; `find_in_backup`/`restore_from_backup` with create_new), dispatch `backup_now`/`backup_find`/
+`backup_restore`; UI `App.backupNow`/`backupIfDue` (hourly check, day/week, localStorage `backup` per device),
+Settings → Notes `backupCard` (not on Android), Missing pictures' "Found in your backup: restore". Android:
+`SelectionCaptureActivity.kt` (PROCESS_TEXT, translucent, finishes at once; `LeanCore.addSelected` →
+android_capture.rs `plain` → `clip::defuse` → `capture_to_usual`), manifest entry in android_overlay.py,
+android_test.sh step 5b. Missing pictures: pictures.rs `link_end` ends a link by what opened it (a Markdown
+`(…)` at its own closing bracket, quotes, `<…>`, `[…]`), `#…`/`?…` tried off when the full name isn't there.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 
@@ -1152,6 +1183,10 @@ window can't be sent to another page.
 
 ## Build & test
 - Here: `cargo test -p outline_core`; speed: `cargo run --release -p outline_core --example bench`.
+  CI (build.yml `ui-tests`, from Build 37): all of them on every build, in four groups on four machines
+  (Playwright 1.63.0 installed into /opt/npm-tools there, Pillow from apt); main signs only after all four
+  pass, then the `release` environment waits 30 minutes (no reviewer since Nov 5, 2026: cancel the run to
+  stop a release). A new test goes into run.sh's list AND one of the four groups.
   UI: `dev/ui-tests/run.sh [test…]` (Playwright against the dev server, fresh sample vault per test,
   screenshots in `$UI_TEST_DIR/shots`; Playwright import `/opt/npm-tools/node_modules/playwright/index.mjs`).
   Run them all after UI changes; they catch CSP blocks too. Two copies of the project (git worktrees)

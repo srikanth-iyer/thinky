@@ -35,7 +35,11 @@ for (const [name, hash, title] of [['3,000 blocks', '#/page/Big%20page', 'Big pa
 // typing on the long page stays quick
 await page.evaluate(() => { location.hash = '#/page/Big%20page'; });
 await sleep(1500);
-await page.locator('.outline .blk > .bc', { hasText: 'block 2999 ' }).first().click();
+// (a slow machine may still be drawing the page when the click lands: click again until it opens)
+for (let k = 0; ; k++) {
+  await page.locator('.outline .blk > .bc', { hasText: 'block 2999 ' }).first().click();
+  try { await page.waitForSelector('textarea.ed', { timeout: 5000 }); break; } catch (e) { if (k === 2) throw e; }
+}
 const lag = await page.evaluate(async () => {
   const ta = document.querySelector('textarea.ed');
   const t0 = performance.now();

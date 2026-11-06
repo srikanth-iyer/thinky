@@ -4,7 +4,7 @@
 
 import { call, today, nowTime, store, isApp, isAndroid, listen, pageLinkUrl } from './api.js';
 import { Outline, EDGE, PIN_H, findAgain, caretAgain, foldedIn, lineLook } from './editor.js';
-import { renderBlock, propsHtml, visibleProps, esc, pagesIn } from './render.js';
+import { renderBlock, propsHtml, visibleProps, esc, pagesIn, setPropRules } from './render.js';
 import { Suggest, Preview, menu, confirmBox, promptBox, pickDate, place } from './popups.js';
 import { pagesView, tagsView, propsView, todosView, taskRow, taskClicks, taskDay, byDay, num } from './views.js';
 import { settingsView } from './settings.js';
@@ -15,6 +15,7 @@ import { Tabs, placeOf, parsePlace, sideNav } from './tabs.js';
 import { openHistory } from './history.js';
 import { SearchBox } from './search.js';
 import { initFileDrop } from './filedrop.js';
+import { makeChips } from './chips.js';
 
 // Looks: name and one-line note for the picker; the look itself lives in skins.css.
 export const SKINS = [
@@ -1151,15 +1152,111 @@ class App {
     const key = pv.info.name.toLowerCase() + '/';
     const kids = this.names.filter((n) => n.name.toLowerCase().startsWith(key) && (n.exists || n.refs));
     if (kids.length && zoomLine === null) {
+      // Build 37 (he asked, Nov 6): sorted like Linked references (the same Sort button and menu, kept per
+      // page under "ns:<page>"); each level of the tree sorts on its own, so a sub-subpage stays under its
+      // parent. A parent that's only a name in the path (no file) sorts by its newest subpage.
       const sec = h('section', 'sec');
-      sec.innerHTML = `<h2 class="sec-h">Pages in ${esc(pv.info.name)} <span class="n">${kids.length}</span></h2>
-        <ul class="tree">${kids.map((n) => { const rest = n.name.slice(key.length); const depth = rest.split('/').length - 1; return `<li style="--d:${depth}">${pageLink(n.name, rest.split('/').pop())}</li>`; }).join('')}</ul>`;
+      const host = 'ns:' + pv.info.name;
+      sec.innerHTML = `<h2 class="sec-h has-acts"><span class="sec-t">Pages in ${esc(pv.info.name)} <span class="n">${kids.length}</span></span><span class="ref-acts"><button type="button" class="ref-tbtn ref-s"></button></span></h2><ul class="tree"></ul>`;
+      const sortBtn = $('.ref-s', sec), ul = $('.tree', sec);
+      const draw = () => {
+        const sort = refPrefs(host).sort, [by, way] = REF_SORTS[sort];
+        // the tree: each subpage under its parent path ("a/b/c" under "a/b")
+        const byName = new Map(kids.map((n) => [n.name.toLowerCase(), n]));
+        const childrenOf = new Map(); // parent path (small letters) → its direct children's paths
+        for (const n of kids) {
+          const parts = n.name.slice(key.length).split('/');
+          for (let d = 0; d < parts.length; d++) {
+            const parent = (key + parts.slice(0, d).join('/')).replace(/\/$/, '').toLowerCase();
+            const me = (key + parts.slice(0, d + 1).join('/')).toLowerCase();
+            if (!childrenOf.has(parent)) childrenOf.set(parent, new Set());
+            childrenOf.get(parent).add(me);
+          }
+        }
+        const newest = new Map(); // a path → its own time, or its newest subpage's
+        const timeOf = (p) => {
+          if (newest.has(p)) return newest.get(p);
+          let t = byName.get(p)?.[by] || 0;
+          for (const c of childrenOf.get(p) || []) t = Math.max(t, timeOf(c));
+          newest.set(p, t);
+          return t;
+        };
+        const label = (p) => byName.get(p)?.name.split('/').pop() ?? p.split('/').pop();
+        const rows = [];
+        const walk = (p, depth) => {
+          const cs = [...(childrenOf.get(p) || [])].sort((a, b) => by === 'name'
+            ? way * label(a).localeCompare(label(b), undefined, { sensitivity: 'base', numeric: true })
+            : way * (timeOf(a) - timeOf(b)) || label(a).localeCompare(label(b)));
+          for (const c of cs) {
+            const n = byName.get(c);
+            rows.push(`<li style="--d:${depth}">${n ? pageLink(n.name, label(c)) : esc(label(c))}</li>`);
+            walk(c, depth + 1);
+          }
+        };
+        walk(key.replace(/\/$/, '').toLowerCase(), 0);
+        ul.innerHTML = rows.join('');
+        sortBtn.innerHTML = by === 'name' ? ICON.sortName : ICON.sortChanged;
+        sortBtn.dataset.sort = sort;
+        const t = `Sorted: ${REF_SORTS[sort][2].toLowerCase()} (click to change)`;
+        sortBtn.title = t; sortBtn.setAttribute('aria-label', t);
+      };
+      sortBtn.onclick = () => {
+        const now = refPrefs(host).sort;
+        const item = (k, label) => ({ label, hint: k === now ? '✓' : '', run: () => { setRefPrefs(host, { ...refPrefs(host), sort: k }); draw(); } });
+        menu(sortBtn, [{ head: 'Last changed' }, item('changed', 'Newest first'), item('changed-old', 'Oldest first'),
+          { head: 'Name' }, item('name', 'A to Z'), item('name-za', 'Z to A'),
+          { head: 'Date created' }, item('created', 'Newest first'), item('created-old', 'Oldest first')], { cls: 'sort-menu' });
+      };
+      draw();
       view.append(sec);
     }
     if (pv.tagged.length) {
-      const sec = h('section', 'sec');
-      sec.innerHTML = `<h2 class="sec-h">Pages tagged with ${esc(pv.info.name)} <span class="n">${pv.tagged.length}</span></h2>
-        <div class="tagged">${pv.tagged.map((n) => `<a class="tag" href="#" data-page="${esc(n)}">${esc(n)}</a>`).join('')}</div>`;
+      // Build 37 (he asked, Nov 6): folds like Linked references (remembered, under "tagged:<page>");
+      // a Filter box and the same Sort button; long names end in "…" on a phone instead of running off
+      // the screen (the full name shows on hover). It lists the pages whose tags:: name this page,
+      // which Linked references show only as one line each.
+      const sec = h('section', 'sec tagged-sec');
+      const host = 'tagged:' + pv.info.name;
+      sec.innerHTML = `<h2 class="sec-h has-acts"><span class="sec-t"><button class="disclose" aria-expanded="true">Pages tagged with ${esc(pv.info.name)}</button> <span class="n">${pv.tagged.length}</span></span>`
+        + `<span class="ref-acts">${pv.tagged.length > 1 ? '<button type="button" class="ref-tbtn ref-f"></button><button type="button" class="ref-tbtn ref-s"></button>' : ''}</span></h2>`
+        + '<div class="ref-tools" hidden><label class="ref-find">' + ICON.search + '<input type="search" class="ref-filter" placeholder="Filter pages" aria-label="Filter pages" autocomplete="off" spellcheck="false"></label></div>'
+        + '<div class="tagged"></div>';
+      foldableRefs(sec, host);
+      const list = $('.tagged', sec), fbtn = $('.ref-f', sec), sortBtn = $('.ref-s', sec), bar = $('.ref-tools', sec), input = $('.ref-filter', sec);
+      const info = new Map((this.names || []).map((x) => [String(x.name).toLowerCase(), x]));
+      const draw = () => {
+        const sort = refPrefs(host).sort, [by, way] = REF_SORTS[sort];
+        const f = input.value.trim().toLowerCase();
+        const ns = pv.tagged.filter((n) => !f || n.toLowerCase().includes(f));
+        ns.sort((a, b) => (by === 'name' ? way * a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true })
+          : way * ((info.get(a.toLowerCase())?.[by] || 0) - (info.get(b.toLowerCase())?.[by] || 0)) || a.localeCompare(b)));
+        list.innerHTML = ns.map((n) => `<a class="tag" href="#" data-page="${esc(n)}" title="${esc(n)}">${esc(n)}</a>`).join('')
+          || `<p class="note">No pages match “${esc(input.value.trim())}”.</p>`;
+        if (sortBtn) {
+          sortBtn.innerHTML = by === 'name' ? ICON.sortName : ICON.sortChanged;
+          const t = `Sorted: ${REF_SORTS[sort][2].toLowerCase()} (click to change)`;
+          sortBtn.title = t; sortBtn.setAttribute('aria-label', t);
+        }
+        if (fbtn) {
+          const open = !bar.hidden, t = open ? 'Hide the filter' : 'Filter pages';
+          fbtn.innerHTML = ICON.filter; fbtn.title = t; fbtn.setAttribute('aria-label', t); fbtn.setAttribute('aria-expanded', String(open));
+        }
+      };
+      if (fbtn) fbtn.onclick = () => {
+        bar.hidden = !bar.hidden;
+        if (bar.hidden) input.value = ''; else input.focus({ preventScroll: true });
+        draw();
+      };
+      input.oninput = draw;
+      input.onkeydown = (e) => { if (e.key === 'Escape') { e.stopPropagation(); input.value = ''; bar.hidden = true; draw(); fbtn?.focus(); } };
+      if (sortBtn) sortBtn.onclick = () => {
+        const now = refPrefs(host).sort;
+        const item = (k, label) => ({ label, hint: k === now ? '✓' : '', run: () => { setRefPrefs(host, { ...refPrefs(host), sort: k }); draw(); } });
+        menu(sortBtn, [{ head: 'Last changed' }, item('changed', 'Newest first'), item('changed-old', 'Oldest first'),
+          { head: 'Name' }, item('name', 'A to Z'), item('name-za', 'Z to A'),
+          { head: 'Date created' }, item('created', 'Newest first'), item('created-old', 'Oldest first')], { cls: 'sort-menu' });
+      };
+      draw();
       view.append(sec);
     }
     // references to it: each section only when there are some (as under a day in the Journals list)
@@ -1330,33 +1427,24 @@ class App {
       if (!namesOf.has(g)) namesOf.set(g, g.hits.map((x) => new Set([g.page, ...[x.text, ...(x.parents || []).map((p) => p.text), ...(x.kids || []).map((k) => k.text)].flatMap(pagesIn)].map((n) => n.toLowerCase()))));
       return namesOf.get(g);
     };
-    const counts = new Map(), shown = new Map(); // small letters → how many references / the name as written first
-    for (const g of groups) g.hits.forEach((x, i) => {
-      for (const n of refNames(g)[i]) if (n !== hostKey) counts.set(n, (counts.get(n) || 0) + 1);
-      for (const n of [g.page, ...pagesIn(x.text)]) if (!shown.has(n.toLowerCase())) shown.set(n.toLowerCase(), n);
-    });
-    const picks = new Map(); // small letters → 'in' | 'out'
+    // the buttons (Build 37, chips.js): a click shows only the references mentioning a page, right-click
+    // or a hold hides them, chosen ones come first with a ×; they count the references the typed words
+    // leave, so typing narrows the buttons too
+    let counts = new Map();
+    const shown = new Map(); // small letters → the name as written first
+    for (const g of groups) g.hits.forEach((x) => { for (const n of [g.page, ...pagesIn(x.text)]) if (!shown.has(n.toLowerCase())) shown.set(n.toLowerCase(), n); });
+    const recount = (words = []) => {
+      counts = new Map();
+      for (const g of groups) g.hits.forEach((x, i) => {
+        if (words.length && !words.every((w) => textOf(g)[i].includes(w))) return;
+        for (const n of refNames(g)[i]) if (n !== hostKey) counts.set(n, (counts.get(n) || 0) + 1);
+      });
+    };
+    recount();
     const chipsEl = $('.ref-chips', bar);
-    const CHIPS = 24; // the most mentioned first; "More" shows the rest
-    const drawChips = (all = false) => {
-      const names = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a) || a.localeCompare(b));
-      const list = all ? names : names.slice(0, CHIPS);
-      chipsEl.innerHTML = list.map((n) => {
-        const p = picks.get(n), say = p === 'in' ? 'Only these; click to hide them instead' : p === 'out' ? 'Hidden; click to stop filtering by it' : 'Click to show only these';
-        return `<button type="button" class="chip ref-chip" data-n="${esc(n)}"${p ? ` data-pick="${p}"` : ''} aria-pressed="${p ? 'true' : 'false'}" title="${esc(say)}">${p === 'out' ? '<s>' : ''}${esc(shown.get(n) || n)}${p === 'out' ? '</s>' : ''} <span class="n">${counts.get(n)}</span></button>`;
-      }).join('') + (!all && names.length > CHIPS ? `<button type="button" class="chip ref-more">${names.length - CHIPS} more</button>` : '');
-      chipsEl.hidden = !names.length;
-    };
-    chipsEl.onclick = (e) => {
-      if (e.target.closest('.ref-more')) { drawChips(true); return; }
-      const c = e.target.closest('.ref-chip');
-      if (!c) return;
-      const n = c.dataset.n, p = picks.get(n);
-      if (!p) picks.set(n, 'in'); else if (p === 'in') picks.set(n, 'out'); else picks.delete(n);
-      drawChips(chipsEl.querySelector('.ref-more') === null && counts.size > CHIPS);
-      draw();
-    };
-    drawChips();
+    const chips = makeChips({ el: chipsEl, counts: () => counts, written: () => shown, onChange: () => draw(), label: 'pages' });
+    const picks = chips.picks;
+    chips.draw();
     const keys = () => groups.map((g) => refKey('l', host, g.page));
     const tip = (b, t) => { b.setAttribute('aria-label', t); b.title = t; };
     const paint = () => {
@@ -1381,11 +1469,11 @@ class App {
       sec.querySelector(':scope > .ref-none')?.remove();
       const words = fold(input.value).split(/\s+/).filter(Boolean);
       let gs = groups;
-      const ins = [...picks].filter(([, p]) => p === 'in').map(([n]) => n), outs = [...picks].filter(([, p]) => p === 'out').map(([n]) => n);
       if (words.length || picks.size) gs = groups.map((g) => {
         const ts = words.length ? textOf(g) : null, ns = picks.size ? refNames(g) : null;
-        return { ...g, hits: g.hits.filter((_, i) => words.every((w) => ts[i].includes(w)) && ins.every((n) => ns[i].has(n)) && !outs.some((n) => ns[i].has(n))) };
+        return { ...g, hits: g.hits.filter((_, i) => words.every((w) => ts[i].includes(w)) && (!ns || chips.passes(ns[i]))) };
       }).filter((g) => g.hits.length);
+      btn.dataset.on = picks.size ? 'true' : 'false';
       const filtering = words.length || picks.size;
       const n = gs.reduce((s, g) => s + g.hits.length, 0), of = groups.reduce((s, g) => s + g.hits.length, 0);
       count.textContent = filtering ? `${n} of ${of} match` : said; // (the heading's count while filtering)
@@ -1401,8 +1489,8 @@ class App {
       clearTimeout(timer);
       const had = input.value || picks.size;
       input.value = '';
-      picks.clear();
-      drawChips();
+      recount();
+      chips.clear();
       if (bar.contains(document.activeElement)) btn.focus({ preventScroll: true });
       if (had) draw(); else paint();
     };
@@ -1427,9 +1515,9 @@ class App {
       draw();
     };
     let timer;
-    input.oninput = () => { clearTimeout(timer); timer = setTimeout(draw, 150); };
+    input.oninput = () => { clearTimeout(timer); timer = setTimeout(() => { recount(fold(input.value).split(/\s+/).filter(Boolean)); chips.draw(); draw(); }, 150); };
     input.onkeydown = (e) => {
-      if (e.key === 'Escape') { e.stopPropagation(); if (input.value) { input.value = ''; clearTimeout(timer); draw(); } else close(); }
+      if (e.key === 'Escape') { e.stopPropagation(); if (input.value) { input.value = ''; clearTimeout(timer); recount(); chips.draw(); draw(); } else close(); }
       if (e.key === 'Enter') input.blur(); // (a phone's keyboard goes away, the matches stay)
     };
     // a group's own arrow changes what "Fold all" should do
@@ -2759,6 +2847,7 @@ class App {
       await Promise.all(this.outlines.map((o) => o.flush().catch(() => {})));
       while (this.scanning) await new Promise((r) => setTimeout(r, 50)); // (one already running)
       await this.rescan();
+      await this.loadFolderSettings(); // (another device may have changed Property display)
       let kept = 0;
       for (const o of [...this.outlines]) {
         if (!this.outlines.includes(o)) continue;
@@ -2961,9 +3050,46 @@ class App {
       await this.refreshNames();
       this.renderSideLists();
       this.widgetTasksSoon();
+      this.backupSoon();
     } catch (e) {
       this.vaultError = String(e?.message ?? e);
     }
+  }
+
+  // ----- backups (Build 37, he asked Nov 6; core/src/app/backup.rs) -----
+  // Optional, off unless turned on in Settings → Notes → Backups; on the laptop only. While the app
+  // is open it checks once an hour (and a minute after the folder opens) whether a backup is due
+  // (once a day or once a week); the core makes one only if something changed. Each device keeps
+  // its own choice (the backup folder is a folder on that computer): localStorage "backup".
+  backupPrefs() {
+    const b = store.get('backup', {});
+    return { on: false, kind: 'zip', dest: '', every: 'week', keep: 4, last: 0, said: '', ...(b && typeof b === 'object' ? b : {}) };
+  }
+  setBackupPrefs(change) { store.set('backup', { ...this.backupPrefs(), ...change }); }
+  backupSoon() {
+    if (isAndroid || this.backupTimer) return;
+    this.backupTimer = setInterval(() => this.backupIfDue(), 3600e3);
+    setTimeout(() => this.backupIfDue(), 60e3);
+  }
+  async backupIfDue() {
+    const b = this.backupPrefs();
+    if (isAndroid || !this.vaultOpen || !b.on || !b.dest) return;
+    const gap = (b.every === 'day' ? 1 : 7) * 86400e3;
+    if (Date.now() - (b.last || 0) < gap - 30 * 60e3) return; // (half an hour's leeway: the hourly check)
+    await this.backupNow({ quiet: true });
+  }
+  /** One backup now. Says what happened (quietly: only a failure or a warning). */
+  async backupNow({ quiet = false } = {}) {
+    const b = this.backupPrefs();
+    const d = new Date(), p2 = (n) => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}`;
+    let r;
+    try { r = await call('backup_now', { kind: b.kind, dest: b.dest, keep: b.keep, push: true, stamp }); } catch (e) { r = { status: 'failed', message: String(e?.message ?? e) }; }
+    const said = r.status === 'failed' ? `Backup failed: ${r.message}` : r.message;
+    this.setBackupPrefs({ ...(r.status === 'failed' ? {} : { last: Date.now() }), said, saidAt: Date.now() });
+    if (!quiet || r.status === 'failed') this.toast(said, r.status === 'failed' ? 8000 : 3000);
+    if (r.warning) this.toast(`Backup: ${r.warning}`, 10000);
+    return r;
   }
 
   /** The open folder's summary and its settings (config.edn): the shortcut keys, and the phone
@@ -2976,6 +3102,20 @@ class App {
     for (const [action, keys] of c.shortcuts || []) this.keyMap[action] = keys;
     window.LeanAndroid?.setWidgetConfig?.(s.root, c.journals_dir, c.journal_file_format, c.journal_title_format);
     this.sendCaptureConfig();
+    await this.loadFolderSettings();
+  }
+
+  /** Settings kept in the notes folder (Build 37: logseq/thinky.json): Property display's rules, with
+   *  config.edn's :block-hidden-properties. Read when a folder opens and on Refresh. */
+  async loadFolderSettings() {
+    try { this.folderSettings = await call('folder_settings'); } catch { this.folderSettings = this.folderSettings || {}; }
+    setPropRules(this.folderSettings?.propertyDisplay, this.summary?.config?.hidden_props || []);
+  }
+  /** Change one of them (null removes it), then show every open page again with it. */
+  async setFolderSetting(key, value) {
+    this.folderSettings = await call('set_folder_setting', { key, value });
+    setPropRules(this.folderSettings?.propertyDisplay, this.summary?.config?.hidden_props || []);
+    for (const o of this.outlines) if (!o.dirty && o.cur === null) await o.reload?.().catch(() => {});
   }
 
   /** The phone's share pop-up and widget use the same quick capture format as the app. */

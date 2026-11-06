@@ -6,7 +6,8 @@
 //! `LeanCore.capture(args, bytes)` on a helper thread.
 //!
 //! One call, JSON in and out, so the Java side has a single plain signature:
-//! in  {cache, data, vault, y, m, d, time, text} for words, or {…, name, typeExt} + the picture's
+//! in  {cache, data, vault, y, m, d, time, text, plain?} for words (plain: words selected in another
+//!     app, kept as plain words), or {…, name, typeExt} + the picture's
 //!     bytes, or {…, link} for a picture copied by an earlier try (not copied twice), or
 //!     {…, cmd: "where"} for where notes go;
 //! out {ok: true, rel} ({ok: true, today, page} for "where") or {ok: false, error, link?}
@@ -84,7 +85,11 @@ pub fn capture(a: &Value, bytes: Option<&[u8]>) -> Value {
         };
     }
     let res = match bytes {
-        None if s("link").is_empty() => outline_core::capture::capture_to_usual(&root, &s("text"), "", false, today, &time),
+        // words selected in another app ("Add to thinky", Build 37): kept as plain words
+        None if s("link").is_empty() => {
+            let text = if a.get("plain").and_then(Value::as_bool) == Some(true) { outline_core::clip::defuse(&s("text")) } else { s("text") };
+            outline_core::capture::capture_to_usual(&root, &text, "", false, today, &time)
+        }
         None => outline_core::capture::capture_media_to_usual(&root, &s("link"), today, &time),
         Some(bytes) => {
             // as the Windows box does: config.edn readable before anything is copied
@@ -164,6 +169,24 @@ mod tests {
         let r = capture(&args(&v, json!({ "link": "![x](../assets/x_1.png)" })), None);
         assert_eq!(r, json!({ "ok": true, "rel": "pages/Inbox (2).md" }));
         assert_eq!(std::fs::read_dir(v.join("assets")).unwrap().count(), 1);
+        let _ = std::fs::remove_dir_all(&v);
+    }
+
+    /// Build 37: words selected in another app ("Add to thinky") stay plain words: a page's text can't
+    /// become a link, tag, property or block reference in the notes. Typed or shared words are as typed.
+    #[test]
+    fn selected_words_are_kept_as_plain_words() {
+        let v = vault("plain", "{}");
+        let words = "see [[Some Page]] and #tag, ((ref)) or key:: value";
+        let r = capture(&args(&v, json!({ "text": words, "plain": true })), None);
+        assert_eq!(r["ok"], true, "{r}");
+        let rel = r["rel"].as_str().unwrap().to_string();
+        let text = std::fs::read_to_string(v.join(&rel)).unwrap();
+        assert!(!text.contains("[[Some Page]]") && !text.contains("#tag") && !text.contains("((ref))") && !text.contains("key::"), "{text}");
+        assert!(text.replace('\u{200b}', "").contains(words), "the same words, made inert: {text}");
+        // without "plain" (typed in the pop-up): as typed
+        let r = capture(&args(&v, json!({ "text": "a [[Real Link]]" })), None);
+        assert!(std::fs::read_to_string(v.join(r["rel"].as_str().unwrap())).unwrap().contains("[[Real Link]]"));
         let _ = std::fs::remove_dir_all(&v);
     }
 

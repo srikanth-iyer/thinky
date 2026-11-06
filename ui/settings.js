@@ -5,7 +5,7 @@
 // is remembered.
 
 import { call, store, nowTime, isApp, isAndroid, assetUrl, today } from './api.js';
-import { esc } from './render.js';
+import { esc, PROP_SHOWS, MARK_COLORS, builtinHidden } from './render.js';
 import { h, ICON, BRAND, plural } from './dom.js';
 import { promptBox, confirmBox } from './popups.js';
 import { SKINS, accessCard, lookName } from './app.js';
@@ -28,8 +28,8 @@ export async function settingsView(app, view, want = null) {
   if (!view.isConnected) return;
   // what each tab holds (Capture and Shortcuts once a notes folder is open)
   const parts = {
-    notes: async () => [folderCard(app), ...(app.vaultOpen ? [binCard(app), safetyCard(app)] : [])],
-    look: async () => [lookCard(app)],
+    notes: async () => [folderCard(app), ...(app.vaultOpen ? [binCard(app), safetyCard(app), ...(isAndroid ? [] : [backupCard(app)])] : [])],
+    look: async () => [lookCard(app), ...(app.vaultOpen ? [propDisplayCard(app)] : [])],
     capture: async () => [captureCard(app), ...(platform === 'windows' ? [browserCard(app), windowsCard(app)] : [])],
     keys: async () => [keysCard(app)],
     about: async () => [feedbackCard(app), problemsCard(), await aboutCard(app)],
@@ -155,7 +155,31 @@ function missingBox(app, r) {
   box.innerHTML = `<h3>Missing pictures</h3>
     <p class="note">${miss.length === 1 ? 'A note links to a picture that isn’t' : `Notes link to ${miss.length} pictures that aren’t`} in <code>assets</code> on this device. A picture added on another device may still be syncing (check your sync app there), or it never got here.</p>
     <ul class="rows">${[...by].map(([page, files]) => `<li><a href="#" data-page="${esc(page)}">${esc(page)}<span class="meta">${files.map(esc).join('<br>')}</span></a></li>`).join('')}</ul>`;
-  box.addEventListener('click', (e) => app.linkClick(e));
+  box.addEventListener('click', (e) => { if (!e.target.closest('.bk-restore')) app.linkClick(e); });
+  // Build 37: with backups on, each missing picture is looked for in them, with a Restore button
+  const bk = app.backupPrefs?.();
+  if (bk?.on && bk.dest && !isAndroid) {
+    (async () => {
+      for (const li of box.querySelectorAll('.rows li')) {
+        const page = li.querySelector('a')?.dataset.page;
+        for (const file of by.get(page) || []) {
+          const rel = 'assets/' + file;
+          const found = await call('backup_find', { kind: bk.kind, dest: bk.dest, rel }).catch(() => null);
+          if (!found || !box.isConnected) continue;
+          li.insertAdjacentHTML('beforeend', `<button class="btn ghost small bk-restore" data-rel="${esc(rel)}" title="Found in ${esc(found)}">Found in your backup: restore ${esc(file)}</button>`);
+        }
+      }
+    })();
+    box.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.bk-restore');
+      if (!btn) return;
+      e.preventDefault();
+      try {
+        await call('backup_restore', { kind: bk.kind, dest: bk.dest, rel: btn.dataset.rel });
+        btn.replaceWith(Object.assign(document.createElement('span'), { className: 'note', textContent: `✓ ${btn.dataset.rel.slice(7)} is back` }));
+      } catch (err) { app.toast(String(err), 6000); }
+    });
+  }
   return box;
 }
 
@@ -698,6 +722,106 @@ function windowsCard(app) {
 /** The bin (logseq/.recycle, like Logseq): deleted pages (the newest 50) and, in a section of their
  *  own, every picture "Check this folder" moved there, newest move first; "Put back" returns one to
  *  exactly where it was (its name in the bin says so, see core/src/app/pictures.rs). */
+/** Property display (Build 37, he asked Nov 6): how each property shows on the notes, for any
+ *  property: Show, Quiet (smaller, lighter), Icon (a small sign; its words on hover) or Hidden (like
+ *  id::), and an optional mark (a thin coloured line down the note's left edge). Saved in the notes
+ *  folder (logseq/thinky.json) so the laptop and the phone agree; render.js applies it. */
+function propDisplayCard(app) {
+  const card = h('div', 'card prop-display');
+  const SAY = { show: 'Show', quiet: 'Quiet', icon: 'Icon', hidden: 'Hidden' };
+  const cap = (c) => c[0].toUpperCase() + c.slice(1);
+  card.innerHTML = `<h2>Property display</h2><p class="note">How a property shows on your notes: as usual, <b>quiet</b> (smaller and lighter), as a small <b>icon</b> (its words show when you point at it), or <b>hidden</b> (still there; the note menu’s “Show hidden properties” shows it). A <b>mark</b> adds a thin coloured line down the left of every note that has the property. Saved in your notes folder (<code>logseq/thinky.json</code>), so your laptop and phone agree. Properties Logseq is told to hide (<code>:block-hidden-properties</code> in <code>config.edn</code>) are hidden here too.</p>
+    <ul class="rows prop-rules"></ul>
+    <form class="prop-add"><input class="prop-new" list="prop-keys" placeholder="A property’s name, e.g. by" aria-label="A property’s name" autocomplete="off" spellcheck="false"><datalist id="prop-keys"></datalist><button class="btn small" type="submit">Add</button></form>`;
+  const list = $('.prop-rules', card), add = $('.prop-add', card), input = $('.prop-new', card);
+  const rules = () => ({ ...(app.folderSettings?.propertyDisplay || {}) });
+  const draw = () => {
+    const r = rules(), keys = Object.keys(r).sort();
+    list.innerHTML = keys.map((k) => {
+      const x = r[k] || {}, show = PROP_SHOWS.includes(x.show) ? x.show : 'show';
+      return `<li data-k="${esc(k)}"><code class="pr-k">${esc(k)}::</code>
+        <select class="pr-show" aria-label="How ${esc(k)} shows">${PROP_SHOWS.map((v) => `<option value="${v}"${v === show ? ' selected' : ''}>${SAY[v]}</option>`).join('')}</select>
+        <input class="pr-icon" value="${esc(x.icon || '●')}" maxlength="2" aria-label="The icon for ${esc(k)}" title="The icon (a character or emoji)"${show === 'icon' ? '' : ' hidden'}>
+        <select class="pr-mark" aria-label="A mark on notes with ${esc(k)}"><option value="">No mark</option>${MARK_COLORS.map((c) => `<option value="${c}"${c === x.mark ? ' selected' : ''}>${cap(c)} mark</option>`).join('')}</select>
+        <button class="btn ghost small pr-del" type="button" aria-label="Back to usual for ${esc(k)}">Remove</button></li>`;
+    }).join('') || '<li class="note">No rules yet: every property shows as usual.</li>';
+  };
+  const save = async (k, rule) => {
+    const r = rules();
+    if (rule) r[k] = rule; else delete r[k];
+    try { await app.setFolderSetting('propertyDisplay', Object.keys(r).length ? r : null); } catch (err) { app.toast(String(err), 6000); }
+    draw();
+  };
+  const ruleOf = (li) => ({ show: $('.pr-show', li).value, icon: $('.pr-icon', li).value.trim() || '●', mark: $('.pr-mark', li).value });
+  list.addEventListener('change', (e) => {
+    const li = e.target.closest('li[data-k]');
+    if (li) save(li.dataset.k, ruleOf(li));
+  });
+  list.addEventListener('click', (e) => {
+    const li = e.target.closest('li[data-k]');
+    if (li && e.target.closest('.pr-del')) save(li.dataset.k, null);
+  });
+  add.onsubmit = (e) => {
+    e.preventDefault();
+    const k = input.value.trim().replace(/::\s*$/, '').toLowerCase();
+    if (!k) return;
+    if (!/^[\p{L}\p{N}_.\/-]+$/u.test(k)) { app.toast('A property’s name is letters, numbers and - _ . / only.', 4000); return; }
+    if (builtinHidden(k)) { app.toast(`${k}:: is one the app always hides (Logseq keeps it for itself).`, 4000); return; }
+    input.value = '';
+    if (!rules()[k]) save(k, { show: 'quiet', icon: '●', mark: '' });
+  };
+  call('props').then((ps) => { $('#prop-keys', card).innerHTML = ps.map(([k]) => `<option value="${esc(k)}">`).join(''); }).catch(() => {});
+  draw();
+  return card;
+}
+
+/** Backups (Build 37, he asked Nov 6): optional, off unless turned on here; this computer only (the
+ *  phone's notes are the same files, synced). A dated zip of the notes folder in a folder outside it
+ *  (the last few kept), or a copy into a git repository folder, saved ("commit") and uploaded
+ *  ("push") with git. Only when something changed. App.backupNow does it; core/src/app/backup.rs. */
+function backupCard(app) {
+  const card = h('div', 'card backup-card');
+  const b = app.backupPrefs();
+  card.innerHTML = `<h2>Backups</h2><p class="note">Keep copies of your notes folder somewhere else, so a page or picture deleted by mistake can be brought back. Made only when something changed. Off unless you turn it on; each computer has its own setting.</p>
+    <label class="bk-on"><input type="checkbox" class="bk-on-in"${b.on ? ' checked' : ''}> Back up my notes</label>
+    <div class="bk-opts">
+      <fieldset class="bk-kind"><legend>How</legend>
+        <label><input type="radio" name="bk-kind" value="zip"${b.kind !== 'git' ? ' checked' : ''}> <b>Snapshot folder</b>: a dated zip of the notes in a folder you choose (no account needed)</label>
+        <label><input type="radio" name="bk-kind" value="git"${b.kind === 'git' ? ' checked' : ''}> <b>GitHub</b> (or any git repository): needs <a href="https://git-scm.com" target="_blank" rel="noopener">git</a> and a folder cloned from your backup repository; every snapshot stays in its history</label>
+      </fieldset>
+      <label class="bk-row"><span class="bk-l">Folder</span><input class="bk-dest" type="text" value="${esc(b.dest)}" placeholder="${b.kind === 'git' ? 'C:\\Users\\you\\notes-backup (a git clone)' : 'C:\\Users\\you\\notes-backups'}" spellcheck="false" autocomplete="off"></label>
+      <p class="note bk-hint">Outside your notes folder (a backup inside it would be synced and backed up again).</p>
+      <label class="bk-row"><span class="bk-l">How often</span><select class="bk-every"><option value="week"${b.every !== 'day' ? ' selected' : ''}>Once a week</option><option value="day"${b.every === 'day' ? ' selected' : ''}>Once a day</option></select></label>
+      <label class="bk-row bk-keep-row"${b.kind === 'git' ? ' hidden' : ''}><span class="bk-l">Keep</span><select class="bk-keep">${[2, 4, 8, 12].map((n) => `<option value="${n}"${n === Number(b.keep) ? ' selected' : ''}>the last ${n}</option>`).join('')}</select></label>
+      <div class="bk-actions"><button class="btn small bk-now" type="button">Back up now</button><span class="note bk-last"></span></div>
+    </div>`;
+  const $$ = (sel) => $(sel, card);
+  const paint = () => {
+    const p = app.backupPrefs();
+    $$('.bk-opts').classList.toggle('off', !p.on);
+    $$('.bk-keep-row').hidden = p.kind === 'git';
+    const when = p.last ? new Date(p.last).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    $$('.bk-last').textContent = p.said ? `${p.last ? `Last backup: ${when}. ` : ''}${p.said}` : (p.on ? 'No backup yet.' : '');
+  };
+  card.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.matches('.bk-on-in')) app.setBackupPrefs({ on: t.checked });
+    else if (t.name === 'bk-kind') app.setBackupPrefs({ kind: t.value });
+    else if (t.matches('.bk-dest')) app.setBackupPrefs({ dest: t.value.trim() });
+    else if (t.matches('.bk-every')) app.setBackupPrefs({ every: t.value });
+    else if (t.matches('.bk-keep')) app.setBackupPrefs({ keep: Number(t.value) });
+    paint();
+  });
+  $$('.bk-now').onclick = async () => {
+    app.setBackupPrefs({ dest: $$('.bk-dest').value.trim() });
+    const btn = $$('.bk-now');
+    btn.disabled = true; btn.textContent = 'Backing up…';
+    try { await app.backupNow(); } finally { btn.disabled = false; btn.textContent = 'Back up now'; paint(); }
+  };
+  paint();
+  return card;
+}
+
 function binCard(app) {
   const card = h('div', 'card');
   card.innerHTML = `<h2>Deleted pages and pictures</h2><p class="note">Pages you delete, and pictures moved here from “Check this folder”, wait in the bin (<code>logseq/.recycle</code> in your notes folder, like Logseq). Bring one back with Restore or Put back.</p>

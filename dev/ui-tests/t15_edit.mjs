@@ -485,6 +485,7 @@ await fresh('pages/Paste.md', '- before  after\n');
 await editLast();
 await ta.evaluate((t) => t.setSelectionRange(7, 7));
 check(await paste('<meta charset="utf-8"><span style="font-weight:700;color:#333">bold words</span> and <a href="https://x.org/a">x</a>', 'bold words and x'), 'one paragraph’s words…');
+for (let k = 0; k < 30 && await val() === 'before  after'; k++) await sleep(100); // (a slow machine: the paste lands a moment later)
 check(await val() === 'before **bold words** and [x](https://x.org/a) after', '…go into the note at the caret', await val());
 // Ctrl+Shift+V: plain words, as they are, in this note
 await ta.fill('plain: ');

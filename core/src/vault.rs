@@ -1077,19 +1077,23 @@ impl Vault {
     pub fn all_tags(&self) -> Vec<(String, usize, usize)> {
         // each tag: the pages that carry it in `tags::`, and the notes that write it as `#tag` (he asked,
         // Oct 30: count those too); a tag's name as first seen, most used first
+        // Build 37 (he asked Nov 6): a tag and its page's aliases are one tag (#author and #Authors,
+        // when Authors has `alias:: author`), shown under the page's own name when the page exists
         let mut m: HashMap<String, (String, usize, usize)> = HashMap::new();
+        let shown = |k: &str, t: &str| self.pages.get(k).map_or_else(|| t.to_string(), |p| p.name.clone());
         for p in self.pages.values() {
             for t in &p.parsed.tags {
-                m.entry(key(t)).or_insert_with(|| (t.clone(), 0, 0)).1 += 1;
+                let k = self.resolve(t);
+                m.entry(k.clone()).or_insert_with(|| (shown(&k, t), 0, 0)).1 += 1;
             }
             for b in &p.parsed.blocks {
                 let mut seen: Vec<String> = vec![];
                 for t in crate::parse::hash_tags(&b.text) {
-                    let k = key(&t);
+                    let k = self.resolve(&t);
                     if seen.contains(&k) {
                         continue;
                     }
-                    m.entry(k.clone()).or_insert_with(|| (t.clone(), 0, 0)).2 += 1;
+                    m.entry(k.clone()).or_insert_with(|| (shown(&k, &t), 0, 0)).2 += 1;
                     seen.push(k);
                 }
             }

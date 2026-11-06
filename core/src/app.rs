@@ -31,6 +31,7 @@ pub fn data_dir() -> Option<PathBuf> {
     DATA_DIR.get().cloned()
 }
 
+pub mod backup;
 pub mod history;
 pub mod pictures;
 pub mod safety;
@@ -589,6 +590,8 @@ pub struct Changes {
 
 /// Where the settings are (a rescan reports a change to them by this path).
 pub const CONFIG_REL: &str = "logseq/config.edn";
+/// Settings kept in the notes folder for every device (Build 37; `App::folder_settings`).
+pub const FOLDER_SETTINGS_REL: &str = "logseq/thinky.json";
 
 /// config.edn's stamp (None: no file, or it can't be looked at).
 fn config_stamp(root: &Path) -> Option<Stamp> {
@@ -1013,6 +1016,47 @@ impl App {
                 self.cache_dirty = false;
             }
         }
+    }
+
+    /// Settings kept in the notes folder itself (Build 37): `logseq/thinky.json`, so the laptop and the
+    /// phone agree through the folder's sync (Property display's rules live here). Logseq and Obsidian
+    /// leave the file alone. A missing or unreadable file reads as no settings.
+    pub fn folder_settings(&self) -> serde_json::Value {
+        let p = self.root.join(FOLDER_SETTINGS_REL);
+        std::fs::read_to_string(&p)
+            .ok()
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(t.trim_start_matches('\u{feff}')).ok())
+            .filter(serde_json::Value::is_object)
+            .unwrap_or_else(|| serde_json::json!({}))
+    }
+
+    /// Change one of those settings (`value` null removes it), read fresh from the file right before, so
+    /// a change another device synced meanwhile isn't lost. Written whole to a temporary file first,
+    /// then put in place. Returns the settings as saved.
+    pub fn set_folder_setting(&self, key: &str, value: serde_json::Value) -> Result<serde_json::Value, String> {
+        let key = key.trim();
+        if key.is_empty() || key.len() > 64 {
+            return Err("That setting has no name.".into());
+        }
+        let p = self.root.join(FOLDER_SETTINGS_REL);
+        if p.exists() && std::fs::read_to_string(&p).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(t.trim_start_matches('\u{feff}')).ok()).is_none() {
+            return Err("The notes folder's thinky settings file (logseq/thinky.json) can't be read, so it wasn't changed.".into());
+        }
+        let mut all = self.folder_settings();
+        let map = all.as_object_mut().expect("an object");
+        if value.is_null() {
+            map.remove(key);
+        } else {
+            map.insert(key.to_string(), value);
+        }
+        let text = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())? + "\n";
+        std::fs::create_dir_all(p.parent().unwrap_or(Path::new("."))).map_err(|e| format!("Couldn't save the setting: {e}"))?;
+        let tmp = p.with_extension("json.tmp");
+        std::fs::write(&tmp, text.as_bytes()).and_then(|_| std::fs::rename(&tmp, &p)).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            format!("Couldn't save the setting: {e}")
+        })?;
+        Ok(all)
     }
 
     pub fn summary(&self) -> VaultSummary {
@@ -2384,6 +2428,13 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
         "rename_target" => to_value(app.rename_target(&s("name"), &s("new_name"))?),
         "merge_pages" => to_value(app.merge_pages(&s("name"), &s("into"))?),
         "rename_property" => to_value(app.rename_property(&s("key"), &s("new_key"))?),
+        // Build 37: settings kept in the notes folder (logseq/thinky.json), shared by every device
+        "folder_settings" => Ok(app.folder_settings()),
+        // Build 37: backups (Settings → Backups; app/backup.rs)
+        "backup_now" => to_value(app.backup_now(&s("kind"), &s("dest"), args.get("keep").and_then(Value::as_u64).unwrap_or(4) as usize, args.get("push").and_then(Value::as_bool).unwrap_or(true), &s("stamp"))),
+        "backup_find" => Ok(json!(backup::find_in_backup(&s("kind"), std::path::Path::new(s("dest").trim()), &s("rel")))),
+        "backup_restore" => Ok(json!(app.restore_from_backup(&s("kind"), &s("dest"), &s("rel"))?)),
+        "set_folder_setting" => Ok(app.set_folder_setting(&s("key"), args.get("value").cloned().unwrap_or(Value::Null))?),
         "undo_merge" => Ok(json!(app.undo_merge(args.get("undo").and_then(Value::as_u64).unwrap_or(0))?)),
         // a page's file (the Windows app shows it in Explorer)
         "page_file" => Ok(json!(app.page_file(&s("name"))?.display().to_string())),

@@ -429,3 +429,18 @@ fn todos_parents_links_edge_cases() {
     assert!(open.iter().all(|x| !x.text.contains("finished")));
     assert_eq!(under(&all, "finished"), deep, "done ones carry them too");
 }
+
+/// Build 37 (he asked Nov 6): a tag written as one of its page's aliases is the same tag, counted
+/// once under the page's own name (before, the Tags list had "author" and "Authors" as two rows).
+#[test]
+fn tags_merge_with_their_aliases() {
+    let mut v = Vault::new();
+    v.upsert("pages/Authors.md", "alias:: author, writers\n- people who wrote things\n");
+    v.upsert("journals/2026_11_06.md", "- met an #author today\n- another #[[author]] note\n- and #Authors too\n- #writers and #author in one note\n- #loose tag with no page\n");
+    v.upsert("pages/Book.md", "tags:: author\n- a book page\n");
+    let tags = v.all_tags();
+    let get = |n: &str| tags.iter().find(|t| t.0 == n).cloned();
+    assert_eq!(get("Authors"), Some(("Authors".to_string(), 1, 4)), "{tags:?}");
+    assert!(get("author").is_none() && get("writers").is_none(), "aliases aren't rows of their own: {tags:?}");
+    assert_eq!(get("loose"), Some(("loose".to_string(), 0, 1)), "a tag with no page keeps its name");
+}

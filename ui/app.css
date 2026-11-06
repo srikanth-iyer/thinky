@@ -477,6 +477,15 @@ a.tag .hash { display: var(--hash); }
 .props { display: block; font-size: var(--props-size); line-height: var(--props-lh); margin: var(--props-gap) 0; padding: var(--props-pad);
   background: var(--props-bg); border: var(--props-border); border-radius: var(--props-radius); }
 .prop { display: block; overflow-wrap: anywhere; }
+/* Property display (Build 37, render.js): Quiet = smaller and lighter; Icon = a small sign after the
+   note, its words on hover; a mark = a thin coloured line down the note's left edge */
+.prop.prop-quiet { font-size: .82em; opacity: .62; }
+.prop-icons { display: inline-flex; gap: 4px; margin-left: 6px; vertical-align: baseline; }
+.prop-icon { font-size: .8em; line-height: 1; color: var(--ink-faint); cursor: help; user-select: none; }
+.blk[data-mark] > .bc { position: relative; }
+.blk[data-mark] > .bc::after { content: ""; position: absolute; left: -7px; top: 4px; bottom: 4px; width: 3px; border-radius: 2px; background: var(--mk); opacity: .8; pointer-events: none; }
+.blk[data-mark="purple"] { --mk: var(--hl-purple); } .blk[data-mark="blue"] { --mk: var(--hl-blue); } .blk[data-mark="green"] { --mk: var(--hl-green); }
+.blk[data-mark="yellow"] { --mk: var(--hl-yellow); } .blk[data-mark="red"] { --mk: var(--hl-red); } .blk[data-mark="pink"] { --mk: var(--hl-pink); } .blk[data-mark="gray"] { --mk: var(--hl-gray); }
 .prop .pk { font-family: var(--props-key-font); font-weight: var(--props-key-weight); color: var(--props-key-ink); margin-right: 5px; cursor: pointer; }
 .prop .pk::after { content: ":"; }
 .prop .pv { color: var(--props-val-ink); }
@@ -524,8 +533,33 @@ a.tag .hash { display: var(--hash); }
 .ref-chips[hidden] { display: none; }
 .ref-chip { font-size: 13px; padding: 2px 10px; }
 .ref-chip .n { opacity: .65; font-size: .9em; margin-left: 2px; }
-.ref-chip[data-pick="out"] { background: var(--danger-tint); border-color: transparent; color: var(--ink-soft); }
+.ref-chip.ref-chip[data-pick="out"] { background: var(--danger-tint); border-color: transparent; color: var(--ink-soft); } /* (over .chip[aria-pressed]: hidden ones aren't green) */
 .ref-more { font-size: 13px; padding: 2px 10px; border-style: dashed; }
+/* Build 37 (he asked Nov 5–6): the filter buttons (chips.js): chosen ones first, each with a small
+   x; a dot on the filter button while some are chosen; a box to find a button; two rows, then "N more" */
+.ref-chip { display: inline-flex; align-items: center; gap: 2px; }
+.ref-chip[hidden], .ref-more[hidden] { display: none; }
+.ref-chip.picked { padding-right: 4px; }
+.ref-chip .chip-x { border: 0; background: none; color: inherit; font: inherit; font-size: 15px; line-height: 1; width: 18px; height: 18px; padding: 0;
+  margin-left: 2px; border-radius: 50%; cursor: pointer; opacity: .75; display: inline-grid; place-items: center; }
+.ref-chip .chip-x:hover { opacity: 1; background: color-mix(in srgb, currentColor 16%, transparent); }
+.chip-none { font-size: 13px; }
+.ref-tbtn[data-on="true"]::after { content: ""; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.chip-find { position: relative; display: flex; align-items: center; max-width: 280px; }
+.chip-find svg { position: absolute; left: 9px; width: 14px; height: 14px; color: var(--ink-faint); pointer-events: none; }
+.chip-find input { flex: 1; min-width: 0; font: inherit; font-size: 13.5px; padding: 5px 10px 5px 29px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); }
+/* To-dos: Show on the left (they filter), the order on the right as one joined group with a ⇅ mark (it sorts) */
+.todo-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.todo-bar .todo-kinds { flex: 1 1 auto; min-width: 0; }
+.todo-acts { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.seg { display: inline-flex; align-items: stretch; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--surface); }
+.seg .chip { border: 0; border-radius: 0; padding: 3px 10px; }
+.seg .chip + .chip { border-left: 1px solid var(--line); }
+.seg-ic { display: grid; place-items: center; padding: 0 4px 0 9px; color: var(--ink-faint); font-size: 13px; cursor: default; }
+.todo-panel { display: flex; flex-direction: column; gap: 8px; }
+.todo-panel[hidden] { display: none; }
+.todo-panel .ref-chips { margin-top: 0; }
+@media (max-width: 600px) { .todo-acts { flex-basis: 100%; justify-content: flex-end; } }
 @media (pointer: coarse) { .ref-chip, .ref-more { min-height: 34px; } }
 .ref-find { position: relative; flex: 1 1 220px; max-width: 340px; display: flex; align-items: center; }
 .ref-find svg { position: absolute; left: 10px; width: 15px; height: 15px; color: var(--ink-faint); pointer-events: none; }
@@ -582,6 +616,9 @@ a.tag .hash { display: var(--hash); }
 .refnote > .refmore::before { content: none; }
 .refmore .bc { color: var(--ink-faint); }
 .tagged { display: flex; flex-wrap: wrap; gap: 6px; }
+.tagged a.tag { display: inline-block; vertical-align: top; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* (Build 37: a long name ends in … instead of running off a phone's screen) */
+.tagged-sec .ref-tools { margin-bottom: 8px; }
+.tagged-sec .ref-tools[hidden] { display: none; }
 /* under a day in the Journals list: references to it (smaller headings), and today's due to-dos */
 .day-refs .sec { margin-top: 36px; }
 .day-sched .sched { margin-top: 40px; } /* (room for the faint "+" under the day's last note) */
@@ -1514,3 +1551,24 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 /* Settings → Check this folder → Missing pictures (Build 36): the files under each page's name */
 .missing-box .rows a { flex-wrap: wrap; }
 .missing-box .rows .meta { white-space: normal; overflow-wrap: anywhere; text-align: right; margin-left: auto; font-family: var(--mono, monospace); font-size: 12px; }
+/* Settings → Look → Property display (Build 37) */
+.prop-display .prop-rules li { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.prop-display .pr-k { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; }
+.prop-display select, .prop-display .pr-icon, .prop-display .prop-new { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+.prop-display .pr-icon { width: 3.2em; text-align: center; }
+.prop-display .pr-icon[hidden] { display: none; }
+.prop-display .prop-add { display: flex; gap: 8px; margin-top: 10px; }
+.prop-display .prop-new { flex: 1; min-width: 0; max-width: 320px; }
+/* Settings → Notes → Backups (Build 37) */
+.backup-card .bk-on { display: flex; align-items: center; gap: 8px; font-weight: 600; margin: 6px 0 10px; }
+.backup-card .bk-opts.off { opacity: .55; }
+.backup-card fieldset { border: 0; padding: 0; margin: 0 0 10px; display: flex; flex-direction: column; gap: 6px; }
+.backup-card legend { font-size: 13px; color: var(--ink-soft); margin-bottom: 4px; }
+.backup-card .bk-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.backup-card .bk-row[hidden] { display: none; }
+.backup-card .bk-l { flex: 0 0 90px; font-size: 14px; color: var(--ink-soft); }
+.backup-card .bk-dest { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.backup-card select { font: inherit; font-size: 14px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.backup-card .bk-hint { margin: 0 0 6px 100px; font-size: 12.5px; }
+.backup-card .bk-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.missing-box .bk-restore { margin-top: 6px; }

@@ -5,6 +5,24 @@ each one the code exactly as it was released at its last build. Later releases a
 the top. (Until Build 32 the app was called Lean Outliner; its downloads and hidden id keep that
 name, so updates install over older builds.)
 
+## Build 37 (November 2026)
+
+### New
+- Tabs: the "+" for a new tab always shows on the laptop, at the page's top-left corner just right of the sidebar, and moves along after the last tab. A note's menu (right-click its dot) has Open in a new tab and Open to the side.
+- Filter buttons (To-dos and Linked references) work like a shop's filters: a click shows only the notes mentioning that page and a second click lets it go; right-click (or press and hold on a phone) hides them instead. Chosen buttons come first with a small ×, at most two rows show (then "N more"), and typing in the filter narrows the buttons too.
+- To-dos: the order (Newest, Oldest, By date) sits on the right with a ⇅ mark; the page buttons are behind a filter button, with a box to find a page. Closing it lets every pick go; open or closed is remembered.
+- "Pages in …" on a namespace's page sorts like Linked references (last changed, name or date created, either way), each level of the tree on its own. "Pages tagged with …" folds, filters and sorts too, and long names end in "…" on a phone.
+- Property display (Settings → Look): for any property, show it as usual, quiet (smaller and lighter), as a small icon (its words on hover) or hidden, and optionally mark its notes with a thin coloured line. Saved in the notes folder (`logseq/thinky.json`), so the laptop and phone agree. Properties in Logseq's `:block-hidden-properties` are hidden too.
+- Backups (Settings → Notes, laptop): optional, off unless you turn them on. A dated zip of the notes folder in a folder you choose (keeping the last few), or a copy into a git repository such as GitHub. Made once a day or once a week, only when something changed, with a warning if many files vanished. Check this folder offers to put a missing picture back from the backups.
+- Android: "Add to thinky" in the menu over selected text in other apps adds the words to where your quick captures go (today's journal), with no window, as plain words.
+- The Tags list counts a tag and its page's aliases as one tag.
+
+### Fixed
+- Check this folder no longer lists pictures and files as missing when their names have brackets, an apostrophe or a `#` in them.
+
+### Under the hood
+- Every browser test now runs on GitHub before a build is signed.
+
 ## Build 36 (November 2026)
 
 ### New
