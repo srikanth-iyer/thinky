@@ -222,7 +222,7 @@ for (const [hash, n] of [['#/todos', 5], ['#/pages', 4]]) {
   await page.evaluate((h) => { location.hash = h; }, hash);
   await sleep(700);
   const row = await page.evaluate(() => {
-    const first = document.querySelector('.list-tools > .chips');
+    const first = (document.querySelector('.list-tools .todo-kinds') || document.querySelector('.list-tools > .chips'));
     const cs = [...first.querySelectorAll('.chip')].map((c) => c.getBoundingClientRect());
     const box = first.getBoundingClientRect();
     return { n: cs.length, lines: new Set(cs.map((r) => Math.round(r.top))).size, inside: cs.every((r) => r.right <= box.right + 0.5), fade: first.classList.contains('fade-end') };

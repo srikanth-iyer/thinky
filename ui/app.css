@@ -524,8 +524,33 @@ a.tag .hash { display: var(--hash); }
 .ref-chips[hidden] { display: none; }
 .ref-chip { font-size: 13px; padding: 2px 10px; }
 .ref-chip .n { opacity: .65; font-size: .9em; margin-left: 2px; }
-.ref-chip[data-pick="out"] { background: var(--danger-tint); border-color: transparent; color: var(--ink-soft); }
+.ref-chip.ref-chip[data-pick="out"] { background: var(--danger-tint); border-color: transparent; color: var(--ink-soft); } /* (over .chip[aria-pressed]: hidden ones aren't green) */
 .ref-more { font-size: 13px; padding: 2px 10px; border-style: dashed; }
+/* Build 37 (he asked Nov 5–6): the filter buttons (chips.js): chosen ones first, each with a small
+   x; a dot on the filter button while some are chosen; a box to find a button; two rows, then "N more" */
+.ref-chip { display: inline-flex; align-items: center; gap: 2px; }
+.ref-chip[hidden], .ref-more[hidden] { display: none; }
+.ref-chip.picked { padding-right: 4px; }
+.ref-chip .chip-x { border: 0; background: none; color: inherit; font: inherit; font-size: 15px; line-height: 1; width: 18px; height: 18px; padding: 0;
+  margin-left: 2px; border-radius: 50%; cursor: pointer; opacity: .75; display: inline-grid; place-items: center; }
+.ref-chip .chip-x:hover { opacity: 1; background: color-mix(in srgb, currentColor 16%, transparent); }
+.chip-none { font-size: 13px; }
+.ref-tbtn[data-on="true"]::after { content: ""; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.chip-find { position: relative; display: flex; align-items: center; max-width: 280px; }
+.chip-find svg { position: absolute; left: 9px; width: 14px; height: 14px; color: var(--ink-faint); pointer-events: none; }
+.chip-find input { flex: 1; min-width: 0; font: inherit; font-size: 13.5px; padding: 5px 10px 5px 29px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); }
+/* To-dos: Show on the left (they filter), the order on the right as one joined group with a ⇅ mark (it sorts) */
+.todo-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.todo-bar .todo-kinds { flex: 1 1 auto; min-width: 0; }
+.todo-acts { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.seg { display: inline-flex; align-items: stretch; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--surface); }
+.seg .chip { border: 0; border-radius: 0; padding: 3px 10px; }
+.seg .chip + .chip { border-left: 1px solid var(--line); }
+.seg-ic { display: grid; place-items: center; padding: 0 4px 0 9px; color: var(--ink-faint); font-size: 13px; cursor: default; }
+.todo-panel { display: flex; flex-direction: column; gap: 8px; }
+.todo-panel[hidden] { display: none; }
+.todo-panel .ref-chips { margin-top: 0; }
+@media (max-width: 600px) { .todo-acts { flex-basis: 100%; justify-content: flex-end; } }
 @media (pointer: coarse) { .ref-chip, .ref-more { min-height: 34px; } }
 .ref-find { position: relative; flex: 1 1 220px; max-width: 340px; display: flex; align-items: center; }
 .ref-find svg { position: absolute; left: 10px; width: 15px; height: 15px; color: var(--ink-faint); pointer-events: none; }
@@ -582,6 +607,9 @@ a.tag .hash { display: var(--hash); }
 .refnote > .refmore::before { content: none; }
 .refmore .bc { color: var(--ink-faint); }
 .tagged { display: flex; flex-wrap: wrap; gap: 6px; }
+.tagged a.tag { display: inline-block; vertical-align: top; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* (Build 37: a long name ends in … instead of running off a phone's screen) */
+.tagged-sec .ref-tools { margin-bottom: 8px; }
+.tagged-sec .ref-tools[hidden] { display: none; }
 /* under a day in the Journals list: references to it (smaller headings), and today's due to-dos */
 .day-refs .sec { margin-top: 36px; }
 .day-sched .sched { margin-top: 40px; } /* (room for the faint "+" under the day's last note) */

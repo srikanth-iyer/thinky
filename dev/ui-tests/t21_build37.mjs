@@ -20,6 +20,16 @@ at('pages/Garden___beans.md', '2026-09-01T10:00:00Z');
 write('pages/Authors.md', 'alias:: author\n\n- people who wrote things\n');
 write('pages/Tag notes.md', '- met an #author\n- and #Authors\n');
 
+// many pages with to-dos, so the buttons need more than two rows
+for (let k = 1; k <= 30; k++) write(`pages/Proj ${String(k).padStart(2, '0')}.md`, `- TODO task ${k} of a long project name here\n`);
+write('pages/Shed.md', '- TODO fix the door [[Garden]]\n- TODO paint the shed\n');
+
+// pages tagged with "Reading", one with a very long name
+write('pages/Reading.md', '- things to read\n');
+write('pages/Short one.md', 'tags:: Reading\n\n- a\n');
+write('pages/Another book.md', 'tags:: Reading\n\n- b\n');
+write('pages/A very long page name that would never fit on the narrow screen of a phone at all, really.md', 'tags:: Reading\n\n- c\n');
+
 const { browser, page, errors } = await open();
 
 console.log('"Pages in …": sorted, each level on its own');
@@ -56,6 +66,36 @@ await sleep(400);
 const tagRows = await page.locator('main').innerText();
 check(/Authors/.test(tagRows) && !/(^|\n)\s*author\b/.test(tagRows), 'only "Authors" is listed, not "author" as well', tagRows.slice(0, 400));
 
+console.log('"Pages tagged with …": folds, filters, sorts, and fits a phone');
+await go(page, '#/page/Reading');
+await page.waitForSelector('.tagged-sec .tagged a');
+const tagged = () => page.locator('.tagged-sec .tagged a').allTextContents();
+check((await tagged()).length === 3, 'three pages tagged with Reading', JSON.stringify(await tagged()));
+await page.locator('.tagged-sec .ref-s').click();
+await page.locator('.sort-menu').getByText('A to Z').click();
+await sleep(150);
+check(JSON.stringify(await tagged()) === JSON.stringify(['A very long page name that would never fit on the narrow screen of a phone at all, really', 'Another book', 'Short one']), 'Sort: A to Z', JSON.stringify(await tagged()));
+await page.locator('.tagged-sec .ref-f').click();
+await page.locator('.tagged-sec .ref-filter').fill('book');
+await sleep(150);
+check(JSON.stringify(await tagged()) === JSON.stringify(['Another book']), 'Filter: “book”', JSON.stringify(await tagged()));
+await page.locator('.tagged-sec .ref-f').click();
+await sleep(150);
+check((await tagged()).length === 3, 'closing the filter shows them all again');
+await page.locator('.tagged-sec .disclose').click();
+await sleep(150);
+check(await page.locator('.tagged-sec .tagged').isHidden(), 'the heading folds it');
+await go(page, '#/journals');
+await go(page, '#/page/Reading');
+await page.waitForSelector('.tagged-sec');
+check(await page.locator('.tagged-sec .tagged').isHidden(), 'folded is remembered');
+await page.locator('.tagged-sec .disclose').click();
+await page.setViewportSize({ width: 390, height: 800 });
+await sleep(400);
+const wide = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth, long: Math.round(document.querySelector('.tagged-sec .tagged a').getBoundingClientRect().right) }));
+check(wide.doc <= wide.win && wide.long <= wide.win, 'phone: the long name ends in “…” inside the screen', JSON.stringify(wide));
+await page.setViewportSize({ width: 1280, height: 900 });
+
 console.log('Tabs: the "+" always shows; the dot menu opens a note in a new tab or to the side');
 await go(page, '#/page/Garden');
 await page.waitForSelector('.outline .blk');
@@ -83,6 +123,66 @@ await page.waitForSelector('.note-menu');
 await page.locator('.note-menu .nm-item', { hasText: 'Open to the side' }).click();
 await sleep(400);
 check(await page.locator('#histbar .tabs[data-p="1"]').isVisible(), '"Open to the side": a second side opens');
+
+console.log('To-dos: the order on the right; the page buttons behind the filter button');
+await page.evaluate(() => window.leanApp.tabs.closePane(1)); // (one side again, after the tabs part)
+await sleep(300);
+await go(page, '#/todos');
+await page.waitForSelector('.todo-item');
+const kindsBox = await page.locator('.todo-kinds').boundingBox(), orderBox = await page.locator('.todo-order').boundingBox();
+check(orderBox.x > kindsBox.x + 100 && Math.abs(orderBox.y - kindsBox.y) < 20, 'the order sits on the right of the Show row', JSON.stringify([kindsBox, orderBox]));
+check(/⇅/.test(await page.locator('.todo-order').textContent()), 'with a ⇅ mark: it sorts');
+check(await page.locator('.todo-panel').isHidden() && await page.locator('.todo-chips .ref-chip').count() === 0 || await page.locator('.todo-panel').isHidden(), 'the page buttons start hidden');
+const fbtn = page.locator('.todo-f');
+await fbtn.click();
+await sleep(300);
+check(await page.locator('.todo-panel').isVisible() && await fbtn.getAttribute('aria-expanded') === 'true', 'the filter button shows them');
+const visibleChips = () => page.locator('.todo-chips .ref-chip:not([hidden])');
+const tops = await visibleChips().evaluateAll((cs) => [...new Set(cs.map((c) => c.offsetTop))].length);
+check(tops <= 2 && await page.locator('.todo-chips .ref-more').isVisible(), 'two rows at most, then “N more”', String(tops));
+check(/^\d+ more$/.test(await page.locator('.todo-chips .ref-more').textContent()), '“N more” says how many', await page.locator('.todo-chips .ref-more').textContent());
+// the find box narrows the buttons
+await page.locator('.chip-find-in').fill('shed');
+await sleep(250);
+let names = await visibleChips().evaluateAll((cs) => cs.map((c) => c.firstChild.textContent.trim()));
+check(names.length === 1 && names[0] === 'Shed', 'finding “shed”: just that button', JSON.stringify(names));
+await page.locator('.todo-chips .ref-chip', { hasText: 'Shed' }).click();
+await sleep(250);
+let items = await page.locator('.todo-item .bc').allTextContents();
+check(items.length === 2 && items.every((t) => /door|shed/.test(t)), 'a click: only the to-dos on Shed', JSON.stringify(items));
+await page.locator('.chip-find-in').fill('');
+await sleep(250);
+names = await visibleChips().evaluateAll((cs) => cs.map((c) => c.firstChild.textContent.trim()));
+check(names[0] === 'Shed' && await page.locator('.todo-chips .ref-chip.picked .chip-x').count() === 1, 'the chosen button comes first, with a ×', JSON.stringify(names.slice(0, 4)));
+check(await fbtn.getAttribute('data-on') === 'true', 'the filter button shows a dot while a button is chosen');
+await page.locator('.todo-chips .ref-chip.picked .chip-x').click();
+await sleep(250);
+check(await page.locator('.todo-item').count() > 30 && await page.locator('.todo-chips .ref-chip.picked').count() === 0, 'its × lets it go');
+// right-click hides; closing the panel lets every pick go
+await page.locator('.todo-chips .ref-chip', { hasText: 'Garden' }).first().click({ button: 'right' });
+await sleep(250);
+check(!(await page.locator('.todo-item .bc').allTextContents()).some((t) => /door/.test(t)), 'right-click: the to-dos mentioning Garden hidden');
+await fbtn.click();
+await sleep(250);
+check(await page.locator('.todo-panel').isHidden() && (await page.locator('.todo-item .bc').allTextContents()).some((t) => /door/.test(t)), 'closing the panel lets the picks go (all to-dos again)');
+await fbtn.click();
+await sleep(250);
+check(await page.locator('.todo-chips .ref-chip.picked').count() === 0, 'and they stay gone when it opens again');
+await page.reload();
+await page.waitForSelector('.todo-item');
+check(await page.locator('.todo-panel').isVisible(), 'open or closed is remembered');
+// typing in the to-do filter narrows the buttons too
+await page.locator('.list-tools input.filter').fill('paint');
+await sleep(250);
+names = await visibleChips().evaluateAll((cs) => cs.map((c) => c.firstChild.textContent.trim()));
+check(names.length === 1 && names[0] === 'Shed', 'typing “paint”: only the Shed button is left', JSON.stringify(names));
+await page.locator('.list-tools input.filter').fill('');
+// phone: the order on its own line, on the right
+await page.setViewportSize({ width: 390, height: 800 });
+await sleep(400);
+const k2 = await page.locator('.todo-kinds').boundingBox(), o2 = await page.locator('.todo-acts').boundingBox();
+check(o2.y > k2.y + 10 && o2.x + o2.width > 390 - 40, 'phone: the order on its own line, right-aligned', JSON.stringify([k2, o2]));
+await page.setViewportSize({ width: 1280, height: 900 });
 
 check(!errors.length, 'no script errors', errors.join('\n'));
 await browser.close();

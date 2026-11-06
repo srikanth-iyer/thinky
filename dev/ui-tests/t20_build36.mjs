@@ -127,12 +127,13 @@ await page.waitForSelector('.todo-item');
 const item = (t) => page.locator('.todo-item', { hasText: t });
 check(/under\s+Hartley/.test(await item('ask about the oven').locator('.where').textContent()), 'shown: “under Hartley”', await item('ask about the oven').locator('.where').textContent());
 check(!/under/.test(await item('not under anything').locator('.where').textContent()), 'a top-level to-do: nothing');
+if (await page.locator('.todo-f').getAttribute('aria-expanded') !== 'true') await page.locator('.todo-f').click(); // (Build 37: behind the filter button)
 const chip = page.locator('.todo-chips .ref-chip', { hasText: /^Hartley/i });
 await chip.click();
 await sleep(300);
 const shown = await page.locator('.todo-item .bc').evaluateAll((b) => b.map((x) => x.textContent));
 check(shown.length === 2 && shown.every((t) => /oven|flour/.test(t)), 'Hartley’s button shows the two under it', JSON.stringify(shown));
-await chip.click(); await chip.click();
+await chip.click();
 await page.locator('.list-tools input.filter').fill('hartley');
 await sleep(300);
 check(await page.locator('.todo-item').count() === 2, 'typing its name finds them too');

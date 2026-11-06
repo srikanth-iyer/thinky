@@ -5,6 +5,7 @@ import { call, today, store } from './api.js';
 import { renderBlock, datesHtml, esc, whenText, pagesIn } from './render.js';
 import { h, pageLink, ICON, BRAND, plural } from './dom.js';
 import { promptBox } from './popups.js';
+import { makeChips } from './chips.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -380,51 +381,64 @@ export async function todosView(app, view) {
   // (config.edn: NOW/LATER or DOING/TODO); To do also takes WAITING ones
   const now = app.workflow() === 'now';
   const kinds = [['all', 'Open', 'Every open to-do'], ['todo', now ? 'Later' : 'To do', now ? 'LATER, TODO and WAITING' : 'TODO, LATER and WAITING'], ['doing', now ? 'Now' : 'Doing', 'NOW and DOING'], ['done', 'Done', 'Finished to-dos'], ['canceled', 'Cancelled', 'Cancelled to-dos']];
+  // Build 37 (he asked, Nov 5–6): the order on the right of the Show row, as one joined group with a ⇅
+  // mark (it sorts; the left ones filter); the page buttons behind a filter button (as Linked
+  // references), with a box to find a button; closing it lets every pick go (he chose this)
   tools.innerHTML = `<input class="filter" type="search" placeholder="Filter to-dos" aria-label="Filter to-dos">
-    <div class="chips" role="group" aria-label="Show">${kinds.map(([k, l, t]) => `<button class="chip" data-k="${k}" title="${t}" aria-pressed="${opt.kind === k}">${l}</button>`).join('')}</div>
-    <div class="chips todo-order" role="group" aria-label="Order">${TODO_ORDERS.map(([k, l, t]) => `<button class="chip" data-sort="${k}" title="${t}" aria-pressed="${opt.sort === k}">${l}</button>`).join('')}</div>
-    <div class="ref-chips todo-chips" role="group" aria-label="Pages these to-dos are on or mention"></div>`;
+    <div class="todo-bar">
+      <div class="chips todo-kinds" role="group" aria-label="Show">${kinds.map(([k, l, t]) => `<button class="chip" data-k="${k}" title="${t}" aria-pressed="${opt.kind === k}">${l}</button>`).join('')}</div>
+      <div class="todo-acts">
+        <div class="seg todo-order" role="group" aria-label="Order"><span class="seg-ic" aria-hidden="true" title="Order">⇅</span>${TODO_ORDERS.map(([k, l, t]) => `<button class="chip" data-sort="${k}" title="${t}" aria-pressed="${opt.sort === k}">${l}</button>`).join('')}</div>
+        <button type="button" class="ref-tbtn todo-f" aria-expanded="false" aria-controls="todo-panel">${ICON.filter}</button>
+      </div>
+    </div>
+    <div class="todo-panel" id="todo-panel" hidden><label class="chip-find">${ICON.search}<input type="search" class="chip-find-in" placeholder="Find a page" aria-label="Find a page button" autocomplete="off" spellcheck="false"></label>
+      <div class="ref-chips todo-chips" role="group" aria-label="Pages these to-dos are on or mention"></div></div>`;
   const out = h('div', 'todos');
   view.append(tools, out);
-  const input = $('input', tools);
-  const chipsEl = $('.todo-chips', tools);
+  const input = $('input.filter', tools);
+  const chipsEl = $('.todo-chips', tools), panel = $('.todo-panel', tools), fbtn = $('.todo-f', tools), findIn = $('.chip-find-in', tools);
   let tasks = [];
-  // Filter buttons (Build 34, he asked, as the references' ones): the pages each to-do is on or links
-  // to, most used first. A click shows only those, a second hides those, a third lets it go.
-  const picks = new Map(); // small letters → 'in' | 'out'
+  // the pages each to-do is on, links to, or sits under (a parent note's link)
   const namesOf = new Map(); // a to-do → its page names (small letters)
   const names = (x) => {
     if (!namesOf.has(x)) namesOf.set(x, new Set([x.page, ...pagesIn(x.text), ...(x.under || [])].map((n) => n.toLowerCase())));
     return namesOf.get(x);
   };
   const ofKind = (x) => (opt.kind === 'all' ? !closed(x) : GROUPS[x.marker] === opt.kind);
-  let counts = new Map(), written = new Map(), more = false;
+  const typed = (x, q) => !q || x.text.toLowerCase().includes(q) || x.page.toLowerCase().includes(q) || (x.under || []).some((n) => n.toLowerCase().includes(q));
+  let counts = new Map(), written = new Map();
+  // the buttons count the to-dos shown by Show and the words typed (so typing narrows the buttons too)
   const countChips = () => {
     counts = new Map(); written = new Map();
-    for (const x of tasks.filter(ofKind)) {
+    const q = input.value.trim().toLowerCase();
+    for (const x of tasks.filter((t) => ofKind(t) && typed(t, q))) {
       for (const n of names(x)) counts.set(n, (counts.get(n) || 0) + 1);
       for (const n of [x.page, ...pagesIn(x.text), ...(x.under || [])]) if (!written.has(n.toLowerCase())) written.set(n.toLowerCase(), n);
     }
-    for (const n of [...picks.keys()]) if (!counts.has(n)) picks.delete(n);
   };
-  const CHIPS = 24;
-  const drawChips = () => {
-    const all = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a) || a.localeCompare(b));
-    const list = more ? all : all.slice(0, CHIPS);
-    chipsEl.innerHTML = list.map((n) => {
-      const p = picks.get(n), say = p === 'in' ? 'Only these; click to hide them instead' : p === 'out' ? 'Hidden; click to stop filtering by it' : 'Click to show only these';
-      return `<button type="button" class="chip ref-chip" data-n="${esc(n)}"${p ? ` data-pick="${p}"` : ''} aria-pressed="${p ? 'true' : 'false'}" title="${esc(say)}">${p === 'out' ? '<s>' : ''}${esc(written.get(n) || n)}${p === 'out' ? '</s>' : ''} <span class="n">${counts.get(n)}</span></button>`;
-    }).join('') + (!more && all.length > CHIPS ? `<button type="button" class="chip ref-more">${all.length - CHIPS} more</button>` : '');
-    chipsEl.hidden = all.length < 2; // (one page only: nothing to choose between)
+  const chips = makeChips({ el: chipsEl, counts: () => counts, written: () => written, onChange: () => draw(), label: 'pages' });
+  const paintPanel = () => {
+    const open = !!opt.panel;
+    panel.hidden = !open;
+    fbtn.setAttribute('aria-expanded', String(open));
+    const n = chips.picks.size, t = open ? 'Hide the page buttons (and let their picks go)' : 'Filter by page';
+    fbtn.title = t; fbtn.setAttribute('aria-label', t);
+    fbtn.dataset.on = n ? 'true' : 'false';
+    if (open) chips.draw();
   };
-  const load = async () => { tasks = await call('tasks', { done: ['done', 'canceled'].includes(opt.kind) }); namesOf.clear(); countChips(); drawChips(); draw(); };
+  fbtn.onclick = () => {
+    opt.panel = !opt.panel; store.set('todoOpts', opt);
+    if (!opt.panel) { findIn.value = ''; chips.clear(); draw(); }
+    paintPanel();
+    if (opt.panel) findIn.focus({ preventScroll: true });
+  };
+  findIn.oninput = () => chips.find(findIn.value.trim());
+  const load = async () => { tasks = await call('tasks', { done: ['done', 'canceled'].includes(opt.kind) }); namesOf.clear(); countChips(); paintPanel(); draw(); };
   const draw = () => {
     const q = input.value.trim().toLowerCase();
     const t = num(today());
-    const ins = [...picks].filter(([, p]) => p === 'in').map(([n]) => n), outs = [...picks].filter(([, p]) => p === 'out').map(([n]) => n);
-    const list = tasks.filter((x) => ofKind(x)
-      && (!q || x.text.toLowerCase().includes(q) || x.page.toLowerCase().includes(q) || (x.under || []).some((n) => n.toLowerCase().includes(q)))
-      && ins.every((n) => names(x).has(n)) && !outs.some((n) => names(x).has(n)));
+    const list = tasks.filter((x) => ofKind(x) && typed(x, q) && chips.passes(names(x)));
     let groups;
     if (opt.sort === 'due') {
       const ahead = app.summary?.config?.future_days ?? 7; // (config.edn :scheduled/future-days, as today's box)
@@ -443,7 +457,8 @@ export async function todosView(app, view) {
       const sorted = list.slice().sort((a, b) => dir * (at(a) - at(b)) || a.page.localeCompare(b.page) || a.line - b.line);
       groups = [[opt.sort === 'oldest' ? 'Oldest first' : 'Newest first', sorted]];
     }
-    const filtering = q || picks.size;
+    const filtering = q || chips.picks.size;
+    fbtn.dataset.on = chips.picks.size ? 'true' : 'false';
     out.innerHTML = groups.filter(([, g]) => g.length).map(([name, g]) => `<section class="sec"><h2 class="sec-h">${name} <span class="n">${g.length}</span></h2>
       ${g.map((x) => taskRow(x)).join('')}</section>`).join('')
       || BRAND.empty(filtering && tasks.length ? 'Nothing matches.' : { done: 'No finished to-dos.', canceled: 'No cancelled to-dos.' }[opt.kind] || 'No open to-dos here. Start a block with TODO (or press Ctrl+Enter) to make one.');
@@ -457,23 +472,16 @@ export async function todosView(app, view) {
       draw();
       return;
     }
-    if (e.target.closest('.ref-more')) { more = true; drawChips(); return; }
-    const r = e.target.closest('.ref-chip');
-    if (r) {
-      const n = r.dataset.n, p = picks.get(n);
-      if (!p) picks.set(n, 'in'); else if (p === 'in') picks.set(n, 'out'); else picks.delete(n);
-      drawChips(); draw();
-      return;
-    }
+    if (e.target.closest('.todo-panel')) return; // (the buttons look after themselves: chips.js)
     const c = e.target.closest('[data-k]');
     if (!c || c.dataset.k === opt.kind) return;
     const was = ['done', 'canceled'].includes(opt.kind);
     opt.kind = c.dataset.k; store.set('todoOpts', opt);
     tools.querySelectorAll('[data-k]').forEach((b) => b.setAttribute('aria-pressed', b === c));
-    if (was !== ['done', 'canceled'].includes(opt.kind)) load(); else { countChips(); drawChips(); draw(); }
+    if (was !== ['done', 'canceled'].includes(opt.kind)) load(); else { countChips(); chips.draw(); draw(); }
   };
-  tools.querySelectorAll('.chips').forEach(fitChips);
-  input.oninput = draw;
+  tools.querySelectorAll('.todo-kinds').forEach(fitChips);
+  input.oninput = () => { countChips(); chips.draw(); draw(); };
   taskClicks(app, out, () => tasks, load);
   await load();
   if (!matchMedia('(pointer: coarse)').matches) input.focus();
