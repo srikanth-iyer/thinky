@@ -314,13 +314,15 @@ jobs:
   ui-tests:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
+      # the first failure stops every group (UI_FAIL_FAST stops the rest of its own group too), and
+      # t5_long, the test most often hit by GitHub's slower machines, runs first
+      fail-fast: true
       matrix:
         group:
-          - smoke t1_editing t2_blocks t3_pages t4_sync t5_long t6_looks t7_layout t8_phone t9_journals t10_safety t10_shortcuts
+          - t5_long smoke t1_editing t2_blocks t3_pages t4_sync t6_looks t7_layout t8_phone t9_journals t10_safety t10_shortcuts
           - t11_reading t12_pictures t13_update t13_tabs t13_tabs_safety t14_refs t14_history t14_blockmenu t15_search t15_looks t15_nav
           - t15_edit t15_pages t15_drag t16_safety t16_alias t16_widget t16_find t16_gaps t16_refs t16_reftools t16_looks t16_looks2
-          - t16_start t16_phone t16_feedback t16_brand t16_logo t16_settings t16_browser t17_refedit t18_security t19_build34 t20_build36
+          - t16_start t16_phone t16_feedback t16_brand t16_logo t16_settings t16_browser t17_refedit t18_security t19_build34 t20_build36 t21_build37
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -335,6 +337,7 @@ jobs:
       - name: Browser tests
         env:
           UI_TEST_DIR: ${{ runner.temp }}/ui
+          UI_FAIL_FAST: '1'
         run: dev/ui-tests/run.sh ${{ matrix.group }}
       - name: Screenshots when a test failed
         if: failure()
