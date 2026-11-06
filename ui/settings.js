@@ -28,7 +28,7 @@ export async function settingsView(app, view, want = null) {
   if (!view.isConnected) return;
   // what each tab holds (Capture and Shortcuts once a notes folder is open)
   const parts = {
-    notes: async () => [folderCard(app), ...(app.vaultOpen ? [binCard(app), safetyCard(app)] : [])],
+    notes: async () => [folderCard(app), ...(app.vaultOpen ? [binCard(app), safetyCard(app), ...(isAndroid ? [] : [backupCard(app)])] : [])],
     look: async () => [lookCard(app), ...(app.vaultOpen ? [propDisplayCard(app)] : [])],
     capture: async () => [captureCard(app), ...(platform === 'windows' ? [browserCard(app), windowsCard(app)] : [])],
     keys: async () => [keysCard(app)],
@@ -155,7 +155,31 @@ function missingBox(app, r) {
   box.innerHTML = `<h3>Missing pictures</h3>
     <p class="note">${miss.length === 1 ? 'A note links to a picture that isn’t' : `Notes link to ${miss.length} pictures that aren’t`} in <code>assets</code> on this device. A picture added on another device may still be syncing (check your sync app there), or it never got here.</p>
     <ul class="rows">${[...by].map(([page, files]) => `<li><a href="#" data-page="${esc(page)}">${esc(page)}<span class="meta">${files.map(esc).join('<br>')}</span></a></li>`).join('')}</ul>`;
-  box.addEventListener('click', (e) => app.linkClick(e));
+  box.addEventListener('click', (e) => { if (!e.target.closest('.bk-restore')) app.linkClick(e); });
+  // Build 37: with backups on, each missing picture is looked for in them, with a Restore button
+  const bk = app.backupPrefs?.();
+  if (bk?.on && bk.dest && !isAndroid) {
+    (async () => {
+      for (const li of box.querySelectorAll('.rows li')) {
+        const page = li.querySelector('a')?.dataset.page;
+        for (const file of by.get(page) || []) {
+          const rel = 'assets/' + file;
+          const found = await call('backup_find', { kind: bk.kind, dest: bk.dest, rel }).catch(() => null);
+          if (!found || !box.isConnected) continue;
+          li.insertAdjacentHTML('beforeend', `<button class="btn ghost small bk-restore" data-rel="${esc(rel)}" title="Found in ${esc(found)}">Found in your backup: restore ${esc(file)}</button>`);
+        }
+      }
+    })();
+    box.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.bk-restore');
+      if (!btn) return;
+      e.preventDefault();
+      try {
+        await call('backup_restore', { kind: bk.kind, dest: bk.dest, rel: btn.dataset.rel });
+        btn.replaceWith(Object.assign(document.createElement('span'), { className: 'note', textContent: `✓ ${btn.dataset.rel.slice(7)} is back` }));
+      } catch (err) { app.toast(String(err), 6000); }
+    });
+  }
   return box;
 }
 
@@ -748,6 +772,53 @@ function propDisplayCard(app) {
   };
   call('props').then((ps) => { $('#prop-keys', card).innerHTML = ps.map(([k]) => `<option value="${esc(k)}">`).join(''); }).catch(() => {});
   draw();
+  return card;
+}
+
+/** Backups (Build 37, he asked Nov 6): optional, off unless turned on here; this computer only (the
+ *  phone's notes are the same files, synced). A dated zip of the notes folder in a folder outside it
+ *  (the last few kept), or a copy into a git repository folder, saved ("commit") and uploaded
+ *  ("push") with git. Only when something changed. App.backupNow does it; core/src/app/backup.rs. */
+function backupCard(app) {
+  const card = h('div', 'card backup-card');
+  const b = app.backupPrefs();
+  card.innerHTML = `<h2>Backups</h2><p class="note">Keep copies of your notes folder somewhere else, so a page or picture deleted by mistake can be brought back. Made only when something changed. Off unless you turn it on; each computer has its own setting.</p>
+    <label class="bk-on"><input type="checkbox" class="bk-on-in"${b.on ? ' checked' : ''}> Back up my notes</label>
+    <div class="bk-opts">
+      <fieldset class="bk-kind"><legend>How</legend>
+        <label><input type="radio" name="bk-kind" value="zip"${b.kind !== 'git' ? ' checked' : ''}> <b>Snapshot folder</b>: a dated zip of the notes in a folder you choose (no account needed)</label>
+        <label><input type="radio" name="bk-kind" value="git"${b.kind === 'git' ? ' checked' : ''}> <b>GitHub</b> (or any git repository): needs <a href="https://git-scm.com" target="_blank" rel="noopener">git</a> and a folder cloned from your backup repository; every snapshot stays in its history</label>
+      </fieldset>
+      <label class="bk-row"><span class="bk-l">Folder</span><input class="bk-dest" type="text" value="${esc(b.dest)}" placeholder="${b.kind === 'git' ? 'C:\\Users\\you\\notes-backup (a git clone)' : 'C:\\Users\\you\\notes-backups'}" spellcheck="false" autocomplete="off"></label>
+      <p class="note bk-hint">Outside your notes folder (a backup inside it would be synced and backed up again).</p>
+      <label class="bk-row"><span class="bk-l">How often</span><select class="bk-every"><option value="week"${b.every !== 'day' ? ' selected' : ''}>Once a week</option><option value="day"${b.every === 'day' ? ' selected' : ''}>Once a day</option></select></label>
+      <label class="bk-row bk-keep-row"${b.kind === 'git' ? ' hidden' : ''}><span class="bk-l">Keep</span><select class="bk-keep">${[2, 4, 8, 12].map((n) => `<option value="${n}"${n === Number(b.keep) ? ' selected' : ''}>the last ${n}</option>`).join('')}</select></label>
+      <div class="bk-actions"><button class="btn small bk-now" type="button">Back up now</button><span class="note bk-last"></span></div>
+    </div>`;
+  const $$ = (sel) => $(sel, card);
+  const paint = () => {
+    const p = app.backupPrefs();
+    $$('.bk-opts').classList.toggle('off', !p.on);
+    $$('.bk-keep-row').hidden = p.kind === 'git';
+    const when = p.last ? new Date(p.last).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    $$('.bk-last').textContent = p.said ? `${p.last ? `Last backup: ${when}. ` : ''}${p.said}` : (p.on ? 'No backup yet.' : '');
+  };
+  card.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.matches('.bk-on-in')) app.setBackupPrefs({ on: t.checked });
+    else if (t.name === 'bk-kind') app.setBackupPrefs({ kind: t.value });
+    else if (t.matches('.bk-dest')) app.setBackupPrefs({ dest: t.value.trim() });
+    else if (t.matches('.bk-every')) app.setBackupPrefs({ every: t.value });
+    else if (t.matches('.bk-keep')) app.setBackupPrefs({ keep: Number(t.value) });
+    paint();
+  });
+  $$('.bk-now').onclick = async () => {
+    app.setBackupPrefs({ dest: $$('.bk-dest').value.trim() });
+    const btn = $$('.bk-now');
+    btn.disabled = true; btn.textContent = 'Backing up…';
+    try { await app.backupNow(); } finally { btn.disabled = false; btn.textContent = 'Back up now'; paint(); }
+  };
+  paint();
   return card;
 }
 

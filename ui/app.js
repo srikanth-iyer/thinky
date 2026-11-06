@@ -3050,9 +3050,46 @@ class App {
       await this.refreshNames();
       this.renderSideLists();
       this.widgetTasksSoon();
+      this.backupSoon();
     } catch (e) {
       this.vaultError = String(e?.message ?? e);
     }
+  }
+
+  // ----- backups (Build 37, he asked Nov 6; core/src/app/backup.rs) -----
+  // Optional, off unless turned on in Settings → Notes → Backups; on the laptop only. While the app
+  // is open it checks once an hour (and a minute after the folder opens) whether a backup is due
+  // (once a day or once a week); the core makes one only if something changed. Each device keeps
+  // its own choice (the backup folder is a folder on that computer): localStorage "backup".
+  backupPrefs() {
+    const b = store.get('backup', {});
+    return { on: false, kind: 'zip', dest: '', every: 'week', keep: 4, last: 0, said: '', ...(b && typeof b === 'object' ? b : {}) };
+  }
+  setBackupPrefs(change) { store.set('backup', { ...this.backupPrefs(), ...change }); }
+  backupSoon() {
+    if (isAndroid || this.backupTimer) return;
+    this.backupTimer = setInterval(() => this.backupIfDue(), 3600e3);
+    setTimeout(() => this.backupIfDue(), 60e3);
+  }
+  async backupIfDue() {
+    const b = this.backupPrefs();
+    if (isAndroid || !this.vaultOpen || !b.on || !b.dest) return;
+    const gap = (b.every === 'day' ? 1 : 7) * 86400e3;
+    if (Date.now() - (b.last || 0) < gap - 30 * 60e3) return; // (half an hour's leeway: the hourly check)
+    await this.backupNow({ quiet: true });
+  }
+  /** One backup now. Says what happened (quietly: only a failure or a warning). */
+  async backupNow({ quiet = false } = {}) {
+    const b = this.backupPrefs();
+    const d = new Date(), p2 = (n) => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}`;
+    let r;
+    try { r = await call('backup_now', { kind: b.kind, dest: b.dest, keep: b.keep, push: true, stamp }); } catch (e) { r = { status: 'failed', message: String(e?.message ?? e) }; }
+    const said = r.status === 'failed' ? `Backup failed: ${r.message}` : r.message;
+    this.setBackupPrefs({ ...(r.status === 'failed' ? {} : { last: Date.now() }), said, saidAt: Date.now() });
+    if (!quiet || r.status === 'failed') this.toast(said, r.status === 'failed' ? 8000 : 3000);
+    if (r.warning) this.toast(`Backup: ${r.warning}`, 10000);
+    return r;
   }
 
   /** The open folder's summary and its settings (config.edn): the shortcut keys, and the phone

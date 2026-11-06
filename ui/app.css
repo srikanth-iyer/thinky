@@ -1559,3 +1559,16 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 .prop-display .pr-icon[hidden] { display: none; }
 .prop-display .prop-add { display: flex; gap: 8px; margin-top: 10px; }
 .prop-display .prop-new { flex: 1; min-width: 0; max-width: 320px; }
+/* Settings → Notes → Backups (Build 37) */
+.backup-card .bk-on { display: flex; align-items: center; gap: 8px; font-weight: 600; margin: 6px 0 10px; }
+.backup-card .bk-opts.off { opacity: .55; }
+.backup-card fieldset { border: 0; padding: 0; margin: 0 0 10px; display: flex; flex-direction: column; gap: 6px; }
+.backup-card legend { font-size: 13px; color: var(--ink-soft); margin-bottom: 4px; }
+.backup-card .bk-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.backup-card .bk-row[hidden] { display: none; }
+.backup-card .bk-l { flex: 0 0 90px; font-size: 14px; color: var(--ink-soft); }
+.backup-card .bk-dest { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.backup-card select { font: inherit; font-size: 14px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.backup-card .bk-hint { margin: 0 0 6px 100px; font-size: 12.5px; }
+.backup-card .bk-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.missing-box .bk-restore { margin-top: 6px; }

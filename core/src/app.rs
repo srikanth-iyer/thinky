@@ -31,6 +31,7 @@ pub fn data_dir() -> Option<PathBuf> {
     DATA_DIR.get().cloned()
 }
 
+pub mod backup;
 pub mod history;
 pub mod pictures;
 pub mod safety;
@@ -2429,6 +2430,10 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
         "rename_property" => to_value(app.rename_property(&s("key"), &s("new_key"))?),
         // Build 37: settings kept in the notes folder (logseq/thinky.json), shared by every device
         "folder_settings" => Ok(app.folder_settings()),
+        // Build 37: backups (Settings → Backups; app/backup.rs)
+        "backup_now" => to_value(app.backup_now(&s("kind"), &s("dest"), args.get("keep").and_then(Value::as_u64).unwrap_or(4) as usize, args.get("push").and_then(Value::as_bool).unwrap_or(true), &s("stamp"))),
+        "backup_find" => Ok(json!(backup::find_in_backup(&s("kind"), std::path::Path::new(s("dest").trim()), &s("rel")))),
+        "backup_restore" => Ok(json!(app.restore_from_backup(&s("kind"), &s("dest"), &s("rel"))?)),
         "set_folder_setting" => Ok(app.set_folder_setting(&s("key"), args.get("value").cloned().unwrap_or(Value::Null))?),
         "undo_merge" => Ok(json!(app.undo_merge(args.get("undo").and_then(Value::as_u64).unwrap_or(0))?)),
         // a page's file (the Windows app shows it in Explorer)

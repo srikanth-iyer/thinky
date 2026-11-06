@@ -2,6 +2,7 @@
 // references (each level of the tree on its own); the Tags list counts a tag and its page's aliases
 // as one tag.
 import fs from 'node:fs';
+import { DIR } from './lib.mjs';
 import { open, check, failures, sleep, go, write, read, exists, VAULT } from './lib.mjs';
 
 // a namespace with known times: "Garden/beans" newest, "Garden/apples" oldest, and a level down
@@ -33,6 +34,13 @@ write('pages/A very long page name that would never fit on the narrow screen of 
 // Property display: notes Claude added (by:: claude), and a property config.edn hides
 write('pages/Claude notes.md', '- my own note\n- a note from Claude\n  by:: claude\n- another one\n  by:: claude\n  source:: chat\n- a secret one\n  secret:: shh\n');
 write('logseq/config.edn', read('logseq/config.edn').replace('{', '{:block-hidden-properties #{:secret}\n '));
+
+// Backups: a note with a picture that will go missing
+fs.mkdirSync(VAULT + '/assets', { recursive: true });
+fs.writeFileSync(VAULT + '/assets/kept (2026).png', Buffer.from('89504e470d0a1a0a', 'hex'));
+write('pages/Pictures here.md', '- a picture ![k](../assets/kept%20(2026).png)\n');
+const BK = DIR + '/backups';
+fs.rmSync(BK, { recursive: true, force: true });
 
 const { browser, page, errors } = await open();
 
@@ -156,6 +164,37 @@ await page.waitForSelector('.prop-display li[data-k="by"]');
 await page.locator('.prop-rules li[data-k="by"] .pr-del').click();
 await sleep(400);
 check(!JSON.parse(read('logseq/thinky.json')).propertyDisplay, 'Remove: the rule is gone from the file', read('logseq/thinky.json'));
+
+console.log('Backups: off until turned on; a snapshot zip; a missing picture put back');
+await go(page, '#/settings/notes');
+await page.waitForSelector('.backup-card');
+check(!(await page.locator('.bk-on-in').isChecked()), 'off at first');
+await page.locator('.bk-on-in').check();
+await page.locator('.bk-dest').fill(VAULT + '/inside');
+await page.locator('.bk-dest').dispatchEvent('change');
+await page.locator('.bk-now').click();
+await sleep(800);
+check(/outside your notes folder/.test(await page.locator('.bk-last').textContent()), 'a folder inside the notes is refused', await page.locator('.bk-last').textContent());
+await page.locator('.bk-dest').fill(BK);
+await page.locator('.bk-dest').dispatchEvent('change');
+await page.locator('.bk-now').click();
+await sleep(1200);
+const zips = fs.existsSync(BK) ? fs.readdirSync(BK).filter((f) => f.endsWith('.zip')) : [];
+check(zips.length === 1 && /^thinky-backup-\d{4}-\d{2}-\d{2}-\d{4}\.zip$/.test(zips[0]), 'Back up now: a dated zip in the folder', JSON.stringify(zips));
+check(/Last backup: .*Backed up to/.test(await page.locator('.bk-last').textContent()), 'and the card says when', await page.locator('.bk-last').textContent());
+await page.locator('.bk-now').click();
+await sleep(1000);
+check(/Nothing changed/.test(await page.locator('.bk-last').textContent()) && fs.readdirSync(BK).filter((f) => f.endsWith('.zip')).length === 1, 'again with nothing changed: no new zip');
+// the picture goes missing; Check this folder finds it in the backup and puts it back
+fs.rmSync(VAULT + '/assets/kept (2026).png');
+await page.locator('[data-a="check"]').click();
+await page.waitForSelector('.missing-box', { timeout: 8000 });
+await page.waitForSelector('.missing-box .bk-restore', { timeout: 8000 }).catch(() => {});
+check(await page.locator('.missing-box .bk-restore').count() === 1, 'Missing pictures: “Found in your backup”');
+await page.locator('.missing-box .bk-restore').click();
+await sleep(500);
+check(fs.existsSync(VAULT + '/assets/kept (2026).png') && /is back/.test(await page.locator('.missing-box').textContent()), 'Restore puts it back');
+await page.locator('.bk-on-in').uncheck();
 
 console.log('Tabs: the "+" always shows; the dot menu opens a note in a new tab or to the side');
 await go(page, '#/page/Garden');
