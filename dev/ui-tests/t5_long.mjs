@@ -33,8 +33,13 @@ for (const [name, hash, title] of [['3,000 blocks', '#/page/Big%20page', 'Big pa
   if (name === '450 references') check(t.refs >= 450 * 5 && t.refs < 450 * 5 + 50, 'then all 450 references are drawn, each with its 4 open notes (the folded ones only when opened)', t.refs);
 }
 // typing on the long page stays quick
+// (by way of All pages, then until the long page is drawn: a slow machine may still be filling the
+// last page's 2,250 references)
+await page.evaluate(() => { location.hash = '#/pages'; });
+await sleep(500);
 await page.evaluate(() => { location.hash = '#/page/Big%20page'; });
-await sleep(1500);
+await page.waitForFunction(() => document.querySelector('.page-head .page-title')?.textContent === 'Big page' && document.querySelectorAll('.outline .blk').length >= 3000, null, { timeout: 30000 });
+await sleep(500);
 // (a slow machine may still be drawing the page when the click lands: click again until it opens)
 for (let k = 0; ; k++) {
   await page.locator('.outline .blk > .bc', { hasText: 'block 2999 ' }).first().click();
