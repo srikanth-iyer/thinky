@@ -186,6 +186,36 @@ impl App {
     /// links written as `…/assets/<name>` (Logseq's `../assets/`, any depth) in pages and journals;
     /// `%20`-style escapes are read; a `#` or `?` after the name and code spans don't count.
     pub fn missing_pictures(&self) -> Vec<(String, String)> {
+        /// Where a link to a file ends, given the character just before "../assets/": `(` (a
+        /// Markdown link) → its own closing bracket, counting brackets inside the name; a quote →
+        /// the same quote; `<` → `>`; `[` → `]`; anything else → a closing bracket, quote or `>`.
+        /// Never past the end of the line.
+        fn link_end(after: &str, opener: Option<char>) -> usize {
+            let line_end = after.find('\n').unwrap_or(after.len());
+            let s = &after[..line_end];
+            match opener {
+                Some('(') => {
+                    let mut depth = 1;
+                    for (k, c) in s.char_indices() {
+                        match c {
+                            '(' => depth += 1,
+                            ')' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    return k;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    s.len()
+                }
+                Some(q @ ('"' | '\'')) => s.find(q).unwrap_or(s.len()),
+                Some('<') => s.find('>').unwrap_or(s.len()),
+                Some('[') => s.find(']').unwrap_or(s.len()),
+                _ => s.find([')', ']', '"', '>']).unwrap_or(s.len()),
+            }
+        }
         let assets = self.root.join("assets");
         let mut out: Vec<(String, String)> = vec![];
         let mut seen: HashSet<(String, String)> = HashSet::new();
@@ -200,14 +230,24 @@ impl App {
                     let start = rest[..i].rfind(['(', '"', '\'', ' ', '\t', '[', '<', '=']).map_or(0, |s| s + 1);
                     let web = rest[start..i].contains("://");
                     let after = &rest[i + "../assets/".len()..];
-                    let end = after.find([')', ']', '"', '\'', '>', '\n', '#', '?']).unwrap_or(after.len());
+                    // Build 37 (Nov 6): where the link ends depends on what opened it, so names with
+                    // brackets, apostrophes or "#" ("Book (2003).pdf", "You'll.epub", "notes #1.pdf")
+                    // aren't cut short: `(…)` ends at its own closing bracket, quotes at the same quote
+                    let opener = rest[..i].trim_end_matches("../").chars().last(); // (past "../../")
+                    let end = link_end(after, opener);
                     let name = after[..end].trim();
                     rest = &after[end..];
                     if web || name.is_empty() || name.contains("..") {
                         continue;
                     }
                     let file = crate::vault::percent_decode_pub(name);
-                    let ok = *there.entry(file.clone()).or_insert_with(|| assets.join(&file).exists());
+                    // the file itself, or without a "#page=2" / "?v=1" ending a link may carry
+                    let ok = *there.entry(file.clone()).or_insert_with(|| {
+                        let bare = |c: char| file.find(c).map(|k| file[..k].to_string());
+                        assets.join(&file).exists()
+                            || bare('#').is_some_and(|f| assets.join(f).exists())
+                            || bare('?').is_some_and(|f| assets.join(f).exists())
+                    });
                     if !ok {
                         let page = self.vault.title_from_path(rel).0;
                         if seen.insert((page.clone(), file.clone())) {
