@@ -46,7 +46,7 @@ for (let k = 0; ; k++) {
   await page.evaluate(() => [...document.querySelectorAll('.outline .blk')].at(-1)?.scrollIntoView({ block: 'center' }));
   await sleep(500);
   try {
-    await page.locator('.outline .blk > .bc', { hasText: 'block 2999 ' }).first().click({ timeout: 10000 });
+    await page.locator('.outline .blk > .bc', { hasText: 'block 2999 ' }).first().click({ timeout: 10000, position: { x: 4, y: 8 } }); // its first word: the middle may be a #tag, which opens that page
     await page.waitForSelector('textarea.ed', { timeout: 5000 });
     break;
   } catch (e) {
