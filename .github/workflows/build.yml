@@ -314,9 +314,9 @@ jobs:
   ui-tests:
     runs-on: ubuntu-latest
     strategy:
-      # the first failure stops every group (UI_FAIL_FAST stops the rest of its own group too), and
-      # t5_long, the test most often hit by GitHub's slower machines, runs first
-      fail-fast: true
+      # every test runs and reports, even after a failure (his choice, Nov 6); t5_long, the test most
+      # often hit by GitHub's slower machines, runs first, so its result shows early
+      fail-fast: false
       matrix:
         group:
           - t5_long smoke t1_editing t2_blocks t3_pages t4_sync t6_looks t7_layout t8_phone t9_journals t10_safety t10_shortcuts
@@ -337,7 +337,6 @@ jobs:
       - name: Browser tests
         env:
           UI_TEST_DIR: ${{ runner.temp }}/ui
-          UI_FAIL_FAST: '1'
         run: dev/ui-tests/run.sh ${{ matrix.group }}
       - name: Screenshots when a test failed
         if: failure()
