@@ -135,6 +135,13 @@ run adb shell "cat '/sdcard/vault/Diary/$TODAY.md'"
 log "the capture page after sharing:"
 run adb shell "cat '/sdcard/vault/pages/quick capture.md'"
 
+# 5b. "Add to thinky" over selected text (Build 37): no window, the words go to the usual place
+#     as plain words
+run adb shell am start -n "$PKG/.SelectionCaptureActivity" -a android.intent.action.PROCESS_TEXT -t text/plain --es android.intent.extra.PROCESS_TEXT "'Selected words [[Not A Link]] #nottag'"
+sleep 4; shot 09b-selected
+SELECTED=$(adb shell "cat '/sdcard/vault/Diary/$TODAY.md' '/sdcard/vault/pages/quick capture.md' 2>/dev/null" | tr -d '\r' | grep 'Selected words' || true)
+log "the selected words: $SELECTED"
+
 # 6. share a picture: copied into assets/ and linked; then shown in the app
 python3 -c "
 import struct, zlib
@@ -474,6 +481,7 @@ else
   log "SKIPPED the one-click update: no release on this repo yet"
 fi
 result "the widgets take each look's colours (journal widget: background, title, +, empty line, rows; the one-tap +)" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); ok=lambda x: (x[\"got\"].get(\"bg\"), x[\"got\"].get(\"title\"), x[\"got\"].get(\"row\"), x[\"got\"].get(\"empty\"), x[\"got\"].get(\"add\"), x[\"got\"].get(\"circle\")) == (x[\"want\"][\"bg\"], x[\"want\"][\"ink\"], x[\"want\"][\"ink\"], x[\"want\"][\"faint\"], x[\"want\"][\"accent\"], x[\"want\"][\"accent\"]); sys.exit(0 if len(d) == 5 and all(map(ok, d)) else 1)' '$WIDGET'"
+result "Add to thinky: selected words added with no window, as plain words" "echo '$SELECTED' | grep -q 'Selected words' && ! echo '$SELECTED' | grep -q '\[\[Not A Link\]\]'"
 result "both widgets are offered to the home screen" "adb shell dumpsys appwidget | grep -qi journalwidget && adb shell dumpsys appwidget | grep -qi quickaddwidget"
 result "the app sets up its icon shortcuts Today, Add note and Search" "grep -q '{id=today' $OUT/shortcuts.txt && grep -q '{id=add' $OUT/shortcuts.txt && grep -q '{id=search' $OUT/shortcuts.txt"
 result "pressing and holding the app icon shows them" "menu_shown"

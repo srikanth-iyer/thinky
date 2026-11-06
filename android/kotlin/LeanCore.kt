@@ -74,6 +74,10 @@ object LeanCore {
   /** Typed or shared words → a note in the quick capture template. Returns the file written. */
   fun addText(ctx: Context, text: String): String = call(base(ctx).put("text", text)).optString("rel")
 
+  /** Words selected in another app ("Add to thinky", SelectionCaptureActivity): added the same way,
+   *  but kept as plain words (the core's clip::defuse), as the Edge extension's highlights are. */
+  fun addSelected(ctx: Context, text: String): String = call(base(ctx).put("text", text).put("plain", true)).optString("rel")
+
   /** A shared picture: copied into assets/ by the core (Logseq's name; its own extension, else its
    *  type's), then linked in the media template. `link`: one copied by an earlier try. */
   fun addPicture(ctx: Context, uri: Uri, name: String, link: String?): String {

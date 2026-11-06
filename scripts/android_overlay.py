@@ -109,6 +109,17 @@ COMPONENTS = """
                 <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
+        <!-- "Add to thinky" in the menu over selected text (Build 37): the words go to today's
+             journal with no window (SelectionCaptureActivity.kt) -->
+        <activity android:name=".SelectionCaptureActivity" android:exported="true" android:label="Add to thinky"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" android:excludeFromRecents="true" android:taskAffinity=""
+            android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
         <service android:name=".AddNoteTile" android:exported="true" android:label="Add note"
             android:icon="@drawable/tile_add_note" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
