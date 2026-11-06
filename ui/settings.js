@@ -5,7 +5,7 @@
 // is remembered.
 
 import { call, store, nowTime, isApp, isAndroid, assetUrl, today } from './api.js';
-import { esc } from './render.js';
+import { esc, PROP_SHOWS, MARK_COLORS, builtinHidden } from './render.js';
 import { h, ICON, BRAND, plural } from './dom.js';
 import { promptBox, confirmBox } from './popups.js';
 import { SKINS, accessCard, lookName } from './app.js';
@@ -29,7 +29,7 @@ export async function settingsView(app, view, want = null) {
   // what each tab holds (Capture and Shortcuts once a notes folder is open)
   const parts = {
     notes: async () => [folderCard(app), ...(app.vaultOpen ? [binCard(app), safetyCard(app)] : [])],
-    look: async () => [lookCard(app)],
+    look: async () => [lookCard(app), ...(app.vaultOpen ? [propDisplayCard(app)] : [])],
     capture: async () => [captureCard(app), ...(platform === 'windows' ? [browserCard(app), windowsCard(app)] : [])],
     keys: async () => [keysCard(app)],
     about: async () => [feedbackCard(app), problemsCard(), await aboutCard(app)],
@@ -698,6 +698,59 @@ function windowsCard(app) {
 /** The bin (logseq/.recycle, like Logseq): deleted pages (the newest 50) and, in a section of their
  *  own, every picture "Check this folder" moved there, newest move first; "Put back" returns one to
  *  exactly where it was (its name in the bin says so, see core/src/app/pictures.rs). */
+/** Property display (Build 37, he asked Nov 6): how each property shows on the notes, for any
+ *  property: Show, Quiet (smaller, lighter), Icon (a small sign; its words on hover) or Hidden (like
+ *  id::), and an optional mark (a thin coloured line down the note's left edge). Saved in the notes
+ *  folder (logseq/thinky.json) so the laptop and the phone agree; render.js applies it. */
+function propDisplayCard(app) {
+  const card = h('div', 'card prop-display');
+  const SAY = { show: 'Show', quiet: 'Quiet', icon: 'Icon', hidden: 'Hidden' };
+  const cap = (c) => c[0].toUpperCase() + c.slice(1);
+  card.innerHTML = `<h2>Property display</h2><p class="note">How a property shows on your notes: as usual, <b>quiet</b> (smaller and lighter), as a small <b>icon</b> (its words show when you point at it), or <b>hidden</b> (still there; the note menu’s “Show hidden properties” shows it). A <b>mark</b> adds a thin coloured line down the left of every note that has the property. Saved in your notes folder (<code>logseq/thinky.json</code>), so your laptop and phone agree. Properties Logseq is told to hide (<code>:block-hidden-properties</code> in <code>config.edn</code>) are hidden here too.</p>
+    <ul class="rows prop-rules"></ul>
+    <form class="prop-add"><input class="prop-new" list="prop-keys" placeholder="A property’s name, e.g. by" aria-label="A property’s name" autocomplete="off" spellcheck="false"><datalist id="prop-keys"></datalist><button class="btn small" type="submit">Add</button></form>`;
+  const list = $('.prop-rules', card), add = $('.prop-add', card), input = $('.prop-new', card);
+  const rules = () => ({ ...(app.folderSettings?.propertyDisplay || {}) });
+  const draw = () => {
+    const r = rules(), keys = Object.keys(r).sort();
+    list.innerHTML = keys.map((k) => {
+      const x = r[k] || {}, show = PROP_SHOWS.includes(x.show) ? x.show : 'show';
+      return `<li data-k="${esc(k)}"><code class="pr-k">${esc(k)}::</code>
+        <select class="pr-show" aria-label="How ${esc(k)} shows">${PROP_SHOWS.map((v) => `<option value="${v}"${v === show ? ' selected' : ''}>${SAY[v]}</option>`).join('')}</select>
+        <input class="pr-icon" value="${esc(x.icon || '●')}" maxlength="2" aria-label="The icon for ${esc(k)}" title="The icon (a character or emoji)"${show === 'icon' ? '' : ' hidden'}>
+        <select class="pr-mark" aria-label="A mark on notes with ${esc(k)}"><option value="">No mark</option>${MARK_COLORS.map((c) => `<option value="${c}"${c === x.mark ? ' selected' : ''}>${cap(c)} mark</option>`).join('')}</select>
+        <button class="btn ghost small pr-del" type="button" aria-label="Back to usual for ${esc(k)}">Remove</button></li>`;
+    }).join('') || '<li class="note">No rules yet: every property shows as usual.</li>';
+  };
+  const save = async (k, rule) => {
+    const r = rules();
+    if (rule) r[k] = rule; else delete r[k];
+    try { await app.setFolderSetting('propertyDisplay', Object.keys(r).length ? r : null); } catch (err) { app.toast(String(err), 6000); }
+    draw();
+  };
+  const ruleOf = (li) => ({ show: $('.pr-show', li).value, icon: $('.pr-icon', li).value.trim() || '●', mark: $('.pr-mark', li).value });
+  list.addEventListener('change', (e) => {
+    const li = e.target.closest('li[data-k]');
+    if (li) save(li.dataset.k, ruleOf(li));
+  });
+  list.addEventListener('click', (e) => {
+    const li = e.target.closest('li[data-k]');
+    if (li && e.target.closest('.pr-del')) save(li.dataset.k, null);
+  });
+  add.onsubmit = (e) => {
+    e.preventDefault();
+    const k = input.value.trim().replace(/::\s*$/, '').toLowerCase();
+    if (!k) return;
+    if (!/^[\p{L}\p{N}_.\/-]+$/u.test(k)) { app.toast('A property’s name is letters, numbers and - _ . / only.', 4000); return; }
+    if (builtinHidden(k)) { app.toast(`${k}:: is one the app always hides (Logseq keeps it for itself).`, 4000); return; }
+    input.value = '';
+    if (!rules()[k]) save(k, { show: 'quiet', icon: '●', mark: '' });
+  };
+  call('props').then((ps) => { $('#prop-keys', card).innerHTML = ps.map(([k]) => `<option value="${esc(k)}">`).join(''); }).catch(() => {});
+  draw();
+  return card;
+}
+
 function binCard(app) {
   const card = h('div', 'card');
   card.innerHTML = `<h2>Deleted pages and pictures</h2><p class="note">Pages you delete, and pictures moved here from “Check this folder”, wait in the bin (<code>logseq/.recycle</code> in your notes folder, like Logseq). Bring one back with Restore or Put back.</p>

@@ -7,8 +7,34 @@ const HIDDEN_PROPS = new Set(['id', 'collapsed', 'ls-type', 'hl-type', 'hl-page'
   'heading', 'created-at', 'updated-at', 'annotation-id', 'hid', 'card-last-interval', 'card-repeats',
   'card-ease-factor', 'card-next-schedule', 'card-last-reviewed', 'card-last-score', 'logseq.order-list-type',
   'template-including-parent', 'background-color', 'background_color']);
-/** Logseq's bookkeeping properties (ids, folding, flashcard and highlight data, colours…): never shown. */
-export const hiddenKey = (k) => HIDDEN_PROPS.has(k) || k.startsWith('card-') || k.startsWith('hl-');
+// Property display (Build 37, he asked Nov 6): per property, Show (as usual), Quiet (smaller and
+// lighter), Icon (a small sign, the words on hover) or Hidden (like id::); and a mark, a thin
+// coloured line down the left of a note that has it. Kept in the notes folder (logseq/thinky.json,
+// "propertyDisplay": { key: { show, icon, mark } }) so every device agrees. Logseq's own
+// :block-hidden-properties (config.edn) hide too. Nothing about any one property is built in.
+let RULES = {};
+let CFG_HIDDEN = new Set();
+export const PROP_SHOWS = ['show', 'quiet', 'icon', 'hidden'];
+export const MARK_COLORS = ['purple', 'blue', 'green', 'yellow', 'red', 'pink', 'gray'];
+/** rules: { key: { show, icon, mark } } (keys in small letters); cfgHidden: config.edn's list. */
+export function setPropRules(rules, cfgHidden = []) {
+  RULES = {};
+  for (const [k, r] of Object.entries(rules && typeof rules === 'object' ? rules : {})) {
+    if (!r || typeof r !== 'object') continue;
+    const show = PROP_SHOWS.includes(r.show) ? r.show : 'show';
+    const icon = typeof r.icon === 'string' ? [...r.icon.trim()].slice(0, 2).join('') : '';
+    const mark = MARK_COLORS.includes(r.mark) ? r.mark : '';
+    if (show !== 'show' || mark) RULES[String(k).toLowerCase().trim()] = { show, icon: icon || '●', mark };
+  }
+  CFG_HIDDEN = new Set((cfgHidden || []).map((k) => String(k).toLowerCase()));
+}
+export const propRules = () => RULES;
+/** The colour of the mark for a note with these properties ([key, value]), or ''. */
+export const markOf = (props) => { for (const [k] of props || []) { const m = RULES[k]?.mark; if (m) return m; } return ''; };
+/** Logseq's bookkeeping properties (ids, folding, flashcard and highlight data, colours…): never shown;
+ *  nor those hidden by Property display or config.edn's :block-hidden-properties. */
+export const builtinHidden = (k) => HIDDEN_PROPS.has(k) || k.startsWith('card-') || k.startsWith('hl-');
+export const hiddenKey = (k) => builtinHidden(k) || CFG_HIDDEN.has(k) || RULES[k]?.show === 'hidden';
 export const MARKERS = /^(TODO|DOING|DONE|LATER|NOW|WAITING|WAIT|CANCELED|CANCELLED|IN-PROGRESS|STARTED)(?=\s|$)/;
 export const PROP = /^\s*([\p{L}\p{N}_.\/-]+)::(?:\s(.*)|$)/u;
 const IMG = /\.(png|jpe?g|gif|webp|svg|bmp|avif|ico)(\?.*)?$/i;
@@ -319,7 +345,7 @@ function drawBlock(text, depth = 0) {
   const body = [];
   const props = [];
   const dates = [];
-  let auto = false, bg = '';
+  let auto = false, bg = '', mark = '';
   let fence = null;
   let mathBlock = null;
   let drawer = false;
@@ -358,6 +384,7 @@ function drawBlock(text, depth = 0) {
     const pm = line.match(PROP);
     if (pm) {
       const k = pm[1].toLowerCase();
+      if (RULES[k]?.mark && !mark) mark = RULES[k].mark; // (a hidden one can still mark its note)
       if (!hiddenKey(k)) props.push([k, pm[2] ?? '']);
       else if (k === 'heading') auto = /^true$/i.test((pm[2] ?? '').trim());
       else if (k === 'background-color' || k === 'background_color') bg = (pm[2] ?? '').trim();
@@ -398,7 +425,7 @@ function drawBlock(text, depth = 0) {
     if (html && !html.endsWith('</pre>') && !html.endsWith('</div>') && !html.endsWith('</blockquote>')) html += '<br>';
     html += inline(t);
   });
-  return { html, marker, priority, props, dates, heading, bg };
+  return { html, marker, priority, props, dates, heading, bg, mark };
 }
 
 /** Drop bookkeeping properties (ids, fold state, flashcard and highlight data). */
@@ -407,11 +434,19 @@ export function visibleProps(props) {
 }
 
 export function propsHtml(props) {
+  props = props.filter(([k]) => !hiddenKey(k));
   if (!props.length) return '';
-  return '<div class="props">' + props.map(([k, v]) => {
+  const icons = [], rows = [];
+  for (const [k, v] of props) {
+    const r = RULES[k];
+    if (r?.show === 'icon') { // a small sign at the end of the note; its words on hover (and to a screen reader)
+      icons.push(`<span class="prop-icon" data-prop="${esc(k)}" role="img" aria-label="${esc(k)}: ${esc(v)}" title="${esc(k)}: ${esc(v)}">${esc(r.icon)}</span>`);
+      continue;
+    }
     const vals = (k === 'tags' || k === 'tag' || k === 'alias' || k === 'aliases')
       ? v.split(',').map((x) => x.trim().replace(/^#/, '').replace(/^\[\[(.*)\]\]$/, '$1')).filter(Boolean).map((n) => link(n)).join(', ')
       : inline(v);
-    return `<span class="prop"><span class="pk" data-prop="${esc(k)}">${esc(k)}</span><span class="pv">${vals}</span></span>`;
-  }).join('') + '</div>';
+    rows.push(`<span class="prop${r?.show === 'quiet' ? ' prop-quiet' : ''}"><span class="pk" data-prop="${esc(k)}">${esc(k)}</span><span class="pv">${vals}</span></span>`);
+  }
+  return (rows.length ? '<div class="props">' + rows.join('') + '</div>' : '') + (icons.length ? `<span class="prop-icons">${icons.join('')}</span>` : '');
 }

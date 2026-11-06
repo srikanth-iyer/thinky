@@ -35,6 +35,9 @@ pub struct Config {
     /// `:ref/default-open-blocks-level`: how many levels of a linked reference start open (1 = the
     /// note itself, 2 = and its sub-notes; deeper ones are folded).
     pub ref_open_level: u32,
+    /// `:block-hidden-properties` (Build 37): property keys Logseq is told not to show; thinky hides
+    /// them too, like its own bookkeeping ones (small letters).
+    pub hidden_props: Vec<String>,
 }
 
 pub const DEFAULT_CAPTURE_TEXT: &str = "[[quick capture]] **{time}**: {text} from {url}";
@@ -59,6 +62,7 @@ impl Default for Config {
             shortcuts: vec![],
             future_days: 7,
             ref_open_level: 2,
+            hidden_props: vec![],
         }
     }
 }
@@ -86,6 +90,9 @@ impl Config {
         }
         if let Some(n) = root.get("property/separated-by-commas") {
             c.comma_props = n.items().iter().filter_map(|x| x.as_kw().or(x.as_str())).map(|k| k.to_lowercase()).collect();
+        }
+        if let Some(n) = root.get("block-hidden-properties") {
+            c.hidden_props = n.items().iter().filter_map(|x| x.as_kw().or(x.as_str())).map(|k| k.to_lowercase()).collect();
         }
         if let Some(n) = root.get("favorites") {
             c.favorites = n.items().iter().filter_map(|x| x.as_str()).map(str::to_string).collect();

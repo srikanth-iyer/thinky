@@ -4,7 +4,7 @@
 
 import { call, today, nowTime, store, isApp, isAndroid, listen, pageLinkUrl } from './api.js';
 import { Outline, EDGE, PIN_H, findAgain, caretAgain, foldedIn, lineLook } from './editor.js';
-import { renderBlock, propsHtml, visibleProps, esc, pagesIn } from './render.js';
+import { renderBlock, propsHtml, visibleProps, esc, pagesIn, setPropRules } from './render.js';
 import { Suggest, Preview, menu, confirmBox, promptBox, pickDate, place } from './popups.js';
 import { pagesView, tagsView, propsView, todosView, taskRow, taskClicks, taskDay, byDay, num } from './views.js';
 import { settingsView } from './settings.js';
@@ -2847,6 +2847,7 @@ class App {
       await Promise.all(this.outlines.map((o) => o.flush().catch(() => {})));
       while (this.scanning) await new Promise((r) => setTimeout(r, 50)); // (one already running)
       await this.rescan();
+      await this.loadFolderSettings(); // (another device may have changed Property display)
       let kept = 0;
       for (const o of [...this.outlines]) {
         if (!this.outlines.includes(o)) continue;
@@ -3064,6 +3065,20 @@ class App {
     for (const [action, keys] of c.shortcuts || []) this.keyMap[action] = keys;
     window.LeanAndroid?.setWidgetConfig?.(s.root, c.journals_dir, c.journal_file_format, c.journal_title_format);
     this.sendCaptureConfig();
+    await this.loadFolderSettings();
+  }
+
+  /** Settings kept in the notes folder (Build 37: logseq/thinky.json): Property display's rules, with
+   *  config.edn's :block-hidden-properties. Read when a folder opens and on Refresh. */
+  async loadFolderSettings() {
+    try { this.folderSettings = await call('folder_settings'); } catch { this.folderSettings = this.folderSettings || {}; }
+    setPropRules(this.folderSettings?.propertyDisplay, this.summary?.config?.hidden_props || []);
+  }
+  /** Change one of them (null removes it), then show every open page again with it. */
+  async setFolderSetting(key, value) {
+    this.folderSettings = await call('set_folder_setting', { key, value });
+    setPropRules(this.folderSettings?.propertyDisplay, this.summary?.config?.hidden_props || []);
+    for (const o of this.outlines) if (!o.dirty && o.cur === null) await o.reload?.().catch(() => {});
   }
 
   /** The phone's share pop-up and widget use the same quick capture format as the app. */

@@ -507,6 +507,7 @@ export class Outline {
       const div = bc.parentElement;
       if (!div) return;
       div.classList.toggle('marker-done', doneCls);
+      if (r.mark) div.dataset.mark = r.mark; else delete div.dataset.mark; // (Build 37: Property display's mark)
       if (hf) div.style.setProperty('--hf', hf); else div.style.removeProperty('--hf');
       if (lead) div.style.setProperty('--lead', lead); else div.style.removeProperty('--lead');
     });

@@ -2,7 +2,7 @@
 // references (each level of the tree on its own); the Tags list counts a tag and its page's aliases
 // as one tag.
 import fs from 'node:fs';
-import { open, check, failures, sleep, go, write, VAULT } from './lib.mjs';
+import { open, check, failures, sleep, go, write, read, exists, VAULT } from './lib.mjs';
 
 // a namespace with known times: "Garden/beans" newest, "Garden/apples" oldest, and a level down
 // ("Garden/zinnias/seeds") whose parent has no file of its own
@@ -29,6 +29,10 @@ write('pages/Reading.md', '- things to read\n');
 write('pages/Short one.md', 'tags:: Reading\n\n- a\n');
 write('pages/Another book.md', 'tags:: Reading\n\n- b\n');
 write('pages/A very long page name that would never fit on the narrow screen of a phone at all, really.md', 'tags:: Reading\n\n- c\n');
+
+// Property display: notes Claude added (by:: claude), and a property config.edn hides
+write('pages/Claude notes.md', '- my own note\n- a note from Claude\n  by:: claude\n- another one\n  by:: claude\n  source:: chat\n- a secret one\n  secret:: shh\n');
+write('logseq/config.edn', read('logseq/config.edn').replace('{', '{:block-hidden-properties #{:secret}\n '));
 
 const { browser, page, errors } = await open();
 
@@ -95,6 +99,63 @@ await sleep(400);
 const wide = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth, long: Math.round(document.querySelector('.tagged-sec .tagged a').getBoundingClientRect().right) }));
 check(wide.doc <= wide.win && wide.long <= wide.win, 'phone: the long name ends in “…” inside the screen', JSON.stringify(wide));
 await page.setViewportSize({ width: 1280, height: 900 });
+
+console.log('Property display: per property, saved in the notes folder');
+await go(page, '#/page/Claude notes');
+await page.waitForSelector('.outline .blk');
+const note = (t) => page.locator('.outline .blk', { has: page.locator(':scope > .bc', { hasText: t }) }).first();
+check(await note('a note from Claude').locator('.prop .pk', { hasText: 'by' }).count() === 1, 'by:: shows as usual at first');
+check(await note('a secret one').locator('.prop').count() === 0, 'config.edn’s :block-hidden-properties hides secret::');
+await go(page, '#/settings/look');
+await page.waitForSelector('.prop-display');
+await page.locator('.prop-new').fill('by::');
+await page.locator('.prop-add button').click();
+await sleep(400);
+check(await page.locator('.prop-rules li[data-k="by"]').count() === 1, 'a rule for by:: added');
+await page.locator('.prop-rules li[data-k="by"] .pr-show').selectOption('icon');
+await sleep(400);
+await page.locator('.prop-rules li[data-k="by"] .pr-icon').fill('✦');
+await page.locator('.prop-rules li[data-k="by"] .pr-icon').dispatchEvent('change');
+await sleep(400);
+await page.locator('.prop-rules li[data-k="by"] .pr-mark').selectOption('purple');
+await sleep(500);
+check(exists('logseq/thinky.json'), 'saved in the notes folder');
+const saved = exists('logseq/thinky.json') ? JSON.parse(read('logseq/thinky.json')) : {};
+check(saved.propertyDisplay?.by?.show === 'icon' && saved.propertyDisplay.by.icon === '✦' && saved.propertyDisplay.by.mark === 'purple', 'as icon ✦ with a purple mark', JSON.stringify(saved));
+await go(page, '#/page/Claude notes');
+await page.waitForSelector('.outline .blk');
+const n2 = note('a note from Claude');
+check(await n2.locator('.prop-icon').count() === 1 && await n2.locator('.prop-icon').getAttribute('title') === 'by: claude', 'by:: shows as a small icon, its words on hover');
+check(await n2.locator('.prop .pk', { hasText: 'by' }).count() === 0, 'and not as a row');
+check(await n2.getAttribute('data-mark') === 'purple' && await note('my own note').getAttribute('data-mark') === null, 'the purple mark on its notes only');
+const n3 = note('another one');
+check(await n3.locator('.prop .pk', { hasText: 'source' }).count() === 1, 'other properties still show as usual');
+// Quiet, then Hidden
+await go(page, '#/settings/look');
+await page.waitForSelector('.prop-display li[data-k="by"]');
+await page.locator('.prop-rules li[data-k="by"] .pr-show').selectOption('quiet');
+await sleep(400);
+await go(page, '#/page/Claude notes');
+await page.waitForSelector('.outline .blk');
+check(await note('a note from Claude').locator('.prop.prop-quiet').count() === 1, 'Quiet: a smaller, lighter row');
+await go(page, '#/settings/look');
+await page.waitForSelector('.prop-display li[data-k="by"]');
+await page.locator('.prop-rules li[data-k="by"] .pr-show').selectOption('hidden');
+await sleep(400);
+await go(page, '#/page/Claude notes');
+await page.waitForSelector('.outline .blk');
+check(await note('a note from Claude').locator('.prop, .prop-icon').count() === 0 && await note('a note from Claude').getAttribute('data-mark') === 'purple', 'Hidden: not shown, the mark stays');
+await note('a note from Claude').locator(':scope > .bul').click({ button: 'right' });
+await page.waitForSelector('.note-menu');
+check(await page.locator('.note-menu .nm-item', { hasText: 'Show hidden properties' }).count() === 1, 'the note menu can still show it');
+await page.keyboard.press('Escape');
+check(read('pages/Claude notes.md').includes('  by:: claude'), 'the note itself is unchanged');
+// remove the rule: back to usual
+await go(page, '#/settings/look');
+await page.waitForSelector('.prop-display li[data-k="by"]');
+await page.locator('.prop-rules li[data-k="by"] .pr-del').click();
+await sleep(400);
+check(!JSON.parse(read('logseq/thinky.json')).propertyDisplay, 'Remove: the rule is gone from the file', read('logseq/thinky.json'));
 
 console.log('Tabs: the "+" always shows; the dot menu opens a note in a new tab or to the side');
 await go(page, '#/page/Garden');
