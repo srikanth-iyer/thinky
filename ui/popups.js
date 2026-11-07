@@ -316,7 +316,8 @@ export function pickDate(anchor, opts = {}) {
     };
     const cleanup = () => { fadeAway(box); box.remove(); document.removeEventListener('keydown', onKey, true); document.removeEventListener('pointerdown', onDown, true); };
     document.addEventListener('keydown', onKey, true);
-    setTimeout(() => document.addEventListener('pointerdown', onDown, true), 0);
+    // (not once it's closed by an Esc right away: a listener left behind would act on the next press)
+    setTimeout(() => { if (box.isConnected) document.addEventListener('pointerdown', onDown, true); }, 0);
     place(box, anchor);
     cal.focusDay();
   });
@@ -389,7 +390,8 @@ export function menu(anchor, items, opts = {}) {
   box.innerHTML = items.map((it, k) => it === '-' ? '<li class="nm-sep" role="separator"></li>' : it.head ? `<li class="m-head" role="presentation">${esc(it.head)}</li>` : `<li><button type="button" data-k="${k}" class="${it.danger ? 'danger' : ''}">${it.hint ? `<span class="mhint">${esc(it.hint)}</span>` : ''}${esc(it.label)}</button></li>`).join('');
   if (opts.keep) box.addEventListener('pointerdown', (e) => e.preventDefault());
   document.body.append(box);
-  const close = () => { fadeAway(box); box.remove(); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); document.removeEventListener('beforeinput', close, true); };
+  let shut = false;
+  const close = () => { if (shut) return; shut = true; fadeAway(box); box.remove(); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); document.removeEventListener('beforeinput', close, true); };
   // a press outside closes it. The button that opened it closes it too (its click doesn't open it
   // again), and after a finger's press elsewhere the tap doesn't also act on what's under it (a link).
   const onDown = (e) => {
@@ -407,7 +409,8 @@ export function menu(anchor, items, opts = {}) {
   // Esc works from the moment it shows (Build 38: an Esc right after the click was lost); a press
   // outside only from the next turn, so the press that opened it doesn't close it
   document.addEventListener('keydown', onKey, true);
-  setTimeout(() => document.addEventListener('pointerdown', onDown, true), 0);
+  // (not once it's closed: a listener left behind would eat the next click, Build 38)
+  setTimeout(() => { if (!shut) document.addEventListener('pointerdown', onDown, true); }, 0);
   place(box, anchor.getBoundingClientRect());
   if (!opts.keep) box.querySelector('button')?.focus();
 }

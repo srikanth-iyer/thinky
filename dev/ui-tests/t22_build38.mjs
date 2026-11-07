@@ -245,6 +245,18 @@ await sleep(400);
 check(await page.locator('.pop.menu').count() === 0, 'picking an item still works');
 await page.keyboard.press('Escape');
 
+// the calendar: Esc right as it opens, then its button opens it again (no press is eaten)
+await go(page, '#/journals');
+await sleep(600);
+await page.locator('#topbar button[aria-label*="date" i]').first().tap();
+await page.waitForSelector('.datepick');
+await page.keyboard.press('Escape');
+await sleep(100);
+await page.locator('#topbar button[aria-label*="date" i]').first().tap();
+await page.waitForSelector('.datepick', { timeout: 3000 }).catch(() => {});
+check(await page.locator('.datepick').count() === 1, 'the calendar opens again after an Esc at once');
+await page.keyboard.press('Escape');
+await sleep(300);
 // the calendar: four buttons, one line, inside the box
 await go(page, '#/journals');
 await sleep(600);
