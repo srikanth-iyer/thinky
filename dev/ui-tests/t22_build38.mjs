@@ -157,7 +157,7 @@ const fadeHosts = () => page.evaluate(() => document.querySelectorAll('.fade-hos
 await page.locator('.title-row [data-a="more"]').click();
 await page.waitForSelector('.pop.menu');
 await page.keyboard.press('Escape');
-check(await page.locator('.pop.menu').count() === 0, 'Esc: the menu itself is gone at once');
+check(await page.locator('.pop.menu').count() === 0, 'Esc at once after the click: the menu itself is gone at once');
 check(await fadeHosts() === 1, 'a copy fades away on its own');
 const copy = await page.evaluate(() => { const h = document.querySelector('.fade-host'); return { inert: h.inert, hidden: h.getAttribute('aria-hidden'), pe: getComputedStyle(h).pointerEvents, shadow: h.shadowRoot === null }; });
 check(copy.inert && copy.hidden === 'true' && copy.pe === 'none' && copy.shadow, 'the copy takes no clicks, isn’t read out, and can’t be found (closed shadow root)', JSON.stringify(copy));

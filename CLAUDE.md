@@ -206,6 +206,23 @@ Settings → Notes `backupCard` (not on Android), Missing pictures' "Found in yo
 android_capture.rs `plain` → `clip::defuse` → `capture_to_usual`), manifest entry in android_overlay.py,
 android_test.sh step 5b. Missing pictures: pictures.rs `link_end` ends a link by what opened it (a Markdown
 `(…)` at its own closing bracket, quotes, `<…>`, `[…]`), `#…`/`?…` tried off when the full name isn't there.
+Build 38 (the maintainer's notes of Nov 7; tested by t22_build38, core tests/pages.rs
+`pages_under_a_page_and_its_alias`): a page's end has no line in the looks without cards (`--sheet-page-end: 0`
+in skins.css; cards keep their edge) and 30px under the "+". `menu()` (popups.js): its own button closes it
+(the click doesn't reopen it), a finger's press outside eats the click that follows (a mouse's doesn't), Esc
+from the moment it shows. The date picker's four quick buttons on one line. The phone's search box: its size
+fixed when it opens from the window's height without a keyboard (search.js `fullHeight`, `--sb-vh`; list 22,
+top 6 hundredths), so the keyboard doesn't shrink it. "Pages in …" also lists pages named under the page's
+aliases (`rel`: each by the part after its prefix; two at one place both listed by their whole names) and
+Check this folder lists such pairs (`app::alias_clashes`, CheckReport `alias_clashes`). Closing fades:
+`dom.js fadeAway(el)` puts a copy in a closed shadow root (the page's styles adopted; inert, aria-hidden), so
+no query, test or screen reader finds it; used by menu, noteMenu, the date picker, modal, search, export,
+history; app.css "Closing" (.fading, pop-out/sink-out ~0.1 s). Settings → Look → Animations (localStorage
+`motion`, boot.js `html[data-motion="off"]`: every animation/transition ends at once; `motionOn()`; App.slide
+too). YouTube: Logseq's `{{video <address>}}` / `{{youtube …}}` (render.js `youtube()` takes watch, youtu.be,
+shorts, embed, live, m./music., t=/start=) drawn as the video's picture (i.ytimg.com, no referrer) with a play
+button (`.yt`); a click (editor.js, before editing) puts `https://www.youtube-nocookie.com/embed/<id>?autoplay=1`
+there (`playVideo`, sandbox without popups); the CSP's only frame-src is that address. Anything else stays a macro.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

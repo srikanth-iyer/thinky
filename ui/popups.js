@@ -404,7 +404,10 @@ export function menu(anchor, items, opts = {}) {
   const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
   if (opts.keep) document.addEventListener('beforeinput', close, true); // (typing goes on: the menu goes)
   box.onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) { close(); items[+b.dataset.k].run(); } };
-  setTimeout(() => { document.addEventListener('pointerdown', onDown, true); document.addEventListener('keydown', onKey, true); }, 0);
+  // Esc works from the moment it shows (Build 38: an Esc right after the click was lost); a press
+  // outside only from the next turn, so the press that opened it doesn't close it
+  document.addEventListener('keydown', onKey, true);
+  setTimeout(() => document.addEventListener('pointerdown', onDown, true), 0);
   place(box, anchor.getBoundingClientRect());
   if (!opts.keep) box.querySelector('button')?.focus();
 }
