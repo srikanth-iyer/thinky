@@ -88,3 +88,42 @@ export const ICON = {
   palette: svg('<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1.1-1.6-1.1-2.8 0-1 .8-1.6 1.8-1.6h2.2a3.8 3.8 0 0 0 3.8-3.8c0-4-3.8-7.1-8.5-7.1z"/><circle cx="7.6" cy="11.2" r="1.1"/><circle cx="10" cy="7.5" r="1.1"/><circle cx="14.4" cy="7.5" r="1.1"/>'),
 };
 
+
+/** Animations are on unless the system asks for less motion or Settings → Look turned them off
+ * (html[data-motion="off"], boot.js before the first paint). */
+export const motionOn = () => document.documentElement.dataset.motion !== 'off' && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** Build 38: something closing fades away the way it came (app.css "Closing"). Call it right before
+ * removing or hiding el. A copy of it stays on screen for the closing animation, then goes; the real
+ * one is gone at once, so nothing waits for it. The copy is drawn in a closed shadow root of its own
+ * (with the page's styles), so no code, test or screen reader looking for open pop-ups ever finds it,
+ * and it takes no clicks. */
+let fadeSheets = null; // the page's styles, copied once for the shadow root
+export function fadeAway(el, cls = '') {
+  if (!el?.isConnected || !motionOn()) return;
+  try {
+    fadeSheets ??= [...document.styleSheets].map((ss) => {
+      const c = new CSSStyleSheet();
+      try { c.replaceSync([...ss.cssRules].map((r) => r.cssText).join('\n')); } catch { /* (another origin's: none) */ }
+      return c;
+    });
+    const host = document.createElement('div');
+    host.className = 'fade-host';
+    const root = host.attachShadow({ mode: 'closed' });
+    root.adoptedStyleSheets = fadeSheets;
+    const g = el.cloneNode(true);
+    g.removeAttribute('id');
+    for (const x of g.querySelectorAll('[id]')) x.removeAttribute('id');
+    g.classList.add('fading');
+    if (cls) g.classList.add(cls);
+    const ins = el.querySelectorAll('input'), gins = g.querySelectorAll('input'); // (a copy shows the typed words too)
+    ins.forEach((x, k) => { gins[k].value = x.value; });
+    root.append(g);
+    host.inert = true;
+    host.setAttribute('aria-hidden', 'true');
+    document.body.append(host);
+    const bye = () => host.remove();
+    g.addEventListener('animationend', (e) => { if (e.target === g) bye(); });
+    setTimeout(bye, 400); // (whatever happens)
+  } catch { /* the closing animation is only a nicety */ }
+}

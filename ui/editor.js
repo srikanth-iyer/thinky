@@ -4,7 +4,7 @@
 // the user chooses (the other version is kept as a backup copy).
 
 import { call, today, nowTime, noteLinkUrl, store } from './api.js';
-import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, hiddenKey, parseStamp, stampText, withPictureSize } from './render.js';
+import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, hiddenKey, parseStamp, stampText, withPictureSize, playVideo } from './render.js';
 import { pickDate, caretRect, noteMenu, menu, formBox, confirmBox } from './popups.js';
 import { openClash } from './clash.js';
 
@@ -619,6 +619,8 @@ export class Outline {
       const i = +blk.dataset.i;
       const thread = this.threadAt(e, blk);
       if (thread !== null) { e.preventDefault(); this.toggleBranch(thread); return; }
+      const yt = t.closest('.yt'); // a YouTube video's picture: its player, here (render.js)
+      if (yt) { e.preventDefault(); if (!yt.classList.contains('playing')) playVideo(yt); return; }
       const ref = t.closest('.bref[data-page]'); // a block reference: to the note it names
       if (ref) { e.preventDefault(); this.flush(); this.app.go('zoom', ref.dataset.page, { line: +ref.dataset.line }); return; }
       const a = t.closest('a');

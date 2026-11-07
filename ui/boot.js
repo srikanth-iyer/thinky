@@ -21,4 +21,5 @@ try {
   if (sw > 0) document.documentElement.style.setProperty('--side-w', sw + 'px');
   if (sp > 0 && sp < 1) document.documentElement.style.setProperty('--split', String(sp));
   if (JSON.parse(localStorage.getItem('wide') || 'false') === true) document.documentElement.classList.add('wide');
+  if (JSON.parse(localStorage.getItem('motion') || 'true') === false) document.documentElement.dataset.motion = 'off'; // Settings → Look → Animations
 } catch (e) {}

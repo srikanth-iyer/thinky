@@ -114,6 +114,8 @@ function folderCard(app) {
         ? `<p class="err"><b>${count(r.roundtrip_failures, 'file would', 'files would')} be reformatted if saved untouched:</b></p>${list(r.roundtrip_failures)}`
         : '<p class="note">✓ Every file can be opened and saved without being reformatted.</p>';
       if (r.conflict_copies.length) html += `<p class="note"><b>${count(r.conflict_copies, 'file looks like a copy', 'files look like copies')} made by a sync conflict</b> (e.g. “Page (1).md” next to “Page.md”). Compare ${r.conflict_copies.length === 1 ? 'it' : 'each'} with the original, keep what you need, then delete the copy:</p>${list(r.conflict_copies)}`;
+      // Build 38 (he asked): two pages at the same place under a page and its alias, both listed there
+      if (r.alias_clashes?.length) html += `<p class="note"><b>${count(r.alias_clashes, 'pair of pages sits', 'pairs of pages sit')} at the same place under a page and its alias.</b> Both show under the page; renaming one to the other’s name merges them:</p>${list(r.alias_clashes.map(([page, names]) => `${page}: ${names.join(' and ')}`))}`;
       if (r.duplicates.length) html += `<p class="note"><b>${count(r.duplicates, 'page name belongs', 'page names belong')} to more than one file.</b> The first file is the one shown:</p>${list(r.duplicates.map(([n, files]) => `${n}: ${files.join(', ')}`))}`;
       if (r.non_utf8.length) html += `<p class="note"><b>${count(r.non_utf8, 'file isn’t', 'files aren’t')} plain text</b> (shown read-only, never changed):</p>${list(r.non_utf8)}`;
       html += `<p class="note">Longest pages: ${r.biggest.map(([n, b]) => `${esc(n)} (${b} blocks)`).join(', ')}.<br>Most linked: ${r.most_linked.map(([n, c]) => `${esc(n)} (${c})`).join(', ')}.</p>`;
@@ -445,6 +447,15 @@ function lookCard(app) {
     for (const ta of document.querySelectorAll('textarea.ed')) ta.spellcheck = e.target.checked; // (a note being typed in now too)
   };
   sc.append(spell);
+  // animations (Build 38, he asked): opening and closing fades and slides; off = nothing moves
+  // (html[data-motion="off"], app.css; boot.js sets it before the first paint)
+  const motion = h('label', 'toggle motion-row', `<input type="checkbox"${store.get('motion', true) ? ' checked' : ''}> Animations: menus, the calendar, search and dialogs fade and slide as they open and close`);
+  $('input', motion).onchange = (e) => {
+    store.set('motion', e.target.checked);
+    if (e.target.checked) delete document.documentElement.dataset.motion;
+    else document.documentElement.dataset.motion = 'off';
+  };
+  sc.append(motion);
   sc.append(textStyle(app));
   return sc;
 }

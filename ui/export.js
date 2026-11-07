@@ -5,7 +5,7 @@
 
 import { esc, renderBlock, stampText, PROP, hiddenKey } from './render.js';
 import { store, isAndroid } from './api.js';
-import { h } from './dom.js';
+import { h, fadeAway } from './dom.js';
 
 const KINDS = { text: 'Text', opml: 'OPML', html: 'HTML' };
 
@@ -176,7 +176,7 @@ export function exportPage(app, outline, pv) {
     text = o.kind === 'text' ? asText(outline, o) : o.kind === 'opml' ? asOpml(outline, o, title) : html;
     out.value = text;
   };
-  const close = () => { back.remove(); document.removeEventListener('keydown', onKey, true); };
+  const close = () => { fadeAway(back); back.remove(); document.removeEventListener('keydown', onKey, true); };
   const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
   document.addEventListener('keydown', onKey, true);
   back.addEventListener('pointerdown', (e) => { if (e.target === back) close(); });

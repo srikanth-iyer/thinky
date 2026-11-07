@@ -1149,8 +1149,26 @@ class App {
     }
 
     // pages inside this namespace
+    // (Build 38: also pages named under one of its aliases, "thinky/ideas" on a page "thnki" with
+    // alias:: thinky; each is placed by the part after its prefix, as if under the page's own name)
     const key = pv.info.name.toLowerCase() + '/';
-    const kids = this.names.filter((n) => n.name.toLowerCase().startsWith(key) && (n.exists || n.refs));
+    const prefixes = [pv.info.name, ...(pv.info.aliases || [])].map((a) => a.toLowerCase() + '/');
+    const rel = new Map(); // a subpage → its path below this page
+    for (const n of this.names) {
+      if (!(n.exists || n.refs)) continue;
+      const low = n.name.toLowerCase(), pre = prefixes.find((x) => low.startsWith(x));
+      if (pre && !rel.has(n)) rel.set(n, n.name.slice(pre.length));
+    }
+    // two pages at the same place ("thnki/x" and "thinky/x"): both listed, each by its whole name, so
+    // neither hides the other (two pages, not one: they could be merged by renaming one)
+    const whole = new Set(), seen = new Map();
+    for (const [n, r] of rel) {
+      const k = r.toLowerCase();
+      if (seen.has(k)) { whole.add(n); whole.add(seen.get(k)); } else seen.set(k, n);
+    }
+    let k = 0;
+    for (const n of whole) rel.set(n, rel.get(n) + '\u2063' + k++); // (an invisible mark keeps them apart)
+    const kids = [...rel.keys()];
     if (kids.length && zoomLine === null) {
       // Build 37 (he asked, Nov 6): sorted like Linked references (the same Sort button and menu, kept per
       // page under "ns:<page>"); each level of the tree sorts on its own, so a sub-subpage stays under its
@@ -1162,10 +1180,10 @@ class App {
       const draw = () => {
         const sort = refPrefs(host).sort, [by, way] = REF_SORTS[sort];
         // the tree: each subpage under its parent path ("a/b/c" under "a/b")
-        const byName = new Map(kids.map((n) => [n.name.toLowerCase(), n]));
+        const byName = new Map(kids.map((n) => [(key + rel.get(n)).toLowerCase(), n]));
         const childrenOf = new Map(); // parent path (small letters) → its direct children's paths
         for (const n of kids) {
-          const parts = n.name.slice(key.length).split('/');
+          const parts = rel.get(n).split('/');
           for (let d = 0; d < parts.length; d++) {
             const parent = (key + parts.slice(0, d).join('/')).replace(/\/$/, '').toLowerCase();
             const me = (key + parts.slice(0, d + 1).join('/')).toLowerCase();
@@ -1181,7 +1199,7 @@ class App {
           newest.set(p, t);
           return t;
         };
-        const label = (p) => byName.get(p)?.name.split('/').pop() ?? p.split('/').pop();
+        const label = (p) => { const n = byName.get(p); return n ? (whole.has(n) ? n.name : n.name.split('/').pop()) : p.split('/').pop(); };
         const rows = [];
         const walk = (p, depth) => {
           const cs = [...(childrenOf.get(p) || [])].sort((a, b) => by === 'name'
@@ -2134,7 +2152,7 @@ class App {
    *  one; the sidebar itself slides by CSS (html.sliding, app.css). Not with reduced motion, nor in a
    *  narrow window (there it's a drawer). */
   slide() {
-    if (matchMedia('(max-width: 860px), (prefers-reduced-motion: reduce)').matches) return null;
+    if (matchMedia('(max-width: 860px), (prefers-reduced-motion: reduce)').matches || document.documentElement.dataset.motion === 'off') return null;
     const els = [...this.tabs.panes.map((p) => p.el.firstElementChild), $('#findbar'),
       ...document.querySelectorAll('#histbar .hb-nav[data-p="1"] > *, #histbar .tabs[data-p="1"], #histbar .tab-new[data-p="1"]')]
       .filter((el) => el && el.offsetParent);

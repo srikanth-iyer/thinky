@@ -527,3 +527,21 @@ fn a_property_renamed_keeps_every_other_byte() {
     assert!(dispatch(&mut st, "rename_property", json!({"key": "kind", "new_key": "collapsed"})).is_err(), "Logseq's own names are refused");
     let _ = std::fs::remove_dir_all(&v);
 }
+
+/// Build 38: "Check this folder" lists pages at the same place under a page and its alias (both show
+/// under the page's "Pages in …"), and nothing when names don't meet.
+#[test]
+fn pages_under_a_page_and_its_alias() {
+    set_cache_dir(cache());
+    let v = vault("aliasns");
+    put(&v, "pages/thnki.md", "Alias:: thinky\n\n- my app\n");
+    put(&v, "pages/thinky___build ideas.md", "- new\n");
+    put(&v, "pages/thnki___Build Ideas.md", "- old\n");
+    put(&v, "pages/thinky___roadmap.md", "- plans\n");
+    put(&v, "pages/other.md", "- [[other/x]] and [[other/y]]\n");
+    let r = outline_core::app::check_vault(&v).unwrap();
+    let mut names = r.alias_clashes.iter().map(|(p, n)| { let mut n = n.clone(); n.sort(); (p.clone(), n) }).collect::<Vec<_>>();
+    names.sort();
+    assert_eq!(names, vec![("thnki".to_string(), vec!["thinky/build ideas".to_string(), "thnki/Build Ideas".to_string()])]);
+    let _ = std::fs::remove_dir_all(&v);
+}

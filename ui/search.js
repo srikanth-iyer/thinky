@@ -6,7 +6,7 @@
 
 import { call, store } from './api.js';
 import { renderBlock, esc } from './render.js';
-import { h, ICON, BRAND } from './dom.js';
+import { h, ICON, BRAND, fadeAway } from './dom.js';
 import { commandList, keyHtml, keyOf, editingNow, editAgain } from './commands.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -123,6 +123,13 @@ function markedName(name, marks = []) {
 }
 
 // ---------------------------------------------------------------------------
+/** The window's height while nothing is being typed in (so no on-screen keyboard), last seen. */
+let tallest = window.innerHeight; // (nothing is being typed in as the app starts)
+const typing = () => document.activeElement?.matches?.('input, textarea, [contenteditable]');
+const noteHeight = () => { if (!typing()) tallest = window.innerHeight; };
+addEventListener('resize', noteHeight);
+const fullHeight = () => { noteHeight(); return Math.max(tallest, window.innerHeight); };
+
 export class SearchBox {
   constructor(app) {
     this.app = app;
@@ -161,6 +168,9 @@ export class SearchBox {
   open(mode = 'search') {
     if (!this.isOpen) {
       this.ed = editingNow(this.app); // (the note being edited stops when the box takes the keyboard)
+      // its size is fixed when it opens, from the window without a keyboard, so the phone's keyboard
+      // coming up doesn't shrink it (app.css: --sb-vh)
+      this.el.style.setProperty('--sb-vh', fullHeight() / 100 + 'px');
       this.el.hidden = false;
       document.body.classList.remove('drawer'); // (opened from the phone's menu: the menu's done)
     }
@@ -169,6 +179,7 @@ export class SearchBox {
   /** cancel: closed without picking (Esc, a click outside): the note that was being edited is again. */
   close(cancel = false) {
     if (!this.isOpen) return;
+    fadeAway(this.el, 'search-ghost');
     this.el.hidden = true;
     this.input.blur(); // so the next keys (e.g. "t l") reach the app straight away
     clearTimeout(this.t);

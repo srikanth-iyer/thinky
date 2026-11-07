@@ -250,6 +250,10 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
    today's is taller (Logseq: 250px, today 500). Oct 28: a little roomier still (he asked) */
 .sheet.day, .sheet.page { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 22px); padding-bottom: calc(var(--sheet-pad-bottom) + 22px); }
 .sheet.day { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 30px); padding-bottom: calc(var(--sheet-pad-bottom) + 32px); }
+/* a page's end: room under the faint "+" (it takes no room of its own), and in the looks without cards no
+   line under it (he asked: the "+" and the space are end enough; the line stays between days in the
+   Journals list). A card keeps its whole edge. --sheet-page-end: 0 in those looks (skins.css). */
+.sheet.page { padding-bottom: calc(var(--sheet-pad-bottom) + 30px); border-bottom: var(--sheet-page-end, var(--sheet-divider)); }
 .sheet.day { margin-bottom: var(--day-gap); min-height: 250px; }
 .sheet.day.today { min-height: 400px; }
 .day-body { margin-top: 28px; }
@@ -753,7 +757,7 @@ a.tag .hash { display: var(--hash); }
 .err { color: var(--danger); }
 
 /* ---------- search and the command list (search.js; one box, two modes) ---------- */
-#search { position: fixed; inset: 0; background: color-mix(in srgb, var(--ink) 28%, transparent); z-index: 50; display: flex; justify-content: center; align-items: flex-start; padding: 10vh 16px 16px; }
+#search, .search-ghost { position: fixed; inset: 0; background: color-mix(in srgb, var(--ink) 28%, transparent); z-index: 50; display: flex; justify-content: center; align-items: flex-start; padding: 10vh 16px 16px; }
 .search-box { width: min(640px, 100%); max-height: 100%; display: flex; flex-direction: column; background: var(--surface); border-radius: 14px; border: var(--sheet-border); box-shadow: 0 24px 60px -20px rgba(0,0,0,.45); overflow: hidden; line-height: 1.4; color: var(--ink); }
 .search-box input { flex: none; width: 100%; border: 0; outline: 0; font: inherit; font-size: 18px; padding: 16px 18px; background: transparent; color: var(--ink); border-bottom: 1px solid var(--line-soft); }
 .results { flex: 0 1 auto; min-height: 0; max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; list-style: none; margin: 0; padding: 6px; }
@@ -802,6 +806,14 @@ a.tag .hash { display: var(--hash); }
 @media (pointer: coarse), (max-width: 640px) {
   .search-box input { font-size: 16px; padding: 10px 14px; }
   .results { max-height: 42vh; padding: 4px; }
+}
+/* phones: one size from the start, small enough to stay whole above the keyboard (--sb-vh: a hundredth
+   of the window's height without the keyboard, set when it opens, search.js), so it doesn't shrink */
+@media (pointer: coarse) {
+  #search, .search-ghost { padding-top: calc(var(--sb-vh, 1vh) * 6); }
+  .results { max-height: calc(var(--sb-vh, 1vh) * 22); }
+}
+@media (pointer: coarse), (max-width: 640px) {
   .results li { gap: 8px; padding: 4px 10px; font-size: 14.5px; }
   .results li > svg { width: 15px; height: 15px; }
   .results li.r-hit { padding-top: 5px; padding-bottom: 5px; }
@@ -843,8 +855,8 @@ a.tag .hash { display: var(--hash); }
 .pop { position: fixed; z-index: 56; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 40px -14px rgba(0,0,0,.4); font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.4; color: var(--ink); }
 .pop-title { font-size: 13px; font-weight: 600; color: var(--ink-soft); padding: 10px 12px 2px; }
 .datepick { padding-bottom: 8px; width: 286px; }
-.datepick .quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 2px; }
-.datepick .quick button { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: var(--surface-2); border-radius: 999px; padding: 2px 9px; cursor: pointer; color: var(--ink-soft); }
+.datepick .quick { display: flex; gap: 4px; padding: 4px 12px 2px; } /* one line: the four share the width */
+.datepick .quick button { flex: 1 1 auto; white-space: nowrap; font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--surface-2); border-radius: 999px; padding: 3px 4px; cursor: pointer; color: var(--ink-soft); }
 .datepick .pop-note { margin: 0; padding: 8px 12px 0; font-size: 12px; color: var(--ink-faint); }
 .datepick .rep { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-soft); padding: 8px 12px 0; }
 .datepick select { font: inherit; font-size: 13px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
@@ -1214,6 +1226,7 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   .day-head .page-title { font-size: clamp(26px, 8vw, 34px); } /* (the longest dates still fit on one line in most looks) */
   .sheet.day, .sheet.page { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 12px); padding-bottom: calc(var(--sheet-pad-bottom) + 12px); }
   .sheet.day { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 18px); padding-bottom: calc(var(--sheet-pad-bottom) + 20px); }
+  .sheet.page { padding-bottom: calc(var(--sheet-pad-bottom) + 30px); }
   .sheet.day { margin-bottom: min(var(--day-gap), var(--day-gap-phone)); min-height: 200px; }
   .sheet.day.today { min-height: 300px; }
   .day-body { margin-top: 20px; }
@@ -1516,7 +1529,24 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   .pop { animation: pop-in .12s ease-out; }
   #search:not([hidden]), .modal-back { animation: pop-in .14s ease-out; }
   #search:not([hidden]) .search-box, .modal-back > .modal { animation: rise-in .16s cubic-bezier(.2, .7, .3, 1); }
+  /* Closing (Build 38, he asked: leave the way it came, a little quicker than it came): a copy of what
+     closed (dom.js fadeAway: .fading, in a shadow root of its own) fades out over the page and goes. */
+  @keyframes pop-out { to { opacity: 0; } }
+  @keyframes sink-out { to { opacity: 0; transform: translateY(4px); } }
+  .fading { pointer-events: none !important; animation: pop-out .09s ease-in forwards; }
+  .modal-back.fading, .search-ghost { animation: pop-out .11s ease-in forwards; }
+  .search-ghost .search-box, .modal-back.fading > .modal { animation: sink-out .11s ease-in forwards; }
 }
+/* (a closing copy is never seen without the motion that removes it) */
+@media (prefers-reduced-motion: reduce) { .fading { display: none !important; } }
+/* Settings → Look → Animations off (Build 38; html[data-motion="off"], set by boot.js before the first
+   paint): nothing moves or fades anywhere; each animation and transition still ends at once, so code
+   that waits for one goes on. */
+html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="off"] *::after {
+  animation-duration: .001ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
+html[data-motion="off"] .fading { display: none !important; }
+.fade-host { position: fixed; inset: 0 auto auto 0; width: 0; height: 0; z-index: 80; pointer-events: none; }
 
 /* the faint "+" after a page's (or day's) last note: a click adds a note there (Outline.addEnd; he
    asked, Oct 30). Under the first level's dots, quiet until the pointer comes near; on phones always
@@ -1572,3 +1602,12 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 .backup-card .bk-hint { margin: 0 0 6px 100px; font-size: 12.5px; }
 .backup-card .bk-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
 .missing-box .bk-restore { margin-top: 6px; }
+
+/* YouTube videos (Build 38; render.js videoHtml/playVideo): the video's picture at 16:9 with YouTube's
+   play button; a click puts the player there. As wide as a picture may be, never wider than the note. */
+.yt { position: relative; display: block; width: min(100%, 480px); aspect-ratio: 16 / 9; margin: 4px 0; border-radius: 10px; overflow: hidden; background: #000; cursor: pointer; }
+.yt-pic { width: 100%; height: 100%; object-fit: cover; display: block; }
+.yt-play { position: absolute; inset: 0; margin: auto; width: 68px; height: 48px; padding: 0; border: 0; background: none; cursor: pointer; }
+.yt-play svg { width: 100%; height: 100%; fill: rgba(33, 33, 33, .8); transition: fill .12s; }
+.yt:hover .yt-play svg, .yt-play:focus-visible svg { fill: #f00; }
+.yt iframe { width: 100%; height: 100%; border: 0; display: block; }

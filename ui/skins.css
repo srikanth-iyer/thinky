@@ -114,7 +114,7 @@
 [data-skin="calmplain"] {
   --bg: #FFFFFF; --sheet-bg: var(--bg);
   --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
-  --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
   /* references: Calm's well, a little softer on the white page */
   --refgrp-shadow: inset 0 3px 6px -2px rgba(26,33,48,.14), inset 0 1px 1px rgba(26,33,48,.06);
 }
@@ -277,7 +277,7 @@
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
   /* no cards: a hairline between days, the same space above and below it (he chose that over Logseq's
      48px above and 24px below) */
-  --sheet-divider: 1px solid #DBDBDB; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --sheet-page-end: 0; --sheet-divider: 1px solid #DBDBDB; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
   --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-title: var(--font-body); --title-weight: 500; --title-tracking: -0.01em; --title-size: clamp(28px, 4.6vw, 36px);
   --weekday-font: var(--font-body); --weekday-style: normal;
@@ -310,7 +310,7 @@
   --mark-bg: #4A4120; --danger: #F2B8B5; --danger-tint: #3A2523;
   --edit-bg: #1E1E1E; --guide: #2A2A2A; --bullet: #6A6A6A; --bullet-ring: #333333;
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
-  --sheet-divider: 1px solid #262626; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --sheet-page-end: 0; --sheet-divider: 1px solid #262626; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
   --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-title: var(--font-body); --title-weight: 500; --title-tracking: -0.01em; --title-size: clamp(28px, 4.6vw, 36px);
   --weekday-font: var(--font-body); --weekday-style: normal;
@@ -342,7 +342,7 @@
   --mark-bg: #5A5223; --danger: #F2B8B5; --danger-tint: #4A2A2E;
   --edit-bg: #023643; --guide: #0B4A5A; --bullet: rgba(96,142,145,.8); --bullet-ring: #0F4958;
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
-  --sheet-divider: 1px solid #0E5263; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --sheet-page-end: 0; --sheet-divider: 1px solid #0E5263; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
   --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-title: var(--font-body); --title-weight: 500; --title-tracking: -0.01em; --title-size: clamp(28px, 4.6vw, 36px);
   --weekday-font: var(--font-body); --weekday-style: normal;
@@ -391,7 +391,7 @@
   --side-image: url(skins/thinky-corner.svg); --side-image-size: 132px auto; --side-image-pos: 50% calc(100% - 128px); --side-image-repeat: no-repeat;
   /* no cards, as in Calm plain (he asked, Oct 29): the notes sit on the white page, a hairline between days */
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
-  --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
   --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-title: var(--font-body); --title-weight: 600; --title-tracking: -0.02em;
   --weekday-font: var(--font-body); --weekday-style: normal;

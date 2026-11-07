@@ -8,7 +8,7 @@
 // screen asks). Refused while a clash on the page waits, or for a file that isn't UTF-8 text.
 import { call, isAndroid } from './api.js';
 import { esc, propsHtml, visibleProps, whenText } from './render.js';
-import { h, ICON, BRAND, plural } from './dom.js';
+import { h, ICON, BRAND, plural, fadeAway } from './dom.js';
 import { Outline, docKey } from './editor.js';
 /** A page's title:: (in its properties or its first note), small letters; '' when it has none. */
 const titleOf = (doc) => (`${doc?.preamble ?? ''}\n${doc?.blocks?.[0]?.text ?? ''}`.match(/^[ \t]*title::[ \t]*(.*?)[ \t]*\r?$/mi)?.[1] ?? '').toLowerCase();
@@ -62,6 +62,7 @@ export async function openHistory(app, o) {
   let busy = false; // putting one back
   let asked = 0; // the version clicked last (an earlier click answered later is dropped)
   const close = () => {
+    fadeAway(back);
     back.remove();
     document.removeEventListener('keydown', onKey, true);
     o.el.closest('.view')?.querySelector('.title-row [data-a="more"]')?.focus({ preventScroll: true }); // (where it was opened)

@@ -145,6 +145,9 @@ export function inline(s) {
     if (rest.startsWith('{{cloze') && (m = rest.match(/^\{\{cloze\s+([\s\S]*?)\}\}/))) { // a flashcard's hidden words
       out += `<span class="cloze">${inline(m[1])}</span>`; i += m[0].length; prev = '}'; continue;
     }
+    if (rest.startsWith('{{') && (m = rest.match(/^\{\{(?:video|youtube)\s+(\S+?)\s*\}\}/)) && youtube(m[1])) { // Logseq's video, as its picture
+      out += videoHtml(youtube(m[1])); i += m[0].length; prev = '}'; continue;
+    }
     if (rest.startsWith('{{') && (m = rest.match(/^\{\{[\s\S]*?\}\}/))) {
       out += `<span class="macro">${esc(m[0])}</span>`; i += m[0].length; prev = '}'; continue;
     }
@@ -449,4 +452,51 @@ export function propsHtml(props) {
     rows.push(`<span class="prop${r?.show === 'quiet' ? ' prop-quiet' : ''}"><span class="pk" data-prop="${esc(k)}">${esc(k)}</span><span class="pv">${vals}</span></span>`);
   }
   return (rows.length ? '<div class="props">' + rows.join('') + '</div>' : '') + (icons.length ? `<span class="prop-icons">${icons.join('')}</span>` : '');
+}
+
+// ---------------------------------------------------------------------------
+// YouTube videos (Build 38, he asked): Logseq's own `{{video <address>}}` (and `{{youtube <address>}}`),
+// so a note works in both. Shown as the video's picture with a play button; YouTube's player is
+// loaded only when it's clicked (playVideo), from youtube-nocookie.com (no tracking cookies), the one
+// address the window's CSP lets a frame come from. Anything that isn't a YouTube address stays as
+// written (a macro).
+
+/** A YouTube address → {id, start (seconds)}, else null. Takes youtube.com/watch?v=, youtu.be/,
+ *  /shorts/, /embed/, /live/, m. and music. ones; t= or start= as 90, 90s or 1h2m3s. */
+export function youtube(address) {
+  let u;
+  try { u = new URL(address); } catch { return null; }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+  const host = u.hostname.toLowerCase().replace(/^(www|m|music)\./, '');
+  let id = null;
+  if (host === 'youtu.be') id = u.pathname.split('/')[1];
+  else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+    const p = u.pathname.split('/');
+    id = u.pathname === '/watch' ? u.searchParams.get('v') : ['shorts', 'embed', 'live', 'v'].includes(p[1]) ? p[2] : null;
+  }
+  if (!id || !/^[A-Za-z0-9_-]{11}$/.test(id)) return null;
+  const t = u.searchParams.get('t') || u.searchParams.get('start') || '';
+  const hms = t.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/);
+  const start = hms ? (+(hms[1] || 0)) * 3600 + (+(hms[2] || 0)) * 60 + (+(hms[3] || 0)) : 0;
+  return { id, start };
+}
+
+function videoHtml({ id, start }) {
+  return `<span class="yt" data-yt="${id}" data-start="${start}"><img class="yt-pic" src="https://i.ytimg.com/vi/${id}/hqdefault.jpg" alt="YouTube video" loading="lazy" referrerpolicy="no-referrer" draggable="false"><button type="button" class="yt-play" aria-label="Play the video"><svg viewBox="0 0 68 48" aria-hidden="true"><path d="M66.5 7.7a8.5 8.5 0 0 0-6-6C55.3.3 34 .3 34 .3S12.7.3 7.5 1.7a8.5 8.5 0 0 0-6 6C.2 13 .2 24 .2 24s0 11 1.3 16.3a8.5 8.5 0 0 0 6 6C12.7 47.7 34 47.7 34 47.7s21.3 0 26.5-1.4a8.5 8.5 0 0 0 6-6C67.8 35 67.8 24 67.8 24s0-11-1.3-16.3z"/><path d="M27 34l18-10-18-10z" fill="#fff"/></svg></button></span>`;
+}
+
+/** Swap a video's picture for YouTube's player, playing (a click on it, editor.js). */
+export function playVideo(el) {
+  if (!el?.dataset.yt || el.querySelector('iframe')) return;
+  const id = el.dataset.yt;
+  if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return;
+  const f = document.createElement('iframe');
+  f.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0${+el.dataset.start ? '&start=' + +el.dataset.start : ''}`;
+  f.title = 'YouTube video';
+  f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  f.allowFullscreen = true;
+  f.referrerPolicy = 'strict-origin-when-cross-origin'; // (YouTube's player needs to know the page's origin)
+  f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation');
+  el.replaceChildren(f);
+  el.classList.add('playing');
 }

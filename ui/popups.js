@@ -4,7 +4,7 @@
 import { call, today, nowTime } from './api.js';
 import { esc, renderBlock, propsHtml } from './render.js';
 import { createCalendar } from './calendar.js';
-import { h } from './dom.js';
+import { h, fadeAway } from './dom.js';
 
 /** A note folded in its page (collapsed:: true on a line after its first; editor.js foldedIn). */
 const COLLAPSED = /\ncollapsed:: true(?=\n|$)/;
@@ -314,7 +314,7 @@ export function pickDate(anchor, opts = {}) {
       if (opts.button?.contains(e.target)) opts.button.dataset.closedAt = String(Date.now());
       done(null);
     };
-    const cleanup = () => { box.remove(); document.removeEventListener('keydown', onKey, true); document.removeEventListener('pointerdown', onDown, true); };
+    const cleanup = () => { fadeAway(box); box.remove(); document.removeEventListener('keydown', onKey, true); document.removeEventListener('pointerdown', onDown, true); };
     document.addEventListener('keydown', onKey, true);
     setTimeout(() => document.addEventListener('pointerdown', onDown, true), 0);
     place(box, anchor);
@@ -333,7 +333,7 @@ function modal(inner, setup) {
     box.setAttribute('aria-modal', 'true');
     back.append(box);
     document.body.append(back);
-    const done = (v) => { back.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
+    const done = (v) => { fadeAway(back); back.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
     const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(null); } };
     document.addEventListener('keydown', onKey, true);
     back.addEventListener('pointerdown', (e) => { if (e.target === back) done(null); });
@@ -389,8 +389,18 @@ export function menu(anchor, items, opts = {}) {
   box.innerHTML = items.map((it, k) => it === '-' ? '<li class="nm-sep" role="separator"></li>' : it.head ? `<li class="m-head" role="presentation">${esc(it.head)}</li>` : `<li><button type="button" data-k="${k}" class="${it.danger ? 'danger' : ''}">${it.hint ? `<span class="mhint">${esc(it.hint)}</span>` : ''}${esc(it.label)}</button></li>`).join('');
   if (opts.keep) box.addEventListener('pointerdown', (e) => e.preventDefault());
   document.body.append(box);
-  const close = () => { box.remove(); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); document.removeEventListener('beforeinput', close, true); };
-  const onDown = (e) => { if (!box.contains(e.target)) close(); };
+  const close = () => { fadeAway(box); box.remove(); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); document.removeEventListener('beforeinput', close, true); };
+  // a press outside closes it. The button that opened it closes it too (its click doesn't open it
+  // again), and after a finger's press elsewhere the tap doesn't also act on what's under it (a link).
+  const onDown = (e) => {
+    if (box.contains(e.target)) return;
+    if (e.pointerType !== 'mouse' || anchor.contains?.(e.target)) {
+      const eat = (c) => { c.preventDefault(); c.stopPropagation(); };
+      document.addEventListener('click', eat, { capture: true, once: true });
+      setTimeout(() => document.removeEventListener('click', eat, true), 700);
+    }
+    close();
+  };
   const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
   if (opts.keep) document.addEventListener('beforeinput', close, true); // (typing goes on: the menu goes)
   box.onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) { close(); items[+b.dataset.k].run(); } };
@@ -440,6 +450,7 @@ export function noteMenu(r, o) {
     if (!open) return;
     open = false;
     const had = box.contains(document.activeElement);
+    fadeAway(box);
     box.remove();
     document.removeEventListener('pointerdown', onDown, true);
     document.removeEventListener('keydown', onKey, true);

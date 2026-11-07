@@ -2582,6 +2582,31 @@ pub struct CheckReport {
     pub pictures_recent: usize,
     /// Notes linking to a picture (any file) in assets/ that isn't there: (page, file). See pictures.rs.
     pub missing_pictures: Vec<(String, String)>,
+    /// Build 38: pages at the same place under a page and one of its aliases ("thnki/x" and
+    /// "thinky/x" when thnki has `alias:: thinky`): (the page, [those pages' names]). Both are listed
+    /// under the page; renaming one to the other merges them. See `alias_clashes`.
+    pub alias_clashes: Vec<(String, Vec<String>)>,
+}
+
+/// Pages that land at the same place under a page and its aliases (Build 38): the page's "Pages in …"
+/// lists pages named under any of its names, so "thnki/x" and "thinky/x" would be the same "x". Only
+/// pages with a file or links (what that list shows); journal days left out; capitals ignored.
+pub fn alias_clashes(pages: &[crate::vault::PageEntry]) -> Vec<(String, Vec<String>)> {
+    let mut out = vec![];
+    for p in pages.iter().filter(|p| !p.aliases.is_empty() && p.journal.is_none()) {
+        let prefixes: Vec<String> = std::iter::once(&p.name).chain(p.aliases.iter()).map(|a| a.to_lowercase() + "/").collect();
+        let mut at: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+        for q in pages.iter().filter(|q| (q.exists || q.refs > 0) && q.journal.is_none()) {
+            let low = q.name.to_lowercase();
+            if let Some(pre) = prefixes.iter().find(|x| low.starts_with(x.as_str())) {
+                at.entry(low[pre.len()..].to_string()).or_default().push(q.name.clone());
+            }
+        }
+        for (_, names) in at.into_iter().filter(|(_, n)| n.len() > 1) {
+            out.push((p.name.clone(), names));
+        }
+    }
+    out
 }
 
 /// "Page (1).md", "Page (conflict 2026-…).md", "Page [Conflict].md": a sync copy of "Page.md"?
@@ -2640,6 +2665,7 @@ pub fn check_vault_at(root: &Path, now: u64) -> Result<CheckReport, String> {
         pictures_unreadable: pics.unreadable,
         pictures_recent: pics.recent,
         missing_pictures: app.missing_pictures(),
+        alias_clashes: alias_clashes(&app.vault.all_pages()),
         files: app.files.len(),
         pages: app.vault.page_count(),
         load_ms,

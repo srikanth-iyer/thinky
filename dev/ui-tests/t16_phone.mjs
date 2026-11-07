@@ -197,7 +197,7 @@ await page.keyboard.type('note', { delay: 20 });
 await sleep(700);
 const sb = await rect(page, '.search-box');
 const dim = await page.evaluate(() => getComputedStyle(document.querySelector('#search')).backgroundColor);
-check(Math.abs(sb.y - H * 0.1) <= 2 && sb.x === 16 && sb.h <= H * 0.6, 'the search box: where it was (a tenth of the way down), not too tall', JSON.stringify(sb));
+check(Math.abs(sb.y - H * 0.06) <= 2 && sb.x === 16 && sb.h <= H * 0.4, 'the search box: near the top (Build 38: 6% down), small enough to stay whole above the keyboard', JSON.stringify(sb));
 check(/0\.28\)$/.test(dim), 'over the darkened page, as before', dim);
 const sbRows = await heights(page, '#search .results li[data-k]:not(.r-hit)'); // (a note found has two lines: its words and its page)
 const sbIn = await rect(page, '#search input');
