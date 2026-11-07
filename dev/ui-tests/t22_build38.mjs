@@ -37,6 +37,7 @@ async function stubYouTube(ctx) {
 
 let { browser, page, errors } = await open({ look: 'thinky' });
 await stubYouTube(page.context());
+if (process.env.SLOW) { const c = await page.context().newCDPSession(page); await c.send('Emulation.setCPUThrottlingRate', { rate: +process.env.SLOW }); }
 
 // -------------------------------------------------------------------------------------------------
 console.log('a page’s end: no line, room under the "+"');
@@ -163,7 +164,8 @@ const copy = await page.evaluate(() => { const h = document.querySelector('.fade
 check(copy.inert && copy.hidden === 'true' && copy.pe === 'none' && copy.shadow, 'the copy takes no clicks, isn’t read out, and can’t be found (closed shadow root)', JSON.stringify(copy));
 await page.locator('.title-row [data-a="more"]').click(); // reopened while the copy still fades
 await page.waitForSelector('.pop.menu', { timeout: 3000 }).catch(() => {});
-check(await page.locator('.pop.menu').count() === 1, 'reopened at once: one menu (the fading copy isn’t one)');
+const reo = await page.evaluate(() => ({ menus: document.querySelectorAll('.pop.menu').length, hosts: document.querySelectorAll('.fade-host').length, active: document.activeElement?.outerHTML.slice(0, 80), more: document.querySelectorAll('.title-row [data-a="more"]').length }));
+check(reo.menus === 1, 'reopened at once: one menu (the fading copy isn’t one)', JSON.stringify(reo));
 await sleep(100);
 await page.keyboard.press('Escape');
 await sleep(500);
