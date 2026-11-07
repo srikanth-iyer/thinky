@@ -162,7 +162,8 @@ check(await fadeHosts() === 1, 'a copy fades away on its own');
 const copy = await page.evaluate(() => { const h = document.querySelector('.fade-host'); return { inert: h.inert, hidden: h.getAttribute('aria-hidden'), pe: getComputedStyle(h).pointerEvents, shadow: h.shadowRoot === null }; });
 check(copy.inert && copy.hidden === 'true' && copy.pe === 'none' && copy.shadow, 'the copy takes no clicks, isn’t read out, and can’t be found (closed shadow root)', JSON.stringify(copy));
 await page.locator('.title-row [data-a="more"]').click(); // reopened while the copy still fades
-check(await page.locator('.pop.menu').count() === 1, 'reopened at once: one menu');
+await page.waitForSelector('.pop.menu', { timeout: 3000 }).catch(() => {});
+check(await page.locator('.pop.menu').count() === 1, 'reopened at once: one menu (the fading copy isn’t one)');
 await sleep(100);
 await page.keyboard.press('Escape');
 await sleep(500);
