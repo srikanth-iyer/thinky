@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- "Add a note" pop-up (QuickCaptureActivity), Build 40 (he picked "A · compact composer", Nov 8): one
+<!-- "Add a note" pop-up (QuickCaptureActivity), Build 39 (he picked "A · compact composer", Nov 8): one
      small card near the bottom: a small "to …" line with the logo, the text (one line, grows to 8), then
      one row of tool buttons, each a separate chip with its own fill and edge so it's clear where one ends
      and the next begins, and a round Add at the end (greyed until there's something to add). Colours are

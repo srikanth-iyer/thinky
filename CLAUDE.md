@@ -1365,7 +1365,7 @@ Home-screen widgets in `android/kotlin/JournalWidget.kt`: today's journal (to-do
 "DUE TODAY", then the day's notes; Markdown cleaned to plain words: links show their name or a short
 address) and `QuickAddWidget`, a 1x1 round "+" in the look's accent colour. QuickCaptureActivity (both
 widgets' "+" and the share sheet's "Add to journal", text or pictures, Logseq quick-capture format;
-always shown, nothing added until Add): since Build 40 a compact card near the bottom in the look's colours
+always shown, nothing added until Add): since Build 39 a compact card near the bottom in the look's colours
 (he picked "A · compact composer"): a small "Add to <page>" line with the 16dp logo, the words with no box of
 their own (one line, grows to 8), one row of tool chips ([[ ]], #, to-do, new line, paste; each its own fill
 and 1dp edge, 6dp apart, 36dp tall) and a round 44dp Add (content-desc "Add", greyed until there's

@@ -3,7 +3,7 @@
 // format from config.edn. Every share shows the pop-up first: nothing is added until Add is
 // tapped, so another app can never add notes by itself (the no-pop-up setting went in Build 34).
 // Looks like the app: a small rounded card near the bottom of the screen in the colours of the look
-// the app last used (sent with setWidgetColors). Build 40 (he picked "A · compact composer"): a small
+// the app last used (sent with setWidgetColors). Build 39 (he picked "A · compact composer"): a small
 // "to …" line, the words, then one row of tool chips (each its own fill and edge, 6dp apart) and a
 // round Add, greyed until there's something to add; a shared picture shows as a preview.
 // Adding goes through the app's own code (LeanCore → src-tauri/src/android_capture.rs →
