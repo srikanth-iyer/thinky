@@ -223,6 +223,12 @@ too). YouTube: Logseq's `{{video <address>}}` / `{{youtube …}}` (render.js `yo
 shorts, embed, live, m./music., t=/start=) drawn as the video's picture (i.ytimg.com, no referrer) with a play
 button (`.yt`); a click (editor.js, before editing) puts `https://www.youtube-nocookie.com/embed/<id>?autoplay=1`
 there (`playVideo`, sandbox without popups); the CSP's only frame-src is that address. Anything else stays a macro.
+Build 39 (the maintainer's note of Nov 8; tested by t23_build39, every opener pressed three times where it is,
+laptop and phone): a button that opened something closes it when pressed again. The phone toolbar acts on
+pointerup, after the pop-up's own outside-press listener has closed it, so a window capture listener notes
+at pointerdown whether the button's pop-up showed (`OPENS`: more → .note-menu, date → .pop.tb-menu, slash →
+#ac) and then does nothing; "/" also takes back the "/" it typed when nothing came after (editor.js
+`closeCommands`). `Tabs.linkMenu(a, at, btn)`: the sidebar ⋯ passes itself, so `menu()`'s anchor test knows it.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

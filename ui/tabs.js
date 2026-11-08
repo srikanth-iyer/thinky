@@ -523,11 +523,12 @@ export class Tabs {
   /** The small menu for a link to a page, or a search result (a right-click on it, or the ⋯ beside a
    *  sidebar entry): open it in a new tab or on the other side, as Ctrl+click and Shift+click do (the
    *  click is passed on with that key, so it opens just as they do), then what the app adds for it
-   *  (App.linkItems: "Remove from favourites"). at: the rectangle it opens by. */
-  linkMenu(a, at) {
+   *  (App.linkItems: "Remove from favourites"). at: the rectangle it opens by; btn: the button that
+   *  opened it, if any (pressed again, it closes the menu, Build 39). */
+  linkMenu(a, at, btn = null) {
     const x = at.left, y = at.bottom;
     const open = (key) => a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, [key]: true, clientX: x, clientY: y, view: window }));
-    menu({ getBoundingClientRect: () => at }, [
+    menu({ getBoundingClientRect: () => at, contains: (n) => !!btn?.contains(n) }, [
       { label: 'Open in a new tab', hint: 'Ctrl+click', run: () => open('ctrlKey') },
       { label: 'Open to the side', hint: 'Shift+click', run: () => open('shiftKey') },
       ...(this.app.linkItems?.(a) ?? []),

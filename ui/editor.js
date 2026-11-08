@@ -2272,6 +2272,19 @@ export class Outline {
     this.app.ac.check(this);
   }
 
+  /** The toolbar's "/" pressed again while its list shows: the list closes, and the "/" it typed goes
+   *  too when nothing was typed after it (Build 39). */
+  closeCommands() {
+    const ac = this.app.ac, sa = ac.slashAt, ta = this.ta;
+    ac.close();
+    if (!sa || sa.ta !== ta || !ta) return;
+    if (ta.value[sa.at] === '/' && ta.selectionStart === sa.at + 1 && ta.selectionEnd === sa.at + 1) {
+      this.beforeTyping();
+      ta.setRangeText('', sa.at, sa.at + 1, 'end');
+      this.typed();
+    }
+  }
+
   /** The phone toolbar's date button (anchor: it): a link to today, tomorrow, yesterday or another day
    *  (while typing), or the note's scheduled date or deadline (as before). */
   dateMenu(anchor) {

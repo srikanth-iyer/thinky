@@ -2357,11 +2357,20 @@ class App {
     // lands on it: a sideways swipe that starts on a button scrolls the toolbar and presses nothing
     // (moving more than 10px, or the browser taking the touch over for scrolling, cancels it).
     let press = null;
+    // Pressed again while what it opened is showing (the note menu, the date menu, the "/" list), a
+    // button closes it and does nothing else (Build 39, he asked). Seen before the pop-up's own
+    // "press outside" listener closes it: this one is on window, in the capture phase, so it runs first.
+    const OPENS = { more: '.note-menu', date: '.pop.tb-menu', slash: '#ac:not([hidden])' };
+    let shut = null;
+    addEventListener('pointerdown', (e) => {
+      const b = e.target.closest?.('#toolbar button');
+      shut = b && OPENS[b.dataset.t] && document.querySelector(OPENS[b.dataset.t]) ? b : null;
+    }, true);
     tb.addEventListener('pointerdown', (e) => {
       const b = e.target.closest('button');
       if (!b) return;
       e.preventDefault(); // keep the keyboard open (the button never takes the focus)
-      press = { b, id: e.pointerId, x: e.clientX, y: e.clientY };
+      press = { b, id: e.pointerId, x: e.clientX, y: e.clientY, shut: shut === b };
     });
     tb.addEventListener('pointermove', (e) => {
       if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) press = null;
@@ -2372,6 +2381,10 @@ class App {
       press = null;
       if (!p || e.pointerId !== p.id || e.target.closest('button') !== p.b) return;
       const b = p.b;
+      if (p.shut) { // it closed what it had opened: the "/" list goes with the "/" it typed, if nothing came after
+        if (b.dataset.t === 'slash') this.active?.closeCommands?.(); // (the menus closed on the press itself)
+        return;
+      }
       // a page's properties box: only the buttons that type something there
       if (this.textTa?.isConnected && document.activeElement === this.textTa) { this.textTool(this.textTa, b.dataset.t); return; }
       const o = this.active;
@@ -2668,7 +2681,7 @@ class App {
     more.addEventListener('pointerleave', (e) => { if (!side.contains(e.relatedTarget)) hideMore(); });
     side.addEventListener('scroll', hideMore, true); // (Favourites scrolls on its own)
     more.addEventListener('mousedown', (e) => e.preventDefault()); // (the note being typed in keeps the keyboard)
-    more.addEventListener('click', () => { if (at?.isConnected) this.tabs.linkMenu(at, more.getBoundingClientRect()); });
+    more.addEventListener('click', () => { if (at?.isConnected) this.tabs.linkMenu(at, more.getBoundingClientRect(), more); });
     this.hideMore = hideMore;
 
     // Favourites in another order: drag one up or down
