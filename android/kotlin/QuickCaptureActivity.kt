@@ -2,9 +2,10 @@
 // picture from another app ("Add to journal" in the share menu). Uses Logseq's quick capture
 // format from config.edn. Every share shows the pop-up first: nothing is added until Add is
 // tapped, so another app can never add notes by itself (the no-pop-up setting went in Build 34).
-// Looks like the app: a rounded card near the bottom of the screen in the colours of the look the
-// app last used (sent with setWidgetColors), a soft text box, pill-shaped buttons, and a preview
-// of a shared picture.
+// Looks like the app: a small rounded card near the bottom of the screen in the colours of the look
+// the app last used (sent with setWidgetColors). Build 40 (he picked "A · compact composer"): a small
+// "to …" line, the words, then one row of tool chips (each its own fill and edge, 6dp apart) and a
+// round Add, greyed until there's something to add; a shared picture shows as a preview.
 // Adding goes through the app's own code (LeanCore → src-tauri/src/android_capture.rs →
 // outline_core::capture), on a helper thread; if that fails the pop-up stays open with the reason
 // and the text, so nothing typed is lost.
@@ -57,7 +58,7 @@ class QuickCaptureActivity : AppCompatActivity() {
     paint()
     val input = findViewById<EditText>(R.id.qc_input)
     where = try { Journal.captureWhere(this) } catch (e: Exception) { Journal.todayTitle(this) }
-    findViewById<TextView>(R.id.qc_where).text = "to $where"
+    findViewById<TextView>(R.id.qc_where).text = whereLine()
     // the app's own code says where notes go now (config.edn as it is); this also loads it early,
     // so Add is quick, and a problem shows before anything is typed
     Thread {
@@ -65,19 +66,25 @@ class QuickCaptureActivity : AppCompatActivity() {
       runOnUiThread {
         if (isFinishing) return@runOnUiThread
         w.fold(
-          onSuccess = { if (it.isNotEmpty()) { where = it; findViewById<TextView>(R.id.qc_where).text = "to $it" } },
+          onSuccess = { if (it.isNotEmpty()) { where = it; findViewById<TextView>(R.id.qc_where).text = whereLine() } },
           onFailure = { e -> if (!busy) showError(e.message ?: "Couldn't start the part of the app that adds notes.") },
         )
       }
     }.start()
     // buttons first, so the pop-up always works (also when a one-tap share fails below)
-    findViewById<Button>(R.id.qc_paste).setOnClickListener {
+    findViewById<ImageButton>(R.id.qc_paste).setOnClickListener {
       val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
       val clip = cm.primaryClip
       val t = if (clip != null && clip.itemCount > 0) clip.getItemAt(0).coerceToText(this)?.toString() else null
       if (!t.isNullOrEmpty()) input.text.insert(maxOf(0, input.selectionStart), t)
     }
-    findViewById<Button>(R.id.qc_add).setOnClickListener { add(input.text.toString()) }
+    findViewById<ImageButton>(R.id.qc_add).setOnClickListener { add(input.text.toString()) }
+    // Add is greyed until there's something to add
+    input.addTextChangedListener(object : android.text.TextWatcher {
+      override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+      override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+      override fun afterTextChanged(s: android.text.Editable?) { addState() }
+    })
     // the small toolbar: a new line, [[ ]] (the cursor between them; around the words when some are selected),
     // # at the cursor, and TODO at the start of the note (again: taken off)
     fun put(text: String, back: Int = 0) {
@@ -92,7 +99,7 @@ class QuickCaptureActivity : AppCompatActivity() {
     }
     findViewById<Button>(R.id.qc_tag).setOnClickListener { put("#") }
     findViewById<ImageButton>(R.id.qc_newline).setOnClickListener { put("\n") } // (Shift+Enter's new line, on a phone)
-    findViewById<Button>(R.id.qc_todo).setOnClickListener {
+    findViewById<ImageButton>(R.id.qc_todo).setOnClickListener {
       val t = input.text.toString()
       val at = input.selectionStart
       if (t.startsWith("TODO ")) { input.setText(t.removePrefix("TODO ")); input.setSelection(maxOf(0, at - 5).coerceAtMost(input.text.length)) }
@@ -117,9 +124,8 @@ class QuickCaptureActivity : AppCompatActivity() {
       val img = image
       if (img != null) {
         // a picture: show it (and its name) instead of the text box
-        findViewById<TextView>(R.id.qc_title).text = "Add a picture"
+        findViewById<TextView>(R.id.qc_where).text = whereLine()
         input.visibility = View.GONE
-        findViewById<View>(R.id.qc_paste).visibility = View.GONE
         findViewById<View>(R.id.qc_tools).visibility = View.GONE
         findViewById<TextView>(R.id.qc_caption).apply { text = fileName(img); visibility = View.VISIBLE }
         showPreview(img)
@@ -128,6 +134,7 @@ class QuickCaptureActivity : AppCompatActivity() {
         input.setSelection(input.text.length)
       }
     }
+    addState()
     if (image == null) {
       input.requestFocus()
       window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
@@ -146,26 +153,25 @@ class QuickCaptureActivity : AppCompatActivity() {
       if (stroke != 0) setStroke((1 * dp).toInt(), stroke)
     }
     val card = findViewById<View>(R.id.qc_card)
-    card.background = round(bg, 26f)
+    card.background = round(bg, 20f)
     // not wider than a phone on a tablet
     val maxW = (480 * dp).toInt()
     if (resources.displayMetrics.widthPixels > maxW + (24 * dp).toInt()) card.layoutParams = card.layoutParams.apply { width = maxW }
-    // the small toolbar: quiet pills, as the Paste button
-    for (id in listOf(R.id.qc_link, R.id.qc_tag, R.id.qc_todo)) findViewById<Button>(id).apply {
-      background = round(Journal.mix(bg, ink, 0.055), 999f)
-      backgroundTintList = null
-      setTextColor(ink)
+    // the tool chips: each its own soft fill and a visible edge, so it's clear where one ends and the
+    // next begins (he asked: in Build 38 they ran together)
+    for (id in listOf(R.id.qc_link, R.id.qc_tag, R.id.qc_todo, R.id.qc_newline, R.id.qc_paste)) {
+      val v = findViewById<View>(id)
+      v.background = round(Journal.mix(bg, ink, 0.06), 10f, Journal.mix(bg, ink, 0.16))
+      v.backgroundTintList = null
+      if (v is ImageButton) v.imageTintList = android.content.res.ColorStateList.valueOf(ink)
+      else if (v is Button) v.setTextColor(ink)
     }
-    findViewById<ImageButton>(R.id.qc_newline).apply {
-      background = round(Journal.mix(bg, ink, 0.055), 999f)
-      imageTintList = android.content.res.ColorStateList.valueOf(ink)
-    }
-    findViewById<TextView>(R.id.qc_title).setTextColor(ink)
+    accentColor = accent; idle = Journal.mix(bg, ink, 0.1); idleInk = Journal.mix(bg, ink, 0.4)
     findViewById<TextView>(R.id.qc_where).setTextColor(faint)
     findViewById<TextView>(R.id.qc_caption).setTextColor(faint)
     findViewById<TextView>(R.id.qc_error).setTextColor(Journal.mix(0xFFD32F2F.toInt(), ink, 0.25))
     findViewById<EditText>(R.id.qc_input).apply {
-      background = round(Journal.mix(bg, ink, 0.055), 16f)
+      background = null // the card is the box
       setTextColor(ink)
       setHintTextColor(faint)
     }
@@ -173,16 +179,23 @@ class QuickCaptureActivity : AppCompatActivity() {
       background = round(Journal.mix(bg, ink, 0.055), 16f)
       clipToOutline = true // rounded corners for the picture too
     }
-    findViewById<Button>(R.id.qc_paste).apply {
-      background = round(Color.TRANSPARENT, 999f, Journal.mix(bg, ink, 0.2))
-      backgroundTintList = null
-      setTextColor(ink)
-    }
-    findViewById<Button>(R.id.qc_add).apply {
-      background = round(accent, 999f)
-      backgroundTintList = null
-      setTextColor(Journal.onColor(accent))
-    }
+  }
+
+  private var accentColor = 0
+  private var idle = 0
+  private var idleInk = 0
+
+  /** "Add to <page>" (or "Add a picture to <page>") for the small line at the top. */
+  private fun whereLine() = (if (image != null) "Add a picture to " else "Add to ") + where
+
+  /** The round Add: the accent when there's something to add (and nothing is being added), else greyed. */
+  private fun addState() {
+    val b = findViewById<ImageButton>(R.id.qc_add)
+    val on = !busy && (image != null || findViewById<EditText>(R.id.qc_input).text.isNotBlank())
+    b.isEnabled = on
+    b.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (on) accentColor else idle) }
+    b.backgroundTintList = null
+    b.imageTintList = android.content.res.ColorStateList.valueOf(if (on) Journal.onColor(accentColor) else idleInk)
   }
 
   /** A small copy of the shared picture, made away from the screen's thread and turned the way
@@ -262,9 +275,7 @@ class QuickCaptureActivity : AppCompatActivity() {
     val img = image
     if (img == null && text.isBlank()) { finish(); return }
     busy = true
-    val addButton = findViewById<Button>(R.id.qc_add)
-    addButton.isEnabled = false
-    addButton.alpha = 0.6f
+    addState()
     findViewById<TextView>(R.id.qc_error).visibility = View.GONE
     Thread {
       val result: Result<String> = try {
@@ -276,8 +287,7 @@ class QuickCaptureActivity : AppCompatActivity() {
       if (result.isSuccess) try { Journal.refresh(this) } catch (e: Exception) { } // the widget shows it
       runOnUiThread {
         busy = false
-        addButton.isEnabled = true
-        addButton.alpha = 1f
+        addState()
         result.fold(
           onSuccess = {
             Toast.makeText(this, "Added to $where", Toast.LENGTH_SHORT).show()
