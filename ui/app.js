@@ -8,7 +8,7 @@ import { renderBlock, propsHtml, visibleProps, esc, pagesIn, setPropRules } from
 import { Suggest, Preview, menu, confirmBox, promptBox, pickDate, place } from './popups.js';
 import { pagesView, tagsView, propsView, todosView, taskRow, taskClicks, taskDay, byDay, num } from './views.js';
 import { settingsView } from './settings.js';
-import { h, pageLink, ICON, BRAND } from './dom.js';
+import { h, pageLink, ICON, BRAND, fadeAway } from './dom.js';
 import { keyOf } from './calendar.js';
 import { Find } from './find.js';
 import { Tabs, placeOf, parsePlace, sideNav } from './tabs.js';
@@ -2100,6 +2100,7 @@ class App {
       }
     };
     const close = () => {
+      fadeAway(box); // (closing fades like every other pop-up, Build 39)
       box.remove();
       document.removeEventListener('pointerdown', onDown, true);
       document.removeEventListener('keydown', onKey, true);
@@ -2488,6 +2489,8 @@ class App {
     const t = e.target;
     const typing = t.closest?.('input, textarea, select, [contenteditable]');
     if (!$('#search').hidden) { if (e.key === 'Escape') this.closeSearch(); return; }
+    // the phone's menu (drawer) closes on Esc too, as on Back (Build 39; a tablet's keyboard)
+    if (e.key === 'Escape' && document.body.classList.contains('drawer') && !typing) { e.preventDefault(); document.body.classList.remove('drawer'); return; }
     if (document.querySelector('.modal-back, .pop.datepick, .pop.menu')) return;
     const act = (name) => (this.keyMap[name] || []).some((k) => !k.includes(' ') && same(parseChord(k), evChord(e)));
     if (act('command-palette/toggle')) { e.preventDefault(); this.openCommands(); return; }

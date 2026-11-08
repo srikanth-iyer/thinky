@@ -171,6 +171,11 @@ export class SearchBox {
       // its size is fixed when it opens, from the window without a keyboard, so the phone's keyboard
       // coming up doesn't shrink it (app.css: --sb-vh)
       this.el.style.setProperty('--sb-vh', fullHeight() / 100 + 'px');
+      // (Build 39) the look list closes under it; the search buttons say it's open; a button that had the
+      // keyboard gets it back when it's closed
+      this.app.closeLooks?.();
+      this.opener = document.activeElement?.closest?.('button, a') ?? null;
+      for (const b of document.querySelectorAll('[data-a="search"]')) b.setAttribute('aria-expanded', 'true');
       this.el.hidden = false;
       document.body.classList.remove('drawer'); // (opened from the phone's menu: the menu's done)
     }
@@ -184,9 +189,11 @@ export class SearchBox {
     this.input.blur(); // so the next keys (e.g. "t l") reach the app straight away
     clearTimeout(this.t);
     this.seq++;
-    const ed = this.ed;
-    this.ed = null;
+    for (const b of document.querySelectorAll('[data-a="search"]')) b.setAttribute('aria-expanded', 'false');
+    const ed = this.ed, opener = this.opener;
+    this.ed = this.opener = null;
     if (cancel && ed) editAgain(this.app, ed);
+    else if (cancel && opener?.isConnected && opener.offsetParent) opener.focus({ preventScroll: true });
   }
   setMode(mode) {
     this.mode = mode;

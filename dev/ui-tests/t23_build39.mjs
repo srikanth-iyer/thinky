@@ -87,6 +87,73 @@ for (const phone of [false, true]) {
     await page.keyboard.press('Escape');
     await page.screenshot({ path: SHOTS + '/b39-phone.png' });
   }
+  // ---- the same rules for every pop-up (Build 39's wider check) ----
+  const outside = async (name, place, sel, pop, edit, how) => {
+    await fresh(page, place); if (edit) await editFirst(page);
+    const btn = page.locator(sel).first();
+    if (how === 'right') await btn.click({ button: 'right' }); else if (phone) await btn.tap(); else await btn.click();
+    await sleep(450);
+    const link = await page.evaluate((s) => {
+      const p = [...document.querySelectorAll(s)].find((x) => x.getBoundingClientRect().height > 0)?.getBoundingClientRect();
+      for (const a of document.querySelectorAll('.outline a, .view a')) {
+        const r = a.getBoundingClientRect();
+        if (!r.width || r.top < 60 || r.bottom > innerHeight - 60) continue;
+        const x = r.left + r.width / 2, y = r.top + r.height / 2;
+        if (p && x > p.left - 4 && x < p.right + 4 && y > p.top - 4 && y < p.bottom + 4) continue;
+        if (document.elementFromPoint(x, y) !== a && !a.contains(document.elementFromPoint(x, y))) continue;
+        return { x, y };
+      }
+      return null;
+    }, pop);
+    if (!link) { check(false, `${name}: a link beside it to press`); return; }
+    const h0 = await page.evaluate(() => location.hash);
+    if (phone) await page.touchscreen.tap(link.x, link.y); else await page.mouse.click(link.x, link.y);
+    await sleep(600);
+    const open = await page.evaluate((s) => [...document.querySelectorAll(s)].some((e) => !e.hidden && e.getBoundingClientRect().height > 0), pop);
+    check(!open && await page.evaluate(() => location.hash) === h0, `${phone ? 'phone' : 'laptop'}: ${name}: a press on a link beside it only closes it`);
+  };
+  await outside('the page ⋯ menu', PAGE, '.title-row [data-a="more"]', '.pop.menu');
+  await outside('Go to date', '#/journals', phone ? '#topbar [data-a="date"]' : '#histbar [data-a="date"]', '.datepick');
+  await outside('linked references’ Sort', ROSA, '.ref-s', '.pop.menu.sort-menu');
+  if (!phone) await outside('the note menu (right-click on a dot)', PAGE, '.outline .blk .bul', '.note-menu', false, 'right');
+  else await outside('the toolbar’s date menu', PAGE, '#toolbar [data-t="date"]', '.pop.tb-menu', true);
+
+  if (!phone) {
+    // the buttons say what's open; Esc puts the keyboard back on the button that opened it
+    for (const [name, place, sel, pop] of [['the page ⋯ menu', PAGE, '.title-row [data-a="more"]', '.pop.menu'], ['Go to date', '#/journals', '#histbar [data-a="date"]', '.datepick'], ['Sort', ROSA, '.ref-s', '.pop.menu'], ['Search', '#/journals', '#histbar [data-a="search"]', '#search:not([hidden])']]) {
+      await fresh(page, place);
+      const btn = page.locator(sel).first();
+      await btn.focus(); await page.keyboard.press('Enter'); await sleep(400);
+      const exp = await btn.getAttribute('aria-expanded');
+      await page.keyboard.press('Escape'); await sleep(400);
+      const exp2 = await btn.getAttribute('aria-expanded');
+      const back = await btn.evaluate((b) => document.activeElement === b);
+      check(exp === 'true' && exp2 === 'false' && back && await page.locator(pop).count() === 0, `${name}: aria-expanded true then false, Esc gives its button the keyboard back`, JSON.stringify({ exp, exp2, back }));
+    }
+    // the look list doesn't stay open under the search box
+    await fresh(page, '#/journals');
+    await page.locator('[data-a="looks"]').click(); await sleep(300);
+    await page.keyboard.press('Control+k'); await sleep(400);
+    check(await page.locator('.pop.looks').count() === 0 && await page.evaluate(() => !document.getElementById('search').hidden), 'Ctrl+K with the look list open: the search box, the list closed');
+    await page.keyboard.press('Escape');
+    // the look list fades out like the others
+    await page.locator('[data-a="looks"]').click(); await sleep(300);
+    await page.keyboard.press('Escape'); await sleep(30);
+    check(await page.evaluate(() => document.querySelectorAll('.fade-host').length) === 1, 'the look list fades out as it closes');
+  } else {
+    // the menu (drawer) closes on Esc too (a tablet's keyboard)
+    await fresh(page, '#/journals');
+    await page.locator('#topbar [data-a="menu"]').tap(); await sleep(400);
+    await page.keyboard.press('Escape'); await sleep(300);
+    check(!(await page.evaluate(() => document.body.classList.contains('drawer'))), 'Esc closes the menu (drawer)');
+    // finger-sized: the fold arrows and the section headings reach 40px with their invisible edge
+    await fresh(page, PAGE);
+    const sizes = await page.evaluate(() => [...document.querySelectorAll('.fold, .disclose')].filter((e) => e.getBoundingClientRect().height).map((e) => {
+      const a = getComputedStyle(e, '::after'); const r = e.getBoundingClientRect();
+      return [e.className, Math.round(r.height - parseFloat(a.top || 0) - parseFloat(a.bottom || 0))];
+    }));
+    check(sizes.length > 0 && sizes.every(([, h]) => h >= 40), 'fold arrows and headings are at least 40px tall to a finger', JSON.stringify(sizes));
+  }
   check(errors.length === 0, 'no script errors', errors.join('\n'));
   await browser.close();
 }

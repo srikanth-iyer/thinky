@@ -10,6 +10,16 @@ import { h, fadeAway } from './dom.js';
 const COLLAPSED = /\ncollapsed:: true(?=\n|$)/;
 
 /** Place a floating element under (or above) a rectangle, inside the window. */
+
+/** After a press outside an open pop-up closes it, the click that follows does nothing else (Build 39:
+ *  every pop-up, mouse or finger, as menus on a computer and a phone do): a press meant to close a
+ *  menu never also opens a link or a button behind it. */
+function eatNextClick() {
+  const eat = (c) => { c.preventDefault(); c.stopPropagation(); };
+  document.addEventListener('click', eat, { capture: true, once: true });
+  setTimeout(() => document.removeEventListener('click', eat, true), 700);
+}
+
 export function place(el, r) {
   el.style.left = '0px'; el.style.top = '0px';
   const w = el.offsetWidth, ht = el.offsetHeight;
@@ -295,7 +305,10 @@ export function pickDate(anchor, opts = {}) {
       ${opts.repeat ? `<label class="rep">Repeat <select><option value="">never</option><option value=".+1d">every day</option>
         <option value=".+1w">every week</option><option value="++1m">every month</option><option value="++1y">every year</option></select></label>` : ''}`;
     document.body.append(box);
-    const done = (v) => { cleanup(); resolve(v); };
+    // its button (Go to date) says it's open, and Esc puts the keyboard back on it (Build 39)
+    opts.button?.setAttribute('aria-haspopup', 'dialog');
+    opts.button?.setAttribute('aria-expanded', 'true');
+    const done = (v) => { cleanup(); opts.button?.setAttribute('aria-expanded', 'false'); resolve(v); };
     const repeat = () => box.querySelector('select')?.value || null;
     const cal = createCalendar(box.querySelector('.cal-host'), { date: opts.date || today(), today: today(), marks: opts.marks instanceof Set ? opts.marks : undefined, onPick: (d) => done({ date: d, repeat: repeat() }) });
     opts.marks?.then?.((m) => { if (m && box.isConnected) { cal.setMarks(m); cal.focusDay(); } });
@@ -307,11 +320,18 @@ export function pickDate(anchor, opts = {}) {
       else dt.setDate(dt.getDate() + Number(q));
       done({ date: [dt.getFullYear(), dt.getMonth() + 1, dt.getDate()], repeat: repeat() });
     };
-    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(null); } };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault(); e.stopPropagation();
+      const had = box.contains(document.activeElement);
+      done(null);
+      if (had && opts.button?.isConnected) opts.button.focus({ preventScroll: true });
+    };
     const onDown = (e) => {
       if (box.contains(e.target)) return;
-      // a press on the button that opened it closes it (its click then doesn't open it again)
-      if (opts.button?.contains(e.target)) opts.button.dataset.closedAt = String(Date.now());
+      // a press on the button that opened it closes it: the click that follows is eaten, so it doesn't
+      // open it again (and a press elsewhere doesn't act on what's there)
+      if (e.button === 0) eatNextClick();
       done(null);
     };
     const cleanup = () => { fadeAway(box); box.remove(); document.removeEventListener('keydown', onKey, true); document.removeEventListener('pointerdown', onDown, true); };
@@ -391,19 +411,25 @@ export function menu(anchor, items, opts = {}) {
   if (opts.keep) box.addEventListener('pointerdown', (e) => e.preventDefault());
   document.body.append(box);
   let shut = false;
-  const close = () => { if (shut) return; shut = true; fadeAway(box); box.remove(); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); document.removeEventListener('beforeinput', close, true); };
+  // its button says it's open (screen readers), and Esc puts the keyboard back on it (Build 39)
+  const btn = anchor instanceof Element ? anchor : null;
+  btn?.setAttribute('aria-haspopup', 'menu');
+  btn?.setAttribute('aria-expanded', 'true');
+  const close = () => { if (shut) return; shut = true; btn?.setAttribute('aria-expanded', 'false'); fadeAway(box); box.remove(); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); document.removeEventListener('beforeinput', close, true); };
   // a press outside closes it. The button that opened it closes it too (its click doesn't open it
   // again), and after a finger's press elsewhere the tap doesn't also act on what's under it (a link).
   const onDown = (e) => {
     if (box.contains(e.target)) return;
-    if (e.pointerType !== 'mouse' || anchor.contains?.(e.target)) {
-      const eat = (c) => { c.preventDefault(); c.stopPropagation(); };
-      document.addEventListener('click', eat, { capture: true, once: true });
-      setTimeout(() => document.removeEventListener('click', eat, true), 700);
-    }
+    if (e.button === 0) eatNextClick();
     close();
   };
-  const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+  const onKey = (e) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    const had = box.contains(document.activeElement);
+    close();
+    if (had && btn?.isConnected && !opts.keep) btn.focus({ preventScroll: true });
+  };
   if (opts.keep) document.addEventListener('beforeinput', close, true); // (typing goes on: the menu goes)
   box.onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) { close(); items[+b.dataset.k].run(); } };
   // Esc works from the moment it shows (Build 38: an Esc right after the click was lost); a press
@@ -473,11 +499,7 @@ export function noteMenu(r, o) {
   // a press outside closes it; after a finger's, the tap doesn't also act on what's under it
   const onDown = (e) => {
     if (box.contains(e.target)) return;
-    if (e.pointerType !== 'mouse') {
-      const eat = (c) => { c.preventDefault(); c.stopPropagation(); };
-      document.addEventListener('click', eat, { capture: true, once: true });
-      setTimeout(() => document.removeEventListener('click', eat, true), 700);
-    }
+    if (e.button === 0) eatNextClick();
     close();
   };
   const buttons = () => [...box.querySelectorAll('button')];

@@ -229,6 +229,13 @@ pointerup, after the pop-up's own outside-press listener has closed it, so a win
 at pointerdown whether the button's pop-up showed (`OPENS`: more → .note-menu, date → .pop.tb-menu, slash →
 #ac) and then does nothing; "/" also takes back the "/" it typed when nothing came after (editor.js
 `closeCommands`). `Tabs.linkMenu(a, at, btn)`: the sidebar ⋯ passes itself, so `menu()`'s anchor test knows it.
+Also Build 39 (he asked for other such problems; a wider check, t23_build39): a press outside any pop-up
+(`menu`, `noteMenu`, `pickDate`; mouse or finger, left button) only closes it (popups.js `eatNextClick`; it
+was finger-only for menus); `menu()` sets its button's `aria-haspopup`/`aria-expanded`, `pickDate` its
+`opts.button`'s, the search buttons theirs (search.js); Esc gives the keyboard back to the button that opened
+it (when the keyboard was in the pop-up; not `keep` menus); the look list fades out and closes when search
+opens; Esc closes the phone's drawer; on touch, `.fold` and `.disclose` reach 40px with an invisible `::after`.
+The To-dos filter panel is part of the page (remembered), not a pop-up: it stays as it is.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

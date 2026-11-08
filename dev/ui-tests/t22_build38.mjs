@@ -309,7 +309,7 @@ check(errors.length === 0, 'no script errors', errors.join('\n'));
 await browser.close();
 
 // -------------------------------------------------------------------------------------------------
-console.log('laptop: a click beside the menu acts as a click does (mouse)');
+console.log('laptop: a click beside the menu only closes it (mouse)');
 ({ browser, page, errors } = await open({ look: 'thinky' }));
 await go(page, '#/page/' + encodeURIComponent('Pickles in brine'));
 await sleep(500);
@@ -320,9 +320,10 @@ await sleep(300);
 check(await page.locator('.pop.menu').count() === 0, 'a second click on ⋯ closes it');
 await page.locator('.title-row [data-a="more"]').click();
 await page.waitForSelector('.pop.menu');
+const h0 = await page.evaluate(() => location.hash);
 await page.locator('.outline a', { hasText: 'Rosa Penhallow' }).first().click();
 await sleep(600);
-check(decodeURIComponent(await page.evaluate(() => location.hash)).includes('Rosa Penhallow'), 'with a mouse, a click on a link beside the menu closes it and follows the link (as menus on a computer do)');
+check(await page.locator('.pop.menu').count() === 0 && await page.evaluate(() => location.hash) === h0, 'with a mouse too, a click on a link beside the menu only closes it (Build 39: as every pop-up does)');
 check(errors.length === 0, 'no script errors', errors.join('\n'));
 await browser.close();
 
