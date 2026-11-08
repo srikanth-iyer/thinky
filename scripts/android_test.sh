@@ -381,7 +381,7 @@ sleep 1; log "app pid after stopping it: '$(adb shell pidof "$PKG" | tr -d '\r')
 run adb shell am start -n "$PKG/.QuickCaptureActivity" -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "'Inbox check from the phone'"
 sleep 5; shot 24-share-to-inbox
 adb shell uiautomator dump /sdcard/qc.xml >/dev/null 2>&1; adb shell cat /sdcard/qc.xml > $OUT/qc-inbox.xml
-INBOX_WHERE=$(grep -o 'text="to [^"]*"' $OUT/qc-inbox.xml | head -1)
+INBOX_WHERE=$(grep -o 'text="Add to [^"]*"' $OUT/qc-inbox.xml | head -1)
 log "the pop-up says: $INBOX_WHERE; its error line (none expected): $(grep -o 'text="[^"]*" resource-id="[^"]*qc_error"' $OUT/qc-inbox.xml | head -1)"
 run python3 scripts/ui_tap.py Add --exact
 sleep 4; shot 25-after-add-to-inbox
@@ -492,7 +492,7 @@ result "a leanoutliner://page/… link opens that page in the open app" "[ '$SC_
 result "the Add note shortcut opens the pop-up" "echo '$SC_ADD' | grep -q QuickCaptureActivity"
 result "the pop-up (app closed) adds through the app's code: quick capture page Inbox → a new pages/Inbox (2).md" "dev '/sdcard/vault/pages/Inbox (2).md' | head -1 | grep -qx 'title:: Inbox' && dev '/sdcard/vault/pages/Inbox (2).md' | grep -q '^- .*Inbox check from the phone'"
 result "pages/inbox.md (the page Mail, by its title::) is left byte for byte" "cmp -s $OUT/inbox-after.md /tmp/inbox.md"
-result "the pop-up says where the note goes, as config.edn says now: to Inbox" "[ '$INBOX_WHERE' = 'text=\"to Inbox\"' ]"
+result "the pop-up says where the note goes, as config.edn says now: Add to Inbox" "[ '$INBOX_WHERE' = 'text=\"Add to Inbox\"' ]"
 result "the Add note tile is offered in Quick Settings" "echo '$QS' | grep -q AddNoteTile"
 result "tapping the tile opens the pop-up and closes the shade" "echo '$TILE_TOP' | grep -q QuickCaptureActivity && echo '$TILE_FOCUS' | grep -q QuickCaptureActivity"
 result "starting in dark mode: no dark frame before the app (cream from the first moment)" "python3 -c 'import sys; v=[int(x) for x in sys.argv[1].split()]; sys.exit(0 if len(v) >= 4 and min(v) > 150 else 1)' '$STARTUP'"
