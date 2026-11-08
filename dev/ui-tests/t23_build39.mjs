@@ -229,4 +229,75 @@ for (const phone of [false, true]) {
   check(errors.length === 0, 'no script errors', errors.join('\n'));
   await browser.close();
 }
+
+// Also Build 39 (he asked, Nov 8): a night look for thinky (his pick: "Charcoal"), and Settings → Look's
+// Light / Dark / Match system with a day look and a night look (his pick of two layouts).
+{
+  const { browser, page, errors } = await open({ look: 'thinky' });
+  const st = () => page.evaluate(() => ({ skin: document.documentElement.dataset.skin, mode: JSON.parse(localStorage.getItem('lookMode') || 'null'), day: JSON.parse(localStorage.getItem('skinDay') || 'null'), night: JSON.parse(localStorage.getItem('skinNight') || 'null') }));
+  // before Build 39 there was one look: it decides Light or Dark, and its family's other half fills the other slot
+  const guess = (old) => page.evaluate(async (old) => { localStorage.removeItem('lookMode'); localStorage.setItem('skin', JSON.stringify(old)); return (await import('/app.js')).lookState(); }, old);
+  check(JSON.stringify(await guess('thinky')) === JSON.stringify({ mode: 'light', day: 'thinky', night: 'thinkynight' }), 'an older thinky: Light, thinky by day, thinky night at night');
+  check(JSON.stringify(await guess('plainnight')) === JSON.stringify({ mode: 'dark', day: 'plain', night: 'plainnight' }), 'an older Plain night: Dark, Plain by day');
+  check(JSON.stringify(await guess('paper')) === JSON.stringify({ mode: 'light', day: 'paper', night: 'thinkynight' }), 'an older Paper (no night of its own): thinky night at night');
+  check(JSON.stringify(await guess('grimoire')) === JSON.stringify({ mode: 'light', day: 'calm', night: 'night' }), 'a removed look still opens as Calm');
+  await page.evaluate(() => localStorage.setItem('skin', '"thinky"'));
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto(BASE + '/?t=' + Date.now() + '#/settings/look');
+  await page.waitForSelector('.look-mode');
+  await sleep(500);
+  const shown = async (which) => page.locator(`.skin-cards[data-for="${which}"]`).isVisible();
+  check(await page.locator('.look-mode [aria-checked="true"]').textContent() === 'Light' && await shown('day') && !(await shown('night')), 'Settings → Look: Light, only the day looks');
+  await page.click('.look-mode [data-mode="dark"]'); await sleep(300);
+  let s1 = await st();
+  check(s1.skin === 'thinkynight' && s1.mode === 'dark' && !(await shown('day')) && await shown('night'), 'Dark: thinky night shows, only the night looks', JSON.stringify(s1));
+  await page.click('.look-mode [data-mode="system"]'); await sleep(300);
+  s1 = await st();
+  check(s1.skin === 'thinky' && s1.mode === 'system' && await shown('day') && await shown('night'), 'Match system (system light): thinky, both lists', JSON.stringify(s1));
+  await page.emulateMedia({ colorScheme: 'dark' }); await sleep(300);
+  check((await st()).skin === 'thinkynight', 'the system turning dark while open: thinky night at once');
+  // a day look picked while the system is dark: saved for the day, said so, nothing changes now
+  await page.locator('.skin-cards[data-for="day"] .skin-card[data-skin="plain"]').click(); await sleep(300);
+  s1 = await st();
+  check(s1.skin === 'thinkynight' && s1.day === 'plain' && /Day look saved/.test(await page.locator('.toast, #toast').first().textContent().catch(() => '')), 'a day look picked at night: saved for the day, a message says so', JSON.stringify(s1));
+  check(await page.locator('.skin-card[data-skin="plain"]').getAttribute('aria-pressed') === 'true' && await page.locator('.skin-card[data-skin="thinky"]').getAttribute('aria-pressed') === 'false', 'its card is marked');
+  await page.emulateMedia({ colorScheme: 'light' }); await sleep(300);
+  check((await st()).skin === 'plain', 'the system turning light: the day look, Plain');
+  // before the first paint (boot.js): a fresh start with the system dark shows the night look straight away
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto(BASE + '/?t=' + Date.now() + '#/journals');
+  const first = await page.evaluate(() => document.documentElement.dataset.skin);
+  check(first === 'thinkynight', 'a start with the system dark: thinky night from the first picture', first);
+  // the sidebar's Look list: Day and Night groups; a night look picked with Light set turns Dark on
+  await page.click('.look-mode [data-mode="light"]').catch(() => {});
+  await page.evaluate(async () => (await import('/app.js')).lookState()); // (warm)
+  await page.evaluate(() => window.leanApp?.setLookMode?.('light'));
+  await page.goto(BASE + '/?t=' + Date.now() + '#/journals'); await page.waitForSelector('.sheet .outline'); await sleep(500);
+  await page.click('#side [data-a="looks"]'); await sleep(300);
+  const heads = await page.locator('.pop.looks .looks-h').allTextContents();
+  check(heads.join('|') === 'Day look|Night look', 'the Look list: Day look, Night look', heads.join('|'));
+  check(await page.locator('.pop.looks [data-look="plain"]').getAttribute('aria-pressed') === 'true' && await page.locator('.pop.looks [data-look="thinkynight"]').getAttribute('aria-pressed') === 'true', 'each group marks its look');
+  await page.click('.pop.looks [data-look="stickernight"]'); await sleep(300);
+  s1 = await st();
+  check(s1.skin === 'stickernight' && s1.mode === 'dark' && s1.night === 'stickernight' && s1.day === 'plain', 'a night look picked with Light: Dark, that look', JSON.stringify(s1));
+  await page.keyboard.press('Escape');
+  // thinky night: its faint words and links readable (≥ 4.5:1 on its page), its corner drawing loads
+  await page.evaluate(() => window.leanApp?.setSkin?.('thinkynight'));
+  await page.evaluate(async () => (await import('/app.js'))); await sleep(200);
+  const con = await page.evaluate(() => {
+    document.documentElement.dataset.skin = 'thinkynight';
+    const hex = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+    const L = (h) => { const n = parseInt(h.slice(1), 16), c = [n >> 16 & 255, n >> 8 & 255, n & 255].map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+    const r = (a, b) => { const [x, y] = [L(a), L(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+    return { faint: r(hex('--ink-faint'), hex('--bg')), link: r(hex('--link'), hex('--bg')), ink: r(hex('--ink'), hex('--bg')), accentInk: r(hex('--accent-ink'), hex('--accent')) };
+  });
+  check(con.faint >= 4.5 && con.link >= 4.5 && con.ink >= 7 && con.accentInk >= 4.5, 'thinky night: words, faint words, links and words on its accent readable', JSON.stringify(con));
+  const corner = await page.evaluate(async () => (await fetch('/skins/thinky-night-corner.svg')).status);
+  check(corner === 200, 'its corner drawing is there');
+  // the commands list has the three
+  const cmds = await page.evaluate(async () => { const m = await import('/commands.js'); return m.commandList ? m.commandList(window.leanApp, null).filter((c) => /^Look: (Light|Dark|Match system)$/.test(c.label || c.name || '')).length : -1; }).catch(() => -2);
+  check(cmds === 3, 'the commands: Look: Light, Dark, Match system', String(cmds));
+  check(errors.length === 0, 'no script errors (looks)', errors.join('\n'));
+  await browser.close();
+}
 process.exit(failures() ? 1 : 0);

@@ -241,6 +241,21 @@ menu `.grouped` (a line and room before each heading after the first, a group's 
 touch); items with `on` (true/false) are `menuitemradio` with a round dot (`.m-radio`, the one in use filled, bold,
 on a soft accent fill): the three Sort menus (linked references, "Pages in …", "Pages tagged with …"). Not `.radio`:
 Settings has that class.
+Also Build 39 (he asked, Nov 8; his picks: "B · Charcoal" and "a day look and a night look"): thinky night
+(`thinkynight`: thinky's layout on a warm near-black #161419, cream words #EAE4D9, the accent #FF6E52, links
+#A3B2F2 with a red line, `ui/skins/thinky-night-corner.svg` = the corner scribble cut darker, a cream in-app icon;
+its name is the wordmark + "night", `SKINS` `after`). Light / Dark / Match system: `SKINS` in family order with
+`dark` and `pair`; localStorage `lookMode` (light|dark|system), `skinDay`, `skinNight` (`skin` = the look shown,
+which an older build reads); `lookState()` (no saved mode: the old `skin` decides, a night one = Dark, its `pair`
+fills the other slot, else thinky / thinky night), `shownLook()`; boot.js the same rule before the first paint.
+`App.setSkin(id)` = a look picked: into its slot; with Light/Dark it shows (a night look picked in Light turns
+Dark on), with Match system a message when it waits for the system; `setLookMode`, `showSkin(id, force)` (the old
+setSkin body: widgets, bars, capture box); a `prefers-color-scheme` listener follows the system while open.
+Settings → Look: `.look-mode` (radiogroup) + "Day look"/"Night look" grids (`[data-for]`; Light or Dark shows only
+its own). The sidebar's Look list: two groups (`.looks-h`), each marking its look. Commands "Look: Light / Dark /
+Match system". Tests: t23_build39 (the old-look guesses, the setting, the system turning while open, the first
+paint, the list, thinky night's contrast), t6_looks/t16_looks (13 looks), android_test.sh 14c (the phone's dark
+mode reaches the WebView).
 Also Build 39 (a review of speed and use, measured with the processor slowed 4×, a 3,000-note page; t23_build39):
 the editing box grows by CSS (`field-sizing: content`; editor.js `FIELD_SIZING` skips `autosize`, whose
 height:auto + scrollHeight laid out the whole page each key); the scroll frame reads before it writes
@@ -999,7 +1014,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   and never names a skin. Tokens inherit, so a sample with `data-skin` shows that look anywhere: the
   sidebar's Look button opens a list with small samples, Settings shows large previews. Add a look:
   token block + entry (id, name, note) in `SKINS` (app.js). Images live in `ui/skins/`. Looks: Plain, Plain night (near-black), Plain teal (Logseq's dark blue-green),
-  Calm, Night, Paper, Sticker, Sticker night (from the first mockups), Automaton (a rule 30
+  Calm, Night, Paper, Sticker, Sticker night (from the first mockups), thinky night (Build 39), Automaton (a rule 30
   pattern around the cards), Azulejo, Calm plain (Calm without cards on a white page, a hairline between days). thinky (Build 32: the logo's
   colours laid out like Calm plain (the maintainer asked: a white page, no cards, a hairline between days; the menu a hint of
   cream #F4F2EE; the cream page was "too creamy"), ink #1D1A2E, its in-app icon an ink tile, accent #C2331A (a deeper red from the spark, so

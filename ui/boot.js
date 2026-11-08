@@ -1,8 +1,13 @@
 // Apply the saved look before anything paints (a plain script in <head>; the app's
 // security policy allows no inline scripts).
 // (a look that was taken out: the one App.setSkin falls back to, so the first picture is already it)
+// Build 39: Light / Dark / Match system with a day look and a night look (app.js lookState/shownLook, the
+// same rule; before that, one look in `skin`, which is what shows when the others aren't saved yet)
 try {
-  var skin = JSON.parse(localStorage.getItem('skin')) || 'thinky'; // (the default look since Build 33, he asked)
+  var get1 = function (k) { return JSON.parse(localStorage.getItem(k) || 'null'); };
+  var skin = get1('skin') || 'thinky'; // (the default look since Build 33, he asked)
+  var mode = get1('lookMode'), day = get1('skinDay'), night = get1('skinNight');
+  if (mode && day && night) skin = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches) ? night : day;
   document.documentElement.dataset.skin = { grimoire: 'calm', screenplay: 'plain' }[skin] || skin;
 } catch (e) {}
 // link colour and fonts picked in Settings (see App.applyTextStyle)

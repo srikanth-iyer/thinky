@@ -1073,6 +1073,14 @@ html.welcome #topbar:not(.has-winctl) { display: none; }
 }
 
 /* look picker: each card is a live miniature of its skin */
+.look-mode { display: inline-flex; gap: 3px; padding: 3px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); margin: 2px 0 6px; }
+.look-mode button { border: 0; background: none; font: inherit; font-size: 14px; color: var(--ink); padding: 6px 14px; border-radius: 8px; cursor: pointer; }
+.look-mode button[aria-checked="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.look-mode button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.look-h { font-size: 13px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--ink-faint); margin: 16px 0 8px; }
+.look-h[hidden], .skin-cards[hidden] { display: none; }
+.looks-h { margin: 6px 8px 3px; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); }
+.looks ul + .looks-h { border-top: 1px solid var(--line); padding-top: 9px; margin-top: 6px; }
 .skin-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 14px; }
 .skin-card {
   display: flex; flex-direction: column; text-align: left; padding: 0; cursor: pointer; overflow: hidden;

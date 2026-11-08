@@ -51,7 +51,7 @@ check(await page.evaluate(() => [document.documentElement.dataset.skin, localSto
 await page.locator('#side [data-a="looks"]').click();
 await sleep(200);
 const listed = await page.evaluate(() => [...document.querySelectorAll('.pop.looks [data-look]')].map((b) => b.dataset.look));
-check(listed.length === 12 && !listed.includes('grimoire') && LOOKS.every((l) => listed.includes(l)), 'the Look list has 12 looks (thinky added), no Grimoire', listed.join(','));
+check(listed.length === 13 && !listed.includes('grimoire') && LOOKS.every((l) => listed.includes(l)), 'the Look list has 13 looks (thinky and thinky night added), no Grimoire', listed.join(','));
 await page.keyboard.press('Escape');
 
 const look = async (id, hash = '#/page/Thread%20test') => {

@@ -431,7 +431,16 @@ print(' '.join(str(round(mean(f) or 0)) for f in sorted(glob.glob(sys.argv[1] + 
 PY
 )
 log "start-up frames, mean light of the middle (0 dark – 255 white): $STARTUP"
+# 14c. Match system (Build 39): the phone's dark mode reaches the page (the WebView's prefers-color-scheme),
+# so the night look shows, and turning dark mode off while the app is open brings the day look back
+sleep 6; connect
+SYS_DARK=$($CDP eval "(async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); const a = window.leanApp; a.setSkin('thinky'); a.setSkin('thinkynight'); a.setLookMode('system'); await s(800); return [matchMedia('(prefers-color-scheme: dark)').matches, document.documentElement.dataset.skin].join(' '); })()" | tr -d '\r')
+log "dark mode on, Match system: $SYS_DARK"
 run adb shell cmd uimode night no
+sleep 4
+SYS_LIGHT=$($CDP eval "[matchMedia('(prefers-color-scheme: dark)').matches, document.documentElement.dataset.skin].join(' ')" | tr -d '\r')
+log "dark mode off again: $SYS_LIGHT"
+$CDP eval "window.leanApp.setLookMode('light')" >/dev/null 2>&1
 sleep 3
 
 log "crashes (none expected):"
@@ -495,6 +504,8 @@ result "pages/inbox.md (the page Mail, by its title::) is left byte for byte" "c
 result "the pop-up says where the note goes, as config.edn says now: Add to Inbox" "[ '$INBOX_WHERE' = 'text=\"Add to Inbox\"' ]"
 result "the Add note tile is offered in Quick Settings" "echo '$QS' | grep -q AddNoteTile"
 result "tapping the tile opens the pop-up and closes the shade" "echo '$TILE_TOP' | grep -q QuickCaptureActivity && echo '$TILE_FOCUS' | grep -q QuickCaptureActivity"
+result "Match system: the phone's dark mode shows the night look (thinky night)" "echo '$SYS_DARK' | grep -q 'true thinkynight'"
+result "Match system: dark mode turned off while open, the day look comes back (thinky)" "echo '$SYS_LIGHT' | grep -q 'false thinky$'"
 result "starting in dark mode: no dark frame before the app (cream from the first moment)" "python3 -c 'import sys; v=[int(x) for x in sys.argv[1].split()]; sys.exit(0 if len(v) >= 4 and min(v) > 150 else 1)' '$STARTUP'"
 gzip -9 $OUT/logcat.txt
 log "done: $([ $FAILED = 0 ] && echo 'everything passed' || echo 'SOMETHING FAILED, see the FAIL lines')"

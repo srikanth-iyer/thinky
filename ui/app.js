@@ -19,23 +19,48 @@ import { initFileDrop } from './filedrop.js';
 import { makeChips } from './chips.js';
 
 // Looks: name and one-line note for the picker; the look itself lives in skins.css.
+// The looks, family by family (Build 39, he asked: a day look and a night look, and Light / Dark / Match
+// system). dark: a night look; pair: the other half of its family, the first guess for the other slot.
 export const SKINS = [
-  { id: 'plain', name: 'Plain', note: 'Logseq’s own look: off-white, flat and quiet' },
-  { id: 'plainnight', name: 'Plain night', note: 'Plain in near-black, quiet' },
-  { id: 'plainteal', name: 'Plain teal', note: 'Logseq’s dark look: deep blue-green' },
-  { id: 'calm', name: 'Calm', note: 'The first look: light, teal, lifted cards' },
-  { id: 'calmplain', name: 'Calm plain', note: 'Calm without the cards, on white' },
-  { id: 'night', name: 'Night', note: 'The Board’s dark look, labels set into the page' },
+  { id: 'thinky', name: 'thinky', word: true, note: 'The logo’s cream, ink and red spark', pair: 'thinkynight' },
+  { id: 'thinkynight', name: 'thinky night', word: true, after: 'night', dark: true, note: 'Warm charcoal, cream words, the spark', pair: 'thinky' },
+  { id: 'plain', name: 'Plain', note: 'Logseq’s own look: off-white, flat and quiet', pair: 'plainnight' },
+  { id: 'plainnight', name: 'Plain night', dark: true, note: 'Plain in near-black, quiet', pair: 'plain' },
+  { id: 'plainteal', name: 'Plain teal', dark: true, note: 'Logseq’s dark look: deep blue-green', pair: 'plain' },
+  { id: 'calm', name: 'Calm', note: 'The first look: light, teal, lifted cards', pair: 'night' },
+  { id: 'calmplain', name: 'Calm plain', note: 'Calm without the cards, on white', pair: 'night' },
+  { id: 'night', name: 'Night', dark: true, note: 'The Board’s dark look, labels set into the page', pair: 'calm' },
+  { id: 'sticker', name: 'Sticker', note: 'The Board’s sticker look: bold outlines', pair: 'stickernight' },
+  { id: 'stickernight', name: 'Sticker night', dark: true, note: 'Sticker, dimmed for evenings', pair: 'sticker' },
   { id: 'paper', name: 'Paper', note: 'Dot-grid paper, serif writing, highlighter' },
-  { id: 'sticker', name: 'Sticker', note: 'The Board’s sticker look: bold outlines' },
-  { id: 'stickernight', name: 'Sticker night', note: 'Sticker, dimmed for evenings' },
   { id: 'automaton', name: 'Automaton', note: 'Lab notes on a rule 30 pattern' },
   { id: 'azulejo', name: 'Azulejo', note: 'Cobalt tiles on white' },
-  { id: 'thinky', name: 'thinky', word: true, note: 'The logo’s cream, ink and red spark' },
 ];
 const SKIN_IDS = new Set(SKINS.map((s) => s.id));
 /** A look's name as HTML: the look named after the app shows the wordmark (his rule: the name is never plain letters). */
-export const lookName = (s) => (s.word ? BRAND.word : esc(s.name));
+export const lookName = (s) => (s.word ? BRAND.word + (s.after ? ' ' + esc(s.after) : '') : esc(s.name));
+const skinOf = (id) => SKINS.find((s) => s.id === id);
+/** Light / Dark / Match system and the two looks (localStorage lookMode, skinDay, skinNight; boot.js
+ *  works out the same before the first paint). Before Build 39 there was one look, `skin`: a night one
+ *  meant Dark, else Light, and its family's other half fills the other slot. */
+export function lookState() {
+  const mode = store.get('lookMode', '');
+  if (mode && SKIN_IDS.has(store.get('skinDay', '')) && SKIN_IDS.has(store.get('skinNight', ''))) {
+    return { mode, day: store.get('skinDay'), night: store.get('skinNight') };
+  }
+  let old = store.get('skin', 'thinky');
+  old = { grimoire: 'calm', screenplay: 'plain' }[old] || old;
+  const o = skinOf(old) || skinOf('thinky');
+  const other = skinOf(o.pair) || null;
+  const day = o.dark ? (other && !other.dark ? other.id : 'thinky') : o.id;
+  const night = o.dark ? o.id : (other?.dark ? other.id : 'thinkynight');
+  return { mode: mode || (o.dark ? 'dark' : 'light'), day, night };
+}
+const darkSystem = () => matchMedia('(prefers-color-scheme: dark)').matches;
+/** The look to show now. */
+export function shownLook(st = lookState()) {
+  return st.mode === 'dark' || (st.mode === 'system' && darkSystem()) ? st.night : st.day;
+}
 /** The current look's colours for the Windows "Add to journal" box and the Android widgets, as #rrggbb: each token painted
  *  on a 1-pixel canvas over the box's background, so any CSS colour (see-through ones too) comes
  *  out as the colour seen. The names are the CSS tokens (outline_core::capture_box::COLOR_KEYS). */
@@ -2055,12 +2080,37 @@ class App {
   }
 
   // ----- looks, text size, sidebar -----
+  /** A look picked (sidebar list, Settings, commands): it becomes the day or the night look, by its kind.
+   *  With Light or Dark it shows at once (a night look picked in Light turns Dark on: he chose it); with
+   *  Match system it shows when the system is that way, and a message says so otherwise. */
   setSkin(id) {
     if (!SKIN_IDS.has(id)) id = 'calm'; // (Grimoire, taken out in Build 32, too; boot.js does the same before the first paint)
+    const st = lookState(), dark = !!skinOf(id).dark;
+    st[dark ? 'night' : 'day'] = id;
+    if (st.mode !== 'system') st.mode = dark ? 'dark' : 'light';
+    this.saveLooks(st);
+    if (st.mode === 'system' && dark !== darkSystem()) this.toast(`${dark ? 'Night' : 'Day'} look saved: it shows when your system is ${dark ? 'dark' : 'light'}.`);
+  }
+  /** Light, Dark or Match system (Settings → Look, the commands). */
+  setLookMode(mode) {
+    const st = lookState();
+    st.mode = mode;
+    this.saveLooks(st);
+  }
+  saveLooks(st) {
+    store.set('lookMode', st.mode); store.set('skinDay', st.day); store.set('skinNight', st.night);
+    this.showSkin(shownLook(st));
+  }
+  /** Shows a look (the one lookState says): the page, the widgets, the bars, the capture box. */
+  showSkin(id, force = false) {
+    if (!SKIN_IDS.has(id)) id = 'calm';
+    const was = document.documentElement.dataset.skin;
     document.documentElement.dataset.skin = id;
-    store.set('skin', id);
+    store.set('skin', id); // (the look shown: an older build reads it)
     const cur = $('#side .look-cur');
-    if (cur) cur.innerHTML = lookName(SKINS.find((s) => s.id === id));
+    if (cur) cur.innerHTML = lookName(skinOf(id));
+    if (was === id && this.skinShown && !force) return; // (nothing else changed; force: its colours did, e.g. the link colour)
+    this.skinShown = true;
     // the Android home-screen widgets and the "Add a note" pop-up follow the look (at every start and
     // look change; as #rrggbb, the colours as seen, which Android always reads: a look may use any
     // CSS colour, e.g. rgb() or color-mix(), and Android would fall back to its defaults for those)
@@ -2091,14 +2141,18 @@ class App {
    *  fonts). Picking applies at once and leaves the list open, so looks are easy to compare. */
   openLooks(anchor) {
     if (this.closeLooks) { this.closeLooks(); return; }
-    const cur = document.documentElement.dataset.skin;
+    const st = lookState();
     const box = h('div', 'pop looks');
     box.setAttribute('role', 'dialog');
     box.setAttribute('aria-label', 'Choose a look');
-    box.innerHTML = `<ul>${SKINS.map((s) => `<li><button type="button" data-look="${s.id}" aria-pressed="${s.id === cur}">
+    // two groups, Day and Night (Build 39): the one picked in each is marked
+    const row = (s) => `<li><button type="button" data-look="${s.id}" aria-pressed="${s.id === (s.dark ? st.night : st.day)}">
         <span class="look-sw" data-skin="${s.id}" aria-hidden="true"><span><i></i><b>Aa</b></span></span>
-        <span class="look-txt"><b>${lookName(s)}</b><small>${esc(s.note)}</small></span></button></li>`).join('')}</ul>
-      <a class="look-more" href="#/settings/look">Bigger previews and text size: Settings</a>`;
+        <span class="look-txt"><b>${lookName(s)}</b><small>${esc(s.note)}</small></span></button></li>`;
+    const mode = { light: 'Light', dark: 'Dark', system: 'Match system' }[st.mode];
+    box.innerHTML = `<p class="looks-h">Day look</p><ul>${SKINS.filter((s) => !s.dark).map(row).join('')}</ul>
+      <p class="looks-h">Night look</p><ul>${SKINS.filter((s) => s.dark).map(row).join('')}</ul>
+      <a class="look-more" href="#/settings/look">Light, dark or match system (now: ${mode}), bigger previews: Settings</a>`;
     document.body.append(box);
     const rows = () => [...box.querySelectorAll('[data-look]')];
     const onDown = (e) => { if (!box.contains(e.target) && !anchor.contains(e.target)) close(); };
@@ -2122,7 +2176,11 @@ class App {
     this.closeLooks = close;
     box.addEventListener('click', (e) => {
       const b = e.target.closest('[data-look]');
-      if (b) { this.setSkin(b.dataset.look); rows().forEach((x) => x.setAttribute('aria-pressed', x === b)); }
+      if (b) {
+        this.setSkin(b.dataset.look);
+        const dark = !!skinOf(b.dataset.look).dark;
+        rows().forEach((x) => { if (!!skinOf(x.dataset.look).dark === dark) x.setAttribute('aria-pressed', x === b); });
+      }
       else if (e.target.closest('.look-more')) close();
     });
     setTimeout(() => { document.addEventListener('pointerdown', onDown, true); document.addEventListener('keydown', onKey, true); }, 0);
@@ -2236,7 +2294,9 @@ class App {
       const a = e.target.closest('#recent a, #favs a');
       if (a) { e.preventDefault(); this.go('page', a.dataset.page); }
     });
-    this.setSkin(document.documentElement.dataset.skin || 'thinky');
+    this.showSkin(shownLook());
+    // Match system: follow the system turning dark or light while the app is open
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (lookState().mode === 'system') this.showSkin(shownLook()); });
     this.sideExtras(side);
     this.textSize(this.textSize());
     this.applyTextStyle();

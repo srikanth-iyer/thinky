@@ -137,6 +137,7 @@ export function commandList(app, ed) {
   }, { also: 'theme skin colours' });
   const cur = document.documentElement.dataset.skin;
   for (const s of SKINS) add('Look', 'look-' + s.id, `Look: ${s.name}`, () => app.setSkin(s.id), { hint: s.id === cur ? 'now' : '', also: 'theme skin ' + s.note, more: true });
+  for (const [m, label] of [['light', 'Light'], ['dark', 'Dark'], ['system', 'Match system']]) add('Look', 'look-mode-' + m, `Look: ${label}`, () => app.setLookMode(m), { also: 'theme mode night day dark light system auto', more: true });
   // what's nearest first: the note being edited, this page, then going places, the window, the look
   const ORDER = ['Editing', 'Selected notes', 'Page', 'Go', 'Window', 'Look'];
   return L.map((c, k) => [c, k]).sort(([a, j], [b, k]) => ORDER.indexOf(a.group) - ORDER.indexOf(b.group) || j - k).map(([c]) => c);

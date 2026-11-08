@@ -8,7 +8,7 @@ import { call, store, nowTime, isApp, isAndroid, assetUrl, today } from './api.j
 import { esc, PROP_SHOWS, MARK_COLORS, builtinHidden } from './render.js';
 import { h, ICON, BRAND, plural, SETTINGS_TABS } from './dom.js';
 import { promptBox, confirmBox } from './popups.js';
-import { SKINS, accessCard, lookName } from './app.js';
+import { SKINS, accessCard, lookName, lookState } from './app.js';
 import { fitChips } from './views.js';
 import { madeBy } from './history.js';
 
@@ -412,8 +412,24 @@ export async function useVault(app, path, place = '#/journals') {
 function lookCard(app) {
   // each card is a live miniature drawn with that look's own tokens
   const sc = h('div', 'card');
-  sc.innerHTML = '<h2>Look</h2><p class="note">Pick how your notes look. Each card is a live preview.</p><div class="skin-cards"></div>';
-  const cards = $('.skin-cards', sc);
+  // Build 39 (he picked "a day look and a night look"): Light / Dark / Match system, then the day looks and
+  // the night looks; with Light or Dark only that list shows, with Match system both
+  sc.innerHTML = `<h2>Look</h2><p class="note">Pick how your notes look. Each card is a live preview.</p>
+    <div class="look-mode" role="radiogroup" aria-label="Light or dark">${[['light', 'Light'], ['dark', 'Dark'], ['system', 'Match system']]
+      .map(([m, t]) => `<button type="button" role="radio" data-mode="${m}">${t}</button>`).join('')}</div>
+    <p class="note look-mode-note"></p>
+    <h3 class="look-h" data-for="day">Day look</h3><div class="skin-cards" data-for="day"></div>
+    <h3 class="look-h" data-for="night">Night look</h3><div class="skin-cards" data-for="night"></div>`;
+  const paint = () => {
+    const st = lookState();
+    sc.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-checked', b.dataset.mode === st.mode));
+    sc.querySelectorAll('[data-for]').forEach((x) => { x.hidden = st.mode !== 'system' && x.dataset.for !== (st.mode === 'dark' ? 'night' : 'day'); });
+    sc.querySelectorAll('.skin-card').forEach((b) => b.setAttribute('aria-pressed', b.dataset.skin === (b.dataset.dark ? st.night : st.day)));
+    $('.look-mode-note', sc).textContent = st.mode === 'system'
+      ? 'The day look shows while your system is light, the night look while it is dark.'
+      : st.mode === 'dark' ? 'Always the night look.' : 'Always the day look.';
+  };
+  sc.querySelector('.look-mode').onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b) { app.setLookMode(b.dataset.mode); paint(); } };
   const sample = `<div class="sheet"><div class="day-head"><p class="weekday">Sunday</p><div class="page-title">October 25th, 2026</div></div>
     <div class="outline day-body">
       <div class="blk" style="--d:0"><span class="bul"></span><div class="bc">Read <a class="pl">Marta Pell</a> on bread <a class="tag"><span class="hash">#</span>reading</a></div></div>
@@ -423,10 +439,11 @@ function lookCard(app) {
   for (const s of SKINS) {
     const b = h('button', 'skin-card', `<div class="stage">${sample}</div><div class="label"><b>${lookName(s)}</b><span>${s.note}</span></div>`);
     b.dataset.skin = s.id;
-    b.setAttribute('aria-pressed', document.documentElement.dataset.skin === s.id);
-    b.onclick = () => { app.setSkin(s.id); cards.querySelectorAll('.skin-card').forEach((x) => x.setAttribute('aria-pressed', x === b)); };
-    cards.append(b);
+    if (s.dark) b.dataset.dark = '1';
+    b.onclick = () => { app.setSkin(s.id); paint(); };
+    $(`.skin-cards[data-for="${s.dark ? 'night' : 'day'}"]`, sc).append(b);
   }
+  paint();
   const size = h('div', 'size-row');
   size.innerHTML = `<label>Text size <input type="range" min="0.8" max="1.6" step="0.05" value="${app.textSize()}"> <span class="v">${Math.round(app.textSize() * 100)}%</span></label>
     <span class="note">On the laptop also Ctrl + and Ctrl −.</span>`;
@@ -519,7 +536,7 @@ function textStyle(app) {
   const setLink = (c) => {
     store.set('linkColor', c);
     app.applyTextStyle();
-    app.setSkin(document.documentElement.dataset.skin); // (Plain's accent is its link colour: the widget, bars and capture box follow)
+    app.showSkin(document.documentElement.dataset.skin, true); // (Plain's accent is its link colour: the widget, bars and capture box follow)
     box.querySelectorAll('.sw').forEach((b) => b.setAttribute('aria-pressed', String(b.classList.contains('pick') ? !!c && !LINK_COLOURS.includes(c) : (b.dataset.c || '') === c)));
   };
   box.querySelector('.swatches').addEventListener('click', (e) => {

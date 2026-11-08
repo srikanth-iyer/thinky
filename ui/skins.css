@@ -409,6 +409,37 @@
   --logo-tile: #1D1A2E; --logo-ink: #F4EEE3; --logo-spark: #FF4B2B;
 }
 
+/* thinky night (Build 39, he picked "B · Charcoal" of three): thinky laid out the same (no cards, a hairline
+   between days, Inter), on a warm near-black, cream words, the spark's red as the accent, soft ink-blue links
+   with a red line; the scribble cut darker into the sidebar's corner; the in-app icon a cream tile. */
+[data-skin="thinkynight"] {
+  color-scheme: dark;
+  --c-note: #8FA8F5; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
+  --hl-yellow: #FACC15; --hl-red: #F87171; --hl-pink: #F472B6; --hl-green: #4ADE80; --hl-blue: #60A5FA; --hl-purple: #C084FC; --hl-gray: #9CA3AF; --hl-tint: 24%;
+  --bg: #161419; --surface: #1C1A20; --surface-2: #211F26; --side-bg: #1B1920;
+  --ink: #EAE4D9; --ink-soft: #BDB6AC; --ink-faint: #8F8994;
+  --line: #2E2B33; --line-soft: #242128;
+  --accent: #FF6E52; --accent-ink: #161419; --accent-tint: color-mix(in srgb, #FF6E52 16%, #161419);
+  --link: #A3B2F2; --link-line: rgba(255,110,82,.55);
+  --tag-bg: color-mix(in srgb, #FF6E52 16%, #161419); --tag-ink: color-mix(in srgb, #FF6E52 70%, #EAE4D9);
+  --mark-bg: #5A4A1C; --danger: #F2B8B5; --danger-tint: #3A2523;
+  --edit-bg: #1E1C22; --guide: #2A272F; --bullet: #6F6A76; --bullet-ring: #34313A;
+  --quote-bar: color-mix(in srgb, var(--accent) 45%, transparent);
+  --side-image: url(skins/thinky-night-corner.svg); --side-image-size: 132px auto; --side-image-pos: 50% calc(100% - 128px); --side-image-repeat: no-repeat;
+  --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
+  --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-title: var(--font-body); --title-weight: 600; --title-tracking: -0.02em;
+  --weekday-font: var(--font-body); --weekday-style: normal;
+  --sec-font: var(--font-body);
+  --body-size: 16px;
+  --btn-bg: #1F1D24; --btn-border: 1px solid #34313A; --btn-shadow: none;
+  --check-border: 1.6px solid #6F6A76; --check-tick: #161419;
+  --refgrp-bg: #1C1A20; --refgrp-border: 1px solid #2B2830; --refgrp-shadow: none; --refgrp-radius: 8px; --refgrp-line: 1px solid #28252D;
+  --props-bg: #1F1D24;
+  --logo-tile: #F4EEE3; --logo-ink: #1D1A2E; --logo-spark: #FF4B2B;
+}
+
 /* Settings → Look → Page links (this device only; App.applyTextStyle and boot.js set html[data-links]):
    on top of every look, also in the look samples (their own data-skin would otherwise win) */
 html[data-links="underline"], html[data-links="underline"] [data-skin] { --link-deco: 1px solid var(--link-line); --link-open: none; --link-close: none; }
