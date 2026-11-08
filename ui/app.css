@@ -1513,12 +1513,23 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 @media (pointer: coarse) {
   .pop.menu:not(.note-menu) { min-width: 168px; max-width: min(280px, calc(100vw - 16px)); max-height: min(62vh, 440px); overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
   .pop.menu:not(.note-menu) button { display: flex; align-items: center; min-height: 44px; padding: 0 12px; font-size: 14.5px; line-height: 1.25; }
+  .pop.menu.grouped:not(.tb-menu) button { min-height: 36px; }
   .pop.menu:not(.note-menu) .mhint { order: 2; float: none; margin-left: auto; padding-left: 16px; font-size: 12px; }
   .pop.menu.tb-menu { width: min(216px, calc(100vw - 16px)); }
   .pop.menu.tb-menu button { min-height: 32px; font-size: 15px; }
 }
 /* a small heading in a menu (menu(): {head}) */
 .menu .m-head { padding: 6px 10px 2px; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); }
+/* Menus with headings (Build 39, he asked: which line is a heading and which a choice wasn't clear): a line
+   and room before each heading after the first, a group's choices close together. */
+.menu.grouped .m-head { padding: 8px 10px 3px; }
+.menu.grouped .m-head:not(:first-child) { border-top: 1px solid var(--line); margin-top: 5px; padding-top: 11px; }
+.menu.grouped button { padding-top: 6px; padding-bottom: 6px; }
+/* One of several (the Sort menus): a round radio dot, filled for the one in use, which is also bold on a soft fill. */
+.menu button.m-radio { display: flex; align-items: center; gap: 10px; }
+.menu button.m-radio::before { content: ""; flex: none; width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid var(--ink-faint); }
+.menu button.m-radio[aria-checked="true"] { font-weight: 600; background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.menu button.m-radio[aria-checked="true"]::before { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 3px, transparent 3.6px); }
 /* Copy page as text */
 .modal.export { width: min(560px, 100%); }
 .ex-kinds { display: flex; gap: 6px; margin: 6px 0 12px; }

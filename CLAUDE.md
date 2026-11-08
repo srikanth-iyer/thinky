@@ -236,6 +236,11 @@ was finger-only for menus); `menu()` sets its button's `aria-haspopup`/`aria-exp
 it (when the keyboard was in the pop-up; not `keep` menus); the look list fades out and closes when search
 opens; Esc closes the phone's drawer; on touch, `.fold` and `.disclose` reach 40px with an invisible `::after`.
 The To-dos filter panel is part of the page (remembered), not a pop-up: it stays as it is.
+Also Build 39 (he asked: headings and choices in the Sort menu ran together): `menu()` items with `{head}` make the
+menu `.grouped` (a line and room before each heading after the first, a group's choices close together; 36px rows on
+touch); items with `on` (true/false) are `menuitemradio` with a round dot (`.m-radio`, the one in use filled, bold,
+on a soft accent fill): the three Sort menus (linked references, "Pages in …", "Pages tagged with …"). Not `.radio`:
+Settings has that class.
 Also Build 39 (a review of speed and use, measured with the processor slowed 4×, a 3,000-note page; t23_build39):
 the editing box grows by CSS (`field-sizing: content`; editor.js `FIELD_SIZING` skips `autosize`, whose
 height:auto + scrollHeight laid out the whole page each key); the scroll frame reads before it writes

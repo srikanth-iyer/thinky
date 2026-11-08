@@ -401,13 +401,16 @@ export function formBox({ title, body = '', fields, ok = 'OK' }) {
 }
 
 /** A short list of actions under a button (anchor: anything with getBoundingClientRect, such as a
- *  point where he right-clicked). items: [{label, run, danger, hint}], '-' between groups, {head} a
+ *  point where he right-clicked). items: [{label, run, danger, hint, on}], '-' between groups, {head} a
  *  small heading over a group; hint:
  *  quiet words on the right, such as the keys that do the same. opts.keep: what has the keyboard
  *  keeps it (the phone toolbar's menus: the editing box and its keyboard stay up); opts.cls: a class. */
 export function menu(anchor, items, opts = {}) {
-  const box = h('ul', 'pop menu' + (opts.cls ? ' ' + opts.cls : ''));
-  box.innerHTML = items.map((it, k) => it === '-' ? '<li class="nm-sep" role="separator"></li>' : it.head ? `<li class="m-head" role="presentation">${esc(it.head)}</li>` : `<li><button type="button" data-k="${k}" class="${it.danger ? 'danger' : ''}">${it.hint ? `<span class="mhint">${esc(it.hint)}</span>` : ''}${esc(it.label)}</button></li>`).join('');
+  // with headings: grouped (Build 39, he asked: a line and room before each heading, a group's choices close
+  // together); {on: true/false}: one of several, shown as a round radio dot (● the one in use)
+  const grouped = items.some((it) => it?.head);
+  const box = h('ul', 'pop menu' + (grouped ? ' grouped' : '') + (opts.cls ? ' ' + opts.cls : ''));
+  box.innerHTML = items.map((it, k) => it === '-' ? '<li class="nm-sep" role="separator"></li>' : it.head ? `<li class="m-head" role="presentation">${esc(it.head)}</li>` : `<li><button type="button" data-k="${k}" class="${[it.danger ? 'danger' : '', it.on !== undefined ? 'm-radio' : ''].join(' ').trim()}"${it.on !== undefined ? ` role="menuitemradio" aria-checked="${!!it.on}"` : ''}>${it.hint ? `<span class="mhint">${esc(it.hint)}</span>` : ''}${esc(it.label)}</button></li>`).join('');
   if (opts.keep) box.addEventListener('pointerdown', (e) => e.preventDefault());
   document.body.append(box);
   let shut = false;

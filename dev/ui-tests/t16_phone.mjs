@@ -177,7 +177,7 @@ const dmb = await page.$$eval('.pop.menu.tb-menu button', (bs) => bs.map((b) => 
 const date = await rect(page, '#toolbar [data-t="date"]');
 const dmh = await page.$$eval('.pop.menu.tb-menu .m-head', (hs) => hs.map((x) => [x.textContent, getComputedStyle(x).textTransform, Math.round(x.getBoundingClientRect().height)]));
 check(dm.h <= 270 && dm.w <= 260 && dmb.length === 6 && dmb.every(([, hh]) => hh >= 32 && hh <= 34) && dmb.every(([t], k) => !k || t > dmb[k - 1][0]), 'the date menu: one column, rows close together (32px; it was 290px tall)', JSON.stringify({ dm, dmb }));
-check(dmh.length === 2 && dmh[0][0] === 'Link to a day' && dmh[1][0] === 'To-do date' && dmh.every(([, tt, hh]) => tt === 'uppercase' && hh <= 24), 'small headings over its two groups (LINK TO A DAY, TO-DO DATE; he picked these, Oct 29)', JSON.stringify(dmh));
+check(dmh.length === 2 && dmh[0][0] === 'Link to a day' && dmh[1][0] === 'To-do date' && dmh.every(([, tt, hh]) => tt === 'uppercase' && hh <= 32), 'small headings over its two groups (LINK TO A DAY, TO-DO DATE; he picked these, Oct 29; Build 39: a line and room before the second)', JSON.stringify(dmh));
 check(dm.b <= date.y && date.y - dm.b <= 12, 'above its button', JSON.stringify({ dm, date }));
 await page.screenshot({ path: SHOTS + '/phone16-datemenu.png' });
 await page.keyboard.press('Escape');

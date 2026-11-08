@@ -75,7 +75,7 @@ await sortB.click();
 await sleep(200);
 const items = await page.locator('.sort-menu button').evaluateAll((bs) => bs.map((b) => [...b.childNodes].filter((n) => n.nodeType === 3).map((n) => n.data).join('')));
 check(items.join('|') === 'Newest first|Oldest first|A to Z|Z to A|Newest first|Oldest first' && await page.locator('.sort-menu .m-head').allTextContents().then((x) => x.join('|')) === 'Last changed|Name|Date created', 'the menu: Last changed, Name and Date created, each both ways', items.join('|'));
-check((await page.locator('.sort-menu [data-k="1"] .mhint').textContent()) === '✓', 'the order in use is ticked');
+check(await page.locator('.sort-menu [aria-checked="true"]').evaluateAll((bs) => bs.map((b) => b.dataset.k).join()) === '1' && await page.locator('.sort-menu button.m-radio').count() === 6, 'the order in use has the filled radio dot (only it)');
 await page.locator('.sort-menu [data-k="4"]').click();
 await sleep(400);
 const byName = await order(page, sec);

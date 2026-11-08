@@ -1232,7 +1232,7 @@ class App {
       };
       sortBtn.onclick = () => {
         const now = refPrefs(host).sort;
-        const item = (k, label) => ({ label, hint: k === now ? '✓' : '', run: () => { setRefPrefs(host, { ...refPrefs(host), sort: k }); draw(); } });
+        const item = (k, label) => ({ label, on: k === now, run: () => { setRefPrefs(host, { ...refPrefs(host), sort: k }); draw(); } });
         menu(sortBtn, [{ head: 'Last changed' }, item('changed', 'Newest first'), item('changed-old', 'Oldest first'),
           { head: 'Name' }, item('name', 'A to Z'), item('name-za', 'Z to A'),
           { head: 'Date created' }, item('created', 'Newest first'), item('created-old', 'Oldest first')], { cls: 'sort-menu' });
@@ -1281,7 +1281,7 @@ class App {
       input.onkeydown = (e) => { if (e.key === 'Escape') { e.stopPropagation(); input.value = ''; bar.hidden = true; draw(); fbtn?.focus(); } };
       if (sortBtn) sortBtn.onclick = () => {
         const now = refPrefs(host).sort;
-        const item = (k, label) => ({ label, hint: k === now ? '✓' : '', run: () => { setRefPrefs(host, { ...refPrefs(host), sort: k }); draw(); } });
+        const item = (k, label) => ({ label, on: k === now, run: () => { setRefPrefs(host, { ...refPrefs(host), sort: k }); draw(); } });
         menu(sortBtn, [{ head: 'Last changed' }, item('changed', 'Newest first'), item('changed-old', 'Oldest first'),
           { head: 'Name' }, item('name', 'A to Z'), item('name-za', 'Z to A'),
           { head: 'Date created' }, item('created', 'Newest first'), item('created-old', 'Oldest first')], { cls: 'sort-menu' });
@@ -1533,7 +1533,7 @@ class App {
     // Sort: a small menu of the orders, each both ways; the one in use ticked
     sortBtn.onclick = () => {
       const now = refPrefs(host).sort;
-      const item = (k, label) => ({ label, hint: k === now ? '✓' : '', run: () => { set({ sort: k }); draw(); } });
+      const item = (k, label) => ({ label, on: k === now, run: () => { set({ sort: k }); draw(); } });
       menu(sortBtn, [{ head: 'Last changed' }, item('changed', 'Newest first'), item('changed-old', 'Oldest first'),
         { head: 'Name' }, item('name', 'A to Z'), item('name-za', 'Z to A'),
         { head: 'Date created' }, item('created', 'Newest first'), item('created-old', 'Oldest first')], { cls: 'sort-menu' });
