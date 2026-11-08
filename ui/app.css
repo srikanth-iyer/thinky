@@ -382,7 +382,7 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
 }
 .bc { cursor: text; }
 .bc:empty::before { content: attr(data-ph); color: var(--ink-faint); }
-.ed { border: 0; outline: 0; resize: none; background: var(--edit-bg); overflow: hidden; }
+.ed { border: 0; outline: 0; resize: none; background: var(--edit-bg); overflow: hidden; field-sizing: content; } /* grows with its words, no script (editor.js FIELD_SIZING) */
 /* a done or cancelled to-do (as Logseq): its words faded, a clear line through them in their own colour;
    links stay link-coloured, faded the same; a heading (inline-block) gets the line too, its
    properties box (inline-block across the note) doesn't */
@@ -760,7 +760,7 @@ a.tag .hash { display: var(--hash); }
 #search, .search-ghost { position: fixed; inset: 0; background: color-mix(in srgb, var(--ink) 28%, transparent); z-index: 50; display: flex; justify-content: center; align-items: flex-start; padding: 10vh 16px 16px; }
 .search-box { width: min(640px, 100%); max-height: 100%; display: flex; flex-direction: column; background: var(--surface); border-radius: 14px; border: var(--sheet-border); box-shadow: 0 24px 60px -20px rgba(0,0,0,.45); overflow: hidden; line-height: 1.4; color: var(--ink); }
 .search-box input { flex: none; width: 100%; border: 0; outline: 0; font: inherit; font-size: 18px; padding: 16px 18px; background: transparent; color: var(--ink); border-bottom: 1px solid var(--line-soft); }
-.results { flex: 0 1 auto; min-height: 0; max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; list-style: none; margin: 0; padding: 6px; }
+.results { position: relative; /* (rows' offsetTop from the list: search.js paint) */ flex: 0 1 auto; min-height: 0; max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; list-style: none; margin: 0; padding: 6px; }
 .results li { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
 .results li[aria-selected="true"] { background: var(--accent-tint); }
 .results li > svg { width: 16px; height: 16px; flex: none; color: var(--ink-faint); }
@@ -1082,6 +1082,18 @@ html.welcome #topbar:not(.has-winctl) { display: none; }
 .skin-card .stage { background-color: var(--bg); background-image: var(--page-image); background-size: var(--page-image-size); padding: 14px 14px 4px; height: 150px; overflow: hidden; }
 .skin-card .stage .sheet { zoom: .52; margin: 0; pointer-events: none; font-size: var(--body-size); line-height: var(--lh); font-family: var(--font-body); color: var(--ink); }
 .skin-card .stage .page-title { font-size: 34px; } /* (the date on one line in the small preview) */
+/* (Build 39) previews out of view aren't drawn until scrolled to: Settings → Look opens at once */
+.skin-card { content-visibility: auto; contain-intrinsic-size: auto 220px; }
+/* phones: two previews to a row, smaller, so the twelve looks take half the scrolling */
+@media (max-width: 520px) {
+  .skin-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .skin-card { contain-intrinsic-size: auto 170px; }
+  .skin-card .stage { height: 104px; padding: 10px 10px 2px; }
+  .skin-card .stage .sheet { zoom: .4; }
+  .skin-card .label { padding: 6px 9px 8px; }
+  .skin-card .label b { font-size: 13.5px; }
+  .skin-card .label span { font-size: 11.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+}
 .skin-card .label { padding: 8px 12px 10px; background: var(--surface); border-top: 1px solid var(--line-soft); font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.35; }
 .skin-card .label b { display: block; font-size: 14.5px; }
 .skin-card .label span { font-size: 12.5px; color: var(--ink-soft); }

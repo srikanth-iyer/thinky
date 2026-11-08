@@ -6,7 +6,7 @@
 
 import { call, store, nowTime, isApp, isAndroid, assetUrl, today } from './api.js';
 import { esc, PROP_SHOWS, MARK_COLORS, builtinHidden } from './render.js';
-import { h, ICON, BRAND, plural } from './dom.js';
+import { h, ICON, BRAND, plural, SETTINGS_TABS } from './dom.js';
 import { promptBox, confirmBox } from './popups.js';
 import { SKINS, accessCard, lookName } from './app.js';
 import { fitChips } from './views.js';
@@ -14,7 +14,7 @@ import { madeBy } from './history.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
-export const TABS = [['notes', 'Notes'], ['look', 'Look'], ['capture', 'Capture'], ['keys', 'Shortcuts'], ['about', 'About']];
+export const TABS = SETTINGS_TABS;
 
 export async function settingsView(app, view, want = null) {
   const failed = !app.vaultOpen && app.vaultError && store.get('vault', ''); // (chosen, but it couldn't be opened just now)

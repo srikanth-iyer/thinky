@@ -154,6 +154,78 @@ for (const phone of [false, true]) {
     }));
     check(sizes.length > 0 && sizes.every(([, h]) => h >= 40), 'fold arrows and headings are at least 40px tall to a finger', JSON.stringify(sizes));
   }
+  // ---- speed and polish (Build 39's review) ----
+  // modules that aren't needed at start load on first use
+  await fresh(page, '#/journals');
+  const loaded = () => page.evaluate(() => performance.getEntriesByType('resource').map((e) => e.name.split('/').pop()));
+  const atStart = await loaded();
+  check(!['settings.js', 'history.js', 'clash.js', 'commands.js'].some((f) => atStart.includes(f)), 'Settings, History, the clash screen and the command list aren’t loaded at start', atStart.filter((f) => f.endsWith('.js')).join(' '));
+  await page.evaluate(() => { location.hash = '#/settings/look'; });
+  await page.waitForSelector('.skin-card');
+  check((await loaded()).includes('settings.js'), 'Settings loads when opened');
+  // the look previews: two to a row on a phone; off-screen ones not drawn until scrolled to
+  const cols = await page.evaluate(() => new Set([...document.querySelectorAll('.skin-card')].slice(0, 4).map((c) => Math.round(c.getBoundingClientRect().top))).size);
+  check(phone ? cols === 2 : true, 'phone: two look previews to a row', String(cols));
+  check(await page.evaluate(() => getComputedStyle(document.querySelector('.skin-card')).contentVisibility) === 'auto', 'look previews out of view aren’t drawn until scrolled to');
+  await page.locator('.skin-card').nth(1).click(); await sleep(200);
+  check(await page.evaluate(() => document.documentElement.dataset.skin) === await page.locator('.skin-card').nth(1).getAttribute('data-skin'), 'picking a look still works');
+  // the command list loads when commands mode first opens, and works
+  await fresh(page, '#/journals');
+  if (!phone) {
+    await page.keyboard.press('Control+Shift+P');
+    await page.waitForSelector('#search:not([hidden]) .results li[data-k]', { timeout: 5000 }).catch(() => {});
+    check(await page.locator('#search .results li[data-k]').count() > 5, 'Ctrl+Shift+P: the command list (loaded on first use)');
+    await page.keyboard.type('new tab'); await sleep(300);
+    check((await page.locator('#search .results li[data-k]').first().textContent()).toLowerCase().includes('new tab'), 'typing finds a command');
+    await page.keyboard.press('Escape');
+    // search: arrowing down keeps the chosen row in view, and only the list scrolls (not the page)
+    await page.keyboard.press('Control+k'); await page.keyboard.type('note', { delay: 20 }); await sleep(800);
+    const y0 = await page.evaluate(() => [scrollY, document.getElementById('main').scrollTop]);
+    for (let i = 0; i < 25; i++) await page.keyboard.press('ArrowDown');
+    await sleep(200);
+    const vis = await page.evaluate(() => { const ul = document.querySelector('#search .results'), li = ul.querySelector('[aria-selected="true"]'); const a = ul.getBoundingClientRect(), b = li.getBoundingClientRect(); return b.top >= a.top - 1 && b.bottom <= a.bottom + 1; });
+    const y1 = await page.evaluate(() => [scrollY, document.getElementById('main').scrollTop]);
+    check(vis && JSON.stringify(y0) === JSON.stringify(y1), 'search: the chosen row stays in view; the page behind doesn’t move', JSON.stringify({ vis, y0, y1 }));
+    await page.keyboard.press('Escape');
+  }
+  // the editing box grows and shrinks with its words (by CSS where the engine can)
+  await fresh(page, PAGE);
+  if (phone) await editFirst(page);
+  else { await page.locator('.outline .blk > .bc').first().click({ position: { x: 40, y: 10 } }); await page.waitForSelector('textarea.ed'); }
+  const h0 = await page.locator('textarea.ed').evaluate((t) => t.getBoundingClientRect().height);
+  await page.keyboard.press('End');
+  await page.keyboard.press('Shift+Enter'); await page.keyboard.type('a second line'); await page.keyboard.press('Shift+Enter'); await page.keyboard.type('a third');
+  await sleep(200);
+  const h1 = await page.locator('textarea.ed').evaluate((t) => [t.getBoundingClientRect().height, t.scrollHeight, t.clientHeight]);
+  check(h1[0] > h0 + 20 && h1[1] <= h1[2] + 1, 'the editing box grows with new lines, nothing hidden', JSON.stringify({ h0, h1 }));
+  for (let i = 0; i < 'a third'.length + 1 + 'a second line'.length + 1; i++) await page.keyboard.press('Backspace');
+  await sleep(200);
+  const h2 = await page.locator('textarea.ed').evaluate((t) => t.getBoundingClientRect().height);
+  check(Math.abs(h2 - h0) < 2, 'and shrinks back', JSON.stringify({ h0, h2 }));
+  await page.keyboard.press('Escape');
+  // Home greys out at the top of the Journals list and not elsewhere, as before (now cheaper)
+  await fresh(page, '#/journals');
+  const homeSel = phone ? '#topbar [data-a="home"]' : '#histbar [data-a="home"]';
+  const homeOff = () => page.locator(homeSel).first().isDisabled();
+  check(await homeOff(), 'Home greyed at the top of the Journals list');
+  await page.evaluate(() => { const m = document.getElementById('main'); (getComputedStyle(m).overflowY === 'visible' ? document.scrollingElement : m).scrollTop = 600; });
+  await sleep(300);
+  check(!(await homeOff()), 'Home active once scrolled down');
+  if (phone) {
+    // the toolbar's menu buttons say what they open and whether it's open
+    await fresh(page, PAGE); await editFirst(page);
+    const more = page.locator('#toolbar [data-t="more"]');
+    check(await more.getAttribute('aria-haspopup') === 'menu' && await more.getAttribute('aria-expanded') === 'false', 'toolbar ⋯: aria-haspopup menu, closed');
+    await more.tap(); await sleep(400);
+    check(await more.getAttribute('aria-expanded') === 'true', 'toolbar ⋯: open while the note menu shows');
+    await more.tap(); await sleep(400);
+    check(await more.getAttribute('aria-expanded') === 'false', 'toolbar ⋯: closed again');
+    const date = page.locator('#toolbar [data-t="date"]');
+    await date.tap(); await sleep(400);
+    check(await date.getAttribute('aria-expanded') === 'true', 'toolbar date: open while its menu shows');
+    await date.tap(); await sleep(400);
+    check(await date.getAttribute('aria-expanded') === 'false', 'toolbar date: closed again');
+  }
   check(errors.length === 0, 'no script errors', errors.join('\n'));
   await browser.close();
 }

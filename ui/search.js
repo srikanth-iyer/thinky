@@ -7,7 +7,10 @@
 import { call, store } from './api.js';
 import { renderBlock, esc } from './render.js';
 import { h, ICON, BRAND, fadeAway } from './dom.js';
-import { commandList, keyHtml, keyOf, editingNow, editAgain } from './commands.js';
+import { keyHtml, keyOf, editingNow, editAgain } from './keys.js';
+// (the command list loads the first time it's opened: Build 39)
+let commands = null;
+const loadCommands = () => (commands ??= import('./commands.js'));
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const SEARCHES_KEPT = 8; // recent searches remembered per notes folder (5 shown)
@@ -207,16 +210,23 @@ export class SearchBox {
       const other = cmd ? ['search', 'Search', 'go/search', ICON.search] : ['commands', 'Commands', 'command-palette/toggle', ICON.cmd];
       this.foot.innerHTML = `<button type="button" class="sb-mode" data-mode="${other[0]}">${other[3]}<span>${other[1]}</span>${keyHtml(keyOf(this.app, other[2]))}</button>`;
     }
-    this.cmds = cmd ? commandList(this.app, this.ed) : null;
+    this.cmds = null;
     this.input.value = '';
     this.input.focus();
-    this.show();
+    if (cmd) {
+      const ed = this.ed;
+      loadCommands().then((m) => {
+        if (this.mode !== 'commands' || !this.isOpen) return; // (left meanwhile)
+        this.cmds = m.commandList(this.app, ed);
+        this.show();
+      });
+    } else this.show();
   }
 
   typed() {
     clearTimeout(this.t);
     if (this.mode === 'commands' || !this.input.value.trim()) this.show();
-    else this.t = setTimeout(() => this.show(), 70);
+    else this.t = setTimeout(() => this.show(), 40); // (a short wait while letters come quickly; was 70 ms)
   }
   async show() {
     const seq = ++this.seq;
@@ -340,8 +350,12 @@ export class SearchBox {
     if (cur) this.input.setAttribute('aria-activedescendant', cur.id); else this.input.removeAttribute('aria-activedescendant');
     if (scroll && cur) {
       // (a heading right above the first row comes into view with it)
-      const prev = cur.previousElementSibling;
-      (this.sel === 0 && prev?.classList.contains('r-h') ? prev : cur).scrollIntoView({ block: 'nearest' });
+      // Only the list scrolls, worked out by hand: scrollIntoView also lays out and scrolls the page
+      // behind the box, ~20 ms a letter on a phone with a long page open (Build 39)
+      const prev = cur.previousElementSibling, el = this.sel === 0 && prev?.classList.contains('r-h') ? prev : cur;
+      const list = this.ul, top = el.offsetTop, bottom = top + el.offsetHeight;
+      if (top < list.scrollTop) list.scrollTop = top;
+      else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
     }
   }
 

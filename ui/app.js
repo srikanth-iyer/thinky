@@ -7,12 +7,13 @@ import { Outline, EDGE, PIN_H, findAgain, caretAgain, foldedIn, lineLook } from 
 import { renderBlock, propsHtml, visibleProps, esc, pagesIn, setPropRules } from './render.js';
 import { Suggest, Preview, menu, confirmBox, promptBox, pickDate, place } from './popups.js';
 import { pagesView, tagsView, propsView, todosView, taskRow, taskClicks, taskDay, byDay, num } from './views.js';
-import { settingsView } from './settings.js';
 import { h, pageLink, ICON, BRAND, fadeAway } from './dom.js';
 import { keyOf } from './calendar.js';
 import { Find } from './find.js';
 import { Tabs, placeOf, parsePlace, sideNav } from './tabs.js';
-import { openHistory } from './history.js';
+// Settings and History load when first opened (Build 39: a faster start)
+const settingsView = (...a) => import('./settings.js').then((m) => m.settingsView(...a));
+const openHistory = (...a) => import('./history.js').then((m) => m.openHistory(...a));
 import { SearchBox } from './search.js';
 import { initFileDrop } from './filedrop.js';
 import { makeChips } from './chips.js';
@@ -770,11 +771,22 @@ class App {
    *  top (today). It stays in its place, so the buttons beside it never move. Also while scrolling. */
   updateHome() {
     const T = this.tabs;
-    document.querySelectorAll('[data-a="home"]').forEach((b) => {
+    // (cheap: it runs on every scroll frame. Which part scrolls is known from the window's width, as
+    // app.css decides it, rather than asked of the styles, which made the browser redo them each
+    // frame: Build 39)
+    const narrow = this.narrowMQ ??= matchMedia('(max-width: 860px)');
+    const states = this.homeStates ??= new Map();
+    // (only the two bars are searched, not the whole page: a 3,000-note page made a page-wide search
+    // ~20 ms a frame on a phone)
+    const bars = [document.getElementById('histbar'), document.getElementById('topbar')];
+    bars.flatMap((bar) => (bar ? [...bar.querySelectorAll('[data-a="home"]')] : [])).forEach((b) => {
       const nav = b.closest('.hb-nav'), p = nav ? T.panes[+nav.dataset.p] : T.pane, t = p?.tabs[p.cur];
-      const narrow = p && getComputedStyle(p.el).overflowY === 'visible'; // (the whole page scrolls)
-      const top = p ? (narrow ? scrollY : p.el.scrollTop) : 0;
-      b.disabled = !!t && parsePlace(placeOf(t)).kind === 'journals' && top < 40;
+      const top = p ? (narrow.matches ? scrollY : p.el.scrollTop) : 0;
+      const key = t ? placeOf(t) : '';
+      let journals = states.get(key);
+      if (journals === undefined) { journals = !!t && parsePlace(key).kind === 'journals'; if (states.size > 50) states.clear(); states.set(key, journals); }
+      const off = journals && top < 40;
+      if (b.disabled !== off) b.disabled = off;
     });
   }
 
@@ -2243,8 +2255,12 @@ class App {
     let noteT = 0;
     let homeF = 0;
     const onScroll = () => {
-      clearTimeout(noteT); noteT = setTimeout(() => this.noteTop(), 150); this.pinSoon();
+      clearTimeout(noteT); noteT = setTimeout(() => this.noteTop(), 150);
+      // reads first, then writes: Home and the "+" only read where the page is, so they go before the
+      // pinned parents change the page; the other way round each frame laid out a long page twice
+      // (Build 39: 19 → ~60 frames a second scrolling a 3,000-note page on a phone)
       if (!homeF) homeF = requestAnimationFrame(() => { homeF = 0; this.updateHome(); this.fabScroll(); });
+      this.pinSoon();
     };
     window.addEventListener('resize', () => this.pinSoon());
     for (const el of this.tabs.els) el.addEventListener('scroll', onScroll, { passive: true }); // (both sides)
@@ -2352,7 +2368,8 @@ class App {
     const tools = [['undo', 'Undo'], ['redo', 'Redo'], ['newline', 'New line in this block'],
       ['link', 'Link'], ['tag', 'Tag'], ['check', 'To-do'], ['date', 'Date: a link to a day, or scheduled / deadline'], ['bold', 'Bold'], ['italic', 'Italics'], ['mark', 'Highlight'], ['heading', 'Heading'],
       ['image', 'Add image'], ['more', 'Note menu: colour, heading, cut, copy…'], ['outdent', 'Outdent'], ['indent', 'Indent'], ['up', 'Move up'], ['down', 'Move down'], ['slash', 'Commands (/)']];
-    const tbBtn = ([k, label], cls = '') => `<button data-t="${k}"${cls ? ` class="${cls}"` : ''} aria-label="${label}" title="${label}">${ICON[k]}</button>`;
+    const POPS = { more: 'menu', date: 'menu', slash: 'listbox' }; // (what each opens, for screen readers)
+    const tbBtn = ([k, label], cls = '') => `<button data-t="${k}"${cls ? ` class="${cls}"` : ''}${POPS[k] ? ` aria-haspopup="${POPS[k]}"${k === 'slash' ? '' : ' aria-expanded="false"'}` : ''} aria-label="${label}" title="${label}">${ICON[k]}</button>`;
     tb.innerHTML = `<div class="tb-scroll">${tools.map((t) => tbBtn(t)).join('')}</div>${tbBtn(['done', 'Close keyboard'], 'tb-pin')}`;
     // A button acts when it's tapped (the finger lifted where it went down), not as soon as a finger
     // lands on it: a sideways swipe that starts on a button scrolls the toolbar and presses nothing
@@ -2402,7 +2419,14 @@ class App {
         slash: () => o.openCommands(), // (while typing; not for selected notes)
         bold: () => o.wrap('**', '**'), italic: () => o.wrap('*', '*'), mark: () => o.wrap('^^', '^^'), heading,
         image: () => o.pickFile(true), undo: () => this.undo(o), redo: () => this.redo(o),
-        more: () => o.openMenu(o.cur ?? o.sel.b, { kb: true, touch: true, at: b.getBoundingClientRect() }), // (by the button; the editing box keeps the keyboard)
+        more: () => { // (by the button; the editing box keeps the keyboard)
+          o.openMenu(o.cur ?? o.sel.b, { kb: true, touch: true, at: b.getBoundingClientRect() });
+          // it says it's open while the note menu shows (Build 39; the date menu's menu() does it itself)
+          if (!document.querySelector('.note-menu')) return;
+          b.setAttribute('aria-expanded', 'true');
+          const watch = new MutationObserver(() => { if (!document.querySelector('.note-menu')) { b.setAttribute('aria-expanded', 'false'); watch.disconnect(); } });
+          watch.observe(document.body, { childList: true });
+        },
         done: () => { o.stopEdit(); o.clearSel(); document.activeElement?.blur(); this.updateToolbar(); },
       })[b.dataset.t]?.();
       // the toolbar went away (Close keyboard): the click that comes with this tap mustn't land on

@@ -236,6 +236,16 @@ was finger-only for menus); `menu()` sets its button's `aria-haspopup`/`aria-exp
 it (when the keyboard was in the pop-up; not `keep` menus); the look list fades out and closes when search
 opens; Esc closes the phone's drawer; on touch, `.fold` and `.disclose` reach 40px with an invisible `::after`.
 The To-dos filter panel is part of the page (remembered), not a pop-up: it stays as it is.
+Also Build 39 (a review of speed and use, measured with the processor slowed 4×, a 3,000-note page; t23_build39):
+the editing box grows by CSS (`field-sizing: content`; editor.js `FIELD_SIZING` skips `autosize`, whose
+height:auto + scrollHeight laid out the whole page each key); the scroll frame reads before it writes
+(`updateHome` + `fabScroll` before `pinSoon`'s pinned parents; Home buttons looked up in the two bars only, the
+scrolling part from `matchMedia('(max-width: 860px)')`, not getComputedStyle); start loads less: settings.js,
+history.js, clash.js and commands.js on first use (dynamic `import()`; the search box's key helpers and
+`editingNow`/`editAgain` in `ui/keys.js`, re-exported by commands.js; Settings' tab list `SETTINGS_TABS` in
+dom.js); search scrolls only its list (no `scrollIntoView`, which laid out the page behind; `.results` is
+positioned) and waits 40 ms (was 70) while letters come; Look previews `content-visibility: auto`, two to a
+row under 520px; the toolbar's ⋯/date carry aria-haspopup/aria-expanded ("/": aria-haspopup listbox).
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

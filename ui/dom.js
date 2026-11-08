@@ -127,3 +127,6 @@ export function fadeAway(el, cls = '') {
     setTimeout(bye, 400); // (whatever happens)
   } catch { /* the closing animation is only a nicety */ }
 }
+
+/** Settings' tabs (settings.js; also the command list's "Settings: …" commands). */
+export const SETTINGS_TABS = [['notes', 'Notes'], ['look', 'Look'], ['capture', 'Capture'], ['keys', 'Shortcuts'], ['about', 'About']];

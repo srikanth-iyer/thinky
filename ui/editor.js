@@ -6,7 +6,8 @@
 import { call, today, nowTime, noteLinkUrl, store } from './api.js';
 import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, hiddenKey, parseStamp, stampText, withPictureSize, playVideo } from './render.js';
 import { pickDate, caretRect, noteMenu, menu, formBox, confirmBox } from './popups.js';
-import { openClash } from './clash.js';
+// the clash screen loads when a clash first shows (Build 39: a faster start)
+const openClash = (...a) => import('./clash.js').then((m) => m.openClash(...a));
 
 // Logseq bookkeeping, never shown in the editing box (Logseq hides these too): ids, folding, a note's
 // background colour, auto heading and number list
@@ -15,6 +16,12 @@ const HIDE = /^\s*(id|collapsed|heading|background[-_]color|logseq\.order-list-t
 const hiddenProps = (t) => t.split('\n').slice(1).map((l) => l.match(PROP)).filter((m) => m && hiddenKey(m[1].toLowerCase())).map((m) => [m[1], (m[2] || '').trim()]);
 const COLLAPSED_RE = /\ncollapsed:: true(?=\n|$)/;
 /** The note says it's folded in its page (collapsed:: true; it shows so only with sub-notes). */
+/** The editing box grows with its words by CSS alone where the web engine can (`field-sizing: content`,
+ *  Chromium 123+: WebView2 and Android's WebView). Otherwise autosize measures it after each change,
+ *  which makes the browser lay out the whole page again: ~20 ms a key on a 3,000-note page on a phone
+ *  (Build 39). */
+const FIELD_SIZING = typeof CSS !== 'undefined' && CSS.supports?.('field-sizing', 'content');
+
 export const foldedIn = (text) => COLLAPSED_RE.test('\n' + text.split('\n').slice(1).join('\n'));
 /** How a note's first line sits (r: renderBlock's result): a heading makes it taller (--hf: how much
  *  bigger), a box or quote first moves it down to the first words (--lead); app.css centres the dot
@@ -1336,7 +1343,7 @@ export class Outline {
 
   autosize() {
     const ta = this.ta;
-    if (!ta) return;
+    if (!ta || FIELD_SIZING) return; // (the browser sizes it to its words itself: app.css .ed)
     ta.style.height = 'auto';
     ta.style.height = ta.scrollHeight + 'px';
   }
