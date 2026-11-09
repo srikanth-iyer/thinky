@@ -133,7 +133,7 @@ const accent = () => page.evaluate(() => {
   const icon = document.querySelector('#side .nav a svg'), word = document.querySelector('#side .nav a');
   return {
     link: g('.sheet .bc a.pl', 'color'), tick: g('.sheet .todo:checked', 'backgroundColor'), quote: g('.sheet .bc blockquote', 'borderLeftColor'),
-    logo: document.querySelector('#histbar .hb-logo use')?.getAttribute('href') /* (the icon has its own tokens, --logo-*) */, icon: getComputedStyle(icon).color, words: getComputedStyle(word).color,
+    logo: document.querySelector('#side .brand .logo use')?.getAttribute('href') /* (the icon has its own tokens, --logo-*) */, icon: getComputedStyle(icon).color, words: getComputedStyle(word).color,
     line: getComputedStyle(document.documentElement).getPropertyValue('--line').trim(),
   };
 });

@@ -676,7 +676,7 @@ export class Outline {
       if (e.target.closest('.bul')) {
         e.preventDefault();
         document.activeElement?.closest?.('.bul')?.blur(); // (a right press focused the dot: Space would then open it)
-        if (!touch) this.openMenu(+blk.dataset.i, { at: { left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY } });
+        if (!touch) this.openMenu(+blk.dataset.i, {}); // (Build 41: it opens out of the dot itself)
       } else if (!touch && blk.classList.contains('sel') && !e.target.closest('.ed')) { // in the selected notes: their menu
         e.preventDefault();
         this.openMenu(+blk.dataset.i, { at: { left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY } });
@@ -1153,6 +1153,7 @@ export class Outline {
     const at = opts.at ?? this.blockDiv(i)?.querySelector(':scope > .bul')?.getBoundingClientRect() ?? this.el.getBoundingClientRect();
     this.menuOpen = true;
     noteMenu(at, {
+      from: opts.at ? null : this.blockDiv(i)?.querySelector(':scope > .bul'), // (Build 41: it opens out of the dot)
       colors: rw ? COLORS : null,
       color: (t0.split('\n').slice(1).find((l) => /^(background[-_]color)$/.test(propKey(l) || ''))?.match(PROP)?.[2] ?? '').trim().toLowerCase(),
       heading: !rw ? null : head ? head[1].length : /\n[ \t]*heading::[ \t]*true[ \t]*(?=\n|$)/i.test(t0) ? 'auto' : 0,

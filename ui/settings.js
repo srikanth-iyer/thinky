@@ -11,6 +11,7 @@ import { promptBox, confirmBox } from './popups.js';
 import { SKINS, accessCard, lookName, lookState } from './app.js';
 import { fitChips } from './views.js';
 import { madeBy } from './history.js';
+import { VERSION } from './version.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -1023,7 +1024,8 @@ function feedbackCard(app) {
     let ver = '';
     try { ver = await window.__TAURI__?.app?.getVersion?.(); } catch {}
     const where = isAndroid ? 'Android' : isApp ? await call('platform').catch(() => 'app') : 'browser';
-    app.openUrl(feedbackUrl(text, `thinky ${ver || '(preview)'} · ${where}`));
+    const build = /^\d+\.\d+\.(\d+)$/.exec(ver || '')?.[1];
+    app.openUrl(feedbackUrl(text, `thinky ${VERSION}${build ? ` (Build ${build})` : ' (preview)'} · ${where}`));
     out.innerHTML = '<i class="spark-mark" aria-hidden="true"></i>Opened in your browser. Thank you!';
   };
   return card;
@@ -1048,7 +1050,9 @@ async function aboutCard(app) {
   const card = h('div', 'card');
   let ver = '';
   try { ver = await window.__TAURI__?.app?.getVersion?.(); } catch {}
-  card.innerHTML = `<h2>About ${BRAND.word}</h2><p class="note">${BRAND.word} ${esc(ver || '(preview)')}. Your notes stay as plain Markdown files in your folder.</p>`;
+  // Build 41: the version people see, with the build number (the installed app's own version is 0.1.N)
+  const build = /^\d+\.\d+\.(\d+)$/.exec(ver || '')?.[1];
+  card.innerHTML = `<h2>About ${BRAND.word}</h2><p class="note">${BRAND.word} ${esc(VERSION)}${build ? ` · Build ${esc(build)}` : ' (preview)'}. Your notes stay as plain Markdown files in your folder.</p>`;
   if (isApp) card.append(await updateBox(app));
   card.append(whatsNew(app, ver));
   return card;

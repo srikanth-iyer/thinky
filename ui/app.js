@@ -86,7 +86,7 @@ const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 const SCROLL_KEYS = new Set(['PageDown', 'PageUp', 'Home', 'End', ' ', 'ArrowDown', 'ArrowUp']);
 const QUIET_BUTTONS = '#histbar button, #topbar button, .side-fold, .title-row .icon-btn, #toast button';
 // the sidebar's slide (App.slide; the same in app.css, html.sliding)
-const SLIDE_MS = 200, SLIDE_EASE = 'cubic-bezier(.2, .7, .3, 1)';
+const SLIDE_MS = 200, SLIDE_EASE = 'cubic-bezier(.2, .8, .2, 1)'; // (Build 41: dom.js OPEN_MS, EASE)
 // the sidebar's width (dragging its edge; 252 px until then) and the least width of each of two sides
 const SIDE_MIN = 200, SIDE_MAX = 480, PANE_MIN = 340;
 const VIEW_NAMES = { journals: 'Journals', pages: 'All pages', tags: 'Tags', props: 'Properties', settings: 'Settings', todos: 'To-dos', welcome: 'Welcome' };
@@ -847,8 +847,9 @@ class App {
       if (journals === undefined) { journals = !!t && parsePlace(key).kind === 'journals'; if (states.size > 50) states.clear(); states.set(key, journals); }
       const off = journals && top < 40;
       if (b.disabled !== off) b.disabled = off;
-      // the phone bar: on today's journal its place shows the calendar, anywhere else Home
-      const bar = b.closest('#topbar');
+      // on today's journal Home's spot shows the calendar, anywhere else Home: the phone bar, and since
+      // Build 41 each side's buttons in the laptop strip
+      const bar = b.closest('#topbar') ?? nav;
       if (bar && bar.classList.contains('at-today') !== off) bar.classList.toggle('at-today', off);
     });
   }
@@ -2379,9 +2380,8 @@ class App {
     const home = `<button data-a="home" aria-label="Today in Journals" title="Today in Journals (g j)">${ICON.home}</button>`;
     const strip = (p) => `<div class="tabs" data-p="${p}" role="tablist" aria-label="Open pages${p ? ' on the right' : ''}" hidden></div>`
       + `<button type="button" class="tab-new" data-p="${p}" aria-label="New tab${p ? ' on the right' : ''}" title="New tab (Ctrl+T)" hidden>${ICON.plus}</button>`;
-    const appBtns = `<span class="hb-app"><i class="hb-logo" title="thinky">${ICON.logo}</i>`
-      + `<button data-a="side" aria-controls="side" aria-label="Sidebar" title="Hide the sidebar (t l)">${ICON.side}</button>`
-      + `<button data-a="search" aria-label="Search" title="Search (Ctrl+K)">${ICON.search}</button></span>`;
+    const appBtns = `<span class="hb-app"><button data-a="side" aria-controls="side" aria-label="Sidebar" title="Hide the sidebar (t l)">${ICON.side}</button>`
+      + `<span class="hb-dv" aria-hidden="true"></span><button data-a="search" aria-label="Search" title="Search (Ctrl+K)">${ICON.search}</button></span>`;
     hb.innerHTML = `<div class="hb-h">${appBtns}<span class="hb-nav" data-p="0">${sideNav(0)}</span>${strip(0)}</div>`
       + `<div class="hb-h"><span class="hb-nav" data-p="1"></span>${strip(1)}<div class="drag"></div>`
       // a newer build: a button at the strip's right end, beside the window's own (Build 40, he asked: easier to spot and click)

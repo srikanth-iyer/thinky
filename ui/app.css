@@ -40,23 +40,24 @@ code, pre { font-family: var(--font-mono); }
 #col { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
 #main, #main2 { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 28px 140px; min-width: 0; zoom: var(--text-scale, 1); scroll-padding: 8px 0 60px; }
 #main:focus { outline: none; } /* it takes the focus after moving to another page, so the keyboard scrolls it */
-/* the top strip (laptop): the logo, the sidebar's button and Search, then Home, back, forward and Go
-   to date, then the tabs; big icons close together. It stays put when the sidebar opens or closes. */
+/* the top strip (laptop). Build 41 (he picked it, Nov 9): above the sidebar, each in a spot of its own
+   that never moves: the sidebar's button, a thin line, Search (the magnifier: search opens out of it,
+   search.js), Back, Forward, and one spot that is Go to date on today's journal and Home anywhere else.
+   Back and Forward show only when there's somewhere to go (their spots kept, as on the phone). The tabs
+   and the "+" start just outside the sidebar's edge, the sidebar shown or hidden (tabs.js alignStrip). */
 #histbar { flex: none; display: flex; align-items: center; gap: 0; padding: 8px 0 2px 10px; }
 #histbar button { border: 0; background: none; width: 31px; height: 34px; border-radius: 8px; display: grid; place-items: center; cursor: pointer; color: var(--ink-soft); padding: 0; }
 #histbar button:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
 #histbar button:disabled { opacity: .3; cursor: default; }
 #histbar svg { width: 22px; height: 22px; }
-/* The logo and the buttons above the sidebar (sidebar, Search, Home, Back, Forward, Go to date): seven boxes
-   of one width, spread evenly from the sidebar's left inset to its right one (the maintainer asked, Build 34), so
-   the gaps match and the last sits at the sidebar's edge; by its full width (--side-now), so nothing moves
-   when the sidebar hides. At least 2px apart in a narrow sidebar. */
-#histbar { --hb-gap: max(2px, calc((var(--side-now) - 20px - 7 * 31px) / 6)); }
+#histbar { --hb-gap: 2px; }
 .hb-app { flex: none; display: flex; align-items: center; gap: var(--hb-gap); margin-right: var(--hb-gap); }
-.hb-logo { display: grid; place-items: center; width: 31px; height: 34px; margin: 0; pointer-events: none; } /* (it moves the window) */
-#histbar .hb-nav[data-p="0"] > button + button { margin-left: var(--hb-gap); }
-#histbar .hb-logo .logo { width: 20px; height: 20px; }
-#histbar [data-a="side"][aria-expanded="false"] { color: var(--ink-faint); }
+.hb-dv { flex: none; width: 1px; height: 18px; background: var(--line); margin: 0 5px; }
+#histbar .hb-nav > button + button { margin-left: var(--hb-gap); }
+#histbar .hb-nav > [data-h]:disabled { visibility: hidden; }
+#histbar .hb-nav:not(.at-today) > [data-a="date"], #histbar .hb-nav.at-today > [data-a="home"] { display: none; }
+#histbar [data-a="side"] { color: var(--ink); }
+#histbar [data-a="side"][aria-expanded="false"] { color: var(--ink-soft); }
 #histbar .drag { flex: 1; align-self: stretch; }
 /* a newer build (Build 40): a small pill at the strip's right end; a click opens Update now / What's new */
 #histbar .hb-update { width: auto; height: 26px; align-self: center; display: inline-flex; align-items: center; gap: 0; padding: 0 11px 0 9px; margin: 0 8px 0 4px;
@@ -94,9 +95,9 @@ html.wide .view:not([data-kind="settings"]) { max-width: none; }
 
 /* reaches the sidebar's top and side edges, so the whole strip above the search box moves the window */
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; color: var(--ink-soft); margin: 0 -14px; padding: 16px 14px 0 20px; }
-/* wide windows: the logo and the sidebar's button are in the top strip instead (it runs above the
-   sidebar), so the sidebar starts with Search */
-@media (min-width: 861px) { .brand { display: none; } #side { padding-top: 4px; } }
+/* wide windows (Build 41, he asked: the logo in the strip read as a button): the sidebar starts with
+   the logo and the name; its own hide button and Search row aren't needed there (the strip has both) */
+@media (min-width: 861px) { .brand { padding-top: 10px; padding-bottom: 6px; } .brand .hide-side, #side .searchbtn { display: none; } #side { padding-top: 4px; } }
 .brand .hide-side { margin-left: auto; }
 .brand svg { width: 22px; height: 22px; flex: none; }
 /* the brand (ui/brand/, dom.js BRAND): the icon keeps its cream tile in every look; the name's letters
@@ -105,7 +106,7 @@ svg.logo { display: block; width: 100%; height: 100%; overflow: visible; user-se
 .wordmark { display: block; color: var(--ink); overflow: visible; }
 .brand-mark { display: inline-flex; flex-direction: row; align-items: center; gap: 7px; pointer-events: none; }
 /* the icon's cream tile lifted off light sidebars by a soft shadow (he asked, Oct 29) */
-.brand-mark .logo, .hb-logo .logo { filter: drop-shadow(0 1px 2px rgba(29, 26, 46, 0.22)) drop-shadow(0 0 0.5px rgba(29, 26, 46, 0.25)); }
+.brand-mark .logo { filter: drop-shadow(0 1px 2px rgba(29, 26, 46, 0.22)) drop-shadow(0 0 0.5px rgba(29, 26, 46, 0.25)); }
 .brand-mark .logo { width: 28px; height: 28px; flex: none; }
 .brand .brand-mark .wordmark { width: 57px; height: 25px; margin-top: 1px; }
 /* an empty screen or list: the scribble alone, faded, over its words (BRAND.empty) */
@@ -824,6 +825,17 @@ a.tag .hash { display: var(--hash); }
 .sb-mode:hover { background: var(--surface-2); color: var(--ink); }
 .sb-mode svg { width: 15px; height: 15px; }
 .sb-mode kbd { font-size: 11px; }
+/* Build 41: on a laptop, search opens in place out of the strip's magnifier (search.js setInPlace): no
+   dimming; one box, its top-left corner on the magnifier, whose own magnifier (.sb-ic) sits exactly over
+   the strip's; it grows to the right and down (dom.js grow) and folds back into it */
+.sb-ic { display: none; }
+#search.inplace, .search-ghost.inplace { display: block; background: transparent; padding: 0; pointer-events: none; animation: none !important; }
+.inplace .search-box { position: fixed; pointer-events: auto; animation: none !important; width: min(600px, calc(100vw - 24px - var(--ib-w, 31px)));
+  max-height: calc(100vh - 60px); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 44px -16px rgba(0,0,0,.38); }
+.inplace .sb-ic { display: grid; place-items: center; position: absolute; left: 0; top: 0; width: var(--ib-w, 31px); height: var(--ib-h, 34px); color: var(--ink-soft); pointer-events: none; }
+.inplace .sb-ic svg { width: 22px; height: 22px; }
+.inplace .search-box input { height: var(--ib-h, 34px); font-size: 15px; padding: 0 12px 0 calc(var(--ib-w, 31px) + 6px); }
+.inplace .results { max-height: min(60vh, 520px); }
 /* touch: no keys to show; rows close together (he asked for it, Build 32), still easy to tap: 36px */
 @media (pointer: coarse) {
   .results .r-keys, .sb-mode kbd { display: none; }
@@ -1608,17 +1620,31 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 @media (prefers-reduced-motion: no-preference) {
   @keyframes pop-in { from { opacity: 0; } }
   @keyframes rise-in { from { opacity: 0; transform: translateY(6px); } }
-  .pop { animation: pop-in .12s ease-out; }
-  #search:not([hidden]), .modal-back { animation: pop-in .14s ease-out; }
-  #search:not([hidden]) .search-box, .modal-back > .modal { animation: rise-in .16s cubic-bezier(.2, .7, .3, 1); }
+  .pop { animation: pop-in .2s cubic-bezier(.2, .8, .2, 1); }
+  #search:not([hidden]), .modal-back { animation: pop-in .2s cubic-bezier(.2, .8, .2, 1); }
+  /* (Build 41: one feel for all, dom.js OPEN_MS/CLOSE_MS/EASE: opening 0.2 s, closing 0.15 s, one curve) */
+  #search:not([hidden]) .search-box, .modal-back > .modal { animation: rise-in .2s cubic-bezier(.2, .8, .2, 1); }
   /* Closing (Build 38, he asked: leave the way it came, a little quicker than it came): a copy of what
      closed (dom.js fadeAway: .fading, in a shadow root of its own) fades out over the page and goes. */
   @keyframes pop-out { to { opacity: 0; } }
   @keyframes sink-out { to { opacity: 0; transform: translateY(4px); } }
-  .fading { pointer-events: none !important; animation: pop-out .09s ease-in forwards; }
-  .modal-back.fading, .search-ghost { animation: pop-out .11s ease-in forwards; }
-  .search-ghost .search-box, .modal-back.fading > .modal { animation: sink-out .11s ease-in forwards; }
+  .fading { pointer-events: none !important; animation: pop-out .15s cubic-bezier(.2, .8, .2, 1) forwards; }
+  .modal-back.fading, .search-ghost { animation: pop-out .15s cubic-bezier(.2, .8, .2, 1) forwards; }
+  .search-ghost .search-box, .modal-back.fading > .modal { animation: sink-out .15s cubic-bezier(.2, .8, .2, 1) forwards; }
 }
+/* Build 41: pop-ups that open out of their button (popups.js openFrom): no fade of their own (they grow,
+   dom.js grow); from a small button the first line is that button's icon, a copy exactly over it (and a
+   date picker's title beside it) */
+.pop.grown, .pop.grown.fading { animation: none; }
+.fading.folding { animation: none !important; }
+.pop-head { display: flex; align-items: center; min-height: calc(var(--ib-h) - 4px); }
+.pop-hic { position: absolute; top: 0; left: 0; z-index: 1; width: var(--ib-w); height: var(--ib-h); display: grid; place-items: center; color: var(--ink-soft); cursor: pointer; }
+.from-right .pop-hic { left: auto; right: 0; }
+.pop-hic svg { display: block; }
+.pop-dot { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--bullet); }
+.pop-head .pop-title { padding: 0 12px 0 calc(var(--ib-w) + 4px); }
+.from-right .pop-head .pop-title { padding: 0 calc(var(--ib-w) + 4px) 0 12px; }
+.note-menu .pop-head .nm-colors { flex: 1; padding-left: calc(var(--ib-w) - 6px); } /* (the dot is in the middle of its spot) */
 /* (a closing copy is never seen without the motion that removes it) */
 @media (prefers-reduced-motion: reduce) { .fading { display: none !important; } }
 /* Settings → Look → Animations off (Build 38; html[data-motion="off"], set by boot.js before the first

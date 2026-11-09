@@ -6,7 +6,7 @@
 
 import { call, store } from './api.js';
 import { renderBlock, esc } from './render.js';
-import { h, ICON, BRAND, fadeAway } from './dom.js';
+import { h, ICON, BRAND, fadeAway, grow, eatThisClick } from './dom.js';
 import { keyHtml, keyOf, editingNow, editAgain } from './keys.js';
 // (the command list loads the first time it's opened: Build 39)
 let commands = null;
@@ -164,6 +164,44 @@ export class SearchBox {
       if (b) this.setMode(b.dataset.mode);
     });
     this.el.addEventListener('click', (e) => { if (e.target === this.el) this.close(true); });
+    // Build 41 (he picked it, Nov 9): on a laptop, search opens in place out of the magnifier in the top
+    // strip, one box growing to the right and down (the field and the list together), the magnifier
+    // never moving; Esc folds it back in. Its own magnifier sits exactly over the strip's.
+    this.ic = h('span', 'sb-ic', ICON.search);
+    this.ic.setAttribute('aria-hidden', 'true');
+    this.box.prepend(this.ic);
+    // (in place, nothing dims the page: a press anywhere outside the box closes it; on the magnifier too,
+    // without opening it again)
+    document.addEventListener('pointerdown', (e) => {
+      if (!this.isOpen || !this.inplace) return;
+      // (the magnifier is under the box's own: a press there is a press on it, and closes it)
+      const m = this.ic.getBoundingClientRect(), onMag = e.clientX >= m.left && e.clientX < m.right && e.clientY >= m.top && e.clientY < m.bottom;
+      if (this.box.contains(e.target) && !onMag) return;
+      if (onMag || e.target.closest?.('#histbar .hb-app [data-a="search"]')) {
+        e.preventDefault();
+        eatThisClick();
+      }
+      this.close(true);
+    }, true);
+    addEventListener('resize', () => { if (this.isOpen && this.inplace) this.placeInPlace(); });
+  }
+  /** The strip's magnifier, when search can open out of it (a laptop window with the strip showing). */
+  get mag() {
+    const b = document.querySelector('#histbar .hb-app [data-a="search"]');
+    return b && b.offsetParent && !matchMedia('(pointer: coarse)').matches ? b : null;
+  }
+  placeInPlace() {
+    const r = this.mag?.getBoundingClientRect();
+    if (!r) return;
+    const s = this.box.style;
+    s.left = `${r.left - 1}px`; s.top = `${r.top - 1}px`; // (its 1px edge: its magnifier lands on the strip's)
+    s.setProperty('--ib-w', `${r.width}px`); s.setProperty('--ib-h', `${r.height}px`);
+  }
+  setInPlace(on) {
+    this.inplace = on;
+    this.el.classList.toggle('inplace', on);
+    if (on) this.placeInPlace();
+    else for (const k of ['left', 'top', '--ib-w', '--ib-h']) this.box.style.removeProperty(k);
   }
   get isOpen() { return !this.el.hidden; }
 
@@ -179,16 +217,24 @@ export class SearchBox {
       this.app.closeLooks?.();
       this.opener = document.activeElement?.closest?.('button, a') ?? null;
       for (const b of document.querySelectorAll('[data-a="search"]')) b.setAttribute('aria-expanded', 'true');
+      this.setInPlace(mode === 'search' && !!this.mag);
       this.el.hidden = false;
       document.body.classList.remove('drawer'); // (opened from the phone's menu: the menu's done)
+      this.setMode(mode);
+      if (this.inplace) grow(this.box, this.spot());
+      return;
     }
     this.setMode(mode);
   }
+  /** Where the magnifier is in the box (it grows out of it and folds back into it). */
+  spot(box = this.box) { return { x: 0, y: 0, w: (parseFloat(box.style.getPropertyValue('--ib-w')) || 31) + 2, h: (parseFloat(box.style.getPropertyValue('--ib-h')) || 34) + 2 }; }
   /** cancel: closed without picking (Esc, a click outside): the note that was being edited is again. */
   close(cancel = false) {
     if (!this.isOpen) return;
-    fadeAway(this.el, 'search-ghost');
+    const inplace = this.inplace;
+    fadeAway(this.el, 'search-ghost', inplace ? (g) => { const b = g.querySelector('.search-box'); return b && grow(b, this.spot(b), true); } : null);
     this.el.hidden = true;
+    this.setInPlace(false);
     this.input.blur(); // so the next keys (e.g. "t l") reach the app straight away
     clearTimeout(this.t);
     this.seq++;
@@ -201,6 +247,7 @@ export class SearchBox {
   setMode(mode) {
     this.mode = mode;
     const cmd = mode === 'commands';
+    if (cmd && this.inplace) this.setInPlace(false); // (the command list is the centred box, as before)
     this.box.classList.toggle('cmd-mode', cmd);
     this.box.setAttribute('aria-label', cmd ? 'Commands' : 'Search');
     this.input.placeholder = cmd ? 'Type a command' : 'Search pages and notes';

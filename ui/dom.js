@@ -91,6 +91,38 @@ export const ICON = {
 
 /** Animations are on unless the system asks for less motion or Settings → Look turned them off
  * (html[data-motion="off"], boot.js before the first paint). */
+/** Build 41 (he asked: one feel for everything that opens and closes): opening takes 0.2 s, fast at
+ *  first and settling gently; closing 0.15 s, the same curve. app.css has the same numbers. */
+export const OPEN_MS = 200, CLOSE_MS = 150, EASE = 'cubic-bezier(.2, .8, .2, 1)';
+/** el (fixed on screen) opens out of a spot of it (from: {x, y, w, h} in el's own box, a corner) and grows
+ *  to its whole size, its shadow too; back = it folds back into that spot. One movement, no fading
+ *  until the very end of folding back. Returns the Animation (null when animations are off). */
+export function grow(el, from, back = false) {
+  if (!motionOn() || !el?.animate) return null;
+  const W = el.offsetWidth, H = el.offsetHeight;
+  const r = Math.min(9, from.w / 2, from.h / 2);
+  const small = `inset(${from.y}px ${Math.max(0, W - from.x - from.w)}px ${Math.max(0, H - from.y - from.h)}px ${from.x}px round ${r}px)`;
+  const big = 'inset(-32px -32px -56px -32px round 22px)'; // (the shadow too)
+  const frames = back
+    ? [{ clipPath: big, opacity: 1 }, { clipPath: small, opacity: 1, offset: 0.85 }, { clipPath: small, opacity: 0 }]
+    : [{ clipPath: small }, { clipPath: big }];
+  const a = el.animate(frames, { duration: back ? CLOSE_MS : OPEN_MS, easing: EASE });
+  if (!back) a.finished.then(() => { el.style.clipPath = ''; }, () => {});
+  return a;
+}
+/** A press (pointerdown) closed something lying over its button: the click this press makes, if it makes
+ *  one, isn't passed on (it would open it again). Unlike waiting a while for a click, nothing is left
+ *  to eat a later press's click when this one makes none (the press began on what closed). */
+export function eatThisClick() {
+  const eat = (c) => { c.preventDefault(); c.stopPropagation(); };
+  document.addEventListener('click', eat, { capture: true, once: true });
+  const stop = () => setTimeout(() => document.removeEventListener('click', eat, true), 60);
+  document.addEventListener('pointerup', stop, { capture: true, once: true });
+  setTimeout(() => document.removeEventListener('click', eat, true), 1500); // (whatever happens)
+}
+/** Where in el's box the spot r (a rectangle on screen) is. */
+export const spotIn = (el, r) => { const b = el.getBoundingClientRect(); return { x: r.left - b.left, y: r.top - b.top, w: r.width || 1, h: r.height || 1 }; };
+
 export const motionOn = () => document.documentElement.dataset.motion !== 'off' && !matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Build 38: something closing fades away the way it came (app.css "Closing"). Call it right before
@@ -99,7 +131,7 @@ export const motionOn = () => document.documentElement.dataset.motion !== 'off' 
  * (with the page's styles), so no code, test or screen reader looking for open pop-ups ever finds it,
  * and it takes no clicks. */
 let fadeSheets = null; // the page's styles, copied once for the shadow root
-export function fadeAway(el, cls = '') {
+export function fadeAway(el, cls = '', anim = null) {
   if (!el?.isConnected || !motionOn()) return;
   try {
     fadeSheets ??= [...document.styleSheets].map((ss) => {
@@ -123,8 +155,12 @@ export function fadeAway(el, cls = '') {
     host.setAttribute('aria-hidden', 'true');
     document.body.append(host);
     const bye = () => host.remove();
-    g.addEventListener('animationend', (e) => { if (e.target === g) bye(); });
-    setTimeout(bye, 400); // (whatever happens)
+    // (Build 41) anim(copy): the copy's own closing movement (it folds back into its button): the copy
+    // goes when that ends
+    const a = anim?.(g);
+    if (a) { g.classList.add('folding'); a.finished.then(bye, bye); }
+    else g.addEventListener('animationend', (e) => { if (e.target === g) bye(); });
+    setTimeout(bye, 500); // (whatever happens)
   } catch { /* the closing animation is only a nicety */ }
 }
 
