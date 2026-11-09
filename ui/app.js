@@ -360,6 +360,8 @@ class App {
     if (bar) bar.textContent = VIEW_NAMES[kind] ?? (arg || '');
     // the phone bar's Go to date shows on the Journals list only: on a page, its name keeps the room
     $('#topbar')?.classList.toggle('journals', kind === 'journals');
+    $('#topbar')?.classList.remove('away', 'titled'); // (another place: the bar is there, its name waits)
+    this.barUp = 0;
     const add = $('#addnote'); // phones: "+" adds a note (Journals list: to today), where there are notes
     if (add) { add.hidden = !['journals', 'page', 'zoom'].includes(kind); add.classList.remove('away'); }
     this.updateHistBar();
@@ -452,6 +454,7 @@ class App {
         const z = (p.el.offsetWidth ? p.el.getBoundingClientRect().width / p.el.offsetWidth : 1) || 1; // text size zooms the pane, not the top bar
         const stick = narrow ? top / z : -parseFloat(cs.paddingTop);
         for (const o of p.outlines) o.pinParents(top, stick, typing);
+        if (narrow) document.documentElement.classList.toggle('has-pins', p.outlines.some((o) => !o.pins.hidden)); // (the bar's fade goes under them)
         // a wide window: scrolling a note into view (typing, find) keeps it below the pinned rows
         if (!narrow) {
           const rows = Math.max(0, ...p.outlines.map((o) => (o.pins.hidden ? 0 : o.pins.firstChild.childElementCount)));
@@ -473,6 +476,38 @@ class App {
     tb.hidden = !(narrow && (text || (o && (o.cur !== null || o.sel))));
     tb.classList.toggle('tb-text', !!text);
     if (tb.hidden) $('#addnote')?.classList.remove('away'); // (done typing: the "+" is back)
+    $('#topbar')?.classList.toggle('typing', !tb.hidden && !text && !!document.querySelector('textarea.ed')); // (typing in a note: the bar out of the way; not for selected notes)
+  }
+  /** Press and hold (or right-click) the phone bar's Back or Forward: the places that way in this tab,
+   *  nearest first (at most 12), as a browser lists them; picking one goes there in one step. */
+  historyMenu(btn) {
+    const T = this.tabs, t = T.tab();
+    if (!t) return;
+    const dir = btn.dataset.h === 'back' ? -1 : 1;
+    const places = dir < 0 ? t.hist.slice(0, t.at).reverse() : t.hist.slice(t.at + 1);
+    if (!places.length) return;
+    const items = places.slice(0, 12).map((place, i) => ({ label: T.label(place).text, run: () => T.move(dir * (i + 1)) }));
+    menu(btn, [{ head: dir < 0 ? 'Back to' : 'Forward to' }, ...items], { cls: 'hist-menu' });
+  }
+  /** Phones (Build 39, he picked it, Nov 9): the bar goes up out of sight while a finger scrolls the page
+   *  down and comes back when it scrolls up a little (36px), at the top or the end of the page, or with a
+   *  touch at the very top; away from the top it sits on the page mostly solid (.lifted); the page's name
+   *  shows in it once the big title is out of sight (.titled). Only a finger's scrolling hides it. */
+  barScroll() {
+    const top = document.getElementById('topbar');
+    if (!top || !(this.narrowMQ ??= matchMedia('(max-width: 860px)')).matches) return;
+    const y = window.scrollY, dy = y - (this.barY ?? y);
+    this.barY = y;
+    const lifted = y > 4;
+    if (top.classList.contains('lifted') !== lifted) top.classList.toggle('lifted', lifted);
+    const title = this.pane.el.querySelector('.page-title, .day-head .page-title');
+    const titled = !!title && title.getBoundingClientRect().bottom < top.offsetHeight;
+    if (top.classList.contains('titled') !== titled) top.classList.toggle('titled', titled);
+    const end = y + innerHeight >= document.documentElement.scrollHeight - 4;
+    if (y < 48 || end || document.body.classList.contains('drawer')) { top.classList.remove('away'); this.barUp = 0; return; }
+    if (Date.now() - (this.touchedAt || 0) > 1000 || !dy) return;
+    if (dy > 0) { this.barUp = 0; if (y > 60) top.classList.add('away'); }
+    else if ((this.barUp = (this.barUp || 0) - dy) > 36) top.classList.remove('away');
   }
   /** Phones: the "+" steps aside while a finger scrolls the page down and comes back when it scrolls
    *  up or reaches the top. Only scrolling by a finger counts (touchedAt): the app's own scrolling
@@ -812,6 +847,9 @@ class App {
       if (journals === undefined) { journals = !!t && parsePlace(key).kind === 'journals'; if (states.size > 50) states.clear(); states.set(key, journals); }
       const off = journals && top < 40;
       if (b.disabled !== off) b.disabled = off;
+      // the phone bar: on today's journal its place shows the calendar, anywhere else Home
+      const bar = b.closest('#topbar');
+      if (bar && bar.classList.contains('at-today') !== off) bar.classList.toggle('at-today', off);
     });
   }
 
@@ -2319,7 +2357,7 @@ class App {
       // reads first, then writes: Home and the "+" only read where the page is, so they go before the
       // pinned parents change the page; the other way round each frame laid out a long page twice
       // (Build 39: 19 → ~60 frames a second scrolling a 3,000-note page on a phone)
-      if (!homeF) homeF = requestAnimationFrame(() => { homeF = 0; this.updateHome(); this.fabScroll(); });
+      if (!homeF) homeF = requestAnimationFrame(() => { homeF = 0; this.updateHome(); this.fabScroll(); this.barScroll(); });
       this.pinSoon();
     };
     window.addEventListener('resize', () => this.pinSoon());
@@ -2378,9 +2416,12 @@ class App {
     }
 
     const top = $('#topbar');
-    top.innerHTML = `<button data-a="menu" aria-label="Menu" aria-controls="side" aria-expanded="false">${ICON.menu}</button>${home}
-      <button data-h="back" aria-label="Back" title="Back">${ICON.back}</button><button data-h="forward" aria-label="Forward" title="Forward">${ICON.forward}</button>
-      <span class="t"></span><button data-a="date" aria-label="Go to date" title="Go to date">${ICON.date}</button><button data-a="search" aria-label="Search">${ICON.search}</button>${winctl}`;
+    // Build 39 (he picked it, Nov 9): menu, Back, Forward (each only when there's somewhere to go, its place
+    // kept), the page's name (once its big title is out of sight), then one place beside Search that is the
+    // calendar on today's journal and Home anywhere else (barScroll, updateHome)
+    top.innerHTML = `<button data-a="menu" aria-label="Menu" aria-controls="side" aria-expanded="false">${ICON.menu}</button>
+      <button data-h="back" aria-label="Back (hold: where you've been)" title="Back">${ICON.back}</button><button data-h="forward" aria-label="Forward (hold: the pages ahead)" title="Forward">${ICON.forward}</button>
+      <span class="t"></span><button data-a="date" aria-label="Go to date" title="Go to date">${ICON.date}</button>${home}<button data-a="search" aria-label="Search">${ICON.search}</button>${winctl}`;
     // Tauri moves the window when one of these is pressed directly (not a button inside it).
     // Only on Windows: on a phone the press would ask for something phones can't do.
     // (#topbar is the strip a narrow window shows instead of #histbar.)
@@ -2390,13 +2431,38 @@ class App {
       const wb = e.target.closest('[data-w]');
       if (wb) { winAction(wb.dataset.w); return; }
       const hb = e.target.closest('[data-h]');
-      if (hb) { if (!hb.disabled) hb.dataset.h === 'back' ? this.back() : this.forward(); return; }
+      if (hb) { if (hb.held) { hb.held = false; return; } if (!hb.disabled) hb.dataset.h === 'back' ? this.back() : this.forward(); return; }
       const a = e.target.closest('button')?.dataset.a;
       if (a === 'menu') document.body.classList.toggle('drawer');
       if (a === 'search') this.openSearch();
       if (a === 'home') this.go('journals');
       if (a === 'date') this.goToDate(e.target.closest('button'));
     };
+    // press and hold Back or Forward (or right-click it): the pages that way, as a browser lists them
+    let holdT = 0, holdAt = null;
+    top.addEventListener('pointerdown', (e) => {
+      const b = e.target.closest('[data-h]');
+      if (!b || b.disabled || e.button > 0) return;
+      holdAt = [e.clientX, e.clientY];
+      clearTimeout(holdT);
+      holdT = setTimeout(() => { b.held = true; navigator.vibrate?.(10); this.historyMenu(b); }, 450);
+    });
+    const unhold = () => { clearTimeout(holdT); holdAt = null; };
+    top.addEventListener('pointerup', unhold);
+    top.addEventListener('pointercancel', unhold);
+    top.addEventListener('pointermove', (e) => { if (holdAt && Math.hypot(e.clientX - holdAt[0], e.clientY - holdAt[1]) > 10) unhold(); });
+    top.addEventListener('contextmenu', (e) => {
+      const b = e.target.closest('[data-h]');
+      if (!b) return;
+      e.preventDefault();
+      unhold();
+      if (!b.disabled && !b.held) this.historyMenu(b);
+    });
+    top.addEventListener('transitionend', (e) => { if (e.propertyName === 'transform') this.pinSoon(); }); // (the pinned parents follow the bar up or down)
+    // the bar out of sight while reading: a touch at the very top of the screen brings it back
+    document.addEventListener('touchstart', (e) => {
+      if (top.classList.contains('away') && e.touches[0]?.clientY < 28) { top.classList.remove('away'); this.barUp = 0; }
+    }, { passive: true });
     document.addEventListener('click', (e) => {
       if (document.body.classList.contains('drawer') && !e.target.closest('#side, #topbar, .pop, .modal-back')) document.body.classList.remove('drawer');
     });

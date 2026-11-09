@@ -256,6 +256,16 @@ its own). The sidebar's Look list: two groups (`.looks-h`), each marking its loo
 Match system". Tests: t23_build39 (the old-look guesses, the setting, the system turning while open, the first
 paint, the list, thinky night's contrast), t6_looks/t16_looks (13 looks), android_test.sh 14c (the phone's dark
 mode reaches the WebView).
+Also Build 39 (he picked each, Nov 9): the phone bar (`#topbar`, narrow windows): 42px, softer 19px icons, no line;
+menu, Back, Forward (each hidden when there's nowhere to go, `[data-h]:disabled` visibility hidden: its place kept),
+the page's name only once its big title is out of sight (`.titled`), one place beside Search = the calendar on
+today's journal (`.at-today`, set by `updateHome`) and Home anywhere else; press and hold (450 ms) or right-click
+Back/Forward → `App.historyMenu` (the tab's places that way, nearest first, ≤12, `Tabs.move(±n)`; the click after a
+hold is eaten, `held`); `App.barScroll` (in the scroll frame): `.away` while a finger scrolls down past 60px, back
+after 36px up, at the top or end, with the drawer, or a touch in the top 28px; `.lifted` away from the top = solid
+with an 18px fade under it (his pick "A"; under the pinned parents instead when they show, `html.has-pins`, and
+`.pins-in` loses its line for the same fade on phones); `.typing` hides it while a note is being typed in (not for
+selected notes). The pinned parents follow the bar (`transitionend` → `pinSoon`). Pills around its buttons: being decided.
 Also Build 39 (a review of speed and use, measured with the processor slowed 4×, a 3,000-note page; t23_build39):
 the editing box grows by CSS (`field-sizing: content`; editor.js `FIELD_SIZING` skips `autosize`, whose
 height:auto + scrollHeight laid out the whole page each key); the scroll frame reads before it writes

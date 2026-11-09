@@ -71,7 +71,7 @@ code, pre { font-family: var(--font-mono); }
 /* wide mode (t w, the page's ⋯ menu, Settings → Look; App.setWide): notes use the whole width */
 html.wide .view:not([data-kind="settings"]) { max-width: none; }
 #topbar { display: none; }
-:root { --topbar-h: 45px; } /* the phone bar's height (narrow windows), its line under it included */
+:root { --topbar-h: 42px; } /* the phone bar's height (narrow windows), its line under it included */
 
 /* reaches the sidebar's top and side edges, so the whole strip above the search box moves the window */
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; color: var(--ink-soft); margin: 0 -14px; padding: 16px 14px 0 20px; }
@@ -1221,21 +1221,41 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   body.drawer #topbar { z-index: 46; }
   body.drawer #topbar [data-a="menu"] { background: var(--accent-tint); color: var(--ink); }
   /* the top bar: thin (44px buttons, nothing around them), the same buttons and places to tap */
+  /* Build 39 (he picked each, Nov 9): lighter (42px, 19px softer icons, no line at the top of a page);
+     Back and Forward only when there's somewhere to go, each in its place; one place beside Search that is
+     the calendar on today's journal and Home anywhere else; out of sight while reading (.away) and while
+     typing (.typing); mostly solid on the page when it's back mid-page (.lifted); the page's name only once
+     its big title is out of sight (.titled). app.js barScroll / updateHome. */
   #topbar {
     display: flex; align-items: center; gap: 2px; position: sticky; top: 0; z-index: 30; height: var(--topbar-h);
-    background: var(--bg); padding: 0 4px; border-bottom: 1px solid var(--line-soft); line-height: 1.3;
+    background: var(--bg); padding: 0 4px; line-height: 1.3;
+    transition: transform .2s ease, background-color .15s ease, box-shadow .15s ease;
   }
-  #topbar button { flex: none; border: 0; background: none; width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; color: var(--ink-soft); }
-  #topbar svg { width: 21px; height: 21px; }
-  /* back and forward, like the laptop's; greyed out when there is nowhere to go */
+  /* back on the page mid-page: solid, its lower edge a soft fade into the page, no line (his pick "A",
+     Nov 9). With pinned parents showing, the fade moves under them: the bar and the parents read as one
+     header, faded once at its foot (html.has-pins, app.js pinSoon). */
+  #topbar.lifted::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 18px; pointer-events: none;
+    background: linear-gradient(var(--bg), color-mix(in srgb, var(--bg) 0%, transparent)); }
+  html.has-pins #topbar.lifted::after { display: none; }
+  .pins-in { border-bottom: 0; box-shadow: none; }
+  .pins-in::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 18px; pointer-events: none;
+    background: linear-gradient(var(--sheet-bg, var(--bg)), color-mix(in srgb, var(--sheet-bg, var(--bg)) 0%, transparent)); }
+  #topbar.away, #topbar.typing { transform: translateY(-100%); box-shadow: none; }
+  body.drawer #topbar { transform: none; }
+  #topbar button { flex: none; border: 0; background: none; width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; color: color-mix(in srgb, var(--ink) 58%, var(--bg)); }
+  #topbar svg { width: 19px; height: 19px; }
   #topbar [data-h], #topbar [data-a="home"], #topbar [data-a="date"] { width: 36px; }
-  #topbar:not(.journals) [data-a="date"] { display: none; } /* (Journals only: a page's name keeps the room) */
-  #topbar [data-h] svg, #topbar [data-a="home"] svg, #topbar [data-a="date"] svg { width: 20px; height: 20px; }
+  #topbar [data-h]:disabled { visibility: hidden; } /* (nowhere to go: its place kept, so the others never move) */
+  #topbar [data-a="date"], #topbar.at-today [data-a="home"] { display: none; }
+  #topbar.at-today [data-a="date"] { display: grid; }
+  #topbar [data-h] svg, #topbar [data-a="home"] svg, #topbar [data-a="date"] svg { width: 19px; height: 19px; }
   #topbar button:disabled { opacity: .3; cursor: default; }
+  #topbar .t { opacity: 0; transition: opacity .15s ease; }
+  #topbar.titled .t { opacity: 1; }
   /* a very narrow Windows window also has the window buttons: Forward and Home make room for them
      (Journals is in the menu too) */
   @media (max-width: 460px) { #topbar.has-winctl [data-h="forward"], #topbar.has-winctl [data-a="home"] { display: none; } }
-  #topbar .t { flex: 1; min-width: 0; padding-left: 4px; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  #topbar .t { flex: 1; min-width: 0; padding-left: 4px; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: "IBM Plex Sans", system-ui, sans-serif; }
   #main { padding: 16px 14px 120px; }
   .sheet { padding-left: min(var(--sheet-pad-x), 18px); padding-right: min(var(--sheet-pad-x), 18px); margin-bottom: min(var(--sheet-gap), 20px); }
   .outline, .pins { --ind: 20px; --txt: 22px; }
