@@ -103,7 +103,7 @@ def check(pub_b64, sig_path, newer=False):
     for a thinky-update.sig: newer=True)."""
     point = base64.b64decode(pub_b64, validate=True)
     d = json.load(open(sig_path, encoding="utf-8-sig"))
-    if newer and not (isinstance(d.get("build"), int) and d["build"] > 0):
+    if newer and not (type(d.get("build")) is int and d["build"] > 0):
         return False
     raw = base64.b64decode(d["sig"], validate=True)
     if len(point) != 64 or len(raw) != 64 or not re.fullmatch(r"[0-9a-f]{64}", d["sha256"]):
