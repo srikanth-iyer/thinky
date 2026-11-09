@@ -1,6 +1,6 @@
 // Settings, in tabs so nothing needs a long scroll: Notes (folder and its health check, with pictures
 // nothing uses; deleted pages; safety copies), Look (looks, text size, link colour, page links, fonts), Capture
-// (quick capture; on Windows also the browser button and the shortcut key), Shortcuts (keys), About
+// (quick capture; on Windows also the browser button and the shortcut key); Writing holds the keys (Build 40)
 // (send feedback, problems log, version, updates). The tab shows in the address (#/settings/look) and the last one
 // is remembered.
 
@@ -26,17 +26,23 @@ export async function settingsView(app, view, want = null) {
 
   const platform = isApp ? await call('platform').catch(() => '') : '';
   if (!view.isConnected) return;
-  // what each tab holds (Capture and Shortcuts once a notes folder is open)
+  // Build 40 (he asked: some tabs mixed things): Updates & about first (he goes there often), then Notes
+  // (the folder), Safety (bin, safety copies, backups), Look, Writing (spelling, property display,
+  // the laptop's keys; Shortcuts was a tab of its own) and Capture
   const parts = {
-    notes: async () => [folderCard(app), ...(app.vaultOpen ? [binCard(app), safetyCard(app), ...(isAndroid ? [] : [backupCard(app)])] : [])],
-    look: async () => [lookCard(app), ...(app.vaultOpen ? [propDisplayCard(app)] : [])],
+    about: async () => [await aboutCard(app), feedbackCard(app), problemsCard()],
+    notes: async () => [folderCard(app)],
+    safety: async () => [binCard(app), safetyCard(app), ...(isAndroid ? [] : [backupCard(app)])],
+    look: async () => [lookCard(app)],
+    writing: async () => [writingCard(), propDisplayCard(app), ...(isAndroid ? [] : [keysCard(app)])],
     capture: async () => [captureCard(app), ...(platform === 'windows' ? [browserCard(app), windowsCard(app)] : [])],
-    keys: async () => [keysCard(app)],
-    about: async () => [await aboutCard(app), feedbackCard(app), problemsCard()], // (the version and updates first: Build 40, he goes there often)
   };
-  // (no Shortcuts on phones: they're for a keyboard, and five tabs don't fit a narrow screen)
-  const tabs = TABS.filter(([id]) => (app.vaultOpen || !['capture', 'keys'].includes(id)) && !(isAndroid && id === 'keys'));
-  let cur = want || store.get('settingsTab', 'notes');
+  // (Safety, Writing and Capture once a notes folder is open)
+  const tabs = TABS.filter(([id]) => app.vaultOpen || !['safety', 'writing', 'capture'].includes(id));
+  if (want === 'keys') want = 'writing'; // (the old Shortcuts tab's address)
+  // a newer build waiting: Settings opens on Updates (unless a tab was asked for)
+  let cur = want || (document.documentElement.classList.contains('has-update') ? 'about' : store.get('settingsTab', 'notes'));
+  if (cur === 'keys') cur = 'writing';
   if (!app.vaultOpen || !tabs.some(([id]) => id === cur)) cur = want && tabs.some(([id]) => id === want) ? want : 'notes';
   const bar = h('div', 'chips set-tabs');
   bar.setAttribute('role', 'tablist');
@@ -53,6 +59,12 @@ export async function settingsView(app, view, want = null) {
       b.setAttribute('aria-selected', String(on));
       b.tabIndex = on ? 0 : -1;
     });
+    // the row scrolls sideways when the tabs don't fit (a phone; he asked, Nov 9): the chosen one in view
+    const sel = bar.querySelector(`[data-tab="${id}"]`);
+    if (sel && bar.scrollWidth > bar.clientWidth) {
+      const l = sel.offsetLeft - bar.offsetLeft, r = l + sel.offsetWidth;
+      if (l < bar.scrollLeft || r > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = Math.max(0, l - 16);
+    }
     for (const p of Object.values(panels)) p.hidden = true;
     if (!panels[id]) { // built the first time it's shown
       const p = h('div', 'set-panel');
@@ -456,14 +468,6 @@ function lookCard(app) {
     $('input', wide).onchange = (e) => app.setWide(e.target.checked, true);
     sc.append(wide);
   }
-  // spelling (Build 34, he asked): the system's own check, as he types; the words are underlined and
-  // a right-click (on the phone, the keyboard) offers the right spelling. Nothing leaves the device.
-  const spell = h('label', 'toggle spell-row', `<input type="checkbox"${store.get('spellcheck', true) ? ' checked' : ''}> Check spelling as I type ${matchMedia('(pointer: coarse)').matches ? '(your keyboard suggests the right word)' : '(right-click an underlined word for suggestions)'}`);
-  $('input', spell).onchange = (e) => {
-    store.set('spellcheck', e.target.checked);
-    for (const ta of document.querySelectorAll('textarea.ed')) ta.spellcheck = e.target.checked; // (a note being typed in now too)
-  };
-  sc.append(spell);
   // animations (Build 38, he asked): opening and closing fades and slides; off = nothing moves
   // (html[data-motion="off"], app.css; boot.js sets it before the first paint)
   const motion = h('label', 'toggle motion-row', `<input type="checkbox"${store.get('motion', true) ? ' checked' : ''}> Animations: menus, the calendar, search and dialogs fade and slide as they open and close`);
@@ -754,6 +758,21 @@ function windowsCard(app) {
  *  property: Show, Quiet (smaller, lighter), Icon (a small sign; its words on hover) or Hidden (like
  *  id::), and an optional mark (a thin coloured line down the note's left edge). Saved in the notes
  *  folder (logseq/thinky.json) so the laptop and the phone agree; render.js applies it. */
+/** Writing (Build 40: its own tab): the spelling check (Build 34, he asked): the system's own check, as
+ *  he types; the words are underlined and a right-click (on the phone, the keyboard) offers the right
+ *  spelling. Nothing leaves the device. */
+function writingCard() {
+  const card = h('div', 'card writing');
+  card.innerHTML = '<h2>Writing</h2>';
+  const spell = h('label', 'toggle spell-row', `<input type="checkbox"${store.get('spellcheck', true) ? ' checked' : ''}> Check spelling as I type ${matchMedia('(pointer: coarse)').matches ? '(your keyboard suggests the right word)' : '(right-click an underlined word for suggestions)'}`);
+  $('input', spell).onchange = (e) => {
+    store.set('spellcheck', e.target.checked);
+    for (const ta of document.querySelectorAll('textarea.ed')) ta.spellcheck = e.target.checked; // (a note being typed in now too)
+  };
+  card.append(spell);
+  return card;
+}
+
 function propDisplayCard(app) {
   const card = h('div', 'card prop-display');
   const SAY = { show: 'Show', quiet: 'Quiet', icon: 'Icon', hidden: 'Hidden' };
@@ -762,7 +781,7 @@ function propDisplayCard(app) {
   // with each rule for by::, by the app's own property drawing and this look's colours
   const props = [['by', 'claude']];
   const ex = (name, says, rule) => `<figure class="pd-ex"><figcaption><b>${name}</b> ${says}</figcaption>
-    <div class="pd-note"${rule.mark ? ` data-mark="${rule.mark}"` : ''}><i class="pd-dot"></i><div class="pd-w">Draft the talk${propsHtmlAs(props, { by: { icon: '✦', ...rule } })}</div></div></figure>`;
+    <div class="pd-note"${rule.mark ? ` data-mark="${rule.mark}"` : ''}><i class="pd-dot"></i><div class="pd-w">Draft the talk${propsHtmlAs(props, { by: { icon: '●', ...rule } })}</div></div></figure>`;
   card.innerHTML = `<h2>Property display</h2><p class="note">Choose how a property shows on your notes. Here is one note with <code>by:: claude</code> under each choice:</p>
     <div class="pd-demo" aria-label="Examples">${ex('Show', 'as usual', { show: 'show' })}${ex('Quiet', 'smaller, lighter', { show: 'quiet' })}${ex('Icon', 'its words on hover', { show: 'icon' })}${ex('Hidden', 'kept, not shown', { show: 'hidden' })}${ex('+ Mark', 'a line beside it', { show: 'show', mark: 'blue' })}</div>
     <p class="note small">A mark goes with any of the four. A hidden property is still there: the note menu’s “Show hidden properties” shows it. Saved in your notes folder (<code>logseq/thinky.json</code>), so your laptop and phone agree. Properties Logseq is told to hide (<code>:block-hidden-properties</code> in <code>config.edn</code>) are hidden here too.</p>
@@ -1031,7 +1050,59 @@ async function aboutCard(app) {
   try { ver = await window.__TAURI__?.app?.getVersion?.(); } catch {}
   card.innerHTML = `<h2>About ${BRAND.word}</h2><p class="note">${BRAND.word} ${esc(ver || '(preview)')}. Your notes stay as plain Markdown files in your folder.</p>`;
   if (isApp) card.append(await updateBox(app));
+  card.append(whatsNew(app, ver));
   return card;
+}
+
+/** What's new (Build 40, he asked: the changes, in the app): each build's release notes from the public
+ *  repo's releases (the same words as the release page and the changelog's newest sections), newest
+ *  first; the one installed is marked, and a newer one says so. Read only when opened (nothing is asked
+ *  of GitHub until then), and open by itself when an update is waiting or this build is new to him. */
+function whatsNew(app, ver) {
+  const box = h('details', 'whatsnew');
+  const mine = Number(String(ver || '').match(/(\d+)$/)?.[1] || 0);
+  box.innerHTML = '<summary><span>What’s new</span></summary><div class="wn-list" aria-live="polite"></div>';
+  const list = $('.wn-list', box);
+  const notes = (body) => {
+    const out = [];
+    let ul = null;
+    for (const raw of String(body || '').split(/\r?\n/)) {
+      const t = raw.trim();
+      if (/^#+\s*app size/i.test(t)) break; // (the build's sizes table that CI adds: not news)
+      if (!t || /^(co-authored-by|claude-session):/i.test(t) || t === '[android-test]') { ul = null; continue; }
+      if (/^[-*] /.test(t)) { if (!ul) { ul = []; out.push(ul); } ul.push(t.slice(2)); continue; }
+      ul = null;
+      out.push(t);
+    }
+    return out.map((x) => Array.isArray(x) ? `<ul>${x.map((li) => `<li>${esc(li)}</li>`).join('')}</ul>` : `<p>${esc(x)}</p>`).join('');
+  };
+  let loaded = false;
+  const load = async () => {
+    if (loaded) return;
+    loaded = true;
+    list.innerHTML = `<p class="note">${BRAND.spin}Loading…</p>`;
+    try {
+      const r = await fetch('https://api.github.com/repos/srikanth-iyer/thinky/releases?per_page=8', { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) });
+      if (!r.ok) throw new Error(String(r.status));
+      const rel = (await r.json()).filter((x) => !x.draft);
+      list.innerHTML = rel.map((x, i) => {
+        const n = Number(String(x.tag_name).match(/(\d+)$/)?.[1] || 0);
+        const tag = n === mine ? '<span class="wn-tag">this version</span>' : mine && n > mine ? '<span class="wn-tag new">ready to install</span>' : '';
+        const day = x.published_at ? new Date(x.published_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+        return `<details class="wn-rel"${i < 2 || n >= mine ? ' open' : ''}><summary><b>Build ${n}</b> ${tag}<span class="wn-day">${esc(day)}</span></summary><div class="wn-body">${notes(x.body)}</div></details>`;
+      }).join('') + `<p class="note"><a href="https://github.com/srikanth-iyer/thinky/blob/main/CHANGELOG.md" data-ext>The whole history</a></p>`;
+    } catch {
+      loaded = false;
+      list.innerHTML = '<p class="note">Couldn’t load what’s new (offline?). Open this again to try again.</p>';
+    }
+  };
+  box.addEventListener('toggle', () => { if (box.open) load(); });
+  list.addEventListener('click', (e) => { const a = e.target.closest('a[data-ext]'); if (a) { e.preventDefault(); app.openUrl(a.href); } });
+  // open by itself: an update waiting, or the first time he looks after updating
+  const seen = store.get('seenBuild', 0);
+  if (isApp && (document.documentElement.classList.contains('has-update') || (mine && mine > seen))) box.open = true;
+  if (mine) store.set('seenBuild', mine);
+  return box;
 }
 
 // ---------------------------------------------------------------------------

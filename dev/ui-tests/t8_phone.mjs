@@ -251,17 +251,19 @@ for (const hash of ['#/todos', '#/pages']) {
   check(row.display === 'flex' && row.lines === 1 && row.fade && row.scrolls && !logs && errors.length === errs,
     `${hash}, 330px wide: one line that scrolls sideways and fades at the end, without flickering`, JSON.stringify({ ...row, logs, errors: errors.slice(errs) }));
 }
-// Settings' tabs on a narrow phone: no Shortcuts (they're for a keyboard); the rest fit
+// Settings' tabs on a narrow phone (Build 40): six tabs on one line that scrolls sideways (he asked: not two
+// lines), the end fading; the tab chosen is scrolled into view
 await page.setViewportSize({ width: 320, height: 700 });
-await page.evaluate(() => { location.hash = '#/settings/notes'; });
+await page.evaluate(() => { location.hash = '#/settings/capture'; });
 await sleep(800);
 const tabRow = await page.evaluate(() => {
   const r = document.querySelector('.set-tabs');
   const box = r.getBoundingClientRect();
   const cs = [...r.querySelectorAll('[data-tab]')];
-  return { tabs: cs.map((c) => c.textContent).join('|'), inside: cs.every((c) => c.getBoundingClientRect().right <= box.right + 0.5), fade: r.classList.contains('fade-end') };
+  const sel = r.querySelector('[aria-selected="true"]').getBoundingClientRect();
+  return { tabs: cs.map((c) => c.textContent).join('|'), oneLine: new Set(cs.map((c) => Math.round(c.getBoundingClientRect().top))).size === 1, scrolls: r.scrollWidth > r.clientWidth, chosenInView: sel.left >= box.left - 0.5 && sel.right <= box.right + 0.5 };
 });
-check(tabRow.tabs === 'Notes|Look|Capture|About' && tabRow.inside && !tabRow.fade, 'phone Settings, 320px: Notes, Look, Capture, About all in view', JSON.stringify(tabRow));
+check(tabRow.tabs === 'Updates & about|Notes|Safety|Look|Writing|Capture' && tabRow.oneLine && tabRow.scrolls && tabRow.chosenInView, 'phone Settings, 320px: the six tabs on one line that scrolls, the chosen one (Capture, the last) in view', JSON.stringify(tabRow));
 await page.setViewportSize({ width: 393, height: 851 });
 await page.evaluate(() => { location.hash = '#/todos'; });
 await sleep(600);

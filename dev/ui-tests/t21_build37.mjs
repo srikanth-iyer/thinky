@@ -114,7 +114,7 @@ await page.waitForSelector('.outline .blk');
 const note = (t) => page.locator('.outline .blk', { has: page.locator(':scope > .bc', { hasText: t }) }).first();
 check(await note('a note from Claude').locator('.prop .pk', { hasText: 'by' }).count() === 1, 'by:: shows as usual at first');
 check(await note('a secret one').locator('.prop').count() === 0, 'config.edn’s :block-hidden-properties hides secret::');
-await go(page, '#/settings/look');
+await go(page, '#/settings/writing');
 await page.waitForSelector('.prop-display');
 await page.locator('.prop-new').fill('by::');
 await page.locator('.prop-add button').click();
@@ -139,14 +139,14 @@ check(await n2.getAttribute('data-mark') === 'purple' && await note('my own note
 const n3 = note('another one');
 check(await n3.locator('.prop .pk', { hasText: 'source' }).count() === 1, 'other properties still show as usual');
 // Quiet, then Hidden
-await go(page, '#/settings/look');
+await go(page, '#/settings/writing');
 await page.waitForSelector('.prop-display li[data-k="by"]');
 await page.locator('.prop-rules li[data-k="by"] .pr-show').selectOption('quiet');
 await sleep(400);
 await go(page, '#/page/Claude notes');
 await page.waitForSelector('.outline .blk');
 check(await note('a note from Claude').locator('.prop.prop-quiet').count() === 1, 'Quiet: a smaller, lighter row');
-await go(page, '#/settings/look');
+await go(page, '#/settings/writing');
 await page.waitForSelector('.prop-display li[data-k="by"]');
 await page.locator('.prop-rules li[data-k="by"] .pr-show').selectOption('hidden');
 await sleep(400);
@@ -159,14 +159,14 @@ check(await page.locator('.note-menu .nm-item', { hasText: 'Show hidden properti
 await page.keyboard.press('Escape');
 check(read('pages/Claude notes.md').includes('  by:: claude'), 'the note itself is unchanged');
 // remove the rule: back to usual
-await go(page, '#/settings/look');
+await go(page, '#/settings/writing');
 await page.waitForSelector('.prop-display li[data-k="by"]');
 await page.locator('.prop-rules li[data-k="by"] .pr-del').click();
 await sleep(400);
 check(!JSON.parse(read('logseq/thinky.json')).propertyDisplay, 'Remove: the rule is gone from the file', read('logseq/thinky.json'));
 
 console.log('Backups: off until turned on; a snapshot zip; a missing picture put back');
-await go(page, '#/settings/notes');
+await go(page, '#/settings/safety');
 await page.waitForSelector('.backup-card');
 check(!(await page.locator('.bk-on-in').isChecked()), 'off at first');
 await page.locator('.bk-on-in').check();
@@ -187,6 +187,7 @@ await sleep(1000);
 check(/Nothing changed/.test(await page.locator('.bk-last').textContent()) && fs.readdirSync(BK).filter((f) => f.endsWith('.zip')).length === 1, 'again with nothing changed: no new zip');
 // the picture goes missing; Check this folder finds it in the backup and puts it back
 fs.rmSync(VAULT + '/assets/kept (2026).png');
+await go(page, '#/settings/notes'); // (Check this folder: Notes; Backups: Safety, Build 40)
 await page.locator('[data-a="check"]').click();
 await page.waitForSelector('.missing-box', { timeout: 8000 });
 await page.waitForSelector('.missing-box .bk-restore', { timeout: 8000 }).catch(() => {});
@@ -194,6 +195,7 @@ check(await page.locator('.missing-box .bk-restore').count() === 1, 'Missing pic
 await page.locator('.missing-box .bk-restore').click();
 await sleep(500);
 check(fs.existsSync(VAULT + '/assets/kept (2026).png') && /is back/.test(await page.locator('.missing-box').textContent()), 'Restore puts it back');
+await go(page, '#/settings/safety');
 await page.locator('.bk-on-in').uncheck();
 
 console.log('Tabs: the "+" always shows; the dot menu opens a note in a new tab or to the side');

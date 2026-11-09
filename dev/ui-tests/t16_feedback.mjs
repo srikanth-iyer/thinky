@@ -11,8 +11,8 @@ console.log('Settings › About shows the feedback box');
 await go(page, '#/settings/about');
 await page.waitForSelector('.fb .fb-msg');
 await page.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(String(u)); return null; }; });
-const first = await page.evaluate(() => document.querySelector('.card')?.querySelector('h2')?.textContent);
-check(first === 'Send feedback', 'it is the first box in About', String(first));
+const order = await page.evaluate(() => [...document.querySelectorAll('.set-panel:not([hidden]) .card > h2')].map((x) => x.textContent.trim()).join('|'));
+check(/^About[^|]*\|Send feedback\|Problems log$/.test(order), 'Updates & about: the version and updates first, then Send feedback (Build 40)', order);
 check(!(await page.$('.fb .fb-mail')) && !(await page.$('.fb .fb-log')), 'no email box, no problems-log tick: nothing personal is added');
 
 console.log('an empty message opens nothing');

@@ -129,4 +129,4 @@ export function fadeAway(el, cls = '') {
 }
 
 /** Settings' tabs (settings.js; also the command list's "Settings: …" commands). */
-export const SETTINGS_TABS = [['notes', 'Notes'], ['look', 'Look'], ['capture', 'Capture'], ['keys', 'Shortcuts'], ['about', 'About']];
+export const SETTINGS_TABS = [['about', 'Updates & about'], ['notes', 'Notes'], ['safety', 'Safety'], ['look', 'Look'], ['writing', 'Writing'], ['capture', 'Capture']];

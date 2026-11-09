@@ -15,7 +15,7 @@ const rows = card.locator('.sc-list [data-id]');
 // copies are made in the background: look again (Settings redrawn) until they're there
 const copiesShown = async (n) => {
   for (let i = 0; i < 20; i++) {
-    await page.evaluate(() => window.leanApp.go('settings'));
+    await page.evaluate(() => window.leanApp.go('settings', 'safety'));
     await sleep(250);
     if ((await rows.count()) >= n) return true;
   }

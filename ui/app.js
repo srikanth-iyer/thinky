@@ -3358,7 +3358,7 @@ class App {
     if (!l?.tag) return;
     menu(btn, [{ head: `Build ${String(l.tag).replace(/^build-/, '')} is ready` },
       { label: 'Update now', run: async () => { await this.go('settings', 'about'); (await import('./settings.js')).startUpdate(this); } },
-      { label: 'What’s new', run: () => this.openUrl(l.url) }], { cls: 'upd-menu' });
+      { label: 'What’s new', run: async () => { await this.go('settings', 'about'); setTimeout(() => document.querySelector('.whatsnew')?.scrollIntoView({ block: 'start' }), 300); } }], { cls: 'upd-menu' });
   }
 }
 

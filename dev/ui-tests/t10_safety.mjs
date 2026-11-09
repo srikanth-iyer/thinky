@@ -46,6 +46,7 @@ check(['unused.png', 'Screenshot (2).png', 'photo_2024.png'].every((n) => !exist
 check(exists('assets/keep.png') && exists('assets/fresh.png') && exists('assets/dot.png') && exists('assets/board.png') && exists('assets/paper.pdf'), 'the unticked one and the others stay in assets');
 check((await page.locator('.pics-box').textContent()).includes('Moved 3 pictures to the bin'), 'and it says so');
 console.log('the bin lists the pictures, all of them, with “Put back”');
+await go(page, '#/settings/safety'); // (the bin is on Safety since Build 40)
 const binPics = page.locator('.bin-pics li');
 check(await binPics.count() === 3 && await page.locator('.bin-pages li').count() === 50, '“Pictures” has all three, even with 60 deleted pages above (the newest 50 shown)', await binPics.count());
 const binShows = await page.waitForFunction(() => { const i = document.querySelector('.bin-pics img'); return i && i.complete && i.naturalWidth === 40; }, null, { timeout: 3000 }).then(() => true, () => false);
@@ -76,7 +77,7 @@ const rows = card.locator('.sc-list [data-id]');
 // copies are made in the background: look again (Settings redrawn) until they're there
 const copiesShown = async (n) => {
   for (let i = 0; i < 20; i++) {
-    await page.evaluate(() => window.leanApp.go('settings'));
+    await page.evaluate(() => window.leanApp.go('settings', 'safety'));
     await sleep(250);
     if ((await rows.count()) >= n) return true;
   }
@@ -86,7 +87,7 @@ check(await copiesShown(1), 'one was made when the folder opened (the sample not
 // a note gets overwritten (say by a bad sync), then the app starts again
 const good = read('pages/Marta Pell.md');
 write('pages/Marta Pell.md', '- oops, overwritten\n');
-await page.goto(BASE + '/?t=' + Date.now() + '#/settings');
+await page.goto(BASE + '/?t=' + Date.now() + '#/settings/safety');
 await page.waitForSelector('.card h2');
 check(await copiesShown(2), 'starting again with a changed note makes another, newest first');
 check(/\d+ notes · this computer$/.test((await rows.first().textContent()).trim()), 'each says when it was made, how many notes it has and which device made it', await rows.first().textContent());

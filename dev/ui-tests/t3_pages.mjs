@@ -353,15 +353,15 @@ await page.locator('[data-a="check"]').click();
 await sleep(800);
 check((await page.locator('.check-out').textContent()).includes('Longest pages'), 'folder check reports', await page.locator('.check-out').textContent());
 // two tabs picked in quick succession (the first still being built): only the last one shows
-await page.evaluate(() => { document.querySelector('.set-tabs [data-tab="about"]').click(); document.querySelector('.set-tabs [data-tab="keys"]').click(); });
+await page.evaluate(() => { document.querySelector('.set-tabs [data-tab="about"]').click(); document.querySelector('.set-tabs [data-tab="writing"]').click(); });
 await sleep(600);
 const shownPanels = await page.locator(".set-panel:not([hidden])").evaluateAll((ps) => ps.map((p) => p.id));
-check(shownPanels.join() === "sp-keys" && decodeURIComponent(await page.evaluate(() => location.hash)) === '#/settings/keys', "quick clicks: only the last tab shows", shownPanels.join() + ' ' + await page.evaluate(() => location.hash));
+check(shownPanels.join() === "sp-writing" && decodeURIComponent(await page.evaluate(() => location.hash)) === '#/settings/writing', "quick clicks: only the last tab shows", shownPanels.join() + ' ' + await page.evaluate(() => location.hash));
 // Settings in the sidebar while already in Settings: no extra step for Back
 const steps = await page.evaluate(() => history.length);
 await page.locator('#side a[data-view="settings"]').click();
 await sleep(400);
-check(await page.evaluate(() => history.length) === steps && decodeURIComponent(await page.evaluate(() => location.hash)) === '#/settings/keys', 'Settings again: stays put, no extra Back step');
+check(await page.evaluate(() => history.length) === steps && decodeURIComponent(await page.evaluate(() => location.hash)) === '#/settings/writing', 'Settings again: stays put, no extra Back step');
 check(await page.locator('#update').getAttribute('href') === '#/settings/about', '"A newer version is ready" opens About (where the update is)');
 
 console.log('hover preview');

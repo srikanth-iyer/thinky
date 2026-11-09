@@ -52,11 +52,10 @@ export function commandList(app, ed) {
     add('Go', 'search', 'Search', null, { key: 'go/search', also: 'find' });
     add('Go', 'random', 'Open a random page', () => app.randomPage());
   }
-  // the Settings tabs (as settings.js shows them: Capture and Shortcuts with a folder open, no
-  // Shortcuts on phones)
-  const SET_ALSO = { notes: 'folder bin deleted safety copies check', look: 'theme colours fonts text size', capture: 'quick capture share', keys: 'keyboard shortcuts keys', about: 'version update problems log' };
+  // the Settings tabs (as settings.js shows them: Safety, Writing and Capture with a folder open)
+  const SET_ALSO = { notes: 'folder check', safety: 'bin deleted safety copies backups restore', look: 'theme colours fonts text size dark night', writing: 'spelling spell check property display keyboard shortcuts keys', capture: 'quick capture share', about: 'version update updates problems log feedback' };
   for (const [id, label] of TABS) {
-    if ((!open && (id === 'capture' || id === 'keys')) || (isAndroid && id === 'keys')) continue;
+    if (!open && ['safety', 'writing', 'capture'].includes(id)) continue;
     add('Go', 'settings-' + id, `Settings: ${label}`, () => app.go('settings', id), { also: 'preferences options ' + (SET_ALSO[id] || '') });
   }
 
