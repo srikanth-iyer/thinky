@@ -353,4 +353,31 @@ for (const phone of [false, true]) {
   check(errors.length === 0, 'no script errors (laptop + line)', errors.join('\n'));
   await browser.close();
 }
+{
+  // the dots and level lines are softer than each look's own colour for them, in every look (he asked, Nov 9):
+  // measured as drawn, against the page under them
+  const { browser, page, errors } = await open({});
+  await page.goto(BASE + '/?t=' + Date.now() + '#/page/' + encodeURIComponent('Sourdough Bread'));
+  await page.waitForSelector('.outline .blk'); await sleep(400);
+  const r = await page.evaluate(async () => {
+    const lum = (c) => { const m = c.match(/[\d.]+/g).map(Number); if (c.startsWith('color(srgb')) m.splice(0, 0); const [r, g, b] = (c.startsWith('color(') ? m.slice(0, 3) : m.slice(0, 3).map((v) => v / 255)); const a = c.startsWith('color(') ? (m[3] ?? 1) : (m[3] ?? 1); return { rgb: [r, g, b], a }; };
+    const L = ([r, g, b]) => { const f = (c) => c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+    const cr = (x, y) => { const [a, b] = [L(x), L(y)].sort((p, q) => p - q); return (b + 0.05) / (a + 0.05); };
+    const out = {};
+    for (const id of ['calm', 'calmplain', 'thinky', 'thinkynight', 'night', 'paper', 'sticker', 'stickernight', 'automaton', 'azulejo', 'plainnight', 'plainteal']) {
+      const el = document.createElement('div'); el.dataset.skin = id;
+      el.innerHTML = '<i style="background:var(--bullet)"></i><i style="background:var(--sheet-bg)"></i><i style="background:var(--guide)"></i>';
+      document.body.append(el);
+      const [b, s, g] = [...el.children].map((i) => lum(getComputedStyle(i).backgroundColor));
+      const over = (c) => c.rgb.map((v, k) => v * c.a + s.rgb[k] * (1 - c.a));
+      out[id] = [cr(over(b), s.rgb).toFixed(2), g.a === 0 ? '-' : cr(over(g), s.rgb).toFixed(2)];
+      el.remove();
+    }
+    return out;
+  });
+  const bad = Object.entries(r).filter(([, [d, g]]) => +d > 2.35 || +d < 1.9 || (g !== '-' && (+g > 1.25 || +g < 1.1)));
+  check(bad.length === 0, 'every look: dots about 2.2:1 and level lines about 1.2:1 from the page', JSON.stringify(r));
+  check(errors.length === 0, 'no script errors (soft dots)', errors.join('\n'));
+  await browser.close();
+}
 process.exit(failures() ? 1 : 0);

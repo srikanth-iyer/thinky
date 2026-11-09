@@ -282,6 +282,12 @@ history.js, clash.js and commands.js on first use (dynamic `import()`; the searc
 dom.js); search scrolls only its list (no `scrollIntoView`, which laid out the page behind; `.results` is
 positioned) and waits 40 ms (was 70) while letters come; Look previews `content-visibility: auto`, two to a
 row under 520px; the toolbar's ⋯/date carry aria-haspopup/aria-expanded ("/": aria-haspopup listbox).
+Also Build 39 (he asked, Nov 9: "less dark, more subtle, like Calm, for all the bullets and all the themes", the
+level lines too): a look gives its dot and line colours as `--bullet-ink`/`--guide-ink`; skins.css's root block
+draws `--bullet`/`--guide` from them with `--bullet-strength`/`--guide-strength` (mixed with transparent), set per
+look so dots stand out ~2.2:1 and lines ~1.2:1 from the page (Plain: 100%, Logseq's own, already the faintest);
+a folded note's ring keeps the full colour. t23_build39 measures every look. Picking from the "/" list on lift
+eats the click that follows (`eatNextClick`), which otherwise landed on the full-width "+" line and added a note.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

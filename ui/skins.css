@@ -18,7 +18,7 @@
   --tag-bg: #EEEBFB; --tag-ink: #3A2D8F; --tag-border: 1px solid transparent; --tag-shadow: none; --tag-radius: 999px;
   --tag-before: ""; --tag-after: ""; --hash: inline; --tag-decoration: none; --tag-pad: 0 7px;
   --mark-bg: #FBEFC0; --danger: #B3412A; --danger-tint: #FBE6E0;
-  --edit-bg: #F2F7F4; --guide: #DCE1DC; --bullet: #7C8696;
+  --edit-bg: #F2F7F4; --guide-ink: #DCE1DC; --bullet-ink: #7C8696;
   /* the pale line from a parent's dot down past its children (app.css .blk::before/::after): it starts
      this far under the dot itself, also when the note's words wrap (he asked, Oct 29), and stops at the
      last child's words (this far above the end of that row), leaving room by the dots at both ends */
@@ -89,7 +89,16 @@
   --weekday-before: ""; --weekday-after: ""; --weekday-ink: var(--ink-faint);
   /* bullets; on a laptop the dot under the mouse grows a little on a soft round patch (Logseq's) */
   --bullet-w: 7px; --bullet-h: 7px; --bullet-radius: 50%; --bullet-rotate: 0deg;
-  --bullet-ring: color-mix(in srgb, var(--bullet) 28%, transparent); /* round a folded note's dot */
+  /* The dots and the level lines are drawn softer than each look's own colour for them (he asked, Nov 9:
+     subtle, as in Calm, in every look; a busy screen otherwise): --bullet-ink / --guide-ink are the look's
+     colours, --bullet-strength / --guide-strength how much of them shows (mixed with transparent, so over
+     any page or card). Each look's strength is set so its dots stand out about 2.2:1 and its lines about
+     1.2:1 from the page they sit on. The ring of a folded note keeps the look's full colour: it says
+     something is hidden. */
+  --bullet-strength: 65%; --guide-strength: 60%;
+  --bullet: color-mix(in srgb, var(--bullet-ink) var(--bullet-strength), transparent);
+  --guide: color-mix(in srgb, var(--guide-ink) var(--guide-strength), transparent);
+  --bullet-ring: color-mix(in srgb, var(--bullet-ink) 28%, transparent); /* round a folded note's dot */
   --bullet-hover-bg: var(--bullet-ring); --bullet-hover-size: 16px;
   /* controls (raised, like the Board's buttons) */
   --btn-bg: linear-gradient(var(--surface), var(--surface-2)); --btn-border: 1px solid var(--line); --btn-radius: 10px;
@@ -107,7 +116,7 @@
    (white words on it 5.6:1), cream-green tints for the current place and the welcome screen's squares,
    and a faintly warm page and editing colour. Calm plain has Calm's colours, so it follows */
 [data-skin="calm"], [data-skin="calmplain"] { --accent: #2F6E52; --accent-ink: #FFFFFF; --accent-tint: #E5ECDC; --edit-bg: #F3F5EC; }
-[data-skin="calm"] { --bg: #F4F4EE; --line: #E0E1D8; --line-soft: #ECEDE6; --guide: #DCDED4; }
+[data-skin="calm"] { --bg: #F4F4EE; --line: #E0E1D8; --line-soft: #ECEDE6; --guide-ink: #DCDED4; }
 
 /* Calm plain — Calm's colours and fonts with no cards: the notes sit on a white page (the white of
    Calm's cards), a hairline between days (as in Plain) */
@@ -121,6 +130,7 @@
 
 /* Night — the Board's dark look: labels sit IN the surface (inset wells), cards and buttons sit ON it */
 [data-skin="night"] {
+  --bullet-strength: 50%; --guide-strength: 72%;
   /* the app's icon in this look */ --logo-tile: #2A2F38; --logo-ink: #E6E9EE; --logo-spark: #FF6E52;
   color-scheme: dark;
   --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
@@ -132,7 +142,7 @@
   --link: #B3ACE0; --tag-ink: #CFCAF0; --tag-bg: rgba(0,0,0,.22); --tag-border: 1px solid rgba(0,0,0,.35);
   --tag-shadow: inset 0 2px 3px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.05);
   --mark-bg: #433C2C; --danger: #EBA394; --danger-tint: #48343A;
-  --edit-bg: #262B33; --guide: #3A404B; --bullet: #8E95A0;
+  --edit-bg: #262B33; --guide-ink: #3A404B; --bullet-ink: #8E95A0;
   --sheet-border: 1.5px solid #4A515E;
   --sheet-shadow: 0 1px 3px rgba(0,0,0,.28), 0 8px 20px -6px rgba(0,0,0,.42), 0 20px 40px -16px rgba(0,0,0,.6);
   --btn-shadow: 0 1px 0 rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
@@ -146,6 +156,7 @@
 /* Paper — the Board's papery look: grain, sheets of dot-grid paper lying on a desk, serif writing,
    typewriter labels, highlighter marks, a red-pen tick */
 [data-skin="paper"] {
+  --bullet-strength: 67%; --guide-strength: 100%;
   /* the app's icon in this look */ --logo-tile: #FFFEFA; --logo-ink: #2A251E; --logo-spark: #B23A26;
   --bg: #F4F2EC; --surface: #FFFEFA; --surface-2: #F8F6F0;
   --ink: #2A251E; --ink-soft: #5E564A; --ink-faint: #746C5E; /* ≥ 4.5:1 (was #8F8676) */
@@ -155,7 +166,7 @@
   --tag-bg: transparent; --tag-ink: var(--ink-soft); --tag-border: 0; --tag-radius: 0;
   --tag-decoration: underline dotted var(--ink-faint);
   --mark-bg: linear-gradient(transparent 12%, rgba(250,215,80,.55) 12%, rgba(250,215,80,.55) 88%, transparent 88%);
-  --edit-bg: rgba(250,215,80,.12); --guide: transparent; --bullet: #8F8676;
+  --edit-bg: rgba(250,215,80,.12); --guide-ink: transparent; --bullet-ink: #8F8676;
   --page-image: url(skins/grain.svg);
   /* plain grained paper under the notes (he asked, Oct 29: the dot grid there distracted); his Today
      Board's dot grid moved to the sidebar, faint enough that its words read easily */
@@ -180,6 +191,7 @@
 
 /* Sticker — the Board's own look: cream, bold outlines, hard offset shadows, purple, chunky type */
 [data-skin="sticker"] {
+  --bullet-strength: 35%; --guide-strength: 63%;
   /* the app's icon in this look */ --logo-tile: #FBEFB3; --logo-ink: #1D1A33; --logo-spark: #FF4B2B;
   --bg: #FDF6E6; --surface: #FFFDF7; --surface-2: #FFF8E8;
   --ink: #1D1A33; --ink-soft: #4A4566; --ink-faint: #7C7799;
@@ -188,7 +200,7 @@
   --link: #5A3BE0; --link-line: rgba(90,59,224,.45);
   --tag-bg: #FBEFB3; --tag-ink: #1D1A33; --tag-border: 1.5px solid #1D1A33;
   --mark-bg: #FBEFB3; --danger: #C8372D; --danger-tint: #FFD6D0;
-  --edit-bg: #FFF4D6; --guide: #E4DCC8; --bullet: #1D1A33;
+  --edit-bg: #FFF4D6; --guide-ink: #E4DCC8; --bullet-ink: #1D1A33;
   --sheet-border: 2.5px solid #1D1A33; --sheet-radius: 14px; --sheet-shadow: 4px 4px 0 #1D1A33;
   --font-title: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
   --title-weight: 800; --title-tracking: -0.02em;
@@ -203,6 +215,7 @@
 
 /* Sticker night — the sticker look, dimmed for evenings */
 [data-skin="stickernight"] {
+  --bullet-strength: 33%; --guide-strength: 64%;
   /* the app's icon in this look */ --logo-tile: #4D4532; --logo-ink: #F2ECDF; --logo-spark: #FF7A5E;
   color-scheme: dark;
   --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
@@ -214,7 +227,7 @@
   --link: #CFC4FF; --link-line: rgba(207,196,255,.4);
   --tag-bg: #4D4532; --tag-ink: #F2ECDF; --tag-border: 1.5px solid #A49EBC;
   --mark-bg: #4D4532; --danger: #F0A898; --danger-tint: #553A40;
-  --edit-bg: #403A55; --guide: #4A4560; --bullet: #D6CFC1;
+  --edit-bg: #403A55; --guide-ink: #4A4560; --bullet-ink: #D6CFC1;
   --sheet-border: 2.5px solid #6E6880; --sheet-radius: 14px; --sheet-shadow: 4px 4px 0 #17141F;
   --font-title: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
   --title-weight: 800; --title-tracking: -0.02em;
@@ -233,6 +246,7 @@
    (so the cells read as cells; its rows fade, so the tiles make soft blue bands), washed back with a
    pale layer of the page colour so the sheets stand out */
 [data-skin="automaton"] {
+  --bullet-strength: 48%; --guide-strength: 58%;
   /* the app's icon in this look */ --logo-tile: #E1E9FD; --logo-ink: #1E56E6; --logo-spark: #FF4B2B;
   --bg: #F5F5F6; --surface: #FFFFFF; --surface-2: #F2F5FE;
   --ink: #0F1B3A; --ink-soft: #3B4A6B; --ink-faint: #74819F;
@@ -240,7 +254,7 @@
   --accent: #1E56E6; --accent-tint: #E1E9FD;
   --link: #1E56E6; --link-line: rgba(30,86,230,.32);
   --tag-bg: #E1E9FD; --tag-ink: #1A47C2; --tag-radius: 3px;
-  --mark-bg: #D5F2E2; --edit-bg: #F3F6FE; --guide: #D3DCF3; --bullet: #1E56E6;
+  --mark-bg: #D5F2E2; --edit-bg: #F3F6FE; --guide-ink: #D3DCF3; --bullet-ink: #1E56E6;
   --bullet-ring: color-mix(in srgb, var(--accent) 22%, transparent);
   --page-image: linear-gradient(rgba(245,245,246,.72), rgba(245,245,246,.72)), url(skins/rule30.svg);
   --page-image-size: auto, 576px 38px; --side-bg: rgba(245,245,246,.94);
@@ -261,6 +275,7 @@
    installed: nothing is bundled), muted blue links with no underline, small light-grey dots, a faint
    line under a parent's dot, Logseq's spacing (16px words, lines 1.5, 2px between notes, 29px steps) */
 [data-skin="plain"] {
+  --bullet-strength: 100%; --guide-strength: 100%; /* Logseq's own, already the faintest */
   /* the app's icon in this look */ --logo-tile: #F3F3F3; --logo-ink: #171717; --logo-spark: #FF4B2B;
   --bg: #FCFCFC; --surface: #FFFFFF; --surface-2: #F3F3F3; --side-bg: #F8F8F8;
   --ink: #171717; --ink-soft: #5C5C5C; --ink-faint: #6D6D6D; /* ≥ 4.5:1, and still lighter than the soft words (Build 34; were #6F6F6F / #8F8F8F) */
@@ -273,7 +288,7 @@
   --link: #1B6898; --link-line: rgba(27,104,152,.35); --link-deco: 0; /* its own link colour (Settings' one overrides it) */
   --tag-bg: transparent; --tag-ink: var(--link); /* (#tags in the links' colour, whole: 80% of it was 3.9:1, Build 34) */ --tag-border: 0; --tag-radius: 4px; --tag-pad: 0 2px;
   --mark-bg: #FEF3AC; --danger: #B3261E; --danger-tint: #FCE8E6;
-  --edit-bg: #F3F3F3; --guide: rgba(46,27,5,.08); --bullet: rgba(199,199,199,.8); --bullet-ring: #DEDEDE;
+  --edit-bg: #F3F3F3; --guide-ink: rgba(46,27,5,.08); --bullet-ink: rgba(199,199,199,.8); --bullet-ring: #DEDEDE;
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
   /* no cards: a hairline between days, the same space above and below it (he chose that over Logseq's
      48px above and 24px below) */
@@ -295,6 +310,7 @@
 /* Plain night — Plain in near-black (his choice, Oct 27, 2026): dark grey page, light grey words, soft
    blue links; Logseq's spacing, dots and Inter as Plain. Logseq's own blue-green is Plain teal */
 [data-skin="plainnight"] {
+  --bullet-strength: 66%; --guide-strength: 76%;
   /* the app's icon in this look */ --logo-tile: #262626; --logo-ink: #E6E6E6; --logo-spark: #FF6E52;
   color-scheme: dark;
   --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
@@ -308,7 +324,7 @@
   --link: #8AB4F8; --link-line: rgba(138,180,248,.4); --link-deco: 0;
   --tag-bg: transparent; --tag-ink: color-mix(in srgb, var(--link) 80%, transparent); --tag-border: 0; --tag-radius: 4px; --tag-pad: 0 2px;
   --mark-bg: #4A4120; --danger: #F2B8B5; --danger-tint: #3A2523;
-  --edit-bg: #1E1E1E; --guide: #2A2A2A; --bullet: #6A6A6A; --bullet-ring: #333333;
+  --edit-bg: #1E1E1E; --guide-ink: #2A2A2A; --bullet-ink: #6A6A6A; --bullet-ring: #333333;
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
   --sheet-page-end: 0; --sheet-divider: 1px solid #262626; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
   --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -328,6 +344,7 @@
    grey-green words, pale teal links; otherwise as Plain (no cards, Logseq's spacing and dots). It was
    Plain night in Builds 29–31; he kept it as an option and went back to near-black for Plain night */
 [data-skin="plainteal"] {
+  --bullet-strength: 63%; --guide-strength: 44%;
   /* the app's icon in this look */ --logo-tile: #08404F; --logo-ink: #C9D3D3; --logo-spark: #FF7A5E;
   color-scheme: dark;
   --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
@@ -340,7 +357,7 @@
   --link: #9BD3D4; --link-line: rgba(155,211,212,.4); --link-deco: 0;
   --tag-bg: transparent; --tag-ink: color-mix(in srgb, var(--link) 80%, transparent); --tag-border: 0; --tag-radius: 4px; --tag-pad: 0 2px;
   --mark-bg: #5A5223; --danger: #F2B8B5; --danger-tint: #4A2A2E;
-  --edit-bg: #023643; --guide: #0B4A5A; --bullet: rgba(96,142,145,.8); --bullet-ring: #0F4958;
+  --edit-bg: #023643; --guide-ink: #0B4A5A; --bullet-ink: rgba(96,142,145,.8); --bullet-ring: #0F4958;
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
   --sheet-page-end: 0; --sheet-divider: 1px solid #0E5263; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
   --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -358,6 +375,7 @@
 
 /* Azulejo — glazed tiles: cobalt on white, a tiled wall behind the pages, a tile border on each */
 [data-skin="azulejo"] {
+  --bullet-strength: 44%; --guide-strength: 87%;
   /* the app's icon in this look */ --logo-tile: #FFFFFF; --logo-ink: #1D4FA3; --logo-spark: #FF4B2B;
   --bg: #F3F6FB; --surface: #FFFFFF; --surface-2: #F4F7FC;
   --ink: #10203F; --ink-soft: #3E4F70; --ink-faint: #8391AD;
@@ -365,7 +383,7 @@
   --accent: #1D4FA3; --accent-tint: #E2EAF8;
   --link: #1D4FA3; --link-line: rgba(29,79,163,.35);
   --tag-bg: #E2EAF8; --tag-ink: #173F86;
-  --mark-bg: #FCE9A6; --edit-bg: #F2F6FD; --guide: #E1E8F4; --bullet: #1D4FA3;
+  --mark-bg: #FCE9A6; --edit-bg: #F2F6FD; --guide-ink: #E1E8F4; --bullet-ink: #1D4FA3;
   --page-image: url(skins/azulejo-wall.svg); --page-image-size: 48px 48px; --side-bg: rgba(243,246,251,.93);
   --sheet-border: 1px solid #C9D5EA; --sheet-radius: 4px;
   --sheet-band: url(skins/azulejo.svg); --sheet-band-h: 24px;
@@ -379,6 +397,7 @@
    words on it 5.5:1; the spark's own #FF4B2B is too light for words), links in a deep ink-blue with a
    red line under them, Inter (bundled) throughout, the scribble faint in the sidebar's corner */
 [data-skin="thinky"] {
+  --bullet-strength: 75%; --guide-strength: 69%;
   --bg: #FFFFFF; --surface: #FFFFFF; --surface-2: #F8F6F2; --side-bg: #F4F2EE; /* (a hint of the logo's cream in the menu only: he found the cream too creamy) */
   --ink: #1D1A2E; --ink-soft: #4A4558; --ink-faint: #7A7383;
   --line: #E3DFD7; --line-soft: #ECE9E3;
@@ -386,7 +405,7 @@
   --link: #2E3A87; --link-line: rgba(255,75,43,.55);
   --tag-bg: #F7E6E0; --tag-ink: #8E2A14;
   --mark-bg: #FBE7A8; --danger: #A8261B; --danger-tint: #F9DCD6;
-  --edit-bg: #FAF9F6; --guide: #E5E1D9; --bullet: #9A92A0;
+  --edit-bg: #FAF9F6; --guide-ink: #E5E1D9; --bullet-ink: #9A92A0;
   --quote-bar: color-mix(in srgb, var(--accent) 40%, transparent);
   --side-image: url(skins/thinky-corner.svg); --side-image-size: 132px auto; --side-image-pos: 50% calc(100% - 128px); --side-image-repeat: no-repeat;
   /* no cards, as in Calm plain (he asked, Oct 29): the notes sit on the white page, a hairline between days */
@@ -413,6 +432,7 @@
    between days, Inter), on a warm near-black, cream words, the spark's red as the accent, soft ink-blue links
    with a red line; the scribble cut darker into the sidebar's corner; the in-app icon a cream tile. */
 [data-skin="thinkynight"] {
+  --bullet-strength: 65%; --guide-strength: 85%;
   color-scheme: dark;
   --c-note: #8FA8F5; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
   --hl-yellow: #FACC15; --hl-red: #F87171; --hl-pink: #F472B6; --hl-green: #4ADE80; --hl-blue: #60A5FA; --hl-purple: #C084FC; --hl-gray: #9CA3AF; --hl-tint: 24%;
@@ -423,7 +443,7 @@
   --link: #A3B2F2; --link-line: rgba(255,110,82,.55);
   --tag-bg: color-mix(in srgb, #FF6E52 16%, #161419); --tag-ink: color-mix(in srgb, #FF6E52 70%, #EAE4D9);
   --mark-bg: #5A4A1C; --danger: #F2B8B5; --danger-tint: #3A2523;
-  --edit-bg: #1E1C22; --guide: #2A272F; --bullet: #6F6A76; --bullet-ring: #34313A;
+  --edit-bg: #1E1C22; --guide-ink: #2A272F; --bullet-ink: #6F6A76; --bullet-ring: #34313A;
   --quote-bar: color-mix(in srgb, var(--accent) 45%, transparent);
   --side-image: url(skins/thinky-night-corner.svg); --side-image-size: 132px auto; --side-image-pos: 50% calc(100% - 128px); --side-image-repeat: no-repeat;
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;

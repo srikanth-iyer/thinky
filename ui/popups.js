@@ -97,7 +97,12 @@ export class Suggest {
     this.el.addEventListener('pointerup', (e) => {
       const p = press;
       press = null;
-      if (p && e.pointerId === p.id && e.target.closest('li[data-k]') === p.li) this.choose(+p.li.dataset.k);
+      if (p && e.pointerId === p.id && e.target.closest('li[data-k]') === p.li) {
+        // the list closes as it chooses, so the click that follows this lift would land on whatever
+        // was under it (the "+" line under the last note added a note): eat it
+        eatNextClick();
+        this.choose(+p.li.dataset.k);
+      }
     });
     this.valCache = new Map();
   }
