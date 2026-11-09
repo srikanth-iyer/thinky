@@ -505,7 +505,7 @@ result "the pop-up says where the note goes, as config.edn says now: Add to Inbo
 result "the Add note tile is offered in Quick Settings" "echo '$QS' | grep -q AddNoteTile"
 result "tapping the tile opens the pop-up and closes the shade" "echo '$TILE_TOP' | grep -q QuickCaptureActivity && echo '$TILE_FOCUS' | grep -q QuickCaptureActivity"
 result "Match system: the phone's dark mode shows the night look (thinky night)" "echo '$SYS_DARK' | grep -q 'true thinkynight'"
-result "Match system: dark mode turned off while open, the day look comes back (thinky)" "echo '$SYS_LIGHT' | grep -q 'false thinky$'"
+result "Match system: dark mode turned off while open, the day look comes back (thinky)" "echo '$SYS_LIGHT' | tr -d '\\\"' | grep -qx 'false thinky'"
 result "starting in dark mode: no dark frame before the app (cream from the first moment)" "python3 -c 'import sys; v=[int(x) for x in sys.argv[1].split()]; sys.exit(0 if len(v) >= 4 and min(v) > 150 else 1)' '$STARTUP'"
 gzip -9 $OUT/logcat.txt
 log "done: $([ $FAILED = 0 ] && echo 'everything passed' || echo 'SOMETHING FAILED, see the FAIL lines')"
