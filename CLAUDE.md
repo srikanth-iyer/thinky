@@ -288,7 +288,7 @@ draws `--bullet`/`--guide` from them with `--bullet-strength`/`--guide-strength`
 look so dots stand out ~2.2:1 and lines ~1.2:1 from the page (Plain: 100%, Logseq's own, already the faintest);
 a folded note's ring keeps the full colour. t23_build39 measures every look. Dots are 6px in every look (Logseq's size; he picked it over 7 and 5, Nov 9), Paper's 5px. Picking from the "/" list on lift
 eats the click that follows (`eatNextClick`), which otherwise landed on the full-width "+" line and added a note.
-Build 40 (the maintainer's notes of Nov 9; in progress): Settings in six tabs, Updates & about first (`SETTINGS_TABS`
+Build 40 (the maintainer's notes of Nov 9; tested by t8_phone, t16_feedback, t3_pages, t10_safety, t21_build37): Settings in six tabs, Updates & about first (`SETTINGS_TABS`
 in dom.js: about, notes, safety, look, writing, capture; Notes = the folder + Check this folder, Safety = bin, safety
 copies, backups, Writing = `writingCard` (spell check) + Property display + the laptop's keys; the old `#/settings/keys`
 opens Writing; with `html.has-update` Settings opens on Updates; on a phone the row scrolls sideways on one line (he
@@ -615,7 +615,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   `SLASH` and `Outline.command`, `openHistory`, settings' `TABS`, `SKINS`), never copies of them; each
   shows its key from `app.keyMap` (`key`: an action name) or fixed keys (`keys`), `keyHtml` draws
   them; groups Editing / Selected notes / Page / Go / Window / Look; `more` = only when typed for) · `views.js` (All pages, tags, props, to-dos; no Calendar tab, the maintainer removed it) · `welcome.js` (the
-  welcome screen, below "Starting fresh") · `settings.js` (tabs Notes / Look / Capture / Shortcuts (not on phones) / About, at `#/settings/<tab>`;
+  welcome screen, below "Starting fresh") · `settings.js` (tabs Updates & about / Notes / Safety / Look / Writing / Capture since Build 40, at `#/settings/<tab>`;
   About's `feedbackCard`: "Send feedback" opens a new issue on the public GitHub repo in the browser
   (`feedbackUrl`: the first line as the title, the message, then only "thinky <version> · <system>";
   `FEEDBACK_URL`), through `App.openUrl`. The app sends nothing itself; no email box, no problems log.

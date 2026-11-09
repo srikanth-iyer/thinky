@@ -5,6 +5,17 @@ each one the code exactly as it was released at its last build. Later releases a
 the top. (Until Build 32 the app was called Lean Outliner; its downloads and hidden id keep that
 name, so updates install over older builds.)
 
+## Build 40 (November 2026)
+
+### New
+- Settings has six tabs: Updates & about (first), Notes, Safety (the bin, safety copies, backups), Look, Writing (spell check, property display, keyboard shortcuts) and Capture. On a phone the row scrolls sideways.
+- An "Update ready" button at the right of the laptop's top strip when a newer build is out, with Update now and What's new; on the phone, a line at the top of the menu. The app looks for updates every 2 hours and whenever you come back to it.
+- What's new, in the app (Settings → Updates & about): each build's notes, newest first, with yours marked.
+- Property display shows an example note for each choice.
+
+### Fixed
+- In the night looks, the page behind the search box and dialogs goes darker instead of lighter grey.
+
 ## Build 39 (November 2026)
 
 ### New
