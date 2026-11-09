@@ -288,6 +288,25 @@ draws `--bullet`/`--guide` from them with `--bullet-strength`/`--guide-strength`
 look so dots stand out ~2.2:1 and lines ~1.2:1 from the page (Plain: 100%, Logseq's own, already the faintest);
 a folded note's ring keeps the full colour. t23_build39 measures every look. Dots are 6px in every look (Logseq's size; he picked it over 7 and 5, Nov 9), Paper's 5px. Picking from the "/" list on lift
 eats the click that follows (`eatNextClick`), which otherwise landed on the full-width "+" line and added a note.
+Build 40 (the maintainer's notes of Nov 9; in progress): Settings in six tabs, Updates & about first (`SETTINGS_TABS`
+in dom.js: about, notes, safety, look, writing, capture; Notes = the folder + Check this folder, Safety = bin, safety
+copies, backups, Writing = `writingCard` (spell check) + Property display + the laptop's keys; the old `#/settings/keys`
+opens Writing; with `html.has-update` Settings opens on Updates; on a phone the row scrolls sideways on one line (he
+asked: not two lines), the chosen tab scrolled into view). Property display shows one example note per choice
+(`propsHtmlAs` in render.js draws `by:: claude` under each rule; the Icon example uses the plain default dot, not a
+spark-like sign: he said that reads as something important). Updates: `checkUpdate` at start, every 2 hours and when the
+window comes back (each answer kept 30 min); a newer build shows `.hb-update` "Update ready" at the strip's right end
+(laptop; `App.updateMenu`: Update now → Settings' `startUpdate`, What's new) and `#update` at the top of the phone's menu.
+What's new (`whatsNew` in settings.js): each build's release notes from GitHub's releases (read only when opened; the
+CI's "App size" table left out), the installed one marked; it opens by itself when an update waits or after updating
+(`seenBuild`). Night looks dim the page DARKER behind the search box and dialogs (`--scrim`/`--scrim-modal`, skins.css;
+his pick "A"); day looks keep the ink-coloured dim.
+Version numbers (he decided, Nov 9): the version's first number = released to the public, the middle = big changes,
+the last = small ones; so far the last number is the build number (ci_version.py and update_sig.py take major.minor
+from tauri.conf.json and add N). When the middle number first goes up, the last goes back to 0 (0.2.0, 0.2.1…) with
+"Build N" kept as its own label: that build changes ci_version.py, update_sig.py `version`, update.rs's checks and the
+Android versionCode so they no longer read the build number from the version, and tests it before release. Suggest
+which number to raise with each build. CHANGELOG.md gets a section for every release (Builds 38 and 39 were added late).
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

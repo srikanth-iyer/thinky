@@ -95,6 +95,9 @@
      any page or card). Each look's strength is set so its dots stand out about 2.2:1 and its lines about
      1.2:1 from the page they sit on. The ring of a folded note keeps the look's full colour: it says
      something is hidden. */
+  /* behind the search box and dialogs: the page dimmed (Build 40: in the night looks the ink's light
+     colour made the page lighter grey, which he found distracting; there it goes darker, his pick "A") */
+  --scrim: color-mix(in srgb, var(--ink) 28%, transparent); --scrim-modal: color-mix(in srgb, var(--ink) 32%, transparent);
   --bullet-strength: 65%; --guide-strength: 60%;
   --bullet: color-mix(in srgb, var(--bullet-ink) var(--bullet-strength), transparent);
   --guide: color-mix(in srgb, var(--guide-ink) var(--guide-strength), transparent);
@@ -465,3 +468,8 @@
 html[data-links="underline"], html[data-links="underline"] [data-skin] { --link-deco: 1px solid var(--link-line); --link-open: none; --link-close: none; }
 html[data-links="color"], html[data-links="color"] [data-skin] { --link-deco: 0; --link-open: none; --link-close: none; }
 html[data-links="brackets"], html[data-links="brackets"] [data-skin] { --link-deco: 0; --link-open: "[["; --link-close: "]]"; }
+
+/* the night looks: the page goes darker behind the search box and dialogs (Build 40) */
+[data-skin="night"], [data-skin="thinkynight"], [data-skin="plainnight"], [data-skin="plainteal"], [data-skin="stickernight"] {
+  --scrim: rgba(0, 0, 0, .55); --scrim-modal: rgba(0, 0, 0, .6);
+}

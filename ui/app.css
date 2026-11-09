@@ -787,7 +787,7 @@ a.tag .hash { display: var(--hash); }
 .err { color: var(--danger); }
 
 /* ---------- search and the command list (search.js; one box, two modes) ---------- */
-#search, .search-ghost { position: fixed; inset: 0; background: color-mix(in srgb, var(--ink) 28%, transparent); z-index: 50; display: flex; justify-content: center; align-items: flex-start; padding: 10vh 16px 16px; }
+#search, .search-ghost { position: fixed; inset: 0; background: var(--scrim); z-index: 50; display: flex; justify-content: center; align-items: flex-start; padding: 10vh 16px 16px; }
 .search-box { width: min(640px, 100%); max-height: 100%; display: flex; flex-direction: column; background: var(--surface); border-radius: 14px; border: var(--sheet-border); box-shadow: 0 24px 60px -20px rgba(0,0,0,.45); overflow: hidden; line-height: 1.4; color: var(--ink); }
 .search-box input { flex: none; width: 100%; border: 0; outline: 0; font: inherit; font-size: 18px; padding: 16px 18px; background: transparent; color: var(--ink); border-bottom: 1px solid var(--line-soft); }
 .results { position: relative; /* (rows' offsetTop from the list: search.js paint) */ flex: 0 1 auto; min-height: 0; max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; list-style: none; margin: 0; padding: 6px; }
@@ -910,7 +910,7 @@ a.tag .hash { display: var(--hash); }
 .menu button:hover, .menu button:focus-visible { background: var(--accent-tint); outline: none; }
 .menu button.danger { color: var(--danger); }
 .menu .mhint { float: right; margin-left: 22px; color: var(--ink-faint); font-size: 12.5px; }
-.modal-back { position: fixed; inset: 0; z-index: 70; background: color-mix(in srgb, var(--ink) 32%, transparent); display: flex; align-items: flex-start; justify-content: center; padding: 14vh 16px 16px; }
+.modal-back { position: fixed; inset: 0; z-index: 70; background: var(--scrim-modal); display: flex; align-items: flex-start; justify-content: center; padding: 14vh 16px 16px; }
 .modal { width: min(460px, 100%); background: var(--surface); border-radius: 14px; border: var(--sheet-border); box-shadow: 0 24px 60px -20px rgba(0,0,0,.45); padding: 18px 20px; line-height: 1.5; font-family: "IBM Plex Sans", system-ui, sans-serif; color: var(--ink); }
 .modal h2 { margin: 0 0 8px; font-size: 18px; }
 /* a big dialog: a header, a part that scrolls, a footer; the whole screen on phones. The clash screen
