@@ -4,7 +4,7 @@
 import { call, today, nowTime } from './api.js';
 import { esc, renderBlock, propsHtml } from './render.js';
 import { createCalendar } from './calendar.js';
-import { h, fadeAway } from './dom.js';
+import { h, fadeAway, grow, eatThisClick } from './dom.js';
 
 /** A note folded in its page (collapsed:: true on a line after its first; editor.js foldedIn). */
 const COLLAPSED = /\ncollapsed:: true(?=\n|$)/;
@@ -18,6 +18,65 @@ function eatNextClick() {
   const eat = (c) => { c.preventDefault(); c.stopPropagation(); };
   document.addEventListener('click', eat, { capture: true, once: true });
   setTimeout(() => document.removeEventListener('click', eat, true), 700);
+}
+
+/** Build 41 (he asked: menus open the way search does): a pop-up opens out of what opened it. From a
+ *  small button (or a note's dot): the pop-up's corner sits on the button, a copy of its icon exactly over
+ *  it, and it grows out of it to the right (or left, near the window's edge) and down, and folds back into
+ *  it (closeFrom). Else (a link, a place in the text, too little room below) placed as before, growing out
+ *  of its corner nearest what opened it. */
+export function openFrom(box, anchor) {
+  const el = anchor instanceof Element ? anchor : null;
+  const r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
+  box.classList.add('grown');
+  let spot = null;
+  if (el && r.width > 0 && r.width <= 48 && r.height <= 48) {
+    const head = h('div', 'pop-head'), ic = h('span', 'pop-hic');
+    ic.setAttribute('aria-hidden', 'true');
+    if (el.matches('.bul, [data-dot]')) ic.innerHTML = '<i class="pop-dot"></i>';
+    else {
+      ic.innerHTML = el.innerHTML;
+      const sv = el.querySelector('svg')?.getBoundingClientRect(), cs = ic.querySelector('svg');
+      if (sv && cs) { cs.style.width = `${sv.width}px`; cs.style.height = `${sv.height}px`; }
+    }
+    // (the button is under the pop-up now: a press on its copy is a press on it, which closes the
+    // pop-up; the click that follows doesn't open it again)
+    ic.addEventListener('pointerdown', (e) => { if (e.button) return; e.preventDefault(); eatThisClick(); box.dispatchEvent(new Event('pop-close')); });
+    head.append(ic);
+    // (what the pop-up starts with goes beside the icon: a date picker's title, the note menu's colours)
+    const title = box.querySelector(':scope > .pop-title, :scope > .nm-colors');
+    if (title) head.append(title);
+    box.prepend(head);
+    box.style.setProperty('--ib-w', `${r.width}px`);
+    box.style.setProperty('--ib-h', `${r.height}px`);
+    box.style.left = '0px'; box.style.top = '0px';
+    const w = box.offsetWidth, ht = box.offsetHeight;
+    const right = r.left - 1 + w > window.innerWidth - 8;
+    const room = window.innerHeight - 8 - (r.top - 1); // (a long menu low down: it scrolls, if a fair part of it fits)
+    if ((ht <= room || room >= 240) && (!right || r.right + 1 - w >= 8)) {
+      if (ht > room) { box.style.maxHeight = `${room}px`; box.style.overflowY = 'auto'; }
+      box.classList.toggle('from-right', right);
+      box.style.left = `${right ? r.right + 1 - w : r.left - 1}px`; // (its 1px edge: the icons land on each other)
+      box.style.top = `${r.top - 1}px`;
+      spot = { x: right ? w - r.width - 2 : 0, y: 0, w: r.width + 2, h: r.height + 2 };
+    } else { // (no room for it that way: as before)
+      head.remove();
+      if (title) box.prepend(title);
+      box.style.removeProperty('--ib-w'); box.style.removeProperty('--ib-h');
+    }
+  }
+  if (!spot) {
+    place(box, r);
+    const b = box.getBoundingClientRect(), below = b.top >= r.top;
+    spot = { x: Math.max(0, Math.min(r.left - b.left, b.width - 24)), y: below ? 0 : Math.max(0, b.height - 24), w: 24, h: 24 };
+  }
+  box.dataset.spot = JSON.stringify(spot);
+  grow(box, spot);
+}
+/** A pop-up opened by openFrom closes: it folds back into what opened it (a copy does, dom.js fadeAway). */
+export function closeFrom(box) {
+  fadeAway(box, '', (g) => { try { return g.dataset.spot ? grow(g, JSON.parse(g.dataset.spot), true) : null; } catch { return null; } });
+  box.remove();
 }
 
 export function place(el, r) {
@@ -339,11 +398,12 @@ export function pickDate(anchor, opts = {}) {
       if (e.button === 0) eatNextClick();
       done(null);
     };
-    const cleanup = () => { fadeAway(box); box.remove(); document.removeEventListener('keydown', onKey, true); document.removeEventListener('pointerdown', onDown, true); };
+    box.addEventListener('pop-close', () => done(null)); // (its button, under it, pressed again)
+    const cleanup = () => { closeFrom(box); document.removeEventListener('keydown', onKey, true); document.removeEventListener('pointerdown', onDown, true); };
     document.addEventListener('keydown', onKey, true);
     // (not once it's closed by an Esc right away: a listener left behind would act on the next press)
     setTimeout(() => { if (box.isConnected) document.addEventListener('pointerdown', onDown, true); }, 0);
-    place(box, anchor);
+    openFrom(box, opts.button?.isConnected && opts.button.offsetParent ? opts.button : anchor);
     cal.focusDay();
   });
 }
@@ -423,7 +483,7 @@ export function menu(anchor, items, opts = {}) {
   const btn = anchor instanceof Element ? anchor : null;
   btn?.setAttribute('aria-haspopup', 'menu');
   btn?.setAttribute('aria-expanded', 'true');
-  const close = () => { if (shut) return; shut = true; btn?.setAttribute('aria-expanded', 'false'); fadeAway(box); box.remove(); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); document.removeEventListener('beforeinput', close, true); };
+  const close = () => { if (shut) return; shut = true; btn?.setAttribute('aria-expanded', 'false'); closeFrom(box); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); document.removeEventListener('beforeinput', close, true); };
   // a press outside closes it. The button that opened it closes it too (its click doesn't open it
   // again), and after a finger's press elsewhere the tap doesn't also act on what's under it (a link).
   const onDown = (e) => {
@@ -439,13 +499,14 @@ export function menu(anchor, items, opts = {}) {
     if (had && btn?.isConnected && !opts.keep) btn.focus({ preventScroll: true });
   };
   if (opts.keep) document.addEventListener('beforeinput', close, true); // (typing goes on: the menu goes)
+  box.addEventListener('pop-close', () => { const had = box.contains(document.activeElement); close(); if (had && btn?.isConnected && !opts.keep) btn.focus({ preventScroll: true }); });
   box.onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) { close(); items[+b.dataset.k].run(); } };
   // Esc works from the moment it shows (Build 38: an Esc right after the click was lost); a press
   // outside only from the next turn, so the press that opened it doesn't close it
   document.addEventListener('keydown', onKey, true);
   // (not once it's closed: a listener left behind would eat the next click, Build 38)
   setTimeout(() => { if (!shut) document.addEventListener('pointerdown', onDown, true); }, 0);
-  place(box, anchor.getBoundingClientRect());
+  openFrom(box, anchor);
   if (!opts.keep) box.querySelector('button')?.focus();
 }
 
@@ -490,8 +551,7 @@ export function noteMenu(r, o) {
     if (!open) return;
     open = false;
     const had = box.contains(document.activeElement);
-    fadeAway(box);
-    box.remove();
+    closeFrom(box);
     document.removeEventListener('pointerdown', onDown, true);
     document.removeEventListener('keydown', onKey, true);
     document.removeEventListener('beforeinput', typed, true);
@@ -500,6 +560,7 @@ export function noteMenu(r, o) {
     o.closed?.(picked);
   };
   const away = () => close(); // (another page: the note it's for has left the screen)
+  box.addEventListener('pop-close', away); // (its dot, under it, pressed again)
   window.addEventListener('hashchange', away);
   // typing goes on elsewhere (the editing box keeps the keyboard when a finger opens it): it closes
   const typed = (e) => { if (!box.contains(e.target)) close(); };
@@ -557,7 +618,7 @@ export function noteMenu(r, o) {
   // (it never opens during a press or a key's capture phase: right away is safe)
   document.addEventListener('pointerdown', onDown, true);
   document.addEventListener('keydown', onKey, true);
-  place(box, r);
+  openFrom(box, o.from?.isConnected ? o.from : r);
   if (o.focus) (box.querySelector('.nm-item') ?? box.querySelector('button'))?.focus({ preventScroll: true });
   return close;
 }

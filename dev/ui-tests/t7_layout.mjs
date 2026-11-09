@@ -17,10 +17,10 @@ for (let k = 0; k < 2000; k++) huge.push(`\t\t- hidden ${k}`);
 write('pages/Huge.md', huge.join('\n') + '\n');
 const { browser, page, errors } = await open();
 
-console.log('the logo, the sidebar’s button, Search, Home, back and forward are on one line');
+console.log('the sidebar’s button, Search, back, forward and Go to date are on one line');
 const mid = (sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return r.top + r.height / 2; }, sel);
-const homeMid = await mid('#histbar [data-a="home"]');
-const rowMids = [await mid('#histbar .hb-logo'), await mid('#histbar [data-a="side"]'), await mid('#histbar [data-a="search"]'), await mid('#histbar [data-h="back"]'), await mid('#histbar [data-a="date"]')];
+const homeMid = await mid('#histbar [data-a="date"]'); // (Build 41: on today's journal Home's spot is Go to date; no logo in the strip)
+const rowMids = [await mid('#histbar [data-a="side"]'), await mid('#histbar [data-a="search"]'), await mid('#histbar [data-h="back"]'), await mid('#histbar [data-h="forward"]')];
 check(rowMids.every((m) => Math.abs(m - homeMid) <= 1), 'they sit level with each other', `${homeMid} vs ${rowMids.join(', ')}`);
 const sideX = await page.evaluate(() => document.querySelector('#histbar [data-a="side"]').getBoundingClientRect().left);
 await page.locator('#histbar [data-a="side"]').click();

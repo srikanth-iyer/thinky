@@ -272,8 +272,9 @@ if [ -n "$SOCK" ] && [ -n "$LATEST" ]; then
   run adb shell am start -W -n "$PKG/.MainActivity" # back to the front (Back at the start left it)
   sleep 3
   connect
-  # as if today's check had just found that release (no GitHub API call needed)
-  UPD=$($CDP eval "(async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); localStorage.setItem('updateCheck', JSON.stringify({ at: Date.now(), latest: { tag: '$LATEST', url: 'https://github.com/srikanth-iyer/thinky/releases/tag/$LATEST' } })); await window.leanApp.checkUpdate(); location.hash = '#/settings/about'; await s(2500); const b = document.querySelector('.upd [data-a=update]'); if (!b) return { stage: document.querySelector('.upd')?.dataset.stage || null, about: document.querySelector('.set-panel:not([hidden])')?.innerText.slice(0, 300) }; b.click(); await s(3000); return { stage: document.querySelector('.upd')?.dataset.stage, text: document.querySelector('.upd-out')?.textContent }; })()" | tr -d '\r')
+  # as if today's check had just found that release (no GitHub API call needed); since Build 41 the app
+  # compares versions, which a release's title names: this test build is 0.1.0, so any version is newer
+  UPD=$($CDP eval "(async () => { const s = (ms) => new Promise(r => setTimeout(r, ms)); localStorage.setItem('updateCheck', JSON.stringify({ at: Date.now(), latest: { tag: '$LATEST', version: '1.0.0', url: 'https://github.com/srikanth-iyer/thinky/releases/tag/$LATEST' } })); await window.leanApp.checkUpdate(); location.hash = '#/settings/about'; await s(2500); const b = document.querySelector('.upd [data-a=update]'); if (!b) return { stage: document.querySelector('.upd')?.dataset.stage || null, about: document.querySelector('.set-panel:not([hidden])')?.innerText.slice(0, 300) }; b.click(); await s(3000); return { stage: document.querySelector('.upd')?.dataset.stage, text: document.querySelector('.upd-out')?.textContent }; })()" | tr -d '\r')
   log "after Update now: $UPD"
   shot 18-update-install-unknown-apps
   UNKNOWN=$(adb shell dumpsys activity activities | tr -d '\r' | grep -m1 -o 'topResumedActivity=[^}]*')

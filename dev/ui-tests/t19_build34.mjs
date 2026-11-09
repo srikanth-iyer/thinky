@@ -12,16 +12,16 @@ fs.utimesSync(tasks, old, old);
 
 const { browser, page, errors } = await open();
 
-console.log('the top strip: the buttons over the sidebar are evenly spaced, the last at its edge');
+console.log('the top strip: the buttons over the sidebar (Build 41: close together in spots of their own, within the sidebar)');
 const strip = await page.evaluate(() => {
-  const app = [...document.querySelectorAll('#histbar .hb-app > *')];
+  const app = [...document.querySelectorAll('#histbar .hb-app > button')];
   const nav = [...document.querySelectorAll('#histbar .hb-nav[data-p="0"] > button')];
   const r = [...app, ...nav].filter((e) => e.offsetWidth).map((e) => e.getBoundingClientRect());
-  const gaps = r.slice(1).map((b, i) => Math.round(b.left - r[i].right));
+  const gaps = r.slice(2).map((b, i) => Math.round(b.left - r[i + 1].right)); // (after the sidebar's button and its line)
   return { n: r.length, gaps, last: Math.round(r.at(-1)?.right), side: Math.round(document.querySelector('#side').getBoundingClientRect().right) };
 });
-check(strip.n === 7 && Math.max(...strip.gaps) - Math.min(...strip.gaps) <= 1, 'seven buttons, the same gap between each two', JSON.stringify(strip));
-check(Math.abs(strip.side - strip.last) <= 12, 'the row ends at the sidebar’s edge', JSON.stringify(strip));
+check(strip.n === 5 && Math.max(...strip.gaps) - Math.min(...strip.gaps) <= 1, 'five spots (sidebar, Search, Back, Forward, Go to date), the same gap between each', JSON.stringify(strip));
+check(strip.last < strip.side, 'all of them over the sidebar', JSON.stringify(strip));
 
 console.log('linked references fold, as unlinked ones do, and stay folded');
 const person = 'Rosa Penhallow';

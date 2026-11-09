@@ -40,14 +40,14 @@ const oneTab = () => page.evaluate(async () => { const a = window.leanApp; await
 const sideW = () => page.evaluate(() => Math.round(document.querySelector('#side').getBoundingClientRect().width));
 
 // --------------------------------------------------------------------------------------------
-console.log('the top strip: the logo, the sidebar button, Search, Home, back, forward, Go to date');
+console.log('the top strip: the sidebar button, Search, back, forward, Go to date (Build 41: in spots of their own)');
 const xs0 = await stripXs();
-check(/^side@\d+ search@\d+ home@\d+ back@\d+ forward@\d+ date@\d+$/.test(xs0), 'in that order, at the left of the window', xs0);
-const gaps = xs0.match(/@(\d+)/g).map((s) => +s.slice(1)).slice(2);
-const icon = await page.evaluate(() => Math.round(document.querySelector('#histbar [data-a="home"] svg').getBoundingClientRect().width));
-// (Build 34, he asked: evenly spaced over the sidebar's width, the last at its edge; t19 measures the gaps)
+check(/^side@\d+ search@\d+ back@\d+ forward@\d+ date@\d+$/.test(xs0), 'in that order, at the left of the window', xs0);
+const nums = (xs) => xs.match(/@(\d+)/g).map((v) => +v.slice(1));
+const gaps = nums(xs0).slice(2);
+const icon = await page.evaluate(() => Math.round(document.querySelector('#histbar [data-a="date"] svg').getBoundingClientRect().width));
 const steps = gaps.slice(1).map((x, k) => x - gaps[k]);
-check(icon >= 22 && Math.max(...steps) - Math.min(...steps) <= 1, 'big icons, evenly spaced', `${gaps} icon ${icon}`);
+check(icon >= 22 && Math.max(...steps) - Math.min(...steps) <= 1, 'big icons, close together', `${gaps} icon ${icon}`);
 const hb = await box('#histbar'), sd = await box('#side');
 { // Build 37: the "+" just right of the sidebar, at the notes' top-left corner
   const plus = await box('#histbar .tab-new[data-p="0"]');
@@ -74,14 +74,14 @@ await sleep(450);
 const xs1 = await stripXs();
 const mid1 = await box('#main .view');
 check(during.sliding && /transform/.test(during.side) && during.anims === 1, 'it slides (the sidebar, and the page by a transform)', JSON.stringify(during));
-check(xs1 === xs0, 'every button in the strip stays exactly where it was', xs1);
+check(nums(xs1).join() === nums(xs0).join(), 'every button in the strip stays exactly where it was', xs1);
 check(mid1.x < mid0.x && Math.abs((mid0.x - mid1.x) - 126) <= 2 && await page.evaluate(() => getComputedStyle(document.querySelector('#side')).visibility) === 'hidden', 'the page is centred in the whole width now; the sidebar is out of sight (and of the Tab key)', JSON.stringify({ mid0, mid1 }));
 check(await page.locator('#histbar [data-a="side"]').getAttribute('aria-expanded') === 'false' && !(await page.evaluate(() => document.documentElement.classList.contains('sliding'))), 'the button says the sidebar is closed; the slide is over');
 await page.screenshot({ path: SHOTS + '/nav-strip-hidden.png' });
 await page.keyboard.press('t');
 await page.keyboard.press('l');
 await sleep(450);
-check(await stripXs() === xs0 && (await box('#main .view')).x === mid0.x && await sideW() === 252, '"t l" opens it again: all back where it was', await stripXs());
+check(nums(await stripXs()).join() === nums(xs0).join() && (await box('#main .view')).x === mid0.x && await sideW() === 252, '"t l" opens it again: all back where it was', await stripXs());
 
 console.log('a 3,000-note page slides as smoothly: transforms only, nothing laid out again while it moves');
 await go(page, '#/page/Huge');
@@ -119,10 +119,9 @@ check(grip && Math.abs(grip.x + grip.w / 2 - 252) <= 2 && await page.locator('.s
 const drag = async (x0, y, x1) => { await page.mouse.move(x0, y); await page.mouse.down(); await page.mouse.move((x0 + x1) / 2, y, { steps: 3 }); await page.mouse.move(x1, y, { steps: 3 }); await page.mouse.up(); await sleep(150); };
 await drag(252, 400, 352);
 check(await sideW() === 352 && (await box('#col')).x === 352 && await page.evaluate(() => JSON.parse(localStorage.getItem('sideW'))) === 352, 'wider by as much as it was dragged; kept', await sideW());
-{ // the buttons over the sidebar spread with its new width (evenly; nothing past them moves on its own)
-  const xs = (await stripXs()).match(/@(\d+)/g).map((v) => +v.slice(1)).slice(2);
-  const st = xs.slice(1).map((x, k) => x - xs[k]);
-  check(Math.max(...st) - Math.min(...st) <= 1 && xs.at(-1) > gaps.at(-1), 'the strip’s buttons spread evenly over the wider sidebar', xs.join(','));
+{ // (Build 41) the buttons over the sidebar stay in their spots; the "+" follows the sidebar's edge
+  const xs = nums(await stripXs()).slice(2), plus = await box('#histbar .tab-new[data-p="0"]');
+  check(xs.join() === gaps.join() && plus.x === 352 + 6, 'the strip’s buttons stay put; the "+" moves to the wider sidebar’s edge', `${xs} + ${plus.x}`);
 }
 await drag(352, 400, 60);
 check(await sideW() === 200, 'never narrower than 200 px', await sideW());
@@ -147,13 +146,13 @@ console.log('two sides: the line between them, and the strip above each');
 await go(page, '#/page/Hub');
 await page.evaluate(() => window.leanApp.tabs.open('#/page/Ref%20one', 'side'));
 await sleep(900);
-const navRight = async () => (await box('#histbar .hb-nav[data-p="1"] [data-a="home"]')).x - (await box('#main2')).x;
+const navRight = async () => (await box('#histbar .hb-nav[data-p="1"] > button')).x - (await box('#main2')).x; // (its first spot: Back)
 check(await page.locator('.split-grip').isVisible() && Math.abs(await navRight() - 8) <= 2, 'the right side’s buttons sit right above it', await navRight());
 const xs2 = await stripXs();
 await page.locator('#histbar [data-a="side"]').click();
 await sleep(450);
 const xs3 = await stripXs();
-const left3 = xs3.split(' ').slice(0, 6).join(' '), left2 = xs2.split(' ').slice(0, 6).join(' ');
+const left3 = nums(xs3).slice(0, 5).join(), left2 = nums(xs2).slice(0, 5).join();
 check(left3 === left2 && Math.abs(await navRight() - 8) <= 2, 'closing the sidebar: the left buttons stay put, the right side’s follow their side', `${xs2} → ${xs3}`);
 await page.screenshot({ path: SHOTS + '/nav-two-sides-hidden.png' });
 await page.locator('#histbar [data-a="side"]').click();

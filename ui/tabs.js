@@ -8,7 +8,7 @@
 // Phones and narrow windows (≤ 860px) stay as they were: no strip, no split (only the active pane
 // shows), and Ctrl+click opens the page in place.
 import { store, isAndroid } from './api.js';
-import { ICON } from './dom.js';
+import { ICON, motionOn, OPEN_MS, CLOSE_MS, EASE } from './dom.js';
 import { esc } from './render.js';
 import { menu } from './popups.js';
 
@@ -35,8 +35,10 @@ export const placeOf = (t) => t.hist[t.at];
  *  side's show only while there are two). */
 export const sideNav = (p) => {
   const on = p ? ', on the right' : '';
-  return `<button data-a="home" aria-label="Today in Journals${on}" title="Today in Journals (g j)">${ICON.home}</button>`
-    + `<button data-h="back" aria-label="Back${on}" title="Back (Alt+←)">${ICON.back}</button><button data-h="forward" aria-label="Forward${on}" title="Forward (Alt+→)">${ICON.forward}</button>`
+  // Build 41: Back and Forward first, then one spot that is Go to date on today's journal and Home
+  // anywhere else (App.updateHome sets .at-today), as on the phone
+  return `<button data-h="back" aria-label="Back${on}" title="Back (Alt+←)">${ICON.back}</button><button data-h="forward" aria-label="Forward${on}" title="Forward (Alt+→)">${ICON.forward}</button>`
+    + `<button data-a="home" aria-label="Today in Journals${on}" title="Today in Journals (g j)">${ICON.home}</button>`
     + `<button data-a="date" aria-label="Go to date${on}" title="Go to date (g d)">${ICON.date}</button>`;
 };
 /** What a place shows: kind ('journals', 'page', 'zoom'…), the page's name (or a property), the zoomed-in line. */
@@ -362,6 +364,15 @@ export class Tabs {
     if (this.dragging || !this.panes.length) return;
     const many = this.panes.length > 1 || this.panes[0].tabs.length > 1;
     const had = document.activeElement?.closest?.('#histbar .tab'); // (the keyboard was on a tab: it stays on the strip)
+    // Build 41 (he asked): a new tab widens into place, the others slide over when one closes (where
+    // each tab was, by the tab itself, before the strip is drawn again)
+    const moving = motionOn() && this.drawn;
+    const was = new Map();
+    if (moving) for (const box of document.querySelectorAll('#histbar .tabs')) {
+      const p = this.panes[+box.dataset.p];
+      box.querySelectorAll('.tab').forEach((el) => { const t = p?.tabs[+el.dataset.k]; if (t && el.tab === t) was.set(t, el.getBoundingClientRect().left); });
+    }
+    this.drawn = true;
     document.querySelectorAll('#histbar .tabs').forEach((box) => {
       const p = this.panes[+box.dataset.p], plus = box.nextElementSibling;
       // Build 37 (he asked, Nov 5): the "+" always shows (as in browsers), just right of the sidebar
@@ -370,6 +381,7 @@ export class Tabs {
       if ((!many || !p) && box.hidden && !box.firstChild) return; // (one tab: no tabs to show, as before)
       box.hidden = !many || !p;
       box.innerHTML = box.hidden ? '' : p.tabs.map((t, k) => this.tabHtml(t, k, k === p.cur, p.el.id)).join('');
+      box.querySelectorAll('.tab').forEach((el) => { el.tab = p.tabs[+el.dataset.k]; });
       const cur = box.querySelector('.tab.cur'); // very many tabs scroll sideways: the shown one stays in sight
       if (!cur) return;
       const b = box.getBoundingClientRect(), c = cur.getBoundingClientRect();
@@ -378,7 +390,19 @@ export class Tabs {
     });
     if (had && !had.isConnected) document.querySelector(`#histbar .tabs[data-p="${this.act}"] .tab.cur`)?.focus({ preventScroll: true });
     this.alignStrip();
+    if (moving) for (const el of document.querySelectorAll('#histbar .tab')) {
+      const from = was.get(el.tab), now = el.getBoundingClientRect().left;
+      if (from === undefined) {
+        // (a strip of many tabs that scrolls: once it has its width, the shown tab is brought into sight again)
+        el.animate([{ maxWidth: '0px', minWidth: '0px', opacity: 0 }, { maxWidth: `${el.offsetWidth}px`, minWidth: '0px', opacity: 1 }], { duration: OPEN_MS, easing: EASE })
+          .finished.then(() => this.curInSight(), () => {});
+      } else if (Math.abs(from - now) > 0.5) el.animate([{ transform: `translateX(${from - now}px)` }, { transform: 'none' }], { duration: CLOSE_MS, easing: EASE });
+    }
     // (the strip may have moved right with the sidebar's edge: the shown tab is kept in sight again)
+    this.curInSight();
+  }
+  /** Each side's shown tab in sight in its strip (very many tabs scroll sideways). */
+  curInSight() {
     document.querySelectorAll('#histbar .tabs').forEach((box) => {
       const cur = box.hidden ? null : box.querySelector('.tab.cur');
       if (!cur) return;
@@ -387,20 +411,19 @@ export class Tabs {
       else if (c.right > b.right) box.scrollLeft += c.right - b.right;
     });
   }
-  /** Build 37 (he asked, Nov 5): the left side's tabs (or its "+" alone) start just right of the
-   *  sidebar, at the page's top-left corner, wherever the sidebar's edge is; with the sidebar hidden,
-   *  right after Back and Forward as before. Done again when the sidebar or the window changes size. */
+  /** The left side's tabs (or its "+" alone) start just outside the sidebar's edge (Build 37), and since
+   *  Build 41 (he asked: nothing in the strip moves when the sidebar opens or closes) at that same place
+   *  with the sidebar hidden: by its width, not where it is. Done again when it or the window changes size. */
   alignStrip() {
     const box = document.querySelector('#histbar .tabs[data-p="0"]'), plus = box?.nextElementSibling;
     if (!box || !plus) return;
     const first = !box.hidden ? box : !plus.hidden ? plus : null;
     for (const el of [box, plus]) if (el !== first) el.style.marginLeft = '';
     if (!first) return;
-    const side = document.getElementById('side');
-    const shown = side && !document.body.classList.contains('side-hidden') && side.getBoundingClientRect().width > 0;
+    const side = document.getElementById('side'), app = document.getElementById('app');
     first.style.marginLeft = '';
-    if (!shown || !this.on) return;
-    const edge = side.getBoundingClientRect().right, left = first.getBoundingClientRect().left;
+    if (!side || !app || !this.on || document.documentElement.classList.contains('welcome')) return;
+    const edge = app.getBoundingClientRect().left + side.offsetWidth, left = first.getBoundingClientRect().left;
     const base = parseFloat(getComputedStyle(first).marginLeft) || 0;
     if (left < edge + 6) first.style.marginLeft = `${base + edge + 6 - left}px`;
   }

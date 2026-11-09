@@ -172,7 +172,8 @@ console.log('Go to date: a calendar button in the top strip, dots on days with n
 await go(page, '#/journals');
 await sleep(400);
 const dateBtn = page.locator('#histbar .hb-nav[data-p="0"] [data-a="date"]');
-check(await dateBtn.isVisible() && await dateBtn.evaluate((b) => b.previousElementSibling?.dataset.h === 'forward'), 'right after Back and Forward');
+// (Build 41: Back, Forward, then one spot that is Go to date on today's journal and Home elsewhere)
+check(await dateBtn.isVisible() && await dateBtn.evaluate((b) => b.previousElementSibling?.dataset.a === 'home' && b.previousElementSibling.previousElementSibling?.dataset.h === 'forward'), 'after Back and Forward, in Home\'s spot');
 check(await page.locator('.view-tools').count() === 0 && await page.locator('.view > div > section.sheet').first().evaluate((s) => s.parentElement.previousElementSibling === null), 'nothing above the days any more');
 await dateBtn.click();
 await page.waitForSelector('.datepick .cal-grid');
@@ -185,8 +186,9 @@ await page.evaluate(() => document.activeElement?.blur());
 await page.keyboard.press('g');
 await page.keyboard.press('d');
 await page.waitForSelector('.datepick .cal-grid');
-const under = await page.evaluate(() => { const p = document.querySelector('.datepick').getBoundingClientRect(), b = document.querySelector('#histbar .hb-nav[data-p="0"] [data-a="date"]').getBoundingClientRect(); return { top: Math.round(p.top - b.bottom), left: Math.round(p.left - b.left) }; });
-check(under.top >= -2 && under.top <= 24 && Math.abs(under.left) <= 320, 'g d opens it under that button', JSON.stringify(under));
+// (Build 41: it opens out of that button, its corner on it)
+const under = await page.evaluate(() => { const p = document.querySelector('.datepick').getBoundingClientRect(), b = document.querySelector('#histbar .hb-nav[data-p="0"] [data-a="date"]').getBoundingClientRect(); return { top: Math.round(p.top - b.top), left: Math.round(p.left - b.left) }; });
+check(under.top >= -2 && under.top <= 1 && Math.abs(under.left) <= 1, 'g d opens it out of that button', JSON.stringify(under));
 await page.keyboard.press('Escape');
 await sleep(200);
 

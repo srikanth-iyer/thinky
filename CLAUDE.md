@@ -302,14 +302,39 @@ CI's "App size" table left out), the installed one marked; it opens by itself wh
 (`seenBuild`). Night looks dim the page DARKER behind the search box and dialogs (`--scrim`/`--scrim-modal`, skins.css;
 his pick "A"); day looks keep the ink-coloured dim.
 Version numbers (he decided, Nov 9): the version's first number = released to the public, the middle = big changes,
-the last = small ones; so far the last number is the build number (ci_version.py and update_sig.py take major.minor
-from tauri.conf.json and add N). When the middle number first goes up, the last goes back to 0 (0.2.0, 0.2.1…) with
-"Build N" kept as its own label: that build changes ci_version.py, update_sig.py `version`, update.rs's checks and the
-Android versionCode so they no longer read the build number from the version, and tests it before release. Versions given afterwards (he agreed,
-Nov 9; CHANGELOG.md's headings): 0.1 = Builds 1–22, 0.2 = 23–28, 0.3 = 29–31, 0.4 = 32–38, 0.5 = 39 on (Build 40 =
-0.5.1); Build 41 is the first to carry its own: 0.5.2, with the reset work above (and the release job titling releases
-"Build N · version X"; this session can't edit GitHub releases, so Builds 34–39's titles still say only "Build N").
-Suggest which number to raise with each build. CHANGELOG.md gets a section for every release (Builds 38 and 39 were added late).
+the last = small ones, back to 0 when the middle goes up. Versions given afterwards (he agreed, Nov 9; CHANGELOG.md's
+headings): 0.1 = Builds 1–22, 0.2 = 23–28, 0.3 = 29–31, 0.4 = 32–38, 0.5 = 39 on (Build 40 = 0.5.1, Build 41 = 0.5.2).
+Since Build 41 the version is `ui/version.js` `VERSION`, set by hand with every build (with CHANGELOG.md's heading),
+and it is the app's real version: ci_version.py stamps it into tauri.conf.json (and Android's versionCode =
+major·1,000,000 + minor·1,000 + patch, so it rises with it) and writes `ui/build.js` `BUILD` = N (null in the repo:
+dev and tests show "(preview)"); update_sig.py `version` reads it (`app_version`, one rule for the build, the
+signature and the release title "Build N · version X"). Updates compare versions (he decided, Nov 9: any part may go
+up): app.js `checkUpdate` offers the newest release when the version in its title (`releaseVersion`) is higher
+(`higherVersion`); Windows reads `thinky-update.sig` (core update.rs `UPDATE_SIG_FILE`, `update_text`: its own first
+line "thinky-update-2", the version and "build N" signed, `update_text_to_verify`: made for the build asked for,
+version higher than its own); Android needs a higher versionCode (MainActivity, unchanged). Every release still
+carries `thinky-setup.exe.sig`/`LeanOutliner-setup.exe.sig` signed the old way with version 0.1.N (`legacy N`),
+which Build 40 and older read (they want a version ending in the build number); Build 41 was the bridge. CI: the
+`number` job refuses (main) or warns (wip) when VERSION isn't higher than the newest release's title; `sign` refuses
+an APK whose versionCode isn't higher than the last release's (`prev-cert` reads it); `verify` runs
+`--verify-update` (old kind) and `--verify-update-newer` (thinky-update.sig) cases. Suggest which number to raise.
+(Builds 34–40's titles were renamed by hand on GitHub, Nov 9; the cloud session's gh can't edit releases.)
+CHANGELOG.md gets a section for every release (Builds 38 and 39 were added late).
+Build 41 (0.5.2; the maintainer's picks of Nov 9, from a clickable preview; tested by t24_build41): the laptop strip
+(app.js `buildChrome`, tabs.js `sideNav`/`alignStrip`, app.css "the top strip"): above the sidebar, fixed spots: the
+sidebar's button, `.hb-dv`, Search, Back, Forward, then Go to date on today's journal / Home elsewhere (one spot, `.hb-nav.at-today`
+from `updateHome`); Back/Forward hidden (`visibility`) when there's nowhere to go; `--hb-gap` 2px; the tabs (or the "+"
+alone, one tab = no tab names) start at the sidebar's edge + 6px by the sidebar's width, shown or hidden. The logo is in the
+sidebar's `.brand` (shown on wide windows now, without its hide button; the sidebar's Search row hidden there). Search in
+place (search.js `setInPlace`/`placeInPlace`, `#search.inplace`, `.sb-ic`): on a laptop (`mag`: the strip's magnifier shown,
+no coarse pointer) the box's corner sits on the magnifier, its own magnifier exactly over it, no dimming; it grows right and
+down (dom.js `grow`: one clip-path animation that includes the shadow) and folds back (fadeAway's copy, `anim`); a press
+outside closes it; the command list stays the centred box. Pop-ups (popups.js `openFrom`/`closeFrom`: `menu`, `noteMenu`
+with `from` = the dot, `pickDate` with its button): from a small button (≤48px) the pop-up's corner on it, `.pop-head` with a
+copy of its icon (`.pop-hic`; a dot = `.pop-dot`) and its title or colours beside it; it grows out of it and folds back (a long
+one low down scrolls, `maxHeight`); else placed as before, growing from its corner nearest. A right-click on a dot opens the
+note menu from the dot. Motion: dom.js `OPEN_MS` 200 / `CLOSE_MS` 150 / `EASE` cubic-bezier(.2,.8,.2,1), also app.css's
+opening/closing keyframes and `SLIDE_EASE`; tabs widen in / slide over (`paint`, WAAPI, by tab object `el.tab`).
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

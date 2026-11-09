@@ -226,7 +226,7 @@ const more = page.locator('.title-row [data-a="more"]');
 await more.tap();
 await sleep(300);
 check(await page.locator('.pop.menu').count() === 1, 'a tap on ⋯ opens its menu');
-await more.tap();
+{ const b = await more.boundingBox(); await page.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2); } // (where it is: since Build 41 the menu's copy of it lies over it)
 await sleep(400);
 check(await page.locator('.pop.menu').count() === 0, 'a second tap on ⋯ closes it (it doesn’t open again)');
 await more.tap();
@@ -315,7 +315,7 @@ await go(page, '#/page/' + encodeURIComponent('Pickles in brine'));
 await sleep(500);
 await page.locator('.title-row [data-a="more"]').click();
 await page.waitForSelector('.pop.menu');
-await page.locator('.title-row [data-a="more"]').click();
+{ const b = await page.locator('.title-row [data-a="more"]').boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); } // (where it is: the menu's copy of it lies over it)
 await sleep(300);
 check(await page.locator('.pop.menu').count() === 0, 'a second click on ⋯ closes it');
 await page.locator('.title-row [data-a="more"]').click();

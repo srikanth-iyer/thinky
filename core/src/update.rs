@@ -2,17 +2,24 @@
 //! (src-tauri/src/update.rs on Windows, android/MainActivity.kt on Android) so they can be tested:
 //! where a build's files are, what exactly is signed, and which versions are accepted.
 //!
-//! A release "build-N" (app version 0.1.N, N = the build number) carries `thinky-setup.exe`
-//! and its signature file `thinky-setup.exe.sig`: JSON `{"file", "version", "sha256", "sig"}`
-//! made by CI (scripts/update_sig.py), where `sig` is an ECDSA P-256 / SHA-256 signature (base64 of
-//! the raw r‖s) of [`signed_text`]. Signing that short text rather than only the file ties the
-//! version to it: an older genuine installer can't be passed off as a newer build.
+//! A release "build-N" carries `thinky-setup.exe` and signature files: JSON `{"file", "version",
+//! ["build",] "sha256", "sig"}` made by CI (scripts/update_sig.py), where `sig` is an ECDSA P-256 /
+//! SHA-256 signature (base64 of the raw r‖s) of a short text naming the file, its version (and build)
+//! and checksum, so an older genuine installer can't be passed off as a newer one.
+//! Since Build 41 the app's version is the one people see (ui/version.js, any part may go up) and it
+//! reads `thinky-update.sig` ([`update_text`]: version higher than its own, made for build N). Every
+//! release also keeps `thinky-setup.exe.sig` ([`signed_text`], version 0.1.N, which must end in N)
+//! for Build 40 and older, which compare that way.
 
 /// The Windows installer and its signature file, as named on the downloads page (since Build 35;
 /// releases also carry the same installer as `LeanOutliner-setup.exe` with its own signature file,
 /// signed for that name, for Build 34 and older, which look for it).
 pub const SETUP_FILE: &str = "thinky-setup.exe";
 pub const SIG_FILE: &str = "thinky-setup.exe.sig";
+/// Since Build 41: the signature file Build 41 and later read ([`update_text`]), whose version is the
+/// one people see (ui/version.js). `SIG_FILE` stays on every release, signed the old way with
+/// version 0.1.N, for Build 40 and older.
+pub const UPDATE_SIG_FILE: &str = "thinky-update.sig";
 /// The public downloads page's files: `<DOWNLOADS>/build-N/<file>`.
 const DOWNLOADS: &str = "https://github.com/srikanth-iyer/thinky/releases/download";
 
@@ -50,6 +57,8 @@ pub fn signed_text(file: &str, version: &str, sha256_hex: &str) -> String {
 pub struct SigFile {
     pub file: String,
     pub version: String,
+    /// The build it was made for (`thinky-update.sig` since Build 41; the older kind has none).
+    pub build: Option<u32>,
     pub sha256: String,
     /// r‖s, 32 bytes each.
     pub sig: [u8; 64],
@@ -63,7 +72,11 @@ pub fn parse_sig_file(text: &str) -> Result<SigFile, String> {
         return Err("the signature file’s checksum isn’t valid".into());
     }
     let sig = base64_decode(&field("sig")?).and_then(|b| <[u8; 64]>::try_from(b).ok()).ok_or("the signature isn’t valid")?;
-    Ok(SigFile { file: field("file")?, version: field("version")?, sha256, sig })
+    let build = match v.get("build") {
+        None => None,
+        Some(b) => Some(b.as_u64().and_then(|b| u32::try_from(b).ok()).filter(|&b| b > 0).ok_or("the signature file’s build number isn’t valid")?),
+    };
+    Ok(SigFile { file: field("file")?, version: field("version")?, build, sha256, sig })
 }
 
 /// The checks that need no cryptography, then the text whose signature must be valid for build
@@ -88,6 +101,37 @@ pub fn text_to_verify(sig: &SigFile, file: &str, n: u32, own: Option<Version>, s
         return Err("the download doesn’t match its signature file (it may be damaged)".into());
     }
     Ok(signed_text(file, &sig.version, &sha256_hex.to_ascii_lowercase()))
+}
+
+/// Since Build 41 (he decided, Nov 9: the version is a name, set by hand, that can go up in any part):
+/// the exact text CI signs in `thinky-update.sig` (scripts/update_sig.py `sign-update`). Its own first
+/// line, so it can't be mistaken for the older kind, and the build number, so a genuine file can only
+/// be offered as the build it was made for.
+pub fn update_text(file: &str, version: &str, build: u32, sha256_hex: &str) -> String {
+    format!("thinky-update-2\n{file}\n{version}\nbuild {build}\n{sha256_hex}\n")
+}
+
+/// The checks before the signature of a `thinky-update.sig`, for build `n` (the release asked for):
+/// the file is `file`, made for build `n`, its version higher than `own` (the running app's; None
+/// skips that, for CI's check of what it just built), and its checksum that of the download. Any part
+/// of the version may have gone up. Returns the text whose signature must be valid.
+pub fn update_text_to_verify(sig: &SigFile, file: &str, n: u32, own: Option<Version>, sha256_hex: &str) -> Result<String, String> {
+    if sig.file != file {
+        return Err(format!("the signature file is for {}, not {file}", sig.file));
+    }
+    if sig.build != Some(n) {
+        return Err(format!("the signature file isn’t for build {n}"));
+    }
+    let v = parse_version(&sig.version).ok_or_else(|| format!("the signature file’s version ({}) can’t be read", sig.version))?;
+    if let Some(o) = own {
+        if v <= o {
+            return Err(format!("version {} isn’t newer than this one ({}.{}.{})", sig.version, o.0, o.1, o.2));
+        }
+    }
+    if !sig.sha256.eq_ignore_ascii_case(sha256_hex) {
+        return Err("the download doesn’t match its signature file (it may be damaged)".into());
+    }
+    Ok(update_text(file, &sig.version, n, &sha256_hex.to_ascii_lowercase()))
 }
 
 /// Standard base64 (with or without `=` padding); None for anything else.

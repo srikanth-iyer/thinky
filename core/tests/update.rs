@@ -104,3 +104,57 @@ fn what_is_accepted_before_the_signature_is_checked() {
     // CI checks the app it just built against its own installer: same version, no "newer" check
     assert!(text_to_verify(&sig(SETUP_FILE, "0.1.24"), SETUP_FILE, 24, None, SHA).is_ok());
 }
+
+// ---------------------------------------------------------------------------------------------
+// Since Build 41: thinky-update.sig, the version people see (any part may go up), tied to its build.
+
+fn update_json(file: &str, version: &str, build: Option<u64>) -> String {
+    let mut v = serde_json::json!({ "file": file, "version": version, "sha256": SHA, "sig": sig64() });
+    if let Some(b) = build {
+        v["build"] = b.into();
+    }
+    v.to_string()
+}
+
+#[test]
+fn the_update_text_is_exactly_this() {
+    // scripts/update_sig.py `sign-update` makes the same text; it can't be mistaken for the older kind
+    assert_eq!(update_text(SETUP_FILE, "0.5.2", 41, "ab12"), "thinky-update-2\nthinky-setup.exe\n0.5.2\nbuild 41\nab12\n");
+    assert_ne!(update_text(SETUP_FILE, "0.1.41", 41, "ab12"), signed_text(SETUP_FILE, "0.1.41", "ab12"));
+    assert_eq!(asset_url(42, UPDATE_SIG_FILE), "https://github.com/srikanth-iyer/thinky/releases/download/build-42/thinky-update.sig");
+}
+
+#[test]
+fn any_part_of_the_version_may_go_up() {
+    let sig = |version: &str, build: u64| parse_sig_file(&update_json(SETUP_FILE, version, Some(build))).unwrap();
+    let ok = |version: &str, n: u32, own: Version| update_text_to_verify(&sig(version, n as u64), SETUP_FILE, n, Some(own), SHA);
+    assert_eq!(ok("0.5.2", 41, (0, 1, 40)).unwrap(), update_text(SETUP_FILE, "0.5.2", 41, SHA), "Build 41 after the old 0.1.40");
+    assert!(ok("0.5.3", 42, (0, 5, 2)).is_ok(), "the last number");
+    assert!(ok("0.6.0", 43, (0, 5, 3)).is_ok(), "the middle one, the last back to 0");
+    assert!(ok("1.0.0", 44, (0, 6, 0)).is_ok(), "the first one");
+    assert!(ok("0.10.0", 45, (0, 9, 7)).is_ok(), "compared as numbers, not text");
+    // the checksum worked out by the app goes into the text, in small letters
+    assert_eq!(update_text_to_verify(&sig("0.5.3", 42), SETUP_FILE, 42, Some((0, 5, 2)), &SHA.to_uppercase()).unwrap(), update_text(SETUP_FILE, "0.5.3", 42, SHA));
+    // CI's check of what it just built: no "newer" check
+    assert!(update_text_to_verify(&sig("0.5.2", 41), SETUP_FILE, 41, None, SHA).is_ok());
+}
+
+#[test]
+fn what_thinky_update_sig_refuses() {
+    let err = |json: String, n: u32, own: Option<Version>, sha: &str| update_text_to_verify(&parse_sig_file(&json).unwrap(), SETUP_FILE, n, own, sha).unwrap_err();
+    let own = Some((0, 5, 2));
+    assert!(err(update_json(SETUP_FILE, "0.5.2", Some(42)), 42, own, SHA).contains("isn’t newer"), "the same version");
+    assert!(err(update_json(SETUP_FILE, "0.5.1", Some(42)), 42, own, SHA).contains("isn’t newer"), "an older one");
+    assert!(err(update_json(SETUP_FILE, "0.5.3", Some(43)), 42, own, SHA).contains("build 42"), "made for another build");
+    assert!(err(update_json(SETUP_FILE, "0.5.3", None), 42, own, SHA).contains("build 42"), "the older kind, which names no build");
+    assert!(err(update_json(SETUP_FILE, "0.5.3", Some(42)), 42, own, &SHA.replace('a', "b")).contains("doesn’t match"));
+    assert!(err(update_json("LeanOutliner-setup.exe", "0.5.3", Some(42)), 42, own, SHA).contains("is for LeanOutliner-setup.exe"));
+    assert!(err(update_json(SETUP_FILE, "0.5", Some(42)), 42, own, SHA).contains("can’t be read"));
+    // the older kind of file (0.1.N) is never newer than a version people see
+    assert!(err(update_json(SETUP_FILE, "0.1.42", Some(42)), 42, own, SHA).contains("isn’t newer"));
+    // a build number that isn't a whole positive number can't be read at all
+    for bad in [r#""42""#, "0", "-1", "4.5", "99999999999"] {
+        let j = update_json(SETUP_FILE, "0.5.3", None).replacen('{', &format!("{{\"build\":{bad},"), 1);
+        assert!(parse_sig_file(&j).unwrap_err().contains("build number"), "{bad}");
+    }
+}

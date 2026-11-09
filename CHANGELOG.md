@@ -10,7 +10,19 @@ big changes, the last for small ones (back to 0 when the middle one goes up). Un
 0.1.<build>; the versions in these headings were given afterwards, by what each build changed: 0.1 the first
 working outliner (Builds 1–22), 0.2 safety, tabs, updates and references (23–28), 0.3 the Logseq feel (29–31),
 0.4 thinky's name, brand and public releases (32–38), 0.5 day and night looks and the quieter phone (39 on).
-From Build 41 the app carries these versions too.
+From Build 41 these versions are the app's own: they show in Settings → Updates & about and in each release's
+title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
+went up. Build 40 and older still update to it (each release keeps a signature file made their way).
+
+## Build 41 · version 0.5.2 (November 2026)
+
+### New
+- A calmer top strip on the laptop. Above the sidebar, each button has a spot of its own that never moves: the sidebar button, Search, Back, Forward and one spot that is the calendar on today's journal and Home anywhere else. Back and Forward appear only when there's somewhere to go. The tabs and the "+" always start just past the sidebar's edge, whether the sidebar is open or hidden, and with one tab there's only the "+".
+- The logo and the name moved from the strip into the top of the sidebar.
+- Search opens in place: the search box grows out of the magnifier, to the right and down in one movement, with your recent pages under it, and folds back into it with Esc. The page behind it stays as it is.
+- Menus open out of the button that opened them in the same way: the page's ⋯ menu, a note's dot (its menu now opens from the dot even with a right-click), Go to date, the Sort menus and the others; each folds back into its button when it closes.
+- One feel for everything that opens and closes: opening takes 0.2 seconds and closing a little less, with the same smooth start and gentle stop. New tabs widen into place and the others slide over when one closes. Settings → Look → Animations turns it all off.
+- The app's version is now the one people see (0.5.2), shown with its build number in Settings → Updates & about. Updates compare versions, so any part of the version can go up; Build 40 updates to this build as usual.
 
 ## Build 40 · version 0.5.1 (November 2026)
 

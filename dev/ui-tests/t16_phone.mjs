@@ -140,7 +140,8 @@ check(items.every(([, , hh]) => hh >= 32 && hh <= 36), 'rows close together (32p
 check(items.some((it) => it[3] === 'Copy link to this note'), 'full names', JSON.stringify(items.map((it) => it[3])));
 const sw = await page.evaluate(() => { const b = document.querySelectorAll('.note-menu .nm-sw')[2], r = b.getBoundingClientRect(); return { w: Math.round(r.width), hitAbove: document.elementFromPoint(r.left + r.width / 2, r.top - 5) === b, hitSide: document.elementFromPoint(r.right + 5, r.top + r.height / 2) === b }; });
 check(sw.w <= 22 && sw.hitAbove && sw.hitSide, 'small colour dots (20px; they were 32), each one easy to hit a little past its edge', JSON.stringify(sw));
-check(nm.y >= dot.y + dot.height - 2 && nm.y - (dot.y + dot.height) <= 20, 'right under the dot that was held', JSON.stringify({ nm, dot }));
+// (Build 41: it opens out of the dot, its corner on it, the dot's copy over it)
+check(Math.abs(nm.y - (dot.y - 1)) <= 2 && Math.abs(nm.x - (dot.x - 1)) <= 2, 'out of the dot that was held', JSON.stringify({ nm, dot }));
 await page.screenshot({ path: SHOTS + '/phone16-notemenu-hold.png' });
 await page.locator('.note-menu .nm-item', { hasText: 'Next to-do state' }).tap();
 await sleep(1200);
@@ -226,7 +227,8 @@ await page.keyboard.press('Escape');
 await page.keyboard.press('Control+k');
 await sleep(300);
 const ls = await rect(page, '.search-box');
-check(ls.y >= 60 && ls.w >= 600, 'the search box: in the middle as before', JSON.stringify(ls));
+// (Build 41: on a laptop it opens in place, out of the strip's magnifier)
+check(ls.y <= 20 && ls.w >= 500 && await page.evaluate(() => document.getElementById('search').classList.contains('inplace')), 'the search box: out of the strip’s magnifier', JSON.stringify(ls));
 await browser.close();
 
 check(allErrors.length === 0, 'no script errors anywhere', allErrors.join('\n'));

@@ -328,7 +328,8 @@ await page.keyboard.press('Delete');
 await sleep(600);
 check((await names(0)).join() === 'Journals' && await focused() === '0:Journals*' && await hashNow() === '#/journals', 'Delete closes the tab it is on; the keyboard goes to the shown one', JSON.stringify([await names(0), await focused()]));
 const ax = await page.locator('#histbar').ariaSnapshot();
-check(!ax.includes('Close tab') && ax.includes('tab "Journals" [selected]') && ax.includes('button "Back, on the right"'), 'a tab is named by its page alone (not “Journals Close tab”); the right side’s buttons say so', ax);
+// (Build 41: Back and Forward are hidden while there's nowhere to go; Go to date shows on a journal)
+check(!ax.includes('Close tab') && ax.includes('tab "Journals" [selected]') && /button "(Back|Go to date|Today in Journals), on the right"/.test(ax), 'a tab is named by its page alone (not “Journals Close tab”); the right side’s buttons say so', ax);
 check(await page.evaluate(() => [...document.querySelectorAll('#histbar [role="tablist"]')].every((l) => [...l.children].every((c) => c.getAttribute('role') === 'tab'))), 'the tab lists hold only tabs (each side’s “+” comes after its list)');
 check(await page.evaluate(() => [...document.querySelectorAll('#histbar .tab')].every((t) => t.getAttribute('aria-controls') === (t.parentElement.dataset.p === '0' ? 'main' : 'main2'))), 'each tab names the side it shows in (aria-controls)');
 check(await page.getAttribute('#histbar', 'aria-label') === 'Back, forward and tabs', 'the strip’s name says what it holds');

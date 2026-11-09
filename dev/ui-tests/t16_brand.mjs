@@ -86,8 +86,9 @@ console.log('laptop with notes: the strip, Settings, About');
   const { browser, page, errors: e2 } = await open({ viewport: { width: 1280, height: 860 } });
   check(await page.title() === 'thinky', 'the title with a notes folder too');
   const strip = await pictures(page);
-  check(strip.imgs.some((i) => i.src === 'brand/icon-in.svg#s' && i.w === 20) && allLoaded(strip), 'the strip starts with the small icon (20px)', JSON.stringify(strip));
-  check(await page.locator('#histbar .hb-logo').getAttribute('title') === 'thinky', 'its tooltip says thinky');
+  // (Build 41, he asked: the logo in the strip looked like a button: it moved to the top of the sidebar, with the name)
+  check(strip.imgs.some((i) => /^brand\/icon-in\.svg#[sm]$/.test(i.src)) && allLoaded(strip), 'the sidebar starts with the icon', JSON.stringify(strip));
+  check(await page.locator('#side .brand .wordmark').isVisible() && !(await page.locator('#histbar .logo').count()), 'and the name; no logo in the strip');
   let all = await seen(page);
   for (const tab of ['notes', 'look', 'capture', 'shortcuts', 'about']) {
     await go(page, '#/settings/' + tab);

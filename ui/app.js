@@ -17,6 +17,7 @@ const openHistory = (...a) => import('./history.js').then((m) => m.openHistory(.
 import { SearchBox } from './search.js';
 import { initFileDrop } from './filedrop.js';
 import { makeChips } from './chips.js';
+import { releaseVersion, higherVersion } from './version.js';
 
 // Looks: name and one-line note for the picker; the look itself lives in skins.css.
 // The looks, family by family (Build 39, he asked: a day look and a night look, and Light / Dark / Match
@@ -86,7 +87,7 @@ const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 const SCROLL_KEYS = new Set(['PageDown', 'PageUp', 'Home', 'End', ' ', 'ArrowDown', 'ArrowUp']);
 const QUIET_BUTTONS = '#histbar button, #topbar button, .side-fold, .title-row .icon-btn, #toast button';
 // the sidebar's slide (App.slide; the same in app.css, html.sliding)
-const SLIDE_MS = 200, SLIDE_EASE = 'cubic-bezier(.2, .7, .3, 1)';
+const SLIDE_MS = 200, SLIDE_EASE = 'cubic-bezier(.2, .8, .2, 1)'; // (Build 41: dom.js OPEN_MS, EASE)
 // the sidebar's width (dragging its edge; 252 px until then) and the least width of each of two sides
 const SIDE_MIN = 200, SIDE_MAX = 480, PANE_MIN = 340;
 const VIEW_NAMES = { journals: 'Journals', pages: 'All pages', tags: 'Tags', props: 'Properties', settings: 'Settings', todos: 'To-dos', welcome: 'Welcome' };
@@ -847,8 +848,9 @@ class App {
       if (journals === undefined) { journals = !!t && parsePlace(key).kind === 'journals'; if (states.size > 50) states.clear(); states.set(key, journals); }
       const off = journals && top < 40;
       if (b.disabled !== off) b.disabled = off;
-      // the phone bar: on today's journal its place shows the calendar, anywhere else Home
-      const bar = b.closest('#topbar');
+      // on today's journal Home's spot shows the calendar, anywhere else Home: the phone bar, and since
+      // Build 41 each side's buttons in the laptop strip
+      const bar = b.closest('#topbar') ?? nav;
       if (bar && bar.classList.contains('at-today') !== off) bar.classList.toggle('at-today', off);
     });
   }
@@ -2379,9 +2381,8 @@ class App {
     const home = `<button data-a="home" aria-label="Today in Journals" title="Today in Journals (g j)">${ICON.home}</button>`;
     const strip = (p) => `<div class="tabs" data-p="${p}" role="tablist" aria-label="Open pages${p ? ' on the right' : ''}" hidden></div>`
       + `<button type="button" class="tab-new" data-p="${p}" aria-label="New tab${p ? ' on the right' : ''}" title="New tab (Ctrl+T)" hidden>${ICON.plus}</button>`;
-    const appBtns = `<span class="hb-app"><i class="hb-logo" title="thinky">${ICON.logo}</i>`
-      + `<button data-a="side" aria-controls="side" aria-label="Sidebar" title="Hide the sidebar (t l)">${ICON.side}</button>`
-      + `<button data-a="search" aria-label="Search" title="Search (Ctrl+K)">${ICON.search}</button></span>`;
+    const appBtns = `<span class="hb-app"><button data-a="side" aria-controls="side" aria-label="Sidebar" title="Hide the sidebar (t l)">${ICON.side}</button>`
+      + `<span class="hb-dv" aria-hidden="true"></span><button data-a="search" aria-label="Search" title="Search (Ctrl+K)">${ICON.search}</button></span>`;
     hb.innerHTML = `<div class="hb-h">${appBtns}<span class="hb-nav" data-p="0">${sideNav(0)}</span>${strip(0)}</div>`
       + `<div class="hb-h"><span class="hb-nav" data-p="1"></span>${strip(1)}<div class="drag"></div>`
       // a newer build: a button at the strip's right end, beside the window's own (Build 40, he asked: easier to spot and click)
@@ -3328,21 +3329,23 @@ class App {
         // (given up after 8 s: About waits for this answer, and a bad network mustn't leave it blank)
         const r = await fetch('https://api.github.com/repos/srikanth-iyer/thinky/releases/latest', { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) });
         // (with each file's size: About says how much "Update now" downloads)
-        if (r.ok) { const j = await r.json(); latest = { tag: j.tag_name, url: j.html_url, sizes: Object.fromEntries((j.assets || []).map((a) => [a.name, a.size])) }; }
+        // (Build 41: with its version, from its title "Build N · version X")
+        if (r.ok) { const j = await r.json(); latest = { tag: j.tag_name, version: releaseVersion(j.name), url: j.html_url, sizes: Object.fromEntries((j.assets || []).map((a) => [a.name, a.size])) }; }
       } catch { /* offline */ }
       store.set('updateCheck', { at: Date.now(), latest });
     }
-    const n = (s) => Number(String(s || '').match(/(\d+)$/)?.[1] || 0);
+    // Build 41 (he decided, Nov 9): newer = a higher version, whichever part of it went up (the release's
+    // build number only says where its files are). A release whose title names no version isn't offered.
     this.latest = latest;
-    const newer = !!latest && n(latest.tag) > n(ver);
+    const newer = !!latest?.version && higherVersion(latest.version, ver);
     $('#update').hidden = !newer;
     document.documentElement.classList.toggle('has-update', newer); // (a small spark on Settings and About: app.css)
     const b = $('.hb-update');
     const side = $('#update');
-    if (newer && side) side.innerHTML = `<i class="spark-mark" aria-hidden="true"></i>Build ${esc(String(latest.tag).replace(/^build-/, ''))} is ready · <u>Update</u>`;
+    if (newer && side) side.innerHTML = `<i class="spark-mark" aria-hidden="true"></i>Version ${esc(latest.version)} is ready · <u>Update</u>`;
     if (b) {
       b.hidden = !newer;
-      if (newer) b.title = `Build ${String(latest.tag).replace(/^build-/, '')} is ready`;
+      if (newer) b.title = `Version ${latest.version} is ready`;
     }
     if (!this.updateWatch) { // (once: every 2 hours, and when the window comes back)
       this.updateWatch = setInterval(() => this.checkUpdate(), 72e5);
@@ -3356,7 +3359,7 @@ class App {
   updateMenu(btn) {
     const l = this.latest;
     if (!l?.tag) return;
-    menu(btn, [{ head: `Build ${String(l.tag).replace(/^build-/, '')} is ready` },
+    menu(btn, [{ head: `Version ${l.version} is ready` },
       { label: 'Update now', run: async () => { await this.go('settings', 'about'); (await import('./settings.js')).startUpdate(this); } },
       { label: 'What’s new', run: async () => { await this.go('settings', 'about'); setTimeout(() => document.querySelector('.whatsnew')?.scrollIntoView({ block: 'start' }), 300); } }], { cls: 'upd-menu' });
   }
