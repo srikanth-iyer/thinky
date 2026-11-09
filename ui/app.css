@@ -58,6 +58,14 @@ code, pre { font-family: var(--font-mono); }
 #histbar .hb-logo .logo { width: 20px; height: 20px; }
 #histbar [data-a="side"][aria-expanded="false"] { color: var(--ink-faint); }
 #histbar .drag { flex: 1; align-self: stretch; }
+/* a newer build (Build 40): a small pill at the strip's right end; a click opens Update now / What's new */
+#histbar .hb-update { width: auto; height: 26px; align-self: center; display: inline-flex; align-items: center; gap: 0; padding: 0 11px 0 9px; margin: 0 8px 0 4px;
+  border-radius: 13px; border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent); background: var(--accent-tint); color: var(--ink);
+  font: 500 12.5px/1 var(--font-body); white-space: nowrap; }
+#histbar .hb-update:hover { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--ink); }
+#histbar .hb-update[hidden] { display: none; }
+/* the sidebar's own "A newer version is ready" only in the phone's menu: the strip has its button */
+@media (min-width: 861px) { #side .update { display: none; } }
 /* window buttons, flush with the window's top-right corner (Windows: the app draws its own title bar) */
 .winctl { display: flex; align-self: stretch; }
 #histbar .winctl { margin: -8px 0 -2px 0; }
@@ -486,6 +494,17 @@ a.tag .hash { display: var(--hash); }
 .prop.prop-quiet { font-size: .82em; opacity: .62; }
 .prop-icons { display: inline-flex; gap: 4px; margin-left: 6px; vertical-align: baseline; }
 .prop-icon { font-size: .8em; line-height: 1; color: var(--ink-faint); cursor: help; user-select: none; }
+.pd-demo { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 10px 0 14px; }
+@media (max-width: 760px) { .pd-demo { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); } }
+.pd-ex { margin: 0; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px 11px; background: var(--sheet-bg); min-width: 0; }
+.pd-ex figcaption { font-size: 12px; line-height: 1.35; color: var(--ink-faint); margin-bottom: 8px; }
+.pd-ex figcaption b { display: block; font-size: 13px; }
+.pd-ex figcaption b { color: var(--ink); font-weight: 600; margin-right: 2px; }
+.pd-note { position: relative; padding-left: 16px; font-size: 14px; line-height: 1.45; color: var(--ink); }
+.pd-dot { position: absolute; left: 3px; top: calc(.725em - var(--bullet-h) / 2); width: var(--bullet-w); height: var(--bullet-h); border-radius: var(--bullet-radius); background: var(--bullet); }
+.pd-note .props { margin: 4px 0 0; }
+.pd-note[data-mark]::after { content: ""; position: absolute; left: -6px; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; background: var(--mk); opacity: .8; }
+.pd-note[data-mark="blue"] { --mk: var(--hl-blue); }
 .blk[data-mark] > .bc { position: relative; }
 .blk[data-mark] > .bc::after { content: ""; position: absolute; left: -7px; top: 4px; bottom: 4px; width: 3px; border-radius: 2px; background: var(--mk); opacity: .8; pointer-events: none; }
 .blk[data-mark="purple"] { --mk: var(--hl-purple); } .blk[data-mark="blue"] { --mk: var(--hl-blue); } .blk[data-mark="green"] { --mk: var(--hl-green); }
@@ -1152,7 +1171,8 @@ pre.log { font-family: var(--font-mono); font-size: 12px; background: var(--surf
 .upd[data-stage="error"] .upd-out { color: var(--danger); }
 .bin li { display: flex; gap: 10px; align-items: center; padding: 6px 4px; border-bottom: 1px solid var(--line-soft); }
 .bin li span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.update { font-size: 13px; color: var(--accent-ink); background: var(--accent); border-radius: 8px; padding: 6px 10px; text-decoration: none; text-align: center; }
+.update { display: block; margin: 4px 12px 10px; font-size: 13.5px; color: var(--ink); background: var(--accent-tint); border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent); border-radius: 10px; padding: 9px 12px; text-decoration: none; text-align: left; }
+.update[hidden] { display: none; }
 
 /* ---------- to-dos ---------- */
 .todo-item { display: flex; gap: 8px; align-items: flex-start; padding: 6px 4px; border-bottom: 1px solid var(--line-soft); cursor: pointer; }

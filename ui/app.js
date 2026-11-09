@@ -2294,6 +2294,7 @@ class App {
     side.innerHTML = `
       <div class="brand">${ICON.brand}<button class="icon-btn hide-side" data-a="side" aria-label="Hide the sidebar" title="Hide the sidebar (t l)">${ICON.side}</button></div>
       <button class="searchbtn" data-a="search">${ICON.search.replace('<svg', '<svg width="16" height="16"')}<span>Search</span><kbd>Ctrl K</kbd></button>
+      <a class="update" id="update" hidden href="#/settings/about"><i class="spark-mark" aria-hidden="true"></i>A newer version is ready: update</a>
       <nav class="nav">
         <a href="#/journals" data-view="journals">${ICON.journals}Journals</a>
         <a href="#/pages" data-view="pages">${ICON.pages}All pages</a>
@@ -2304,7 +2305,6 @@ class App {
       <div id="favs"></div>
       <div class="side-sec" data-sec="recent"><button type="button" class="side-h side-fold" aria-expanded="true">Recent</button><div class="side-list" id="recent"></div></div>
       <div class="side-foot">
-        <a class="update" id="update" hidden href="#/settings/about">A newer version is ready</a>
         <nav class="nav">
           <button type="button" class="nav-btn cmd-btn" data-a="commands" aria-haspopup="dialog">${ICON.cmd}Commands</button>
           <button type="button" class="nav-btn" data-a="looks" aria-haspopup="dialog" title="Change the look">${ICON.palette}Look<span class="look-cur"></span></button>
@@ -2383,13 +2383,16 @@ class App {
       + `<button data-a="side" aria-controls="side" aria-label="Sidebar" title="Hide the sidebar (t l)">${ICON.side}</button>`
       + `<button data-a="search" aria-label="Search" title="Search (Ctrl+K)">${ICON.search}</button></span>`;
     hb.innerHTML = `<div class="hb-h">${appBtns}<span class="hb-nav" data-p="0">${sideNav(0)}</span>${strip(0)}</div>`
-      + `<div class="hb-h"><span class="hb-nav" data-p="1"></span>${strip(1)}<div class="drag"></div>${winctl}</div>`;
+      + `<div class="hb-h"><span class="hb-nav" data-p="1"></span>${strip(1)}<div class="drag"></div>`
+      // a newer build: a button at the strip's right end, beside the window's own (Build 40, he asked: easier to spot and click)
+      + `<button type="button" class="hb-update" data-a="update" aria-haspopup="menu" hidden><i class="spark-mark" aria-hidden="true"></i>Update ready</button>${winctl}</div>`;
     this.toggleSidebar(store.get('sideHidden', false));
     hb.onclick = (e) => {
       const b = e.target.closest('button');
       if (!b || b.disabled) return;
       if (b.dataset.w) { winAction(b.dataset.w); return; }
       if (b.dataset.a === 'side') { this.toggleSidebar(); return; }
+      if (b.dataset.a === 'update') { this.updateMenu(b); return; }
       if (b.dataset.a === 'search' && b.closest('.hb-app')) { this.openSearch(); return; }
       const nav = b.closest('.hb-nav');
       if (!nav) return; // (the tabs and "+": tabs.js)
@@ -3309,10 +3312,11 @@ class App {
     window.LeanAndroid.setCaptureConfig(JSON.stringify({ text: c.capture_text, media: c.capture_media, today: c.capture_today, page: c.capture_page, pagesDir: c.pages_dir }));
   }
 
-  /** Is there a newer build on the public repo’s releases page? Asked at most once a day at start;
-   *  maxAge: how old an answer may be (About asks again when the last answer is over a minute old,
-   *  its "Check" button always: true). */
-  async checkUpdate(maxAge = 864e5) {
+  /** Is there a newer build on the public repo’s releases page? Asked at start, every 2 hours while
+   *  open and when the window comes back (Build 40: once a day was too seldom, he kept going to About to
+   *  check), each at most every 30 minutes; maxAge: how old an answer may be (About asks again when
+   *  the last answer is over a minute old, its "Check" button always: true). */
+  async checkUpdate(maxAge = 18e5) {
     if (!isApp) return null;
     let ver = '';
     try { ver = await window.__TAURI__.app.getVersion(); } catch { return null; }
@@ -3333,7 +3337,28 @@ class App {
     const newer = !!latest && n(latest.tag) > n(ver);
     $('#update').hidden = !newer;
     document.documentElement.classList.toggle('has-update', newer); // (a small spark on Settings and About: app.css)
+    const b = $('.hb-update');
+    const side = $('#update');
+    if (newer && side) side.innerHTML = `<i class="spark-mark" aria-hidden="true"></i>Build ${esc(String(latest.tag).replace(/^build-/, ''))} is ready · <u>Update</u>`;
+    if (b) {
+      b.hidden = !newer;
+      if (newer) b.title = `Build ${String(latest.tag).replace(/^build-/, '')} is ready`;
+    }
+    if (!this.updateWatch) { // (once: every 2 hours, and when the window comes back)
+      this.updateWatch = setInterval(() => this.checkUpdate(), 72e5);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.checkUpdate(); });
+    }
     return newer;
+  }
+
+  /** The strip's "Update ready" button: update now (Settings → About shows how it goes), or read
+   *  what's new on the release page. */
+  updateMenu(btn) {
+    const l = this.latest;
+    if (!l?.tag) return;
+    menu(btn, [{ head: `Build ${String(l.tag).replace(/^build-/, '')} is ready` },
+      { label: 'Update now', run: async () => { await this.go('settings', 'about'); (await import('./settings.js')).startUpdate(this); } },
+      { label: 'What’s new', run: () => this.openUrl(l.url) }], { cls: 'upd-menu' });
   }
 }
 

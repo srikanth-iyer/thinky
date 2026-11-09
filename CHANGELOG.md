@@ -5,6 +5,39 @@ each one the code exactly as it was released at its last build. Later releases a
 the top. (Until Build 32 the app was called Lean Outliner; its downloads and hidden id keep that
 name, so updates install over older builds.)
 
+## Build 39 (November 2026)
+
+### New
+- thinky night: thinky's layout on a warm charcoal, with cream words and the spark's red.
+- Light / Dark / Match system (Settings → Look): pick a day look and a night look; thinky shows one, the other, or follows your computer or phone.
+- The phone's top bar is lighter (42px) and gets out of the way: it slides away while you scroll down to read and while you type, and comes back solid with a soft fade under it. Back and Forward show only when there's somewhere to go, and the page's name appears only once its big title has scrolled away. Beside Search: the calendar on today's journal, Home everywhere else.
+- Press and hold (or right-click) Back or Forward to see the pages that way and jump straight to one, like a browser.
+- On a phone, swipe sideways on the note you're typing in to move it in or out a level, even when it's empty; the keyboard stays up.
+- Tap or click anywhere on the empty line under the last note to add a note, not only on the "+".
+- Sort menus (linked references, "Pages in …", "Pages tagged with …") have headings and a dot by the order in use.
+- The phone's "Add a note" pop-up is a compact card: the words, one row of tool buttons ([[ ]], #, to-do, new line, paste) and a round Add.
+- Dots and the lines that show a note's level are softer in every look, and the dots are 6px, Logseq's size.
+
+### Fixed
+- A button that opened a menu, the calendar or the "/" list closes it when pressed again (the phone's calendar button too), and pressing outside a pop-up only closes it.
+- Choosing from the "/" list with a finger no longer also adds an empty note.
+
+### Under the hood
+- Typing on long pages is faster, and the app loads less when it starts.
+
+## Build 38 (November 2026)
+
+### New
+- YouTube videos written Logseq's way (`{{video …}}`) show as the video's picture with a play button, and play in place.
+- Settings → Look → Animations: turn off the fades and slides.
+- "Pages in …" also lists pages named under the page's aliases, and Check this folder lists clashing pairs.
+- The date picker's quick buttons sit on one line.
+
+### Fixed
+- A menu's own button closes it, and a finger's press outside a menu no longer also taps what's under it.
+- The phone's search box keeps its size when the keyboard comes up.
+- Pages without cards end with no line, with room under the "+".
+
 ## Build 37 (November 2026)
 
 ### New

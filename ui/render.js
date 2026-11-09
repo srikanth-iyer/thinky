@@ -29,6 +29,12 @@ export function setPropRules(rules, cfgHidden = []) {
   CFG_HIDDEN = new Set((cfgHidden || []).map((k) => String(k).toLowerCase()));
 }
 export const propRules = () => RULES;
+/** propsHtml as it would be with these rules instead of the folder's (Settings' examples, Build 40). */
+export function propsHtmlAs(props, rules) {
+  const keep = RULES;
+  RULES = rules;
+  try { return propsHtml(props); } finally { RULES = keep; }
+}
 /** The colour of the mark for a note with these properties ([key, value]), or ''. */
 export const markOf = (props) => { for (const [k] of props || []) { const m = RULES[k]?.mark; if (m) return m; } return ''; };
 /** Logseq's bookkeeping properties (ids, folding, flashcard and highlight data, colours…): never shown;

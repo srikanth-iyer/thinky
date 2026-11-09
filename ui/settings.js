@@ -5,7 +5,7 @@
 // is remembered.
 
 import { call, store, nowTime, isApp, isAndroid, assetUrl, today } from './api.js';
-import { esc, PROP_SHOWS, MARK_COLORS, builtinHidden } from './render.js';
+import { esc, PROP_SHOWS, MARK_COLORS, builtinHidden, propsHtmlAs } from './render.js';
 import { h, ICON, BRAND, plural, SETTINGS_TABS } from './dom.js';
 import { promptBox, confirmBox } from './popups.js';
 import { SKINS, accessCard, lookName, lookState } from './app.js';
@@ -32,7 +32,7 @@ export async function settingsView(app, view, want = null) {
     look: async () => [lookCard(app), ...(app.vaultOpen ? [propDisplayCard(app)] : [])],
     capture: async () => [captureCard(app), ...(platform === 'windows' ? [browserCard(app), windowsCard(app)] : [])],
     keys: async () => [keysCard(app)],
-    about: async () => [feedbackCard(app), problemsCard(), await aboutCard(app)],
+    about: async () => [await aboutCard(app), feedbackCard(app), problemsCard()], // (the version and updates first: Build 40, he goes there often)
   };
   // (no Shortcuts on phones: they're for a keyboard, and five tabs don't fit a narrow screen)
   const tabs = TABS.filter(([id]) => (app.vaultOpen || !['capture', 'keys'].includes(id)) && !(isAndroid && id === 'keys'));
@@ -758,7 +758,14 @@ function propDisplayCard(app) {
   const card = h('div', 'card prop-display');
   const SAY = { show: 'Show', quiet: 'Quiet', icon: 'Icon', hidden: 'Hidden' };
   const cap = (c) => c[0].toUpperCase() + c.slice(1);
-  card.innerHTML = `<h2>Property display</h2><p class="note">How a property shows on your notes: as usual, <b>quiet</b> (smaller and lighter), as a small <b>icon</b> (its words show when you point at it), or <b>hidden</b> (still there; the note menu’s “Show hidden properties” shows it). A <b>mark</b> adds a thin coloured line down the left of every note that has the property. Saved in your notes folder (<code>logseq/thinky.json</code>), so your laptop and phone agree. Properties Logseq is told to hide (<code>:block-hidden-properties</code> in <code>config.edn</code>) are hidden here too.</p>
+  // what each choice looks like (Build 40, he asked: he couldn't tell the kinds apart): one note drawn
+  // with each rule for by::, by the app's own property drawing and this look's colours
+  const props = [['by', 'claude']];
+  const ex = (name, says, rule) => `<figure class="pd-ex"><figcaption><b>${name}</b> ${says}</figcaption>
+    <div class="pd-note"${rule.mark ? ` data-mark="${rule.mark}"` : ''}><i class="pd-dot"></i><div class="pd-w">Draft the talk${propsHtmlAs(props, { by: { icon: '✦', ...rule } })}</div></div></figure>`;
+  card.innerHTML = `<h2>Property display</h2><p class="note">Choose how a property shows on your notes. Here is one note with <code>by:: claude</code> under each choice:</p>
+    <div class="pd-demo" aria-label="Examples">${ex('Show', 'as usual', { show: 'show' })}${ex('Quiet', 'smaller, lighter', { show: 'quiet' })}${ex('Icon', 'its words on hover', { show: 'icon' })}${ex('Hidden', 'kept, not shown', { show: 'hidden' })}${ex('+ Mark', 'a line beside it', { show: 'show', mark: 'blue' })}</div>
+    <p class="note small">A mark goes with any of the four. A hidden property is still there: the note menu’s “Show hidden properties” shows it. Saved in your notes folder (<code>logseq/thinky.json</code>), so your laptop and phone agree. Properties Logseq is told to hide (<code>:block-hidden-properties</code> in <code>config.edn</code>) are hidden here too.</p>
     <ul class="rows prop-rules"></ul>
     <form class="prop-add"><input class="prop-new" list="prop-keys" placeholder="A property’s name, e.g. by" aria-label="A property’s name" autocomplete="off" spellcheck="false"><datalist id="prop-keys"></datalist><button class="btn small" type="submit">Add</button></form>`;
   const list = $('.prop-rules', card), add = $('.prop-add', card), input = $('.prop-new', card);
@@ -1082,6 +1089,10 @@ async function updateBox(app) {
 }
 
 /** Download, check, save, install; anything wrong is shown in words. */
+/** "Update now" from the strip's button (app.js updateMenu): as the About box's own button. */
+export function startUpdate(app) {
+  if (!job.busy && app.latest) updateNow(app, app.latest.tag);
+}
 async function updateNow(app, tag) {
   job.busy = true;
   try {
