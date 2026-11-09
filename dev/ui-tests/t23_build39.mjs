@@ -300,4 +300,57 @@ for (const phone of [false, true]) {
   check(errors.length === 0, 'no script errors (looks)', errors.join('\n'));
   await browser.close();
 }
+
+// Also Build 39 (he asked, Nov 9, as in Logseq): on a phone, a sideways swipe on the note being typed in moves it
+// out or in a level with the keyboard still up (a blank new note too); the whole line under the last note adds one
+{
+  write('pages/Swipe test.md', '- parent\n\t- child\n');
+  const { browser, page, errors } = await open({ touch: true, viewport: { width: 390, height: 780 } });
+  await page.goto(BASE + '/?t=' + Date.now() + '#/page/' + encodeURIComponent('Swipe test'));
+  await page.waitForSelector('.outline .blk');
+  await sleep(600);
+  const cdp = await page.context().newCDPSession(page);
+  const st = () => page.evaluate(() => { const o = window.leanApp.pane.outlines[0]; return { d: o.blocks.map((x) => x.depth).join(''), t: o.blocks.map((x) => x.text).join('|'), cur: o.cur, kb: document.activeElement?.tagName }; });
+  await page.locator('.outline .blk > .bc').first().tap(); await page.waitForSelector('textarea.ed');
+  await page.evaluate(() => { const t = document.querySelector('textarea.ed'); t.setSelectionRange(t.value.length, t.value.length); });
+  await page.keyboard.press('Enter'); await sleep(300);
+  let s1 = await st();
+  check(s1.d === '011' && s1.cur === 1, 'Enter on a note with sub-notes: a blank note under it, being typed in', JSON.stringify(s1));
+  const swipe = async (dx, hold = 0) => {
+    const bb = await page.locator('textarea.ed').boundingBox(); const x0 = bb.x + 80, y0 = bb.y + bb.height / 2;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x0, y: y0 }] });
+    if (hold) await sleep(hold);
+    for (let k = 1; k <= 8; k++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x0 + dx * k / 8, y: y0 }] }); await sleep(16); }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(400);
+  };
+  await swipe(-110); s1 = await st();
+  check(s1.d.startsWith('00') && s1.cur === 1 && s1.kb === 'TEXTAREA', 'swipe left on the blank note being typed in: out a level, still typing in it', JSON.stringify(s1));
+  await swipe(110); s1 = await st();
+  check(s1.d.startsWith('01') && s1.cur === 1 && s1.kb === 'TEXTAREA', 'swipe right: in a level again, still typing', JSON.stringify(s1));
+  await swipe(-110, 500); const s2 = await st();
+  check(s2.d === s1.d, 'a press held before moving (choosing words) moves nothing', JSON.stringify(s2));
+  await page.keyboard.type('x'); await sleep(200);
+  check((await st()).t.split('|')[1] === 'x', 'what is typed next goes into that note');
+  await page.evaluate(() => { window.leanApp.outlines.forEach((o) => o.stopEdit()); document.activeElement?.blur(); }); await sleep(400);
+  const n0 = (await st()).t.split('|').length;
+  const ae = await page.locator('.add-end').first().boundingBox();
+  check(ae && ae.width > 300, 'the line under the last note is as wide as the notes', JSON.stringify(ae));
+  await page.touchscreen.tap(ae.x + ae.width - 20, ae.y + ae.height / 2); await sleep(500);
+  s1 = await st();
+  check(s1.t.split('|').length === n0 + 1 && s1.cur === n0 && s1.kb === 'TEXTAREA', 'a tap at the far end of that line: a new note, being typed in', JSON.stringify(s1));
+  check(errors.length === 0, 'no script errors (swipe while typing, the + line)', errors.join('\n'));
+  await browser.close();
+}
+{
+  const { browser, page, errors } = await open({});
+  await page.goto(BASE + '/?t=' + Date.now() + '#/page/' + encodeURIComponent('Swipe test'));
+  await page.waitForSelector('.outline .blk'); await sleep(500);
+  const n0 = await page.evaluate(() => window.leanApp.pane.outlines[0].blocks.length);
+  const ae = await page.locator('.add-end').first().boundingBox();
+  await page.mouse.click(ae.x + ae.width * 0.7, ae.y + ae.height / 2); await sleep(400);
+  const n1 = await page.evaluate(() => [window.leanApp.pane.outlines[0].blocks.length, window.leanApp.pane.outlines[0].cur]);
+  check(n1[0] === n0 + 1 && n1[1] === n0, 'laptop: a click well right of the "+" under the last note adds a note too', JSON.stringify(n1));
+  check(errors.length === 0, 'no script errors (laptop + line)', errors.join('\n'));
+  await browser.close();
+}
 process.exit(failures() ? 1 : 0);

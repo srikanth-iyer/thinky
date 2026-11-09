@@ -698,9 +698,12 @@ export class Outline {
       sw = null;
       const t = e.touches[0];
       const blk = e.target.closest('.blk');
-      // only on a note's words (not its dot or the margin), never from the edge
-      if (e.touches.length !== 1 || this.readonly || !blk || !e.target.closest('.bc') || t.clientX < EDGE || e.target.closest('.ed, .fold, .todo, img, .pic-h, pre, .math')) return;
-      sw = { blk, i: +blk.dataset.i, x: t.clientX, y: t.clientY, dx: 0, dy: 0, on: false, sy: scrollY + (this.el.closest('.pane')?.scrollTop ?? 0) }; // (its side's notes)
+      // only on a note's words (not its dot or the margin), never from the edge. Build 39 (he asked, Nov 9, as in
+      // Logseq): also on the note being typed in, which then moves with the keyboard still up (a press held
+      // before moving is choosing words, not a swipe: `t0`)
+      const typing = !!e.target.closest('.ed');
+      if (e.touches.length !== 1 || this.readonly || !blk || !(typing || e.target.closest('.bc')) || t.clientX < EDGE || e.target.closest('.fold, .todo, img, .pic-h, pre, .math')) return;
+      sw = { blk, i: +blk.dataset.i, x: t.clientX, y: t.clientY, dx: 0, dy: 0, on: false, typing, t0: Date.now(), sy: scrollY + (this.el.closest('.pane')?.scrollTop ?? 0) }; // (its side's notes)
     }, { passive: true });
     this.el.addEventListener('touchmove', (e) => {
       if (!sw) return;
@@ -708,6 +711,7 @@ export class Outline {
       const dx = t.clientX - sw.x, dy = t.clientY - sw.y;
       if (!sw.on) {
         if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; } // scrolling
+        if (sw.typing && Date.now() - sw.t0 > 350) { sw = null; return; } // (held first: choosing words in the box)
         if (Math.abs(dx) < 14 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
         sw.on = true;
       }
@@ -719,7 +723,7 @@ export class Outline {
     }, { passive: true });
     const swipeEnd = (cancel = false) => {
       if (!sw) return;
-      const { blk, i, dx, dy, on, sy } = sw;
+      const { blk, i, dx, dy, on, sy, typing } = sw;
       sw = null;
       blk.classList.remove('swipe-in', 'swipe-out');
       blk.style.transition = 'translate .15s ease';
@@ -728,7 +732,14 @@ export class Outline {
       if (!on) return;
       this.swipedAt = Date.now(); // the touch that ends a swipe doesn't start editing
       const scrolled = Math.abs(scrollY + (this.el.closest('.pane')?.scrollTop ?? 0) - sy) > 4;
-      if (!cancel && !scrolled && Math.abs(dx) >= SWIPE && Math.abs(dx) > 2 * Math.abs(dy) && this.shiftLevel(i, dx > 0 ? 1 : -1)) {
+      if (!cancel && !scrolled && typing && Math.abs(dx) >= SWIPE && Math.abs(dx) > 2 * Math.abs(dy)) {
+        // the note being typed in: as Tab / Shift+Tab, typing goes on where it was (the toolbar has Undo)
+        const before = this.blocks[i]?.depth;
+        if (dx > 0) this.indent(i); else this.outdent(i);
+        if (this.blocks[i]?.depth !== before) navigator.vibrate?.(10);
+        return;
+      }
+      if (!cancel && !scrolled && !typing && Math.abs(dx) >= SWIPE && Math.abs(dx) > 2 * Math.abs(dy) && this.shiftLevel(i, dx > 0 ? 1 : -1)) {
         navigator.vibrate?.(10);
         this.undoToast(dx > 0 ? 'Moved in a level.' : 'Moved out a level.');
       }

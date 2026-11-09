@@ -45,8 +45,8 @@ let { browser, page, errors, touch } = await phone();
 const bar = await rect(page, '#topbar');
 const btns = await page.$$eval('#topbar > button', (bs) => bs.filter((b) => b.offsetParent).map((b) => [b.dataset.a || b.dataset.h, Math.round(b.getBoundingClientRect().height), Math.round(b.getBoundingClientRect().width)]));
 check(bar.h <= 46 && bar.y === 0, 'the bar is at most 46px tall (it was 55)', JSON.stringify(bar));
-check(btns.map((b) => b[0]).join() === 'menu,home,back,forward,date,search' && btns.every(([, hh]) => hh >= 44), 'the same buttons, each a finger tall', JSON.stringify(btns));
-check(await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('#topbar .t')).fontSize)) >= 15, 'the title is as readable as before');
+check(btns.map((b) => b[0]).join() === 'menu,back,forward,date,search' && btns.every(([, hh]) => hh >= 44), 'the buttons (Build 39: Home gives its place to the calendar on today), each a finger tall', JSON.stringify(btns));
+check(await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('#topbar .t')).fontSize)) >= 14, 'the title readable (14px since Build 39, his lighter bar)');
 
 console.log('the menu drawer: about three quarters wide, under the top bar');
 const menuBtn = page.locator('#topbar [data-a="menu"]');

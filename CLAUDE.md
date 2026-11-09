@@ -265,7 +265,13 @@ hold is eaten, `held`); `App.barScroll` (in the scroll frame): `.away` while a f
 after 36px up, at the top or end, with the drawer, or a touch in the top 28px; `.lifted` away from the top = solid
 with an 18px fade under it (his pick "A"; under the pinned parents instead when they show, `html.has-pins`, and
 `.pins-in` loses its line for the same fade on phones); `.typing` hides it while a note is being typed in (not for
-selected notes). The pinned parents follow the bar (`transitionend` → `pinSoon`). Pills around its buttons: being decided.
+selected notes). The pinned parents follow the bar (`transitionend` → `pinSoon`). No pills around its buttons (he tried soft tinted
+and white raised pills, Nov 9, and kept the plain icons).
+Also Build 39 (he asked, Nov 9, as in Logseq): on a phone a sideways swipe on the note being typed in moves it out or
+in a level as Tab / Shift+Tab do, the keyboard staying up (editor.js swipe: `typing`, started on the `.ed` box, which
+replaces `.bc` while typing; a press held over 350 ms before moving is choosing words and moves nothing); the whole line
+under an outline's last note is the `.add-end` button (as wide as the notes, its "+" where it was, the text cursor),
+so a tap or click anywhere in that empty space adds a note (t23_build39).
 Also Build 39 (a review of speed and use, measured with the processor slowed 4×, a 3,000-note page; t23_build39):
 the editing box grows by CSS (`field-sizing: content`; editor.js `FIELD_SIZING` skips `autosize`, whose
 height:auto + scrollHeight laid out the whole page each key); the scroll frame reads before it writes
