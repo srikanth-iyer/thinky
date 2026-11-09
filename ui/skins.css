@@ -88,7 +88,7 @@
   --weekday-font: var(--font-title); --weekday-style: italic; --weekday-transform: none;
   --weekday-before: ""; --weekday-after: ""; --weekday-ink: var(--ink-faint);
   /* bullets; on a laptop the dot under the mouse grows a little on a soft round patch (Logseq's) */
-  --bullet-w: 7px; --bullet-h: 7px; --bullet-radius: 50%; --bullet-rotate: 0deg;
+  --bullet-w: 6px; --bullet-h: 6px; /* Logseq's size (he picked it, Nov 9; was 7px) */ --bullet-radius: 50%; --bullet-rotate: 0deg;
   /* The dots and the level lines are drawn softer than each look's own colour for them (he asked, Nov 9:
      subtle, as in Calm, in every look; a busy screen otherwise): --bullet-ink / --guide-ink are the look's
      colours, --bullet-strength / --guide-strength how much of them shows (mixed with transparent, so over
@@ -205,7 +205,7 @@
   --font-title: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
   --title-weight: 800; --title-tracking: -0.02em;
   --weekday-font: var(--font-title); --weekday-style: normal;
-  --bullet-w: 8px; --bullet-h: 8px;
+  --bullet-w: 6px; --bullet-h: 6px;
   --btn-bg: var(--surface); --btn-border: 2px solid #1D1A33; --btn-shadow: 2px 2px 0 #1D1A33;
   --btn-press: none; --btn-press-move: 2px, 2px;
   --check-border: 2px solid #1D1A33;
@@ -232,7 +232,7 @@
   --font-title: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
   --title-weight: 800; --title-tracking: -0.02em;
   --weekday-font: var(--font-title); --weekday-style: normal;
-  --bullet-w: 8px; --bullet-h: 8px;
+  --bullet-w: 6px; --bullet-h: 6px;
   --btn-bg: var(--surface); --btn-border: 2px solid #A49EBC; --btn-shadow: 2px 2px 0 #17141F;
   --btn-press: none; --btn-press-move: 2px, 2px;
   --check-border: 2px solid #A49EBC; --check-tick: #17141F;

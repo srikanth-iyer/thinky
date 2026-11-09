@@ -173,7 +173,7 @@ const au = await page.evaluate(() => ({
   weekday: getComputedStyle(document.querySelector('.weekday')).color, band: getComputedStyle(document.querySelector('.sheet.day')).backgroundImage,
   dot: getComputedStyle(document.querySelector('.sheet .blk > .bul'), '::after').backgroundColor,
 }));
-check(au.accent.toUpperCase() === '#1E56E6' && au.weekday === 'rgb(30, 86, 230)' && au.dot === au.weekday && !au.band.includes('rule30.svg'), 'Automaton: a stronger blue for its dots and day labels (its rule 30 is on the page now, not a band: t16_looks2)', JSON.stringify(au));
+check(au.accent.toUpperCase() === '#1E56E6' && au.weekday === 'rgb(30, 86, 230)' && /^color\(srgb 0\.117647 0\.337255 0\.901961 \/ 0\.4\d\)$/.test(au.dot) && !au.band.includes('rule30.svg'), 'Automaton: a stronger blue for its day labels, its dots the same blue softened (Build 39) (its rule 30 is on the page now, not a band: t16_looks2)', JSON.stringify(au));
 await page.screenshot({ path: SHOTS + '/t16-automaton.png' });
 const errs1 = [...errors];
 await browser.close();
