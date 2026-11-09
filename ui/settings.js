@@ -12,6 +12,7 @@ import { SKINS, accessCard, lookName, lookState } from './app.js';
 import { fitChips } from './views.js';
 import { madeBy } from './history.js';
 import { VERSION } from './version.js';
+import { BUILD } from './build.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -1021,11 +1022,8 @@ function feedbackCard(app) {
   btn.onclick = async () => {
     const text = msg.value.trim();
     if (!text) { out.textContent = 'Write a message first.'; msg.focus(); return; }
-    let ver = '';
-    try { ver = await window.__TAURI__?.app?.getVersion?.(); } catch {}
     const where = isAndroid ? 'Android' : isApp ? await call('platform').catch(() => 'app') : 'browser';
-    const build = /^\d+\.\d+\.(\d+)$/.exec(ver || '')?.[1];
-    app.openUrl(feedbackUrl(text, `thinky ${VERSION}${build ? ` (Build ${build})` : ' (preview)'} · ${where}`));
+    app.openUrl(feedbackUrl(text, `thinky ${VERSION}${BUILD ? ` (Build ${BUILD})` : ' (preview)'} · ${where}`));
     out.innerHTML = '<i class="spark-mark" aria-hidden="true"></i>Opened in your browser. Thank you!';
   };
   return card;
@@ -1048,13 +1046,10 @@ function problemsCard() {
 
 async function aboutCard(app) {
   const card = h('div', 'card');
-  let ver = '';
-  try { ver = await window.__TAURI__?.app?.getVersion?.(); } catch {}
-  // Build 41: the version people see, with the build number (the installed app's own version is 0.1.N)
-  const build = /^\d+\.\d+\.(\d+)$/.exec(ver || '')?.[1];
-  card.innerHTML = `<h2>About ${BRAND.word}</h2><p class="note">${BRAND.word} ${esc(VERSION)}${build ? ` · Build ${esc(build)}` : ' (preview)'}. Your notes stay as plain Markdown files in your folder.</p>`;
+  // Build 41: the version (also the app's own) with the build number (ui/build.js, made by CI)
+  card.innerHTML = `<h2>About ${BRAND.word}</h2><p class="note">${BRAND.word} ${esc(VERSION)}${BUILD ? ` · Build ${BUILD}` : ' (preview)'}. Your notes stay as plain Markdown files in your folder.</p>`;
   if (isApp) card.append(await updateBox(app));
-  card.append(whatsNew(app, ver));
+  card.append(whatsNew(app));
   return card;
 }
 
@@ -1062,9 +1057,9 @@ async function aboutCard(app) {
  *  repo's releases (the same words as the release page and the changelog's newest sections), newest
  *  first; the one installed is marked, and a newer one says so. Read only when opened (nothing is asked
  *  of GitHub until then), and open by itself when an update is waiting or this build is new to him. */
-function whatsNew(app, ver) {
+function whatsNew(app) {
   const box = h('details', 'whatsnew');
-  const mine = Number(String(ver || '').match(/(\d+)$/)?.[1] || 0);
+  const mine = BUILD || 0; // (this build's number: ui/build.js)
   box.innerHTML = '<summary><span>What’s new</span></summary><div class="wn-list" aria-live="polite"></div>';
   const list = $('.wn-list', box);
   const notes = (body) => {
@@ -1093,7 +1088,8 @@ function whatsNew(app, ver) {
         const n = Number(String(x.tag_name).match(/(\d+)$/)?.[1] || 0);
         const tag = n === mine ? '<span class="wn-tag">this version</span>' : mine && n > mine ? '<span class="wn-tag new">ready to install</span>' : '';
         const day = x.published_at ? new Date(x.published_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
-        return `<details class="wn-rel"${i < 2 || n >= mine ? ' open' : ''}><summary><b>Build ${n}</b> ${tag}<span class="wn-day">${esc(day)}</span></summary><div class="wn-body">${notes(x.body)}</div></details>`;
+        const v = /\bversion (\d+\.\d+\.\d+)/.exec(x.name || '')?.[1];
+        return `<details class="wn-rel"${i < 2 || n >= mine ? ' open' : ''}><summary><b>${v ? `Version ${esc(v)}` : `Build ${n}`}</b>${v ? ` <span class="wn-day">Build ${n}</span>` : ''} ${tag}<span class="wn-day">${esc(day)}</span></summary><div class="wn-body">${notes(x.body)}</div></details>`;
       }).join('') + `<p class="note"><a href="https://github.com/srikanth-iyer/thinky/blob/main/CHANGELOG.md" data-ext>The whole history</a></p>`;
     } catch {
       loaded = false;
@@ -1133,7 +1129,7 @@ async function updateBox(app) {
   };
   const idle = (msg = '') => draw('idle', msg, '<button class="btn ghost" data-a="check">Check for a newer version</button>');
   const offer = () => {
-    const name = `Build ${esc(String(app.latest.tag).replace(/^build-/, ''))}`;
+    const name = `version ${esc(app.latest.version || '')}, Build ${esc(String(app.latest.tag).replace(/^build-/, ''))}`;
     if (!how.can) return draw('newer', `A newer version (${name}) is ready: get it from${page()}.${how.msg ? ' ' + esc(how.msg) : ''}`); // why not (update.rs)
     // how much it downloads (on the phone he may want to wait for Wi-Fi)
     const sz = app.latest.sizes || {}; // (thinky-… since Build 35; the old names before it)

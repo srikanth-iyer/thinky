@@ -17,6 +17,7 @@ const openHistory = (...a) => import('./history.js').then((m) => m.openHistory(.
 import { SearchBox } from './search.js';
 import { initFileDrop } from './filedrop.js';
 import { makeChips } from './chips.js';
+import { releaseVersion, higherVersion } from './version.js';
 
 // Looks: name and one-line note for the picker; the look itself lives in skins.css.
 // The looks, family by family (Build 39, he asked: a day look and a night look, and Light / Dark / Match
@@ -3328,21 +3329,23 @@ class App {
         // (given up after 8 s: About waits for this answer, and a bad network mustn't leave it blank)
         const r = await fetch('https://api.github.com/repos/srikanth-iyer/thinky/releases/latest', { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) });
         // (with each file's size: About says how much "Update now" downloads)
-        if (r.ok) { const j = await r.json(); latest = { tag: j.tag_name, url: j.html_url, sizes: Object.fromEntries((j.assets || []).map((a) => [a.name, a.size])) }; }
+        // (Build 41: with its version, from its title "Build N · version X")
+        if (r.ok) { const j = await r.json(); latest = { tag: j.tag_name, version: releaseVersion(j.name), url: j.html_url, sizes: Object.fromEntries((j.assets || []).map((a) => [a.name, a.size])) }; }
       } catch { /* offline */ }
       store.set('updateCheck', { at: Date.now(), latest });
     }
-    const n = (s) => Number(String(s || '').match(/(\d+)$/)?.[1] || 0);
+    // Build 41 (he decided, Nov 9): newer = a higher version, whichever part of it went up (the release's
+    // build number only says where its files are). A release whose title names no version isn't offered.
     this.latest = latest;
-    const newer = !!latest && n(latest.tag) > n(ver);
+    const newer = !!latest?.version && higherVersion(latest.version, ver);
     $('#update').hidden = !newer;
     document.documentElement.classList.toggle('has-update', newer); // (a small spark on Settings and About: app.css)
     const b = $('.hb-update');
     const side = $('#update');
-    if (newer && side) side.innerHTML = `<i class="spark-mark" aria-hidden="true"></i>Build ${esc(String(latest.tag).replace(/^build-/, ''))} is ready · <u>Update</u>`;
+    if (newer && side) side.innerHTML = `<i class="spark-mark" aria-hidden="true"></i>Version ${esc(latest.version)} is ready · <u>Update</u>`;
     if (b) {
       b.hidden = !newer;
-      if (newer) b.title = `Build ${String(latest.tag).replace(/^build-/, '')} is ready`;
+      if (newer) b.title = `Version ${latest.version} is ready`;
     }
     if (!this.updateWatch) { // (once: every 2 hours, and when the window comes back)
       this.updateWatch = setInterval(() => this.checkUpdate(), 72e5);
@@ -3356,7 +3359,7 @@ class App {
   updateMenu(btn) {
     const l = this.latest;
     if (!l?.tag) return;
-    menu(btn, [{ head: `Build ${String(l.tag).replace(/^build-/, '')} is ready` },
+    menu(btn, [{ head: `Version ${l.version} is ready` },
       { label: 'Update now', run: async () => { await this.go('settings', 'about'); (await import('./settings.js')).startUpdate(this); } },
       { label: 'What’s new', run: async () => { await this.go('settings', 'about'); setTimeout(() => document.querySelector('.whatsnew')?.scrollIntoView({ block: 'start' }), 300); } }], { cls: 'upd-menu' });
   }

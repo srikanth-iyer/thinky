@@ -79,11 +79,13 @@ fn main() {
         let _ = std::fs::write(&args[3], out);
         return;
     }
-    // `--verify-update <installer> <signature file> <build number>`: would this app accept that
-    // installer as that build? CI runs it on the app it has just built. Exit code 0 = yes.
-    if arg(1) == "--verify-update" {
+    // `--verify-update <installer> <signature file> <build number>`: would Build 40 and older accept
+    // that installer as that build (thinky-setup.exe.sig, version 0.1.N)? `--verify-update-newer`, the
+    // same with thinky-update.sig, as Build 41 and later check it. CI runs both on the app it has just
+    // built. Exit code 0 = yes.
+    if arg(1) == "--verify-update" || arg(1) == "--verify-update-newer" {
         let (p, n) = (std::path::Path::new, arg(4).parse().unwrap_or(0));
-        let r = lean_outliner_lib::update::verify_files(p(&arg(2)), p(&arg(3)), n, None);
+        let r = if arg(1) == "--verify-update" { lean_outliner_lib::update::verify_files(p(&arg(2)), p(&arg(3)), n, None) } else { lean_outliner_lib::update::verify_update_files(p(&arg(2)), p(&arg(3)), n, None) };
         println!("{}", r.as_ref().map_or_else(|e| format!("refused: {e}"), |_| "genuine".to_string()));
         std::process::exit(if r.is_ok() { 0 } else { 1 });
     }

@@ -96,9 +96,7 @@ fn download(tag: &str, own: &str) -> Result<(), String> {
         return Err(msg.into());
     }
     let n = rules::build_number(tag).ok_or("That isn’t a build of thinky.")?;
-    if n <= own_version(own)?.2 {
-        return Err("You already have this version (or a newer one).".into());
-    }
+    own_version(own)?; // (whether it's newer is its signed version's to say: `check`)
     if imp::other_copies()? > 0 {
         return Err(OTHER_COPIES.into()); // said now, before downloading (install checks again)
     }
@@ -109,7 +107,7 @@ fn download(tag: &str, own: &str) -> Result<(), String> {
             return Err("The update is already downloading.".into());
         }
         // downloaded already (pressed again after closing another window): checked again anyway
-        if p.got.as_ref().is_some_and(|g| g.n == n && g.dir.join(rules::SETUP_FILE).is_file() && g.dir.join(rules::SIG_FILE).is_file()) {
+        if p.got.as_ref().is_some_and(|g| g.n == n && g.dir.join(rules::SETUP_FILE).is_file() && g.dir.join(rules::UPDATE_SIG_FILE).is_file()) {
             return Ok(());
         }
         p.busy = true;
@@ -119,7 +117,8 @@ fn download(tag: &str, own: &str) -> Result<(), String> {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn’t make a folder for the download ({e})."))?;
         // the small signature file first: without it there's no point fetching the installer
-        for file in [rules::SIG_FILE, rules::SETUP_FILE] {
+        // (thinky-update.sig since Build 41: the version people see, any part of which may go up)
+        for file in [rules::UPDATE_SIG_FILE, rules::SETUP_FILE] {
             imp::fetch(&rules::asset_url(n, file), &dir.join(file))?;
         }
         Ok(())
@@ -139,7 +138,7 @@ fn download(tag: &str, own: &str) -> Result<(), String> {
 fn check(own: &str) -> Result<(), String> {
     let mut p = lock();
     let got = p.got.clone().ok_or("Download the update first.")?;
-    match verify_files(&got.dir.join(rules::SETUP_FILE), &got.dir.join(rules::SIG_FILE), got.n, Some(own_version(own)?)) {
+    match verify_update_files(&got.dir.join(rules::SETUP_FILE), &got.dir.join(rules::UPDATE_SIG_FILE), got.n, Some(own_version(own)?)) {
         Ok(()) => {
             p.got = Some(Got { checked: true, ..got });
             Ok(())
@@ -176,7 +175,7 @@ pub fn install(own: &str) -> Result<(), String> {
     let helper = crate::hotkey::stop();
     let r = (|| -> Result<(), String> {
         let (held, bytes) = imp::open_held(&setup)?;
-        verify_bytes(&bytes, &got.dir.join(rules::SIG_FILE), got.n, Some(own_version(own)?))?;
+        verify_update_bytes(&bytes, &got.dir.join(rules::UPDATE_SIG_FILE), got.n, Some(own_version(own)?))?;
         imp::run_installer(&setup)?;
         drop(held);
         Ok(())
@@ -197,6 +196,23 @@ pub fn install(own: &str) -> Result<(), String> {
 pub fn verify_files(setup: &Path, sig: &Path, n: u32, own: Option<rules::Version>) -> Result<(), String> {
     let bytes = std::fs::read(setup).map_err(|e| format!("the installer can’t be read: {e}"))?;
     verify_bytes(&bytes, sig, n, own)
+}
+
+/// The same for `thinky-update.sig` (Build 41 on): its version higher than this app's, made for build `n`.
+pub fn verify_update_files(setup: &Path, sig: &Path, n: u32, own: Option<rules::Version>) -> Result<(), String> {
+    let bytes = std::fs::read(setup).map_err(|e| format!("the installer can’t be read: {e}"))?;
+    verify_update_bytes(&bytes, sig, n, own)
+}
+
+fn verify_update_bytes(bytes: &[u8], sig: &Path, n: u32, own: Option<rules::Version>) -> Result<(), String> {
+    let key = key().ok_or("this copy has no update key")?;
+    let sig = rules::parse_sig_file(&std::fs::read_to_string(sig).map_err(|e| format!("the signature file can’t be read: {e}"))?)?;
+    let text = rules::update_text_to_verify(&sig, rules::SETUP_FILE, n, own, &rules::hex(&imp::sha256(bytes)?))?;
+    if imp::verify(&key, &imp::sha256(text.as_bytes())?, &sig.sig)? {
+        Ok(())
+    } else {
+        Err("its signature isn’t from thinky’s key".into())
+    }
 }
 
 fn verify_bytes(bytes: &[u8], sig: &Path, n: u32, own: Option<rules::Version>) -> Result<(), String> {

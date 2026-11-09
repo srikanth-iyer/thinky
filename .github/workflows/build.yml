@@ -38,13 +38,31 @@ env:
   OLD_RELEASES: srikanth-iyer/lean-outliner-releases
 
 jobs:
-  # The build number: one more than the newest release, here or on the old downloads repo ("Build N"). It is also
-  # the app's version (0.1.N, scripts/ci_version.py), which installed apps compare with the newest release.
+  # The build number: one more than the newest release, here or on the old downloads repo ("Build N"): the
+  # release's tag (build-N) and where its files are. Since Build 41 the app's version is ui/version.js's.
   number:
     runs-on: ubuntu-latest
     outputs:
       n: ${{ steps.n.outputs.n }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { sparse-checkout: "scripts\nui/version.js", sparse-checkout-cone-mode: false, persist-credentials: false }
+      # Build 41: the version (ui/version.js) is what installed apps compare, so it must be higher than
+      # the newest release's (its title says it: "Build N · version X"). On main a build that forgot to
+      # raise it stops here; a wip build only warns.
+      - name: The version is higher than the last release's
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN: ${{ github.ref == 'refs/heads/main' }}
+        run: |
+          set -euo pipefail
+          v=$(python3 scripts/update_sig.py version)
+          last=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .name | sed -n 's/.*version \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p')
+          if [ -n "$last" ] && ! python3 -c 'import sys; a, b = (tuple(map(int, x.split("."))) for x in sys.argv[1:]); sys.exit(0 if a > b else 1)' "$v" "$last"; then
+            msg="ui/version.js says $v, but the newest release is already version $last: raise it (installed apps only take a higher version)."
+            if [ "$MAIN" = true ]; then echo "::error::$msg"; exit 1; else echo "::warning::$msg"; fi
+          fi
+          echo "::notice title=Version::$v (the newest release: ${last:-none named})"
       - id: n
         env:
           GH_TOKEN: ${{ github.token }}
@@ -432,6 +450,7 @@ jobs:
     outputs:
       cert: ${{ steps.cert.outputs.cert }}
       build: ${{ steps.cert.outputs.build }}
+      code: ${{ steps.cert.outputs.code }}
     steps:
       - id: cert
         env: { GH_TOKEN: '${{ github.token }}' }
@@ -454,6 +473,10 @@ jobs:
           [ -n "$OLD" ] || { echo "::error::build-$PREV's APK certificate couldn't be read."; exit 1; }
           echo "cert=$OLD" >> "$GITHUB_OUTPUT"
           echo "build=$PREV" >> "$GITHUB_OUTPUT"
+          # (Build 41) its versionCode: a phone only installs a higher one (`sign` checks the new APK's)
+          CODE=$("$BT/aapt2" dump badging "$RUNNER_TEMP/prev/LeanOutliner.apk" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1)
+          [ -n "$CODE" ] || { echo "::error::build-$PREV's APK versionCode couldn't be read."; exit 1; }
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
 
   # main only: sign the installer and the APK with the real keys, on a machine of its own that gets
   # only the scripts, the version rule and the two built files (no build tools run here). Waits for
@@ -476,6 +499,7 @@ jobs:
           sparse-checkout: |
             /scripts/
             /src-tauri/tauri.conf.json
+            /ui/version.js
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: windows, path: built }
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -501,23 +525,30 @@ jobs:
           [ -n "$KEY_PASS" ] && [ -n "$UPDATE_KEY_PEM" ] || { echo "::error::The release environment's secrets are missing. Never make a new key: installed apps would refuse every update."; exit 1; }
           printf '%s\n' "$UPDATE_KEY_PEM" > "$KEY"
           [ "$(python3 scripts/update_sig.py pub "$KEY")" = "$PUB" ] || { echo "::error::The signing key isn't the one the app is built with (ci/update-key.pub)."; exit 1; }
-          VERSION=$(python3 scripts/update_sig.py version "$N")
-          [ "$VERSION" = "$BUILT" ] || { echo "::error::The build says it is version '$BUILT', but build $N is $VERSION: not signed."; exit 1; }
+          VERSION=$(python3 scripts/update_sig.py version)
+          [ "$VERSION" = "$BUILT" ] || { echo "::error::The build says it is version '$BUILT', but ui/version.js says $VERSION: not signed."; exit 1; }
+          LEGACY=$(python3 scripts/update_sig.py legacy "$N")
           mkdir -p sig checks
-          python3 scripts/update_sig.py sign "$KEY" built/thinky-setup.exe sig/thinky-setup.exe.sig "$VERSION"
+          # Build 41 and later read thinky-update.sig: the version, made for build N
+          python3 scripts/update_sig.py sign-update "$KEY" built/thinky-setup.exe sig/thinky-update.sig "$VERSION" "$N"
+          # Build 40 and older read thinky-setup.exe.sig and want a version ending in the build number (0.1.N)
+          python3 scripts/update_sig.py sign "$KEY" built/thinky-setup.exe sig/thinky-setup.exe.sig "$LEGACY"
           # the same installer under its old name too, signed for that name: Build 34 and older look for
           # LeanOutliner-setup.exe(.sig) (Build 35 renamed the downloads; the copies go when no one needs them)
           cp built/thinky-setup.exe "$RUNNER_TEMP/LeanOutliner-setup.exe"
-          python3 scripts/update_sig.py sign "$KEY" "$RUNNER_TEMP/LeanOutliner-setup.exe" sig/LeanOutliner-setup.exe.sig "$VERSION"
+          python3 scripts/update_sig.py sign "$KEY" "$RUNNER_TEMP/LeanOutliner-setup.exe" sig/LeanOutliner-setup.exe.sig "$LEGACY"
           python3 scripts/update_sig.py check "$PUB" sig/LeanOutliner-setup.exe.sig || { echo "::error::The old-name signature doesn't check out."; exit 1; }
+          python3 scripts/update_sig.py check-update "$PUB" sig/thinky-update.sig || { echo "::error::thinky-update.sig doesn't check out."; exit 1; }
           "$OPENSSL" genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$RUNNER_TEMP/other.pem"
-          KEY_PASS= python3 scripts/update_sig.py sign "$RUNNER_TEMP/other.pem" built/thinky-setup.exe checks/other-key.sig "$VERSION"
+          KEY_PASS= python3 scripts/update_sig.py sign "$RUNNER_TEMP/other.pem" built/thinky-setup.exe checks/other-key.sig "$LEGACY"
+          KEY_PASS= python3 scripts/update_sig.py sign-update "$RUNNER_TEMP/other.pem" built/thinky-setup.exe checks/other-key-update.sig "$VERSION" "$N"
       - name: Sign the APK
         env:
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
           OLD: ${{ needs.prev-cert.outputs.cert }}
           PREV: ${{ needs.prev-cert.outputs.build }}
+          PREV_CODE: ${{ needs.prev-cert.outputs.code }}
         run: |
           set -euo pipefail
           umask 077
@@ -533,13 +564,15 @@ jobs:
           NEW=$(cert thinky.apk)
           [ -n "$NEW" ] || { echo "::error::The new APK's signing certificate couldn't be read."; exit 1; }
           [ "$OLD" = "$NEW" ] || { echo "::error::This APK isn't signed like build-$PREV's (certificate $NEW, build-$PREV: $OLD): phones would refuse it."; exit 1; }
+          CODE=$("$BT/aapt2" dump badging thinky.apk | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1)
+          [ -n "$CODE" ] && [ -n "$PREV_CODE" ] && [ "$CODE" -gt "$PREV_CODE" ] || { echo "::error::This APK's versionCode ($CODE) isn't higher than build-$PREV's ($PREV_CODE): phones wouldn't update to it."; exit 1; }
           echo "::notice title=APK signed::with the release key (certificate SHA-256 $NEW)"
       - id: signed
-        run: echo "sums=$(sha256sum thinky.apk sig/thinky-setup.exe.sig sig/LeanOutliner-setup.exe.sig | sed 's| sig/| |' | base64 -w0)" >> "$GITHUB_OUTPUT"
+        run: echo "sums=$(sha256sum thinky.apk sig/thinky-update.sig sig/thinky-setup.exe.sig sig/LeanOutliner-setup.exe.sig | sed 's| sig/| |' | base64 -w0)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: update-signature, path: sig/* }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with: { name: update-checks, path: checks/other-key.sig, retention-days: 5 }
+        with: { name: update-checks, path: checks/*.sig, retention-days: 5 }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: android, path: thinky.apk }
 
@@ -559,6 +592,7 @@ jobs:
           sparse-checkout: |
             /scripts/
             /src-tauri/tauri.conf.json
+            /ui/version.js
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: windows, path: built }
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -581,15 +615,19 @@ jobs:
           set -euo pipefail
           KEY=wipkey/wip-update-key.pem
           [ "$(python3 scripts/update_sig.py pub "$KEY")" = "$PUB" ] || { echo "::error::The wip key isn't the one the app is built with."; exit 1; }
-          VERSION=$(python3 scripts/update_sig.py version "$N")
-          [ "$VERSION" = "$BUILT" ] || { echo "::error::The build says it is version '$BUILT', but build $N is $VERSION."; exit 1; }
+          VERSION=$(python3 scripts/update_sig.py version)
+          [ "$VERSION" = "$BUILT" ] || { echo "::error::The build says it is version '$BUILT', but ui/version.js says $VERSION."; exit 1; }
+          LEGACY=$(python3 scripts/update_sig.py legacy "$N")
           mkdir -p sig checks
-          python3 scripts/update_sig.py sign "$KEY" built/thinky-setup.exe sig/thinky-setup.exe.sig "$VERSION"
+          python3 scripts/update_sig.py sign-update "$KEY" built/thinky-setup.exe sig/thinky-update.sig "$VERSION" "$N"
+          python3 scripts/update_sig.py sign "$KEY" built/thinky-setup.exe sig/thinky-setup.exe.sig "$LEGACY"
           cp built/thinky-setup.exe "$RUNNER_TEMP/LeanOutliner-setup.exe"
-          python3 scripts/update_sig.py sign "$KEY" "$RUNNER_TEMP/LeanOutliner-setup.exe" sig/LeanOutliner-setup.exe.sig "$VERSION"
+          python3 scripts/update_sig.py sign "$KEY" "$RUNNER_TEMP/LeanOutliner-setup.exe" sig/LeanOutliner-setup.exe.sig "$LEGACY"
           python3 scripts/update_sig.py check "$PUB" sig/LeanOutliner-setup.exe.sig || { echo "::error::The old-name signature doesn't check out."; exit 1; }
+          python3 scripts/update_sig.py check-update "$PUB" sig/thinky-update.sig || { echo "::error::thinky-update.sig doesn't check out."; exit 1; }
           "$OPENSSL" genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$RUNNER_TEMP/other.pem"
-          python3 scripts/update_sig.py sign "$RUNNER_TEMP/other.pem" built/thinky-setup.exe checks/other-key.sig "$VERSION"
+          python3 scripts/update_sig.py sign "$RUNNER_TEMP/other.pem" built/thinky-setup.exe checks/other-key.sig "$LEGACY"
+          python3 scripts/update_sig.py sign-update "$RUNNER_TEMP/other.pem" built/thinky-setup.exe checks/other-key-update.sig "$VERSION" "$N"
           BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
           "$BT/zipalign" -p -f 4 unsigned/LeanOutliner-unsigned.apk aligned.apk
           export PASS="$(openssl rand -hex 16)"; KS="$RUNNER_TEMP/throwaway.keystore"
@@ -599,7 +637,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: update-signature, path: sig/* }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with: { name: update-checks, path: checks/other-key.sig, retention-days: 5 }
+        with: { name: update-checks, path: checks/*.sig, retention-days: 5 }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: android, path: thinky.apk }
 
@@ -631,9 +669,10 @@ jobs:
           python -c "import sys; b = bytearray(open(sys.argv[1], 'rb').read()); b[len(b) // 2] ^= 1; open(sys.argv[2], 'wb').write(b)" "$SETUP" "$T/changed.exe"
           python -c "import json, sys; d = json.load(open(sys.argv[1])); v = d['version'].split('.'); v[-1] = str(int(v[-1]) + 1); d['version'] = '.'.join(v); json.dump(d, open(sys.argv[2], 'w'))" "$SIG" "$T/edited.sig"
           bad=0 seen=""
+          MODE=--verify-update
           expect() { # expect <genuine|refused> <what> <installer> <signature file> <build number>
             local want=$1 what=$2 code=0 said; shift 2
-            built/thinky-portable.exe --verify-update "$@" > "$T/said.txt" 2>&1 || code=$?
+            built/thinky-portable.exe $MODE "$@" > "$T/said.txt" 2>&1 || code=$?
             said=$(tr -d '\r' < "$T/said.txt")
             if { [ "$want" = genuine ] && [ $code = 0 ]; } || { [ "$want" = refused ] && [ $code = 1 ]; }; then
               echo "ok: $what -> $said"; seen="$seen | $what: $said"
@@ -646,6 +685,17 @@ jobs:
           expect refused "the installer offered as another build" "$SETUP" "$SIG" "$((N + 1))"
           expect refused "a signature file with its version edited" "$SETUP" "$T/edited.sig" "$((N + 1))"
           expect refused "an installer signed with another key" "$SETUP" checks/other-key.sig "$N"
+          # Build 41 on: thinky-update.sig (the version people see, made for build N; any part may go up)
+          U=built/thinky-update.sig; MODE=--verify-update-newer
+          python -c "import json, sys; d = json.load(open(sys.argv[1])); v = d['version'].split('.'); v[1] = str(int(v[1]) + 1); d['version'] = '.'.join(v); json.dump(d, open(sys.argv[2], 'w'))" "$U" "$T/edited-update.sig"
+          python -c "import json, sys; d = json.load(open(sys.argv[1])); d['build'] += 1; json.dump(d, open(sys.argv[2], 'w'))" "$U" "$T/rebuilt-update.sig"
+          expect genuine "the signed installer (thinky-update.sig)" "$SETUP" "$U" "$N"
+          expect refused "a changed installer (thinky-update.sig)" "$T/changed.exe" "$U" "$N"
+          expect refused "offered as another build (thinky-update.sig)" "$SETUP" "$U" "$((N + 1))"
+          expect refused "its version edited (thinky-update.sig)" "$SETUP" "$T/edited-update.sig" "$N"
+          expect refused "its build number edited (thinky-update.sig)" "$SETUP" "$T/rebuilt-update.sig" "$((N + 1))"
+          expect refused "another key (thinky-update.sig)" "$SETUP" checks/other-key-update.sig "$N"
+          expect refused "the old kind of file read the new way" "$SETUP" "$SIG" "$N"
           # (the app's own words, readable from the job's annotations)
           [ $bad = 1 ] || echo "::notice title=Update check of build $N::${seen# | }"
           exit $bad
@@ -691,13 +741,13 @@ jobs:
           set -euo pipefail
           [ -n "$WIN" ] && [ -n "$SIGNED" ] || { echo "::error::A job didn't say what it made."; exit 1; }
           cd dist && { printf '%s' "$WIN" | base64 -d; printf '%s' "$SIGNED" | base64 -d; } | sha256sum -c -
-          [ "$(ls | wc -l)" = 5 ] || { echo "::error::Unexpected files to publish: $(ls)"; exit 1; }
+          [ "$(ls | wc -l)" = 6 ] || { echo "::error::Unexpected files to publish: $(ls)"; exit 1; }
           # the old names as well (Build 35 renamed the downloads): Build 34 and older look for these
           # to update, and old links point at them. LeanOutliner-setup.exe.sig is signed for that name.
           cp thinky-setup.exe LeanOutliner-setup.exe
           cp thinky-portable.exe LeanOutliner-portable.exe
           cp thinky.apk LeanOutliner.apk
-          [ "$(ls | wc -l)" = 8 ] || { echo "::error::Unexpected files to publish: $(ls)"; exit 1; }
+          [ "$(ls | wc -l)" = 9 ] || { echo "::error::Unexpected files to publish: $(ls)"; exit 1; }
       - name: Release notes
         env:
           MSG: ${{ github.event.head_commit.message }}
@@ -710,8 +760,7 @@ jobs:
       - id: title
         name: Title (Build N · version X, the version from ui/version.js)
         run: |
-          v=$(sed -n "s/^export const VERSION = '\([0-9]*\.[0-9]*\.[0-9]*\)';$/\1/p" ui/version.js)
-          [ -n "$v" ] || { echo "::error::ui/version.js has no version."; exit 1; }
+          v=$(python3 scripts/update_sig.py version) # (the same reading as the build's and the signature's)
           echo "title=Build ${{ needs.number.outputs.n }} · version $v" >> "$GITHUB_OUTPUT"
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:

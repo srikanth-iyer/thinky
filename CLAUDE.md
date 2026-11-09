@@ -304,13 +304,22 @@ his pick "A"); day looks keep the ink-coloured dim.
 Version numbers (he decided, Nov 9): the version's first number = released to the public, the middle = big changes,
 the last = small ones, back to 0 when the middle goes up. Versions given afterwards (he agreed, Nov 9; CHANGELOG.md's
 headings): 0.1 = Builds 1–22, 0.2 = 23–28, 0.3 = 29–31, 0.4 = 32–38, 0.5 = 39 on (Build 40 = 0.5.1, Build 41 = 0.5.2).
-Since Build 41 the version people see is `ui/version.js` `VERSION` (change it with every build, with CHANGELOG.md's
-heading): Settings → Updates & about ("0.5.2 · Build 41"), Send feedback, and the release's title "Build N · version X"
-(build.yml's release job reads that line). The installed app's own version stays 0.1.N (ci_version.py, update_sig.py
-`version`, update.rs, Android's versionName/versionCode): Build 40 and older accept only an update whose signed version
-ends in its build number (update.rs `text_to_verify`, `v.2 != n`), so that can't change without stopping them updating.
+Since Build 41 the version is `ui/version.js` `VERSION`, set by hand with every build (with CHANGELOG.md's heading),
+and it is the app's real version: ci_version.py stamps it into tauri.conf.json (and Android's versionCode =
+major·1,000,000 + minor·1,000 + patch, so it rises with it) and writes `ui/build.js` `BUILD` = N (null in the repo:
+dev and tests show "(preview)"); update_sig.py `version` reads it (`app_version`, one rule for the build, the
+signature and the release title "Build N · version X"). Updates compare versions (he decided, Nov 9: any part may go
+up): app.js `checkUpdate` offers the newest release when the version in its title (`releaseVersion`) is higher
+(`higherVersion`); Windows reads `thinky-update.sig` (core update.rs `UPDATE_SIG_FILE`, `update_text`: its own first
+line "thinky-update-2", the version and "build N" signed, `update_text_to_verify`: made for the build asked for,
+version higher than its own); Android needs a higher versionCode (MainActivity, unchanged). Every release still
+carries `thinky-setup.exe.sig`/`LeanOutliner-setup.exe.sig` signed the old way with version 0.1.N (`legacy N`),
+which Build 40 and older read (they want a version ending in the build number); Build 41 was the bridge. CI: the
+`number` job refuses (main) or warns (wip) when VERSION isn't higher than the newest release's title; `sign` refuses
+an APK whose versionCode isn't higher than the last release's (`prev-cert` reads it); `verify` runs
+`--verify-update` (old kind) and `--verify-update-newer` (thinky-update.sig) cases. Suggest which number to raise.
 (Builds 34–40's titles were renamed by hand on GitHub, Nov 9; the cloud session's gh can't edit releases.)
-Suggest which number to raise with each build. CHANGELOG.md gets a section for every release (Builds 38 and 39 were added late).
+CHANGELOG.md gets a section for every release (Builds 38 and 39 were added late).
 Build 41 (0.5.2; the maintainer's picks of Nov 9, from a clickable preview; tested by t24_build41): the laptop strip
 (app.js `buildChrome`, tabs.js `sideNav`/`alignStrip`, app.css "the top strip"): above the sidebar, fixed spots: the
 sidebar's button, `.hb-dv`, Search, Back, Forward, then Go to date on today's journal / Home elsewhere (one spot, `.hb-nav.at-today`

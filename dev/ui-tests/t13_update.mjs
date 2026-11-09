@@ -13,7 +13,10 @@ const RELEASE = 'https://github.com/srikanth-iyer/thinky/releases/tag/build-24';
 
 /** Open the app at Settings → About. `update`: how the Windows commands answer; `android`: a phone
  *  (with how its update steps go) instead of the laptop. */
-async function start({ update = {}, version = '0.1.20', latest = 'build-24', android = null, hash = '#/settings/about' } = {}) {
+// (Build 41: the app's version is the one people see, and a release's title names its version; newer =
+// a higher version, whichever part went up)
+const TITLE = { 'build-20': 'Build 20 · version 0.5.2', 'build-24': 'Build 24 · version 0.6.0', 'build-25': 'Build 25 · version 1.0.0' };
+async function start({ update = {}, version = '0.5.2', latest = 'build-24', android = null, hash = '#/settings/about' } = {}) {
   const browser = await chromium.launch();
   const ctx = await browser.newContext(android ? { viewport: { width: 393, height: 851 }, hasTouch: true, isMobile: true } : { viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
@@ -24,7 +27,7 @@ async function start({ update = {}, version = '0.1.20', latest = 'build-24', and
   // (Build 35: the thinky names come first; the old names' sizes here are off on purpose, so the
   // sizes said below show the thinky files were read)
   const assets = [{ name: 'thinky-setup.exe', size: 2192007 }, { name: 'thinky.apk', size: 7888095 }, { name: 'thinky-setup.exe.sig', size: 239 }, { name: 'LeanOutliner-setup.exe', size: 5000000 }, { name: 'LeanOutliner.apk', size: 5000000 }, { name: 'LeanOutliner-setup.exe.sig', size: 239 }];
-  await page.route('https://api.github.com/**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ tag_name: latest, html_url: RELEASE, assets }) }));
+  await page.route('https://api.github.com/**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ tag_name: latest, name: TITLE[latest] ?? latest, html_url: RELEASE, assets }) }));
   await page.addInitScript(({ update, version, android }) => {
     window.__calls = [];
     // every stage the About box shows, as it changes
@@ -111,7 +114,7 @@ async function stages(page, last, ms = 6000) {
 console.log('the installed app on the laptop: one click downloads, checks, saves and installs');
 let { browser, page, errors } = await start({ update: { slow: 400 } });
 check(await stage(page) === 'newer', 'a newer build found: offered', await stage(page));
-check(/A newer version \(Build 24\) is ready\. Update now downloads it \(about 2 MB\), checks it’s genuine and installs it, then restarts thinky\. Your notes are saved first/.test(await text(page)), 'said in plain words, with how much it downloads', await text(page));
+check(/A newer version \(version 0\.6\.0, Build 24\) is ready\. Update now downloads it \(about 2 MB\), checks it’s genuine and installs it, then restarts thinky\. Your notes are saved first/.test(await text(page)), 'said in plain words, with how much it downloads', await text(page));
 check(await page.locator('.upd [data-a="update"]').isEnabled(), 'with an “Update now” button');
 check(await page.locator('.hb-update').isVisible() && /Update ready/.test(await page.locator('.hb-update').textContent()), 'and the top strip has “Update ready” (Build 40; the sidebar’s notice is for the phone’s menu)');
 await page.screenshot({ path: SHOTS + '/update-offer.png' });
@@ -247,12 +250,20 @@ check(await text(page) === 'You have the latest version.', 'checking says it’s
 allErrors.push(...errors);
 await browser.close();
 
+console.log('Build 41: a release whose title names no version (or a lower one) isn’t offered');
+({ browser, page, errors } = await start({ latest: 'build-99' })); // (its title: just "build-99")
+check(await stage(page) === 'idle' && !(await page.locator('#update').isVisible()), 'no version in its title: not offered');
+await browser.close();
+({ browser, page, errors } = await start({ version: '0.9.9', latest: 'build-24' })); // (0.6.0 is lower)
+check(await stage(page) === 'idle', 'a lower version: not offered, even with a higher build number');
+await browser.close();
+
 console.log('the strip’s “Update ready” leads to Updates & about (Build 40)');
 ({ browser, page, errors } = await start({ hash: '#/journals' }));
 await page.waitForSelector('.hb-update:not([hidden])');
 await page.locator('.hb-update').click();
 await page.waitForSelector('.menu.upd-menu');
-check(/Build 24 is ready/.test(await page.locator('.menu.upd-menu').textContent()), 'its menu names the build', await page.locator('.menu.upd-menu').textContent());
+check(/Version 0\.6\.0 is ready/.test(await page.locator('.menu.upd-menu').textContent()), 'its menu names the version', await page.locator('.menu.upd-menu').textContent());
 await page.locator('.menu.upd-menu button', { hasText: 'What’s new' }).click();
 await page.waitForSelector('.upd[data-stage]');
 check(await page.evaluate(() => location.hash) === '#/settings/about' && await stage(page) === 'newer', 'What’s new: Settings → Updates & about, with Update now', await page.evaluate(() => location.hash));
@@ -309,12 +320,12 @@ check(await page.locator('#update').isHidden(), 'at start: nothing newer (the sa
 let asked = 0;
 await page.unroute('https://api.github.com/**');
 await page.route('https://api.github.com/**', (route) => { if (route.request().url().includes('/releases/latest')) asked++; // (What's new reads the list of releases: not an update check)
-  route.fulfill({ contentType: 'application/json', body: JSON.stringify({ tag_name: 'build-25', html_url: RELEASE, assets: [] }) }); });
+  route.fulfill({ contentType: 'application/json', body: JSON.stringify({ tag_name: 'build-25', name: TITLE['build-25'], html_url: RELEASE, assets: [] }) }); });
 // a minute later he opens About: it asks GitHub again (a day-old answer no longer stands)
 await page.evaluate(() => { const c = JSON.parse(localStorage.getItem('updateCheck')); c.at -= 70e3; localStorage.setItem('updateCheck', JSON.stringify(c)); location.hash = '#/settings/about'; });
 await page.waitForSelector('.upd[data-stage]');
 await sleep(300);
-check(asked === 1 && await stage(page) === 'newer' && /Build 25/.test(await text(page)), 'the new build is offered at once', `${asked} · ${await text(page)}`);
+check(asked === 1 && await stage(page) === 'newer' && /version 1\.0\.0, Build 25/.test(await text(page)), 'the new build is offered at once', `${asked} · ${await text(page)}`);
 // opened again within the minute: that answer stands (GitHub isn't asked each time)
 await page.evaluate(() => { location.hash = '#/journals'; });
 await sleep(400);

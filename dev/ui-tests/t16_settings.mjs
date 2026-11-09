@@ -19,7 +19,7 @@ await page.addInitScript(() => {
   window.__calls = [];
   const FOLDER = 'C:\\Users\\you\\AppData\\Local\\com.srikanth.leanoutliner\\browser-extension';
   window.__TAURI__ = {
-    app: { getVersion: async () => '0.1.32' },
+    app: { getVersion: async () => '0.5.2' },
     event: { listen: async () => () => {} },
     opener: { openUrl: async (u) => { window.__opened = (window.__opened || []).concat(u); } },
     core: {
