@@ -113,7 +113,7 @@ let { browser, page, errors } = await start({ update: { slow: 400 } });
 check(await stage(page) === 'newer', 'a newer build found: offered', await stage(page));
 check(/A newer version \(Build 24\) is ready\. Update now downloads it \(about 2 MB\), checks it’s genuine and installs it, then restarts thinky\. Your notes are saved first/.test(await text(page)), 'said in plain words, with how much it downloads', await text(page));
 check(await page.locator('.upd [data-a="update"]').isEnabled(), 'with an “Update now” button');
-check(await page.locator('#update').isVisible(), 'and the sidebar says “A newer version is ready”');
+check(await page.locator('.hb-update').isVisible() && /Update ready/.test(await page.locator('.hb-update').textContent()), 'and the top strip has “Update ready” (Build 40; the sidebar’s notice is for the phone’s menu)');
 await page.screenshot({ path: SHOTS + '/update-offer.png' });
 await page.evaluate(() => window.__stages.splice(0));
 await page.locator('.upd [data-a="update"]').click();
@@ -247,12 +247,15 @@ check(await text(page) === 'You have the latest version.', 'checking says it’s
 allErrors.push(...errors);
 await browser.close();
 
-console.log('the sidebar’s notice leads to About');
+console.log('the strip’s “Update ready” leads to Updates & about (Build 40)');
 ({ browser, page, errors } = await start({ hash: '#/journals' }));
-await page.waitForSelector('#update:not([hidden])');
-await page.locator('#update').click();
+await page.waitForSelector('.hb-update:not([hidden])');
+await page.locator('.hb-update').click();
+await page.waitForSelector('.menu.upd-menu');
+check(/Build 24 is ready/.test(await page.locator('.menu.upd-menu').textContent()), 'its menu names the build', await page.locator('.menu.upd-menu').textContent());
+await page.locator('.menu.upd-menu button', { hasText: 'What’s new' }).click();
 await page.waitForSelector('.upd[data-stage]');
-check(await page.evaluate(() => location.hash) === '#/settings/about' && await stage(page) === 'newer', 'Settings → About, with Update now', await page.evaluate(() => location.hash));
+check(await page.evaluate(() => location.hash) === '#/settings/about' && await stage(page) === 'newer', 'What’s new: Settings → Updates & about, with Update now', await page.evaluate(() => location.hash));
 allErrors.push(...errors);
 await browser.close();
 
@@ -305,7 +308,8 @@ await page.waitForFunction(() => localStorage.getItem('updateCheck'));
 check(await page.locator('#update').isHidden(), 'at start: nothing newer (the same build)');
 let asked = 0;
 await page.unroute('https://api.github.com/**');
-await page.route('https://api.github.com/**', (route) => { asked++; route.fulfill({ contentType: 'application/json', body: JSON.stringify({ tag_name: 'build-25', html_url: RELEASE, assets: [] }) }); });
+await page.route('https://api.github.com/**', (route) => { if (route.request().url().includes('/releases/latest')) asked++; // (What's new reads the list of releases: not an update check)
+  route.fulfill({ contentType: 'application/json', body: JSON.stringify({ tag_name: 'build-25', html_url: RELEASE, assets: [] }) }); });
 // a minute later he opens About: it asks GitHub again (a day-old answer no longer stands)
 await page.evaluate(() => { const c = JSON.parse(localStorage.getItem('updateCheck')); c.at -= 70e3; localStorage.setItem('updateCheck', JSON.stringify(c)); location.hash = '#/settings/about'; });
 await page.waitForSelector('.upd[data-stage]');

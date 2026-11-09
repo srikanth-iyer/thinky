@@ -66,7 +66,7 @@ await page.locator('.menu button', { hasText: 'Delete' }).click();
 await page.locator('.modal [data-v="1"]').click();
 await sleep(800);
 check(!exists('pages/Orphan page.md') && exists('logseq/.recycle/pages_Orphan page.md'), 'moved to logseq/.recycle');
-await go(page, '#/settings/notes');
+await go(page, '#/settings/safety'); // (the bin is on Safety since Build 40)
 await sleep(400);
 await page.locator('.bin button', { hasText: 'Restore' }).first().click();
 await sleep(600);
@@ -332,9 +332,9 @@ console.log('settings: tabs, quick capture format, check, problems');
 await go(page, '#/settings');
 await sleep(400);
 const tabs = await page.locator('.set-tabs [data-tab]').allTextContents();
-check(tabs.join('|') === 'Notes|Look|Capture|Shortcuts|About', 'Settings has tabs', tabs.join('|'));
-check(await page.locator('.set-tabs [aria-selected="true"]').textContent() === 'Notes' && await page.locator('[data-a="check"]').isVisible() && !(await page.locator('.skin-card').count()),
-  'it opens on Notes, showing only that');
+check(tabs.join('|') === 'Updates & about|Notes|Safety|Look|Writing|Capture', 'Settings has tabs (Build 40)', tabs.join('|'));
+check(await page.locator('.set-tabs [aria-selected="true"]').textContent() === 'Safety' && await page.locator('.bin').first().isVisible() && !(await page.locator('[data-a="check"]').isVisible()) && !(await page.locator('.skin-card').count()),
+  'it opens on the tab used last (Safety, for the bin above), showing only that');
 await page.locator('.set-tabs [data-tab="capture"]').click();
 await sleep(300);
 check(decodeURIComponent(await page.evaluate(() => location.hash)) === '#/settings/capture' && await page.locator('[data-f="text"]').isVisible() && !(await page.locator('[data-a="check"]').isVisible()),
