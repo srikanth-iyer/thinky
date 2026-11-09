@@ -88,6 +88,34 @@ sleep 2
 log "today's file after typing:"
 run adb shell "cat '/sdcard/vault/Diary/$TODAY.md'"
 
+# 3a. (Build 39, he asked twice) the editing toolbar's date button with a real finger: a second press closes
+# its menu (Today / Tomorrow / …), a third opens it again; the note stays open throughout
+DATEPRESS=""
+if [ -n "$SOCK" ]; then
+  DATEAT=$($CDP eval "(() => { const b = document.querySelector('#toolbar [data-t=\"date\"]'); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, dpr: devicePixelRatio }; })()" | tr -d '\r')
+  log "the toolbar's date button: $DATEAT"
+  XY=$(python3 - "$DATEAT" <<'PY'
+import json, re, subprocess, sys
+try: p = json.loads(sys.argv[1])
+except Exception: p = None
+if not p: print(''); sys.exit()
+subprocess.run(["adb", "shell", "uiautomator", "dump", "/sdcard/ui.xml"], capture_output=True)
+xml = subprocess.run(["adb", "shell", "cat", "/sdcard/ui.xml"], capture_output=True, text=True).stdout
+m = re.search(r'class="android\.webkit\.WebView"[^>]*bounds="\[(\d+),(\d+)\]', xml)
+x0, y0 = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+print(round(x0 + p["x"] * p["dpr"]), round(y0 + p["y"] * p["dpr"]))
+PY
+)
+  if [ -n "$XY" ]; then
+    for k in 1 2 3 4; do
+      adb shell input tap $XY; sleep 1.2
+      DATEPRESS="$DATEPRESS$($CDP eval "document.querySelectorAll('.pop.tb-menu').length + ':' + document.querySelectorAll('textarea.ed').length" | tr -d '\r\"') "
+    done
+  fi
+  log "the date menu after each of four presses (menus:editing boxes): $DATEPRESS"
+  $CDP eval "document.querySelectorAll('.pop.tb-menu').length && document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))" >/dev/null 2>&1
+fi
+
 ensure_app
 # 3b. the round "+" (phones): a new note at the end of today's journal, the keyboard up, typing goes in
 if [ -n "$SOCK" ]; then
@@ -504,6 +532,7 @@ result "pages/inbox.md (the page Mail, by its title::) is left byte for byte" "c
 result "the pop-up says where the note goes, as config.edn says now: Add to Inbox" "[ '$INBOX_WHERE' = 'text=\"Add to Inbox\"' ]"
 result "the Add note tile is offered in Quick Settings" "echo '$QS' | grep -q AddNoteTile"
 result "tapping the tile opens the pop-up and closes the shade" "echo '$TILE_TOP' | grep -q QuickCaptureActivity && echo '$TILE_FOCUS' | grep -q QuickCaptureActivity"
+result "the toolbar's date button: open, closed, open, closed with four presses, the note still open" "echo '$DATEPRESS' | grep -qx '1:1 0:1 1:1 0:1 '"
 result "Match system: the phone's dark mode shows the night look (thinky night)" "echo '$SYS_DARK' | grep -q 'true thinkynight'"
 result "Match system: dark mode turned off while open, the day look comes back (thinky)" "echo '$SYS_LIGHT' | tr -d '\\\"' | grep -qx 'false thinky'"
 result "starting in dark mode: no dark frame before the app (cream from the first moment)" "python3 -c 'import sys; v=[int(x) for x in sys.argv[1].split()]; sys.exit(0 if len(v) >= 4 and min(v) > 150 else 1)' '$STARTUP'"
