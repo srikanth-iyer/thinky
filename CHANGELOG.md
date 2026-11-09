@@ -5,7 +5,14 @@ each one the code exactly as it was released at its last build. Later releases a
 the top. (Until Build 32 the app was called Lean Outliner; its downloads and hidden id keep that
 name, so updates install over older builds.)
 
-## Build 40 (November 2026)
+Versions (decided Nov 9, 2026): the first number goes up when thinky is released to the public, the middle one for
+big changes, the last for small ones (back to 0 when the middle one goes up). Until Build 40 the app itself carried
+0.1.<build>; the versions in these headings were given afterwards, by what each build changed: 0.1 the first
+working outliner (Builds 1–22), 0.2 safety, tabs, updates and references (23–28), 0.3 the Logseq feel (29–31),
+0.4 thinky's name, brand and public releases (32–38), 0.5 day and night looks and the quieter phone (39 on).
+From Build 41 the app carries these versions too.
+
+## Build 40 · version 0.5.1 (November 2026)
 
 ### New
 - Settings has six tabs: Updates & about (first), Notes, Safety (the bin, safety copies, backups), Look, Writing (spell check, property display, keyboard shortcuts) and Capture. On a phone the row scrolls sideways.
@@ -16,7 +23,7 @@ name, so updates install over older builds.)
 ### Fixed
 - In the night looks, the page behind the search box and dialogs goes darker instead of lighter grey.
 
-## Build 39 (November 2026)
+## Build 39 · version 0.5.0 (November 2026)
 
 ### New
 - thinky night: thinky's layout on a warm charcoal, with cream words and the spark's red.
@@ -36,7 +43,7 @@ name, so updates install over older builds.)
 ### Under the hood
 - Typing on long pages is faster, and the app loads less when it starts.
 
-## Build 38 (November 2026)
+## Build 38 · version 0.4.6 (November 2026)
 
 ### New
 - YouTube videos written Logseq's way (`{{video …}}`) show as the video's picture with a play button, and play in place.
@@ -49,7 +56,7 @@ name, so updates install over older builds.)
 - The phone's search box keeps its size when the keyboard comes up.
 - Pages without cards end with no line, with room under the "+".
 
-## Build 37 (November 2026)
+## Build 37 · version 0.4.5 (November 2026)
 
 ### New
 - Tabs: the "+" for a new tab always shows on the laptop, at the page's top-left corner just right of the sidebar, and moves along after the last tab. A note's menu (right-click its dot) has Open in a new tab and Open to the side.
@@ -67,7 +74,7 @@ name, so updates install over older builds.)
 ### Under the hood
 - Every browser test now runs on GitHub before a build is signed.
 
-## Build 36 (November 2026)
+## Build 36 · version 0.4.4 (November 2026)
 
 ### New
 - All pages → Namespaces: each namespace folds and unfolds with an arrow (folded at first, and remembered), the parent page in bold with how many pages are under it. A namespace shows only when it has two or more pages under it.
@@ -77,7 +84,7 @@ name, so updates install over older builds.)
 - Properties: a property's page has Rename or merge…, which renames it in every note (`authors::` → `author::`). A note that has both keeps one line with both values.
 - Settings → Notes → Check this folder also lists notes that link to a picture missing from `assets`, such as one added on another device that never synced.
 
-## Build 35 (November 2026)
+## Build 35 · version 0.4.3 (November 2026)
 
 ### New
 - The browser extension, thinky highlights, can now come from the Edge Add-ons store or the Chrome Web Store, besides being loaded by hand: thinky answers all three. Settings → Capture → "Highlights from your browser" (it was "Highlights from Edge") has a button for each store, and where to change its keys in Edge and in Chrome.
@@ -86,7 +93,7 @@ name, so updates install over older builds.)
 ### Under the hood
 - Newer GitHub Actions for the builds (Node 24).
 
-## Build 34 (October 31, 2026)
+## Build 34 · version 0.4.2 (October 31, 2026)
 
 ### New
 - To-dos: newest first (or oldest first, or by date as before), and buttons for the pages they're on or mention: a click shows only those, a second hides them.
@@ -117,7 +124,7 @@ Fixes from a security review made before the code went public. None of these wer
 - Web pictures no longer tell their website which page they were shown on.
 - A web link opened with a middle click or Ctrl/Shift goes to your browser, never to a window of thinky's own.
 
-## Milestone 5 — Builds 32 and 33 (October 29 and 30, 2026)
+## Milestone 5 — Builds 32 and 33 · versions 0.4.0–0.4.1 (October 29 and 30, 2026)
 
 - The app is now called **thinky**, with its own logo, and a new look of the same name.
 - Highlights from Edge: highlight passages while reading and send them to one page per article.
@@ -129,7 +136,7 @@ Fixes from a security review made before the code went public. None of these wer
 - A faint "+" after the last note, and a calm start-up.
 - Send feedback (Settings › About) opens a new issue on GitHub, with nothing personal added.
 
-## Milestone 4 — Builds 27 to 31 (October 27, 2026)
+## Milestone 4 — Builds 27 to 31 · versions 0.2.4–0.3.2 (October 27, 2026)
 
 - Tabs, and two pages side by side on the laptop.
 - Roomier journal days, Go to date, Undo across days.
@@ -141,7 +148,7 @@ Fixes from a security review made before the code went public. None of these wer
 - All pages as a table, renaming by the title, merging pages, `leanoutliner://` links to pages and notes.
 - The Inter font bundled for the Plain looks.
 
-## Milestone 3 — Builds 23 to 26 (October 26, 2026)
+## Milestone 3 — Builds 23 to 26 · versions 0.2.0–0.2.3 (October 26, 2026)
 
 - Reading and writing: coloured note boxes and quotes, page icons, easier links, find and replace, press and hold to preview a link, pinned parent notes, swipes on the phone.
 - The clash screen: when a page changed here and elsewhere, both versions side by side with a suggested pick, and nothing is ever lost.
@@ -151,7 +158,7 @@ Fixes from a security review made before the code went public. None of these wer
 - A native "Add to journal" box on Windows that opens at once.
 - One-click updates from Settings › About, checked against a signing key.
 
-## Milestone 2 — Builds 13 to 22 (October 26, 2026)
+## Milestone 2 — Builds 13 to 22 · versions 0.1.12–0.1.21 (October 26, 2026)
 
 - To-dos with dates and repeats, a calendar, templates, unlinked references, rename and delete with a bin.
 - Quick capture from the laptop (a link, a box and a shortcut key) and from the phone.
@@ -162,7 +169,7 @@ Fixes from a security review made before the code went public. None of these wer
 - A Home button, Settings in tabs, and a new look, Plain night.
 - The Windows "Add to journal" box, launcher-style.
 
-## Milestone 1 — Builds 1 to 8 (October 25, 2026)
+## Milestone 1 — Builds 1 to 8 · versions 0.1.0–0.1.7 (October 25, 2026)
 
 The first version.
 - A Rust core that reads and writes Logseq-style Markdown notes, keeping every untouched line byte for byte.

@@ -305,8 +305,11 @@ Version numbers (he decided, Nov 9): the version's first number = released to th
 the last = small ones; so far the last number is the build number (ci_version.py and update_sig.py take major.minor
 from tauri.conf.json and add N). When the middle number first goes up, the last goes back to 0 (0.2.0, 0.2.1…) with
 "Build N" kept as its own label: that build changes ci_version.py, update_sig.py `version`, update.rs's checks and the
-Android versionCode so they no longer read the build number from the version, and tests it before release. Suggest
-which number to raise with each build. CHANGELOG.md gets a section for every release (Builds 38 and 39 were added late).
+Android versionCode so they no longer read the build number from the version, and tests it before release. Versions given afterwards (he agreed,
+Nov 9; CHANGELOG.md's headings): 0.1 = Builds 1–22, 0.2 = 23–28, 0.3 = 29–31, 0.4 = 32–38, 0.5 = 39 on (Build 40 =
+0.5.1); Build 41 is the first to carry its own: 0.5.2, with the reset work above (and the release job titling releases
+"Build N · version X"; this session can't edit GitHub releases, so Builds 34–39's titles still say only "Build N").
+Suggest which number to raise with each build. CHANGELOG.md gets a section for every release (Builds 38 and 39 were added late).
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 
