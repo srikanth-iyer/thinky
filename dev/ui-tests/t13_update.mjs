@@ -313,6 +313,14 @@ check(await page.locator('.upd [data-a="update"]').count() === 0 && /get it from
 allErrors.push(...errors);
 await browser.close();
 
+console.log('the Google Play version: updates come from Play, nothing offered here');
+({ browser, page, errors } = await start({ android: {}, hash: '#/journals' }));
+await page.evaluate(() => { delete window.LeanAndroid.update; delete window.LeanAndroid.installUpdate; window.LeanAndroid.fromPlay = () => true; location.hash = '#/settings/about'; });
+await page.waitForSelector('.upd[data-stage]');
+check(await stage(page) === 'play' && await page.locator('.upd [data-a]').count() === 0 && /Updates come from Google Play/.test(await text(page)), 'no Update now or Check, "Updates come from Google Play"', await text(page));
+allErrors.push(...errors);
+await browser.close();
+
 console.log('About asks again when its answer is over a minute old: a build out since then shows at once');
 ({ browser, page, errors } = await start({ latest: 'build-20', hash: '#/journals' }));
 await page.waitForFunction(() => localStorage.getItem('updateCheck'));

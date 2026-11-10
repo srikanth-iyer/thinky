@@ -434,13 +434,22 @@ jobs:
       - run: npx tauri android init --ci
       - run: python3 scripts/android_overlay.py
       - run: npx tauri android build --apk --target aarch64 --ci
-      - name: Collect the unsigned APK
+      - run: cp "$(find src-tauri/gen/android -name '*release-unsigned.apk' | head -1)" LeanOutliner-unsigned.apk
+      # The Google Play version: the same app as a bundle (.aab), without one-click updates (Play apps
+      # may update only through Play; android_overlay.py's THINKY_PLAY)
+      - run: python3 scripts/android_overlay.py
+        env: { THINKY_PLAY: '1' }
+      - run: npx tauri android build --aab --target aarch64 --ci
+      - name: Collect the unsigned APK and bundle
         id: collect
         run: |
-          cp "$(find src-tauri/gen/android -name '*release-unsigned.apk' | head -1)" LeanOutliner-unsigned.apk
-          echo "sums=$(sha256sum LeanOutliner-unsigned.apk | base64 -w0)" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          AAB=$(find src-tauri/gen/android -name '*release*.aab' | head -1)
+          [ -n "$AAB" ] || { echo "::error::No release .aab was built."; exit 1; }
+          cp "$AAB" thinky-play-unsigned.aab
+          echo "sums=$(sha256sum LeanOutliner-unsigned.apk thinky-play-unsigned.aab | base64 -w0)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with: { name: android-unsigned, path: LeanOutliner-unsigned.apk, retention-days: 5 }
+        with: { name: android-unsigned, path: "LeanOutliner-unsigned.apk\nthinky-play-unsigned.aab", retention-days: 5 }
 
   # The newest release's APK certificate, read here, in a job with no secrets (main only): `sign`
   # then only compares it with the new APK's, never opening a downloaded file while it holds the keys.
@@ -567,14 +576,27 @@ jobs:
           CODE=$("$BT/aapt2" dump badging thinky.apk | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1)
           [ -n "$CODE" ] && [ -n "$PREV_CODE" ] && [ "$CODE" -gt "$PREV_CODE" ] || { echo "::error::This APK's versionCode ($CODE) isn't higher than build-$PREV's ($PREV_CODE): phones wouldn't update to it."; exit 1; }
           echo "::notice title=APK signed::with the release key (certificate SHA-256 $NEW)"
+          # the Google Play bundle, signed with the same key (Play's "upload key"; Play App Signing
+          # then signs what phones get)
+          cp unsigned/thinky-play-unsigned.aab thinky-play.aab
+          jarsigner -keystore "$KS" -storepass:env PASS thinky-play.aab leanoutliner > /dev/null
+          jarsigner -verify thinky-play.aab > "$RUNNER_TEMP/aab-verify.txt" || true
+          grep -q '^jar verified' "$RUNNER_TEMP/aab-verify.txt" || { echo "::error::The Play bundle's signature doesn't check out."; exit 1; }
+          keytool -printcert -jarfile thinky-play.aab > "$RUNNER_TEMP/aab-cert.txt"
+          AAB=$(awk '/SHA256:/ { print $2; exit }' "$RUNNER_TEMP/aab-cert.txt" | tr -d ':' | tr 'A-F' 'a-f')
+          [ "$AAB" = "$NEW" ] || { echo "::error::The Play bundle isn't signed with the APK's key ($AAB, the APK: $NEW)."; exit 1; }
+          unzip -p thinky-play.aab base/manifest/AndroidManifest.xml > "$RUNNER_TEMP/aab-manifest.pb"
+          [ -s "$RUNNER_TEMP/aab-manifest.pb" ] || { echo "::error::The Play bundle has no manifest."; exit 1; }
+          if grep -a -q REQUEST_INSTALL_PACKAGES "$RUNNER_TEMP/aab-manifest.pb"; then echo "::error::The Play bundle asks to install apps (Play refuses that)."; exit 1; fi
+          echo "::notice title=Play bundle signed::with the release key (certificate SHA-256 $AAB)"
       - id: signed
-        run: echo "sums=$(sha256sum thinky.apk sig/thinky-update.sig sig/thinky-setup.exe.sig sig/LeanOutliner-setup.exe.sig | sed 's| sig/| |' | base64 -w0)" >> "$GITHUB_OUTPUT"
+        run: echo "sums=$(sha256sum thinky.apk thinky-play.aab sig/thinky-update.sig sig/thinky-setup.exe.sig sig/LeanOutliner-setup.exe.sig | sed 's| sig/| |' | base64 -w0)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: update-signature, path: sig/* }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: update-checks, path: checks/*.sig, retention-days: 5 }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with: { name: android, path: thinky.apk }
+        with: { name: android, path: "thinky.apk\nthinky-play.aab" }
 
   # wip only: the same signing with this run's throw-away keys (no secrets), so `verify` and the
   # size check still run. A phone or computer with the real app refuses these files.
@@ -634,12 +656,20 @@ jobs:
           keytool -genkeypair -noprompt -keystore "$KS" -storetype PKCS12 -alias leanoutliner -keyalg RSA -keysize 2048 -validity 10000 -storepass:env PASS -dname "CN=thinky (wip test build)"
           "$BT/apksigner" sign --ks "$KS" --ks-key-alias leanoutliner --ks-pass env:PASS --out thinky.apk aligned.apk
           "$BT/apksigner" verify thinky.apk
+          cp unsigned/thinky-play-unsigned.aab thinky-play.aab
+          jarsigner -keystore "$KS" -storepass:env PASS thinky-play.aab leanoutliner > /dev/null
+          jarsigner -verify thinky-play.aab > "$RUNNER_TEMP/aab-verify.txt" || true
+          grep -q '^jar verified' "$RUNNER_TEMP/aab-verify.txt" || { echo "::error::The Play bundle's signature doesn't check out."; exit 1; }
+          # the Play bundle must leave one-click updates out (Play's rule): no permission to install apps
+          unzip -p thinky-play.aab base/manifest/AndroidManifest.xml > "$RUNNER_TEMP/aab-manifest.pb"
+          [ -s "$RUNNER_TEMP/aab-manifest.pb" ] || { echo "::error::The Play bundle has no manifest."; exit 1; }
+          if grep -a -q REQUEST_INSTALL_PACKAGES "$RUNNER_TEMP/aab-manifest.pb"; then echo "::error::The Play bundle asks to install apps (Play refuses that)."; exit 1; fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: update-signature, path: sig/* }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: update-checks, path: checks/*.sig, retention-days: 5 }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with: { name: android, path: thinky.apk }
+        with: { name: android, path: "thinky.apk\nthinky-play.aab" }
 
   # The shipped program must accept its signed installer and refuse a changed one, another build
   # number, an edited version and another key: the check an installed app makes before it updates.
@@ -741,13 +771,13 @@ jobs:
           set -euo pipefail
           [ -n "$WIN" ] && [ -n "$SIGNED" ] || { echo "::error::A job didn't say what it made."; exit 1; }
           cd dist && { printf '%s' "$WIN" | base64 -d; printf '%s' "$SIGNED" | base64 -d; } | sha256sum -c -
-          [ "$(ls | wc -l)" = 6 ] || { echo "::error::Unexpected files to publish: $(ls)"; exit 1; }
+          [ "$(ls | wc -l)" = 7 ] || { echo "::error::Unexpected files to publish: $(ls)"; exit 1; }
           # the old names as well (Build 35 renamed the downloads): Build 34 and older look for these
           # to update, and old links point at them. LeanOutliner-setup.exe.sig is signed for that name.
           cp thinky-setup.exe LeanOutliner-setup.exe
           cp thinky-portable.exe LeanOutliner-portable.exe
           cp thinky.apk LeanOutliner.apk
-          [ "$(ls | wc -l)" = 9 ] || { echo "::error::Unexpected files to publish: $(ls)"; exit 1; }
+          [ "$(ls | wc -l)" = 10 ] || { echo "::error::Unexpected files to publish: $(ls)"; exit 1; }
       - name: Release notes
         env:
           MSG: ${{ github.event.head_commit.message }}

@@ -1153,7 +1153,8 @@ async function updateBox(app) {
     }
     if (a === 'update' && !job.busy && app.latest) updateNow(app, app.latest.tag);
   };
-  if (job.busy || job.stage === 'confirm' || job.stage === 'error') job.show(job.stage, job.html);
+  if (window.LeanAndroid?.fromPlay?.()) draw('play', 'Updates come from Google Play.');
+  else if (job.busy || job.stage === 'confirm' || job.stage === 'error') job.show(job.stage, job.html);
   else if (await app.checkUpdate(6e4)) offer(); // (a build that came out today shows here at once)
   else idle();
   return box;

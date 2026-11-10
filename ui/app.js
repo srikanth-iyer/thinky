@@ -3318,7 +3318,8 @@ class App {
    *  check), each at most every 30 minutes; maxAge: how old an answer may be (About asks again when
    *  the last answer is over a minute old, its "Check" button always: true). */
   async checkUpdate(maxAge = 18e5) {
-    if (!isApp) return null;
+    // (the Google Play version updates through Play only: no checking GitHub, nothing offered)
+    if (!isApp || window.LeanAndroid?.fromPlay?.()) return null;
     let ver = '';
     try { ver = await window.__TAURI__.app.getVersion(); } catch { return null; }
     this.version = ver;
