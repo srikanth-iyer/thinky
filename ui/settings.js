@@ -5,12 +5,12 @@
 // is remembered.
 
 import { call, store, nowTime, isApp, isAndroid, assetUrl, today } from './api.js';
-import { esc, PROP_SHOWS, MARK_COLORS, builtinHidden, propsHtmlAs } from './render.js';
-import { h, ICON, BRAND, plural, SETTINGS_TABS } from './dom.js';
+import { esc, PROP_SHOWS, MARK_COLORS, builtinHidden, propsHtmlAs, renderBlock, whenText } from './render.js';
+import { h, ICON, BRAND, plural, SETTINGS_TABS, motionOn } from './dom.js';
 import { promptBox, confirmBox } from './popups.js';
 import { SKINS, accessCard, lookName, lookState } from './app.js';
 import { fitChips } from './views.js';
-import { madeBy } from './history.js';
+import { madeBy, showBinPage } from './history.js';
 import { VERSION } from './version.js';
 import { BUILD } from './build.js';
 
@@ -51,7 +51,7 @@ export async function settingsView(app, view, want = null) {
   bar.setAttribute('aria-label', 'Settings');
   const sfx = free('st-notes').slice(8); // (Settings open on both sides: ids of its own)
   bar.innerHTML = tabs.map(([id, label]) => `<button class="chip" role="tab" id="st-${id}${sfx}" data-tab="${id}" aria-controls="sp-${id}${sfx}">${label}</button>`).join('');
-  view.append(bar);
+  view.append(tabArrows(bar));
   fitChips(bar); // a hint (the end fades) if they still don't all fit
   const panels = {};
   const show = async (id) => {
@@ -114,28 +114,48 @@ function folderCard(app) {
     location.reload();
   };
   const chk = $('[data-a="check"]', vc);
+  const out = $('.check-out', vc);
+  // the last check's report stays (he asked, Nov 10): going elsewhere and back shows it again, with
+  // when it was made, until "Check again" or another notes folder (app.lastCheck, this run only)
+  const show = (r, at) => {
+    const list = (items) => `<div class="path">${items.map(esc).join('<br>')}</div>`;
+    let html = `<p class="note">${r.files} files read in ${r.load_ms} ms.</p>`;
+    // (one or many: "1 file looks…", "2 files look…")
+    const count = (items, one, many) => (items.length === 1 ? `1 ${one}` : `${items.length} ${many}`);
+    html += r.roundtrip_failures.length
+      ? `<p class="err"><b>${count(r.roundtrip_failures, 'file would', 'files would')} be reformatted if saved untouched:</b></p>${list(r.roundtrip_failures)}`
+      : '<p class="note">✓ Every file can be opened and saved without being reformatted.</p>';
+    // Build 43 (he asked): each copy can be compared with its page and merged (clash.js openCopyMerge)
+    if (r.conflict_copies.length) html += `<p class="note"><b>${count(r.conflict_copies, 'file looks like a copy', 'files look like copies')} made by a sync conflict</b> (e.g. “Page (1).md” next to “Page.md”). <b>Compare and merge</b> shows ${r.conflict_copies.length === 1 ? 'it' : 'each'} side by side with its page, so you can keep what you need; the copy then goes to the bin:</p>
+      <ul class="rows conflict-copies">${r.conflict_copies.map((f) => `<li><code>${esc(f)}</code><button type="button" class="btn ghost small cc-merge" data-copy="${esc(f)}">Compare and merge…</button></li>`).join('')}</ul>`;
+    // Build 38 (he asked): two pages at the same place under a page and its alias, both listed there
+    if (r.alias_clashes?.length) html += `<p class="note"><b>${count(r.alias_clashes, 'pair of pages sits', 'pairs of pages sit')} at the same place under a page and its alias.</b> Both show under the page; renaming one to the other’s name merges them:</p>${list(r.alias_clashes.map(([page, names]) => `${page}: ${names.join(' and ')}`))}`;
+    if (r.duplicates.length) html += `<p class="note"><b>${count(r.duplicates, 'page name belongs', 'page names belong')} to more than one file.</b> The first file is the one shown:</p>${list(r.duplicates.map(([n, files]) => `${n}: ${files.join(', ')}`))}`;
+    if (r.non_utf8.length) html += `<p class="note"><b>${count(r.non_utf8, 'file isn’t', 'files aren’t')} plain text</b> (shown read-only, never changed):</p>${list(r.non_utf8)}`;
+    html += `<p class="note">Longest pages: ${r.biggest.map(([n, b]) => `${esc(n)} (${b} blocks)`).join(', ')}.<br>Most linked: ${r.most_linked.map(([n, c]) => `${esc(n)} (${c})`).join(', ')}.</p>`;
+    const when = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    out.innerHTML = `<p class="note check-when">Checked at ${esc(when)}. <b>Check again</b> to see changes since.</p>` + html;
+    out.querySelectorAll('.cc-merge').forEach((b) => { b.onclick = () => import('./clash.js').then((m) => m.openCopyMerge(app, b.dataset.copy)); });
+    // a copy that went to the bin: its row goes (and from the kept report, for coming back)
+    app.copyMerged = (rel) => {
+      out.querySelector(`.cc-merge[data-copy="${CSS.escape(rel)}"]`)?.closest('li')?.remove();
+      r.conflict_copies = r.conflict_copies.filter((f) => f !== rel);
+    };
+    out.append(missingBox(app, r));
+    out.append(picturesBox(app, r));
+  };
+  if (chk && app.lastCheck?.vault === path) {
+    show(app.lastCheck.r, app.lastCheck.at);
+    chk.textContent = 'Check again';
+  }
   if (chk) chk.onclick = async () => {
     chk.disabled = true;
-    const out = $('.check-out', vc);
     out.innerHTML = BRAND.wait('Reading every page…');
     try {
       const r = await call('check');
-      const list = (items) => `<div class="path">${items.map(esc).join('<br>')}</div>`;
-      let html = `<p class="note">${r.files} files read in ${r.load_ms} ms.</p>`;
-      // (one or many: "1 file looks…", "2 files look…")
-      const count = (items, one, many) => (items.length === 1 ? `1 ${one}` : `${items.length} ${many}`);
-      html += r.roundtrip_failures.length
-        ? `<p class="err"><b>${count(r.roundtrip_failures, 'file would', 'files would')} be reformatted if saved untouched:</b></p>${list(r.roundtrip_failures)}`
-        : '<p class="note">✓ Every file can be opened and saved without being reformatted.</p>';
-      if (r.conflict_copies.length) html += `<p class="note"><b>${count(r.conflict_copies, 'file looks like a copy', 'files look like copies')} made by a sync conflict</b> (e.g. “Page (1).md” next to “Page.md”). Compare ${r.conflict_copies.length === 1 ? 'it' : 'each'} with the original, keep what you need, then delete the copy:</p>${list(r.conflict_copies)}`;
-      // Build 38 (he asked): two pages at the same place under a page and its alias, both listed there
-      if (r.alias_clashes?.length) html += `<p class="note"><b>${count(r.alias_clashes, 'pair of pages sits', 'pairs of pages sit')} at the same place under a page and its alias.</b> Both show under the page; renaming one to the other’s name merges them:</p>${list(r.alias_clashes.map(([page, names]) => `${page}: ${names.join(' and ')}`))}`;
-      if (r.duplicates.length) html += `<p class="note"><b>${count(r.duplicates, 'page name belongs', 'page names belong')} to more than one file.</b> The first file is the one shown:</p>${list(r.duplicates.map(([n, files]) => `${n}: ${files.join(', ')}`))}`;
-      if (r.non_utf8.length) html += `<p class="note"><b>${count(r.non_utf8, 'file isn’t', 'files aren’t')} plain text</b> (shown read-only, never changed):</p>${list(r.non_utf8)}`;
-      html += `<p class="note">Longest pages: ${r.biggest.map(([n, b]) => `${esc(n)} (${b} blocks)`).join(', ')}.<br>Most linked: ${r.most_linked.map(([n, c]) => `${esc(n)} (${c})`).join(', ')}.</p>`;
-      out.innerHTML = html;
-      out.append(missingBox(app, r));
-      out.append(picturesBox(app, r));
+      app.lastCheck = { vault: path, r, at: Date.now() };
+      show(r, app.lastCheck.at);
+      chk.textContent = 'Check again';
     } catch (e) { out.innerHTML = `<p class="err">${esc(e)}</p>`; }
     chk.disabled = false;
   };
@@ -193,6 +213,7 @@ function missingBox(app, r) {
       try {
         await call('backup_restore', { kind: bk.kind, dest: bk.dest, rel: btn.dataset.rel });
         btn.replaceWith(Object.assign(document.createElement('span'), { className: 'note', textContent: `✓ ${btn.dataset.rel.slice(7)} is back` }));
+        r.missing_pictures = r.missing_pictures.filter(([, f]) => 'assets/' + f !== btn.dataset.rel); // (the kept report too)
       } catch (err) { app.toast(String(err), 6000); }
     });
   }
@@ -222,7 +243,7 @@ function picturesBox(app, r) {
   const n = pics.length;
   box.innerHTML = `<h3>Pictures nothing uses</h3>
     <p class="note">${n} of the ${plural(checked, 'picture')} in <code>assets</code> ${n === 1 ? 'isn’t' : 'aren’t'} used by any note, whiteboard or setting: ${fileSize(r.unused_pictures_bytes)} in total.${newer}</p>
-    <ul class="pics">${pics.map(([p, b]) => `<li><label><input type="checkbox" checked data-p="${esc(p)}"><span class="th"><img src="${esc(assetUrl(p.split('/').map(encodeURIComponent).join('/')))}" alt="" loading="lazy"></span><span class="nm">${esc(p.replace(/^assets\//i, ''))}</span><span class="meta">${fileSize(b)}</span></label></li>`).join('')}</ul>
+    <ul class="pics">${pics.map(([p, b]) => { const nm = esc(p.replace(/^assets\//i, '')); return `<li><label class="pic-tick"><input type="checkbox" checked data-p="${esc(p)}" aria-label="Move ${nm} to the bin"></label><button class="pic-open" type="button" data-src="${esc(assetUrl(p.split('/').map(encodeURIComponent).join('/')))}" title="See this picture"><span class="th"><img src="${esc(assetUrl(p.split('/').map(encodeURIComponent).join('/')))}" alt="" loading="lazy"></span><span class="nm">${nm}</span></button><span class="meta">${fileSize(b)}</span><button class="btn ghost small pic-older" type="button" data-p="${esc(p)}" aria-expanded="false">Where was it used?</button></li>`; }).join('')}</ul>
     <div class="btn-row"><button class="btn ghost" data-a="bin-pics"></button></div>`;
   // pictures this window can't show (HEIC, TIFF…) keep a plain square
   box.addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.classList.add('broken'); }, true);
@@ -235,6 +256,43 @@ function picturesBox(app, r) {
   };
   label();
   box.addEventListener('change', label);
+  // a click on a picture or its name shows it big (the notes' own picture view; a click or Esc closes it)
+  box.addEventListener('click', (e) => { const o = e.target.closest('.pic-open'); if (o) app.showImage(o.dataset.src); });
+  // "Where was it used?": no note uses it now, so its notes are looked for in the older copies of the
+  // pages (core older.rs: logseq/bak, the safety copies, the backups when on), shown under its row;
+  // "Open <page>" asks first (the note isn't on the page now). Again: closes it.
+  box.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.pic-older');
+    const go = e.target.closest('.pc-go');
+    if (go) {
+      const ok = await confirmBox({ title: `Open “${esc(go.dataset.page)}”?`, body: 'The note with this picture was in an older copy of this page; it isn’t on the page now. The page’s History (its ⋯ menu) has its older versions.', ok: 'Open the page' });
+      if (ok) app.go('page', go.dataset.page);
+      return;
+    }
+    if (!btn) return;
+    const li = btn.closest('li');
+    const open = li.querySelector('.pic-ctx');
+    if (open) { open.remove(); btn.setAttribute('aria-expanded', 'false'); return; }
+    const ctx = h('div', 'pic-ctx');
+    ctx.innerHTML = BRAND.wait('Looking in the older copies…');
+    li.append(ctx);
+    btn.setAttribute('aria-expanded', 'true');
+    const bk = app.backupPrefs?.();
+    const on = bk?.on && bk.dest && !isAndroid;
+    let hits;
+    try { hits = await call('picture_in_older', { picture: btn.dataset.p, kind: on ? bk.kind : '', dest: on ? bk.dest : '' }); }
+    catch (err) { ctx.innerHTML = `<p class="err">${esc(said(err))}</p>`; return; }
+    const FROM = { bak: 'backup by', copy: 'safety copy made by', zip: 'snapshot', git: 'git backup' };
+    const where = `<code>logseq/bak</code>, the safety copies${on ? ' and your backups' : ''}`;
+    ctx.innerHTML = !hits.length
+      ? `<p class="note">Not in any older copy of your pages (looked in ${where}). It may have been pasted and never kept in a note, or it was used before the oldest copy.</p>`
+      : `<p class="note">${hits.length === 1 ? 'A note used it' : `${hits.length} notes used it`} in older copies of your pages (newest first):</p>
+        <ul class="pc-list">${hits.map((x) => `<li>
+          <div class="pc-head"><b>${esc(x.page)}</b><span class="meta">${esc(whenText(x.when))} · ${esc(FROM[x.from] || '')} ${esc(x.which)}</span>
+            ${x.exists ? `<button class="btn ghost small pc-go" type="button" data-page="${esc(x.page)}">Open ${esc(x.page)}…</button>` : '<span class="meta">(the page isn’t in your notes now)</span>'}</div>
+          ${x.path.length ? `<div class="pc-path">${x.path.map((t) => esc(t)).join(' › ')}</div>` : ''}
+          <div class="pc-note">${renderBlock(x.note).html}</div></li>`).join('')}</ul>`;
+  });
   btn.onclick = async () => {
     const paths = ticked();
     const k = paths.length;
@@ -250,6 +308,10 @@ function picturesBox(app, r) {
       await app.rescan(); // take in notes changed elsewhere since the check
       const res = await call('bin_pictures', { paths });
       const m = res.moved.length;
+      // the kept report (coming back to Settings) no longer lists the ones moved
+      const moved = new Set(res.moved);
+      r.unused_pictures = r.unused_pictures.filter(([p]) => !moved.has(p));
+      r.unused_pictures_bytes = r.unused_pictures.reduce((n, [, b]) => n + b, 0);
       const left = res.skipped.length;
       box.innerHTML = `<h3>Pictures nothing uses</h3><p class="note">✓ Moved ${plural(m, 'picture')} to the bin (<code>logseq/.recycle</code>).</p>
         ${left ? `<p class="note"><b>${left} stayed where ${left === 1 ? 'it was' : 'they were'}:</b></p>${list(res.skipped.map(([p, why]) => `${p}: ${why}`))}` : ''}`;
@@ -280,6 +342,9 @@ function freeName(list, base) {
  * - 'new' (the welcome screen's "Create a new notes folder"): a name and "Create notes folder": a new
  *   folder in the one shown, set up as a notes folder, with the tour if ticked. Starts in Documents
  *   when home has one.
+ * - 'choose' (Settings → Backups' "Choose…"): any folder outside every notes folder;
+ *   "Use this folder" hands its path to opts.pick, Cancel calls opts.cancel. With opts.git it says
+ *   whether the folder is a git clone (a GitHub backup needs one), but takes it either way.
  * Nothing is ever made in a notes folder or inside one (the core refuses too, start.rs).
  */
 export async function folderPicker(app, card, start, opts = {}) {
@@ -298,6 +363,8 @@ export async function folderPicker(app, card, start, opts = {}) {
     let l;
     try { l = await call('list_dir', { path: p }); }
     catch (e) {
+      // (a saved folder that's gone: start from the top instead)
+      if (first && p !== roots[0]) return show(roots[0]);
       box.innerHTML = `${crumbs(null)}<p class="err" style="padding:10px">${esc(e)}</p>`;
       return;
     }
@@ -314,6 +381,15 @@ export async function folderPicker(app, card, start, opts = {}) {
         <label class="toggle pk-tour"><input type="checkbox"${tour ? ' checked' : ''}> Add the short tour (4 pages)</label>
         <div class="btn-row"><button class="btn" data-create${blocked ? ' disabled' : ''}>Create notes folder</button>
         <span class="note pk-msg">${blocked || 'It’s made inside the folder shown above.'}</span></div></div>`;
+    } else if (mode === 'choose') {
+      // (backups: never in a notes folder or inside one, where they'd be synced and backed up again)
+      const no = l.vault ? 'This is a notes folder: choose a folder outside it.'
+        : l.inside ? `This is inside the notes folder <code>${esc(l.inside)}</code>: choose a folder outside it.` : '';
+      const why = no || (opts.git
+        ? (l.git ? 'A git repository: backups are saved and uploaded from here.' : 'Not a git repository yet: clone your backup repository into a folder first (<code>git clone …</code>), then choose that folder.')
+        : 'Backups are saved in this folder.');
+      foot = `<div class="foot"><button class="btn" data-use${no ? ' disabled' : ''}>Use this folder</button><button class="btn ghost pk-new" data-new>${ICON.plus}New folder</button><button class="btn ghost" data-cancel>Cancel</button>
+        <span class="note pk-msg">${why}</span></div>`;
     } else {
       const why = noAccess() ? 'First allow access to your files (above).'
         : l.vault ? 'This is a notes folder.'
@@ -332,12 +408,13 @@ export async function folderPicker(app, card, start, opts = {}) {
   box.onclick = async (ev) => {
     const b = ev.target.closest('[data-p]');
     if (b) return show(b.dataset.p);
+    if (ev.target.closest('[data-cancel]')) return opts.cancel?.();
     if (busy || !list) return;
     const act = ev.target.closest('[data-use], [data-new], [data-create]');
     if (!act || act.disabled) return;
     busy = true;
     try {
-      if (act.matches('[data-use]')) await useHere(app, list);
+      if (act.matches('[data-use]')) await (mode === 'choose' ? opts.pick(list.path) : useHere(app, list));
       else if (act.matches('[data-new]')) { const p = await newFolder(list); if (p) await show(p); }
       else await create();
     } finally { busy = false; }
@@ -760,6 +837,42 @@ function windowsCard(app) {
  *  property: Show, Quiet (smaller, lighter), Icon (a small sign; its words on hover) or Hidden (like
  *  id::), and an optional mark (a thin coloured line down the note's left edge). Saved in the notes
  *  folder (logseq/thinky.json) so the laptop and the phone agree; render.js applies it. */
+/** Settings' tab row on a phone (Build 43, he asked Nov 10: it wasn't plain that the tabs scroll): a small
+ *  ‹ / › at an edge while tabs are hidden past it (a press scrolls the row that way; screen readers skip
+ *  them, the tabs themselves are reachable), and the first time the row doesn't fit, a short nudge of it.
+ *  Still one line (he asked, Nov 9). Nothing shows when every tab fits (a laptop). */
+function tabArrows(bar) {
+  const wrap = h('div', 'set-tabs-wrap');
+  const arrow = (dir) => {
+    const b = h('button', `tab-arrow ${dir}`, dir === 'prev' ? '‹' : '›');
+    b.type = 'button';
+    b.tabIndex = -1;
+    b.setAttribute('aria-hidden', 'true');
+    b.hidden = true;
+    b.onclick = () => bar.scrollBy({ left: (dir === 'prev' ? -1 : 1) * bar.clientWidth * 0.7, behavior: 'smooth' });
+    return b;
+  };
+  const prev = arrow('prev'), next = arrow('next');
+  wrap.append(prev, bar, next);
+  const paint = () => {
+    const more = bar.scrollWidth > bar.clientWidth + 2;
+    prev.hidden = !more || bar.scrollLeft < 2;
+    next.hidden = !more || bar.scrollLeft + bar.clientWidth > bar.scrollWidth - 2;
+    wrap.classList.toggle('more', more);
+    if (more && !store.get('setTabsNudged', false) && bar.isConnected) {
+      store.set('setTabsNudged', true);
+      if (motionOn() && bar.scrollLeft < 2) {
+        bar.scrollTo({ left: 48, behavior: 'smooth' });
+        setTimeout(() => { if (bar.scrollLeft <= 50) bar.scrollTo({ left: 0, behavior: 'smooth' }); }, 450);
+      }
+    }
+  };
+  bar.addEventListener('scroll', paint, { passive: true });
+  new ResizeObserver(paint).observe(bar);
+  document.fonts?.ready.then(paint);
+  return wrap;
+}
+
 /** Writing (Build 40: its own tab): the spelling check (Build 34, he asked): the system's own check, as
  *  he types; the words are underlined and a right-click (on the phone, the keyboard) offers the right
  *  spelling. Nothing leaves the device. */
@@ -786,7 +899,7 @@ function propDisplayCard(app) {
     <div class="pd-note"${rule.mark ? ` data-mark="${rule.mark}"` : ''}><i class="pd-dot"></i><div class="pd-w">Draft the talk${propsHtmlAs(props, { by: { icon: '●', ...rule } })}</div></div></figure>`;
   card.innerHTML = `<h2>Property display</h2><p class="note">Choose how a property shows on your notes. Here is one note with <code>by:: claude</code> under each choice:</p>
     <div class="pd-demo" aria-label="Examples">${ex('Show', 'as usual', { show: 'show' })}${ex('Quiet', 'smaller, lighter', { show: 'quiet' })}${ex('Icon', 'its words on hover', { show: 'icon' })}${ex('Hidden', 'kept, not shown', { show: 'hidden' })}${ex('+ Mark', 'a line beside it', { show: 'show', mark: 'blue' })}</div>
-    <p class="note small">A mark goes with any of the four. A hidden property is still there: the note menu’s “Show hidden properties” shows it. Saved in your notes folder (<code>logseq/thinky.json</code>), so your laptop and phone agree. Properties Logseq is told to hide (<code>:block-hidden-properties</code> in <code>config.edn</code>) are hidden here too.</p>
+    <p class="note small">A mark goes with any of the four. A hidden property is still there: the note menu’s “Show hidden properties” shows it. Saved in your notes folder (<code>logseq/thinky.json</code>), so your laptop and phone agree. Each property’s own page (Properties → its name) has the same choice. Properties Logseq is told to hide (<code>:block-hidden-properties</code> in <code>config.edn</code>) are hidden here too.</p>
     <ul class="rows prop-rules"></ul>
     <form class="prop-add"><input class="prop-new" list="prop-keys" placeholder="A property’s name, e.g. by" aria-label="A property’s name" autocomplete="off" spellcheck="false"><datalist id="prop-keys"></datalist><button class="btn small" type="submit">Add</button></form>`;
   const list = $('.prop-rules', card), add = $('.prop-add', card), input = $('.prop-new', card);
@@ -845,7 +958,8 @@ function backupCard(app) {
         <label><input type="radio" name="bk-kind" value="zip"${b.kind !== 'git' ? ' checked' : ''}> <b>Snapshot folder</b>: a dated zip of the notes in a folder you choose (no account needed)</label>
         <label><input type="radio" name="bk-kind" value="git"${b.kind === 'git' ? ' checked' : ''}> <b>GitHub</b> (or any git repository): needs <a href="https://git-scm.com" target="_blank" rel="noopener">git</a> and a folder cloned from your backup repository; every snapshot stays in its history</label>
       </fieldset>
-      <label class="bk-row"><span class="bk-l">Folder</span><input class="bk-dest" type="text" value="${esc(b.dest)}" placeholder="${b.kind === 'git' ? 'C:\\Users\\you\\notes-backup (a git clone)' : 'C:\\Users\\you\\notes-backups'}" spellcheck="false" autocomplete="off"></label>
+      <div class="bk-row"><label class="bk-l" for="bk-dest">Folder</label><span class="bk-dest-row"><input class="bk-dest" id="bk-dest" type="text" value="${esc(b.dest)}" placeholder="${b.kind === 'git' ? 'C:\\Users\\you\\notes-backup (a git clone)' : 'C:\\Users\\you\\notes-backups'}" spellcheck="false" autocomplete="off"><button class="btn ghost small bk-choose" type="button" aria-expanded="false">Choose…</button></span></div>
+      <div class="bk-pick"></div>
       <p class="note bk-hint">Outside your notes folder (a backup inside it would be synced and backed up again).</p>
       <label class="bk-row"><span class="bk-l">How often</span><select class="bk-every"><option value="week"${b.every !== 'day' ? ' selected' : ''}>Once a week</option><option value="day"${b.every === 'day' ? ' selected' : ''}>Once a day</option></select></label>
       <label class="bk-row bk-keep-row"${b.kind === 'git' ? ' hidden' : ''}><span class="bk-l">Keep</span><select class="bk-keep">${[2, 4, 8, 12].map((n) => `<option value="${n}"${n === Number(b.keep) ? ' selected' : ''}>the last ${n}</option>`).join('')}</select></label>
@@ -868,6 +982,18 @@ function backupCard(app) {
     else if (t.matches('.bk-keep')) app.setBackupPrefs({ keep: Number(t.value) });
     paint();
   });
+  // "Choose…": the app's folder picker under the box (again: closes it); a folder picked goes in the box
+  const shut = () => { $$('.bk-pick').replaceChildren(); $$('.bk-choose').setAttribute('aria-expanded', 'false'); };
+  $$('.bk-choose').onclick = () => {
+    if ($$('.bk-pick').firstChild) return shut();
+    $$('.bk-choose').setAttribute('aria-expanded', 'true');
+    folderPicker(app, $$('.bk-pick'), $$('.bk-dest').value.trim(), {
+      mode: 'choose',
+      git: app.backupPrefs().kind === 'git',
+      pick: (path) => { $$('.bk-dest').value = path; app.setBackupPrefs({ dest: path }); shut(); paint(); $$('.bk-choose').focus(); },
+      cancel: () => { shut(); $$('.bk-choose').focus(); },
+    });
+  };
   $$('.bk-now').onclick = async () => {
     app.setBackupPrefs({ dest: $$('.bk-dest').value.trim() });
     const btn = $$('.bk-now');
@@ -891,15 +1017,14 @@ function binCard(app) {
     try { items = await call('recycled'); } catch { /* none */ }
     const p = items.filter((r) => !r.picture);
     const q = items.filter((r) => r.picture); // newest move first (the list comes newest first)
-    pages.innerHTML = p.slice(0, 50).map((r) => `<li><span>${esc(r.name)}</span><span class="meta">${when(r)}</span><button class="btn ghost small" data-f="${esc(r.file)}">Restore</button></li>`).join('')
+    pages.innerHTML = p.slice(0, 50).map((r) => `<li><button type="button" class="bin-see" data-see="${esc(r.file)}" title="See this page">${esc(r.name)}</button><span class="meta">${when(r)}</span><button class="btn ghost small" data-f="${esc(r.file)}">Restore</button></li>`).join('')
       || '<li class="note">No deleted pages.</li>';
-    pics.innerHTML = q.map((r) => `<li><span>${thumb(r)}${esc(r.picture.replace(/^assets\//i, ''))}</span><span class="meta">${when(r)}</span><button class="btn ghost small" data-f="${esc(r.file)}" data-pic>Put back</button></li>`).join('');
+    pics.innerHTML = q.map((r) => `<li><button type="button" class="bin-see bin-pic" data-src="${esc(assetUrl('logseq/.recycle/' + encodeURIComponent(r.file)))}" title="See this picture">${thumb(r)}${esc(r.picture.replace(/^assets\//i, ''))}</button><span class="meta">${when(r)}</span><button class="btn ghost small" data-f="${esc(r.file)}" data-pic>Put back</button></li>`).join('');
     pics.hidden = $('.bin-pics-h', card).hidden = !q.length;
   };
   card.addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.classList.add('broken'); }, true);
-  card.onclick = async (e) => {
-    const b = e.target.closest('[data-f]');
-    if (!b) return;
+  // a click on a page or a picture shows it (read-only), to decide whether to bring it back
+  const restore = async (b) => {
     try {
       const name = await call('restore', { file: b.dataset.f }); // a picture: where it went ("assets/sub/x.png")
       const at = name.lastIndexOf('/');
@@ -907,6 +1032,13 @@ function binCard(app) {
       else { await app.refreshNames(); app.toast(`Restored “${name}”`); }
       draw();
     } catch (err) { app.toast(String(err), 6000); }
+  };
+  card.onclick = (e) => {
+    const see = e.target.closest('.bin-see');
+    if (see?.dataset.src) return app.showImage(see.dataset.src);
+    if (see) return showBinPage(app, see.dataset.see, () => restore(card.querySelector(`[data-f="${CSS.escape(see.dataset.see)}"]`)));
+    const b = e.target.closest('[data-f]');
+    if (b) restore(b);
   };
   app.binChanged = draw; // pictures moved to the bin from the check above show up here
   draw();

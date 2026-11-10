@@ -349,6 +349,50 @@ throw-away key; `release` publishes it with the others (7 files, 10 with the old
 release key (he chose it, Nov 10): `.github/workflows/play-key.yml` (run by hand on main, environment `release`) exports
 it with Google's PEPK, encrypted with Play Console's key saved as `ci/play-encryption-key.pem`, as the artifact
 `thinky-play-key.zip` for Play Console's App signing page. Package name on Play: `com.srikanth.leanoutliner`.
+Build 43 (0.5.4; the maintainer's notes of Nov 10; tested by t25_build43): a hidden sidebar peeks out on the mouse (as in
+Notion; `App.peekSidebar`: pointerover on the strip's sidebar button, 120 ms, adds `body.side-peek` (+ `.peeking` for the
+slide when `motionOn()`), the sidebar floats over the notes (z 30, shadow; app.css "peeking out"), its links work; leaving
+both it and the button for 300 ms, Esc, a resize to a narrow window or `toggleSidebar` ends it; the saved `sideHidden` is
+untouched; hidden by a click, it doesn't peek until the mouse comes back; wide windows with `(hover: hover)` only). A
+property's page has `propShowRow` (views.js): the same rule as Settings' `propDisplayCard` (`propertyDisplay` in
+logseq/thinky.json, read fresh before each save; Show with no mark = no rule; built-in hidden keys say so). The Tags list:
+filter box + A to Z / Most used (pages + notes), localStorage `tagsOpts`. Settings' tab row: `tabArrows` (settings.js) wraps
+it in `.set-tabs-wrap` with `.tab-arrow.prev/.next` (aria-hidden, not in the Tab order) shown only while tabs are hidden past
+that edge; a press scrolls 70% of the row; the first time it doesn't fit, a 48px nudge out and back (localStorage
+`setTabsNudged`; none without motion).
+Also Build 43 (he asked, Nov 10; tested by t21_build37, t10_safety): Settings → Backups' "Choose…" (`.bk-choose`) opens
+`folderPicker` in mode 'choose' under the box (`.bk-pick`; again or Cancel closes it): "Use this folder" → `opts.pick` (the box
+and `setBackupPrefs`), refused for a notes folder or one inside one; with `opts.git` it says whether `list_dir`'s new `git`
+(a `.git` there) is true, but takes either; a saved folder that's gone starts the picker at the top. "Pictures nothing uses":
+the tick box is its own `label.pic-tick`, the picture + name a `.pic-open` button → `App.showImage` (the notes' lightbox). The
+bin: each page's name is a `.bin-see` button → history.js `showBinPage` (core `recycled_page`: a plain `.md` right in the bin,
+read only → {name, doc, props}; drawn as History draws a version, `.bin-view`, Esc/×/Close, "Restore this page" = the row's
+Restore); a picture's → `App.showImage`.
+Also Build 43 (he asked, Nov 10; tested by core tests/older.rs, tests/conflict_copy.rs, t10_safety): "Where was it used?"
+(`.pic-older` → `.pic-ctx` under the row; again closes) = core app/older.rs `picture_in_older(data, picture, backup)`, read
+only: notes mentioning the picture (`pictures::mentioned`, per note of `split_doc`, the page properties if no note) in every
+`logseq/bak/**/<backup>.md` (page = the folder's path + ".md"; time from `bak_name`), the safety copies (`copy_texts`, both
+devices'), and with backups on the snapshot zips (`backup::zip_files`, the old `read_from_zip` now one case of it) or a git
+backup (`git log --all -S<name> -n20 --name-only`, then the file at the commit or its parent); each hit = page, file, whether
+the page's file is there, the notes above (first lines), the note, from/which/when; one per (file, note), the newest, ≤30.
+"Open <page>…" (`.pc-go`) asks first. Conflict copies: Check this folder lists each with "Compare and merge…" (`.cc-merge`)
+→ clash.js `openCopyMerge` → core `compare_copy(copy)` (only `conflict_copy_of` files; the page = `copy_original`: the file
+without the sync app's mark next to it (`original_of`/`copy_stems`: " (conflict …)", ".sync-conflict…", " (N)", "-conflict…"),
+else the page of that name, as a journal day's copy is named by its title): `merge::lcs` lines them up, every stretch where they
+differ is a `Part::Clash` with an empty base (so "Keep both" is offered and pre-picked where both have notes; else the side that
+has them), `differ` false = same words (confirm, then `bin_copy`). The page opens (`app.go`), its outline found by path, flushed,
+compared again if it changed; `openClash(o, copy)` = the clash screen's copy mode (`.cl-copy`: "This page"/"The copy", no
+"Before both changes" row, "(not on this page)", Cancel; `keep` backs the page up first, `o.base` = the file as read, then
+saves and `bin_copy`s; `App.copyMerged` drops the row if Settings still shows).
+Also Build 43 (he asked, Nov 10, after trying it on his own copies: long notes differing by "TODO"/"DONE" looked the
+same; tested by t10_safety, core tests/conflict_copy.rs): `compare_copy` matches notes by `same_words` (spaces at line ends
+and `collapsed::` lines dropped; the page's own note kept). clash.js `markDiffs` (both clash modes): `pairNotes` (in order,
+each note the most alike of the other side's next 6, ≥40% shared words), `wordDiff` (a longest common run of words over the
+drawn rows' text) → CSS highlights `cl-mine`/`cl-theirs` in `--mine`/`--theirs` (cleared by `unmark` on close); unpaired
+rows `.cl-solo`; same words at another depth `.cl-indent` + `.cl-why` ("indented 2 levels"); `notesHtml(blocks, min)` draws
+both sides from `minDepth(it)`; the to-do word is followed by a real space. `copyPick`: every note paired → "mine", else as
+before. Check this folder's report stays (`app.lastCheck` {vault, r, at}, this run only; "Checked at …", the button "Check
+again"); binning pictures, restoring a missing one and a merged copy update `r` too.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

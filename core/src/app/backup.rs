@@ -236,6 +236,18 @@ pub fn write_zip(dest: &Path, files: &BTreeMap<String, (PathBuf, u64, u64)>) -> 
 
 /// One file's bytes from one of our zips (stored entries), by its vault-relative path.
 pub fn read_from_zip(zip: &Path, want: &str) -> Option<Vec<u8>> {
+    zip_files(zip, |name| name == want).pop().map(|(_, b)| b)
+}
+
+/// The stored files of one of our zips whose names `keep` says yes to: (name, bytes), in the zip's
+/// order. A damaged zip gives what was read before the damage.
+pub fn zip_files(zip: &Path, mut keep: impl FnMut(&str) -> bool) -> Vec<(String, Vec<u8>)> {
+    let mut out = vec![];
+    let _ = zip_walk(zip, &mut keep, &mut out);
+    out
+}
+
+fn zip_walk(zip: &Path, keep: &mut impl FnMut(&str) -> bool, out: &mut Vec<(String, Vec<u8>)>) -> Option<()> {
     let mut f = std::fs::File::open(zip).ok()?;
     let len = f.metadata().ok()?.len();
     let tail = len.min(66_000);
@@ -256,7 +268,7 @@ pub fn read_from_zip(zip: &Path, want: &str) -> Option<Vec<u8>> {
         }
         let (method, size, name_len, extra, comment, off) = (u16_(&cd, i + 10), u32_(&cd, i + 20), u16_(&cd, i + 28), u16_(&cd, i + 30), u16_(&cd, i + 32), u32_(&cd, i + 42));
         let name = std::str::from_utf8(cd.get(i + 46..i + 46 + name_len)?).ok()?;
-        if name == want && method == 0 {
+        if method == 0 && keep(name) {
             let mut lh = [0u8; 30];
             f.seek(SeekFrom::Start(off)).ok()?;
             f.read_exact(&mut lh).ok()?;
@@ -264,15 +276,15 @@ pub fn read_from_zip(zip: &Path, want: &str) -> Option<Vec<u8>> {
             f.seek(SeekFrom::Start(off + skip as u64)).ok()?;
             let mut data = vec![0u8; size as usize];
             f.read_exact(&mut data).ok()?;
-            return Some(data);
+            out.push((name.to_string(), data));
         }
         i += 46 + name_len + extra + comment;
     }
-    None
+    Some(())
 }
 
 /// Our zips in a backup folder, newest first.
-fn our_zips(dest: &Path) -> Vec<PathBuf> {
+pub(super) fn our_zips(dest: &Path) -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = std::fs::read_dir(dest)
         .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(PREFIX) && n.to_string_lossy().ends_with(".zip"))).collect())
         .unwrap_or_default();
@@ -337,7 +349,7 @@ pub fn backup_zip(root: &Path, dest: &Path, keep: usize, stamp: &str) -> BackupR
 
 // ------------------------------------------------------------------ git
 
-fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
+pub(super) fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
     let mut c = std::process::Command::new("git");
     c.arg("-C").arg(repo).args(args);
     #[cfg(windows)]

@@ -31,7 +31,7 @@ use std::time::UNIX_EPOCH;
 /// At most this many versions are read (the newest).
 const MAX_VERSIONS: usize = 100;
 /// A backup bigger than this isn't read.
-const MAX_BYTES: u64 = 25 * 1024 * 1024;
+pub(super) const MAX_BYTES: u64 = 25 * 1024 * 1024;
 
 /// One earlier version in the list.
 #[derive(Serialize, Debug)]
@@ -126,7 +126,7 @@ fn read_all(sources: &[Source]) -> Vec<Option<String>> {
 
 /// A file in a backup folder that can be a version: a ".md" file by a name of its own (not a hidden
 /// one, such as a temp file being written).
-fn bak_file_ok(name: &str) -> bool {
+pub(super) fn bak_file_ok(name: &str) -> bool {
     name.len() > 3 && name.ends_with(".md") && !name.starts_with('.') && !name.contains(['/', '\\', '\0'])
 }
 
@@ -134,7 +134,7 @@ fn bak_file_ok(name: &str) -> bool {
 /// within a second), and who made it. Logseq: "2026-10-24T02_00_00.123Z.Desktop.md" (UTC; ".android"
 /// or ".ios" on a phone; none in older versions). This app: "2026-10-24_02_00_00.md" or
 /// "2026-10-24_02_00_00-2.md" (UTC, `App::backup`). None: another name.
-fn bak_name(name: &str) -> Option<(u64, u32, &'static str)> {
+pub(super) fn bak_name(name: &str) -> Option<(u64, u32, &'static str)> {
     let b = name.as_bytes();
     let num = |r: std::ops::Range<usize>| -> Option<u64> { b.get(r.clone()).filter(|d| d.iter().all(u8::is_ascii_digit))?; name[r].parse().ok() };
     let (y, mo, d, h, mi, s) = (num(0..4)?, num(5..7)?, num(8..10)?, num(11..13)?, num(14..16)?, num(17..19)?);
@@ -174,7 +174,7 @@ fn bak_name(name: &str) -> Option<(u64, u32, &'static str)> {
     }
 }
 
-fn mtime_ms(md: &std::fs::Metadata) -> u64 {
+pub(super) fn mtime_ms(md: &std::fs::Metadata) -> u64 {
     md.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as u64)
 }
 

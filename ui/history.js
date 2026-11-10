@@ -208,3 +208,46 @@ export async function openHistory(app, o) {
   }
   if (back.isConnected) showList();
 }
+
+/** A deleted page from the bin (Settings → "Deleted pages and pictures"; he asked, Nov 10), read-only,
+ *  drawn like a version in History, so he can see what it holds before restoring it. `restore()` is the
+ *  bin's own Restore (the dialog closes first); nothing here writes anything. */
+export async function showBinPage(app, file, restore) {
+  if (document.querySelector('.bin-view')) return;
+  let r;
+  try { r = await call('recycled_page', { file }); } catch (e) { app.toast(String(e?.message ?? e), 6000); return; }
+  const opener = document.activeElement;
+  const back = h('div', 'modal-back panel-back bin-view');
+  const box = h('div', 'panel hist');
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  box.setAttribute('aria-labelledby', 'bv-title');
+  box.innerHTML = `<header class="panel-head"><div class="hv-top"><h2 id="bv-title">Deleted page “${esc(r.name)}”</h2>
+      <button type="button" class="icon-btn" data-h="close" aria-label="Close" title="Close (Esc)">${ICON.winClose}</button></div>
+      <p class="note">As it is in the bin. Nothing changes until you restore it.</p></header>
+    <div class="panel-body hv-body"><div class="sheet hv-sheet"><div class="page-head"><h1 class="page-title">${esc(r.name)}</h1><div class="page-props"></div></div><div class="hv-page"></div></div></div>
+    <footer class="panel-foot"><div class="btn-row"><button type="button" class="btn" data-h="restore">Restore this page</button><button type="button" class="btn ghost" data-h="close">Close</button></div></footer>`;
+  back.append(box);
+  document.body.append(back);
+  // (drawn as History draws a version: properties under the title, every note unfolded)
+  const props = visibleProps(r.props || []);
+  if (r.doc.preamble.trim() && props.length) box.querySelector('.page-props').innerHTML = propsHtml(props);
+  const doc = JSON.parse(JSON.stringify(r.doc));
+  for (const b of doc.blocks) b.text = b.text.replace(/\ncollapsed:: true(?=\n|$)/, '');
+  const host = box.querySelector('.hv-page');
+  if (!doc.blocks.length) host.before(h('p', 'note', 'This page is empty.'));
+  new Outline(host, { info: { name: r.name, path: '', exists: false }, doc, hash: '', readonly: true }, app, { preview: true });
+  const close = () => {
+    fadeAway(back);
+    back.remove();
+    document.removeEventListener('keydown', onKey, true);
+    opener?.focus?.({ preventScroll: true });
+  };
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
+  document.addEventListener('keydown', onKey, true);
+  back.addEventListener('click', (e) => {
+    if (e.target === back || e.target.closest('[data-h="close"]')) close();
+    else if (e.target.closest('[data-h="restore"]')) { close(); restore(); }
+  });
+  box.querySelector('[data-h="close"]').focus();
+}

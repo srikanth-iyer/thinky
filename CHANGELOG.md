@@ -14,6 +14,21 @@ From Build 41 these versions are the app's own: they show in Settings → Update
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 43 · version 0.5.4 (November 2026)
+
+### New
+- A hidden sidebar peeks out when the mouse rests on its button, floating over your notes without moving them. Its links and buttons work as usual, and it slides away when the mouse leaves it (or with Esc). A click on the button still keeps it open, as before.
+- Each property's own page (Properties → its name) now has the same "shows on notes as" choice as Settings → Writing → Property display: Show, Quiet, Icon or Hidden, and a mark. A change in either place shows in the other.
+- The Tags list has a filter box and A to Z / Most used, like the Properties list. The order you pick is remembered.
+- On a phone, Settings' tab row shows a small › (and ‹) at its edge while more tabs are hidden there; a tap scrolls the row. The first time, the row also gives a short nudge so it's plain that it scrolls.
+- Backups: a "Choose…" button beside the folder opens a folder picker, so the folder needn't be typed. It won't take a notes folder or a folder inside one, and for a GitHub backup it says whether the folder is a git clone.
+- In "Check this folder", a click on a picture nothing uses (or its name) shows it big, so you can see what it is before moving it to the bin. Its tick box works on its own.
+- In "Deleted pages and pictures", a click on a page shows what it holds (read-only, with "Restore this page" there too), and a click on a picture shows it big, so you can decide before bringing one back.
+- "Pictures nothing uses" has "Where was it used?" beside each picture: it looks through the older copies of your pages (the backups in logseq/bak, the safety copies, and your backups when they're on) and shows the notes that used the picture, with the notes above them and the date. "Open the page…" asks before taking you there, since the note isn't on the page now.
+- Sync-conflict copies (like "Page (conflict 2026-11-08-13-18-30).md") have "Compare and merge…" in "Check this folder". It opens the page and shows it side by side with the copy, only where they differ, with "Keep both" suggested where each has its own words, so nothing is lost by default. After you choose, the page is saved (its earlier version kept in logseq/bak) and the copy goes to the bin. A copy that says exactly what its page says is simply offered to the bin.
+- Compare and merge highlights what differs: in two versions of a note, only the words that changed are marked, each side in its own colour; a note only one side has is tinted; the same words indented differently say so. Spaces at line ends and a note's folded state no longer count as differences, so those spots aren't shown at all. Where the two versions of a note differ only by a word or an indent, this page's is suggested (keeping both would show the note twice).
+- "Check this folder" keeps its report: go elsewhere and come back, and the last results are still there, saying when they were made, with "Check again".
+
 ## Build 42 · version 0.5.3 (November 2026)
 
 ### New

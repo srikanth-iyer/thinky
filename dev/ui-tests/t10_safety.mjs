@@ -22,6 +22,9 @@ fs.mkdirSync(VAULT + '/assets/photo');
 // a bin with many deleted pages (Logseq keeps them there too)
 fs.mkdirSync(VAULT + '/logseq/.recycle', { recursive: true });
 for (let i = 0; i < 60; i++) write(`logseq/.recycle/pages_Old page ${i}.md`, `- deleted page ${i}\n`);
+// an older copy (Logseq's backup) of a page that used unused.png then (logseq/bak doesn't count as a use)
+fs.mkdirSync(VAULT + '/logseq/bak/pages/Sourdough Bread', { recursive: true });
+write('logseq/bak/pages/Sourdough Bread/2026-05-31T10_00_00.000Z.Desktop.md', '- Mix, fold, rest, shape\n\t- the crumb ![crumb](../assets/unused.png)\n');
 await go(page, '#/settings');
 await page.locator('[data-a="check"]').click();
 await page.waitForSelector('.pics-box h3', { timeout: 5000 });
@@ -33,7 +36,30 @@ check(said.includes('One picture was added in the last 3 days, so it was left ou
 const shows = await page.waitForFunction(() => { const i = document.querySelector('.pics img'); return i && i.complete && i.naturalWidth === 40; }, null, { timeout: 3000 }).then(() => true, () => false);
 check(shows, 'a small picture of each shows');
 check(await page.locator('.pics input[type="checkbox"]:checked').count() === 4, 'each has a tick box, all ticked');
-await page.locator('.pics label', { hasText: 'keep.png' }).click(); // untick it
+// a click on a picture or its name shows it big, and doesn't touch its tick box; a click closes it
+await page.locator('.pics .pic-open', { hasText: 'keep.png' }).click();
+check(await page.locator('.modal-back.lightbox img').count() === 1 && /keep\.png/.test(await page.locator('.modal-back.lightbox img').getAttribute('src')), 'a click on a picture shows it big');
+check(await page.locator('.pics input[type="checkbox"]:checked').count() === 4, 'and leaves its tick box as it was');
+await page.locator('.modal-back.lightbox').click();
+check(await page.locator('.modal-back.lightbox').count() === 0, 'a click closes it');
+// "Where was it used?": found in the page's older copy, with the notes above it; "Open …" asks first
+await page.locator('.pics li', { hasText: 'unused.png' }).locator('.pic-older').click();
+await page.waitForSelector('.pic-ctx .pc-list li, .pic-ctx p.note', { timeout: 8000 });
+const ctx = await page.locator('.pic-ctx').textContent();
+check(/Sourdough Bread/.test(ctx) && /Mix, fold, rest, shape/.test(ctx) && /Logseq on a computer/.test(ctx) && await page.locator('.pic-ctx .pc-note img').count() === 1, '“Where was it used?” finds the note in the page’s older copy, with the note above it and the picture', ctx);
+await page.screenshot({ path: SHOTS + '/picture-older.png' });
+await page.locator('.pic-ctx .pc-go').click();
+await page.waitForSelector('.modal');
+check(/isn’t on the page now/.test(await page.locator('.modal').textContent()), 'Open … asks first, saying the note isn’t there now');
+await page.locator('.modal button', { hasText: 'Cancel' }).click();
+await sleep(200);
+check(/settings/.test(await page.evaluate(() => location.hash)), 'Cancel stays here');
+await page.locator('.pics li', { hasText: 'keep.png' }).locator('.pic-older').click();
+await page.waitForSelector('.pics li:has-text("keep.png") .pic-ctx p.note', { timeout: 8000 });
+check(/Not in any older copy/.test(await page.locator('.pics li', { hasText: 'keep.png' }).locator('.pic-ctx').textContent()), 'a picture no older copy used: says so');
+await page.locator('.pics li', { hasText: 'keep.png' }).locator('.pic-older').click();
+check(await page.locator('.pics li', { hasText: 'keep.png' }).locator('.pic-ctx').count() === 0, 'pressed again: closes');
+await page.locator('.pics li', { hasText: 'keep.png' }).locator('input[type="checkbox"]').click(); // untick it
 check(await page.locator('[data-a="bin-pics"]').textContent() === 'Move 3 to the bin…', 'the button counts the ticked ones', await page.locator('[data-a="bin-pics"]').textContent());
 await page.screenshot({ path: SHOTS + '/check-pictures.png' });
 await page.locator('[data-a="bin-pics"]').click();
@@ -45,6 +71,13 @@ await sleep(800);
 check(['unused.png', 'Screenshot (2).png', 'photo_2024.png'].every((n) => !exists('assets/' + n) && exists('logseq/.recycle/assets%2F' + n)), '“Move to the bin” moves the ticked ones into logseq/.recycle, each named by where it came from');
 check(exists('assets/keep.png') && exists('assets/fresh.png') && exists('assets/dot.png') && exists('assets/board.png') && exists('assets/paper.pdf'), 'the unticked one and the others stay in assets');
 check((await page.locator('.pics-box').textContent()).includes('Moved 3 pictures to the bin'), 'and it says so');
+console.log('Check this folder: the report stays when coming back');
+await go(page, '#/journals');
+await go(page, '#/settings/notes');
+await page.waitForSelector('.check-out .check-when', { timeout: 5000 });
+const back = (await page.locator('.check-out').textContent()).replace(/\s+/g, ' ');
+check(/Checked at \d/.test(back) && /Moved 3 pictures to the bin|Pictures nothing uses/.test(back) && await page.locator('[data-a="check"]').textContent() === 'Check again', 'back on Settings → Notes: the last report is there, saying when, with “Check again”', back.slice(0, 300));
+check(!(await page.locator('.pics .nm').allTextContents()).some((n) => ['unused.png', 'Screenshot (2).png', 'photo_2024.png'].includes(n)), 'without the pictures already moved to the bin', (await page.locator('.pics .nm').allTextContents()).join(','));
 console.log('the bin lists the pictures, all of them, with “Put back”');
 await go(page, '#/settings/safety'); // (the bin is on Safety since Build 40)
 const binPics = page.locator('.bin-pics li');
@@ -53,9 +86,26 @@ const binShows = await page.waitForFunction(() => { const i = document.querySele
 check(binShows, 'each with a small picture');
 await page.locator('.bin-pics').evaluate((el) => el.previousElementSibling.scrollIntoView());
 await page.screenshot({ path: SHOTS + '/bin-pictures.png' });
+// a click on a picture in the bin shows it big; on a page, the page read-only, with Restore there too
+await page.locator('.bin-pics .bin-see', { hasText: 'unused.png' }).click();
+check(/assets%252Funused\.png|assets%2Funused\.png/.test(await page.locator('.modal-back.lightbox img').getAttribute('src') || ''), 'a click on a picture in the bin shows it big', await page.locator('.modal-back.lightbox img').getAttribute('src'));
+await page.locator('.modal-back.lightbox').click();
+const oldOne = (await page.locator('.bin-pages .bin-see').first().textContent()).trim(); // ("Old page N")
+const oldN = oldOne.replace('Old page ', '');
+await page.locator('.bin-pages .bin-see').first().click();
+await page.waitForSelector('.bin-view .hv-page .blk');
+check((await page.locator('.bin-view .hv-page').textContent()).includes('deleted page ' + oldN) && (await page.locator('#bv-title').textContent()).includes(oldOne), 'a click on a deleted page shows what it holds', await page.locator('.bin-view').textContent());
+check(await page.locator('.bin-view textarea, .bin-view [contenteditable="true"]').count() === 0 && exists(`logseq/.recycle/pages_${oldOne}.md`), 'read-only: nothing changes');
+await page.screenshot({ path: SHOTS + '/bin-page.png' });
+await page.keyboard.press('Escape');
+check(await page.locator('.bin-view').count() === 0, 'Esc closes it');
+await page.locator('.bin-pages .bin-see', { hasText: oldOne }).first().click();
+await page.locator('.bin-view [data-h="restore"]').click();
+await sleep(600);
+check(exists(`pages/${oldOne}.md`) && !exists(`logseq/.recycle/pages_${oldOne}.md`) && await page.locator('.bin-view').count() === 0, 'Restore this page: it is back in pages, the box closed');
 for (const n of ['Screenshot (2).png', 'photo_2024.png', 'unused.png']) {
   const row = page.locator('.bin-pics li', { hasText: n });
-  await row.locator('button').click();
+  await row.locator('button[data-f]').click();
   await sleep(500);
   check(exists('assets/' + n) && !exists('logseq/.recycle/assets%2F' + n), `Put back: “${n}” is in assets again, exactly as it was`);
   check((await page.locator('#toast').textContent()).includes(`Put “${n}” back in assets`), 'and it says so', await page.locator('#toast').textContent());
@@ -64,7 +114,7 @@ check(!fs.readdirSync(VAULT + '/assets/photo').length && await binPics.count() =
 // one from a folder inside assets (moved to the bin earlier): it goes back there, and the message says so
 fs.copyFileSync(VAULT + '/assets/unused.png', VAULT + '/logseq/.recycle/assets%2Fsub%2Fdeep.png');
 await page.evaluate(() => window.leanApp.binChanged());
-await page.locator('.bin-pics li', { hasText: 'sub/deep.png' }).locator('button').click();
+await page.locator('.bin-pics li', { hasText: 'sub/deep.png' }).locator('button[data-f]').click();
 await sleep(500);
 check(exists('assets/sub/deep.png') && !exists('logseq/.recycle/assets%2Fsub%2Fdeep.png'), 'a picture from a folder inside assets goes back into that folder (made again if gone)');
 check((await page.locator('#toast').textContent()).includes('Put “deep.png” back in assets/sub.'), 'and the message names that folder', await page.locator('#toast').textContent());
@@ -152,6 +202,64 @@ check(read('pages/Marta Pell.md') === good, 'put back the same way', read('pages
 const kept2 = fs.readdirSync(bak).map((f) => fs.readFileSync(bak + '/' + f, 'utf8'));
 check(kept2.includes('- damaged later\n'), 'the text it replaced kept in logseq/bak first', JSON.stringify(kept2));
 
+console.log('Check this folder: a conflict copy compared with its page and merged');
+const SB = read('pages/Sourdough Bread.md');
+write('pages/Sourdough Bread (conflict 2026-11-08-13-18-30).md', SB.replace('- Mix, fold, rest, shape', '- Mix, fold, rest, shape, bake') + '- an oven note from the phone\n');
+write('pages/Copy me.md', '- the same words\n');
+write('pages/Copy me (1).md', '- the same words\n');
+await page.evaluate(() => window.leanApp.rescan?.());
+await go(page, '#/settings/notes');
+await page.locator('[data-a="check"]').click();
+await page.waitForSelector('.conflict-copies .cc-merge', { timeout: 8000 });
+check(await page.locator('.conflict-copies li').count() === 2, 'each conflict copy has Compare and merge', await page.locator('.conflict-copies').textContent());
+// one that says just what its page says: only offered to the bin
+await page.locator('.cc-merge[data-copy="pages/Copy me (1).md"]').click();
+await page.waitForSelector('.modal');
+check(/same as the page/.test(await page.locator('.modal').textContent()), 'a copy with the same words: offered to the bin only');
+await page.locator('.modal button', { hasText: 'Move to the bin' }).click();
+await sleep(600);
+check(!exists('pages/Copy me (1).md') && exists('pages/Copy me.md') && await page.locator('.conflict-copies li').count() === 1, 'it goes to the bin, its row too; the page stays');
+// the other: its page opens, then the clash screen in its copy mode
+await page.locator('.cc-merge').first().click();
+await page.waitForSelector('.clash-back .cl-copy, .clash-back.cl-copy, .panel.cl-copy', { timeout: 8000 });
+const cl = (await page.locator('.panel.cl-copy').textContent()).replace(/\s+/g, ' ');
+check(/Compare with the conflict copy/.test(cl) && /differ in 2 places/.test(cl) && /This page/.test(cl) && /The copy/.test(cl) && !/Before both changes/.test(cl) && /\(not on this page\)/.test(cl) && !/\(removed\)/.test(cl), 'the clash screen compares the page and the copy: 2 places, no “before”', cl);
+check(/#\/page\/Sourdough/.test(await page.evaluate(() => location.hash)), 'with the page open behind it');
+await page.screenshot({ path: SHOTS + '/conflict-copy.png' });
+const picks = await page.locator('.panel.cl-copy .cl-item').evaluateAll((els) => els.map((el) => el.querySelector('input:checked')?.value));
+check(picks.join(',') === 'mine,theirs', 'pre-picked: the page’s where both have the note with a word changed (no note twice), the copy’s where only it has some', picks.join(','));
+await page.locator('.panel.cl-copy [data-c="apply"]').click();
+await sleep(1200);
+const merged = read('pages/Sourdough Bread.md');
+check(merged.includes('- Mix, fold, rest, shape\n') && !merged.includes('shape, bake') && merged.includes('- an oven note from the phone') && merged.startsWith('alias:: SB'), 'the page keeps its version of the changed note and gets the copy’s new one; its properties stay', merged);
+check(!exists('pages/Sourdough Bread (conflict 2026-11-08-13-18-30).md') && fs.readdirSync(VAULT + '/logseq/.recycle').some((f) => f.includes('Sourdough Bread (conflict')), 'the copy is in the bin');
+const bakSB = VAULT + '/logseq/bak/pages/Sourdough Bread';
+check(fs.readdirSync(bakSB).some((f) => fs.readFileSync(bakSB + '/' + f, 'utf8') === SB), 'the page as it was is in logseq/bak');
+check(/copy is in the bin/.test(await page.locator('#toast').textContent()), 'and it says so', await page.locator('#toast').textContent());
+
+console.log('Compare and merge: what differs is highlighted; spaces at line ends are no difference');
+const LONG = 'The calendar menu opens with a soft fade but many other transitions are blunt and lacking, so can we look at other apps';
+write('pages/Week.md', `- [[thinky]]\n\t- DONE ${LONG}\n\t- the same note\n- App data note\n`);
+write('pages/Week (conflict 2026-11-08-13-18-30).md', `- [[thinky]]\n\t- TODO ${LONG}\n\t- the same note \n\t\t- App data note\n`);
+await page.evaluate(() => window.leanApp.rescan?.());
+await go(page, '#/settings/notes');
+await page.locator('[data-a="check"]').click();
+await page.waitForSelector('.cc-merge[data-copy="pages/Week (conflict 2026-11-08-13-18-30).md"]', { timeout: 8000 });
+await page.locator('.cc-merge[data-copy="pages/Week (conflict 2026-11-08-13-18-30).md"]').click();
+await page.waitForSelector('.panel.cl-copy', { timeout: 8000 });
+await sleep(400);
+const wk = (await page.locator('.panel.cl-copy .cl-head').textContent()).replace(/\s+/g, ' ');
+check(/differ in 2 places/.test(wk), 'two places: the changed word and the indent; the space at a line end is no difference', wk);
+const hl = await page.evaluate(() => ['cl-mine', 'cl-theirs'].map((n) => [...(CSS.highlights.get(n) || [])].map((r) => r.toString())));
+check(JSON.stringify(hl) === JSON.stringify([['DONE'], ['TODO']]), 'in the long note only the word that differs is highlighted, on each side', JSON.stringify(hl));
+const why = await page.locator('.panel.cl-copy .cl-why').allTextContents();
+check(why.join('|') === 'not indented|indented 2 levels', 'the note with the same words says how its indent differs on each side', why.join('|'));
+const wkPicks = await page.locator('.panel.cl-copy .cl-item').evaluateAll((els) => els.map((el) => el.querySelector('input:checked')?.value));
+check(wkPicks.join(',') === 'mine,mine', 'notes that only differ by a word or an indent: this page’s pre-picked (keeping both would show them twice)', wkPicks.join(','));
+await page.screenshot({ path: SHOTS + '/conflict-diff.png' });
+await page.locator('.panel.cl-copy [data-c="later"]').click();
+check(await page.evaluate(() => !CSS.highlights.has('cl-mine')) && exists('pages/Week (conflict 2026-11-08-13-18-30).md'), 'Cancel: the highlights go, nothing changes');
+
 console.log('Check this folder: one of a kind is said as one ("1 file looks like a copy"), several as several');
 const say = async (one) => {
   await page.unroute('**/api/check');
@@ -172,10 +280,10 @@ const say = async (one) => {
   return (await page.locator('.check-out').textContent()).replace(/\s+/g, ' ');
 };
 let words = await say(true);
-check(words.includes('1 file would be reformatted') && words.includes('1 file looks like a copy made by a sync conflict') && words.includes('Compare it with the original')
+check(words.includes('1 file would be reformatted') && words.includes('1 file looks like a copy made by a sync conflict') && words.includes('shows it side by side with its page')
   && words.includes('1 page name belongs to more than one file') && words.includes('1 file isn’t plain text'), 'one of each: said as one', words);
 words = await say(false);
-check(words.includes('2 files would be reformatted') && words.includes('2 files look like copies made by a sync conflict') && words.includes('Compare each with the original')
+check(words.includes('2 files would be reformatted') && words.includes('2 files look like copies made by a sync conflict') && words.includes('shows each side by side with its page')
   && words.includes('2 page names belong to more than one file') && words.includes('2 files aren’t plain text'), 'two of each: said as several', words);
 
 check(!errors.length, 'no script errors', errors.join(' | '));

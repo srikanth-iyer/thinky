@@ -33,6 +33,7 @@ pub fn data_dir() -> Option<PathBuf> {
 
 pub mod backup;
 pub mod history;
+pub mod older;
 pub mod pictures;
 pub mod safety;
 
@@ -157,6 +158,23 @@ pub struct Clash {
     pub theirs: Doc,
     pub parts: Option<Vec<crate::merge::Part>>,
     pub preamble: Option<[String; 3]>,
+}
+
+/// A conflict copy and its page, compared (`compare_copy`); read by the clash screen like a `Clash`
+/// (`theirs` = the copy, `mine` = the page as its file is now, `hash` = that file's).
+#[derive(Serialize, Debug)]
+pub struct CopyCompare {
+    pub name: String,
+    pub path: String,
+    pub copy: String,
+    pub copy_name: String,
+    pub hash: String,
+    pub mine: Doc,
+    pub theirs: Doc,
+    pub parts: Option<Vec<crate::merge::Part>>,
+    pub preamble: Option<[String; 3]>,
+    /// false: the copy says exactly what the page says (only its file can go)
+    pub differ: bool,
 }
 
 #[derive(Deserialize)]
@@ -1330,6 +1348,85 @@ impl App {
         Ok(Clash { hash: content_hash(&current), theirs, parts, preamble })
     }
 
+    /// A sync app's conflict copy compared with its page (Build 43, he asked Nov 10; "Check this
+    /// folder" → Compare and merge): the two lined up note by note (`merge::lcs`), each stretch where
+    /// they differ one choice for the clash screen (this page's notes, the copy's, or both), the notes
+    /// both have as they are. There's no "before" here (neither is older), so a stretch only one has
+    /// is a choice too: nothing is taken in or left out unseen. Read only.
+    pub fn compare_copy(&self, copy: &str) -> Result<CopyCompare, String> {
+        if !self.files.contains_key(copy) || !conflict_copy_of(copy, &self.files) {
+            return Err("That isn't a conflict copy in this notes folder.".into());
+        }
+        let orig = self.copy_original(copy).ok_or("The page this is a copy of isn't there (renamed or deleted?), so there's nothing to compare it with.")?;
+        let read = |rel: &str| read_text(&self.root.join(rel)).map_err(|e| e.say(rel))?.ok_or_else(|| format!("{rel} is gone."));
+        let (mine_text, theirs_text) = (read(&orig)?, read(copy)?);
+        let (mine, theirs) = (split_doc(&mine_text), split_doc(&theirs_text));
+        // notes match when their words do: spaces at line ends and Logseq's fold mark (collapsed::)
+        // aren't differences anyone can see or wants to choose between (the page's own is kept)
+        let norm = |b: &[DocBlock]| -> Vec<(usize, String)> { b.iter().map(|x| (x.depth, same_words(&x.text))).collect() };
+        let (nm, nt) = (norm(&mine.blocks), norm(&theirs.blocks));
+        let (km, kt): (Vec<(usize, &str)>, Vec<(usize, &str)>) = (nm.iter().map(|(d, t)| (*d, t.as_str())).collect(), nt.iter().map(|(d, t)| (*d, t.as_str())).collect());
+        let parts = crate::merge::lcs(&km, &kt).map(|pairs| {
+            let mut parts: Vec<crate::merge::Part> = vec![];
+            let (mut i, mut j) = (0, 0);
+            let mut same: Vec<DocBlock> = vec![];
+            for (a, b) in pairs.into_iter().chain(std::iter::once((mine.blocks.len(), theirs.blocks.len()))) {
+                if a > i || b > j {
+                    if !same.is_empty() {
+                        parts.push(crate::merge::Part::Same { blocks: std::mem::take(&mut same) });
+                    }
+                    parts.push(crate::merge::Part::Clash { base: vec![], mine: mine.blocks[i..a].to_vec(), theirs: theirs.blocks[j..b].to_vec() });
+                }
+                if a < mine.blocks.len() {
+                    same.push(mine.blocks[a].clone());
+                }
+                (i, j) = (a + 1, b + 1);
+            }
+            if !same.is_empty() {
+                parts.push(crate::merge::Part::Same { blocks: same });
+            }
+            parts
+        });
+        let preamble = (mine.preamble.trim() != theirs.preamble.trim()).then(|| [String::new(), mine.preamble.clone(), theirs.preamble.clone()]);
+        let differ = preamble.is_some() || parts.as_ref().is_none_or(|p| p.iter().any(|x| matches!(x, crate::merge::Part::Clash { .. })));
+        Ok(CopyCompare {
+            name: self.vault.title_from_path(&orig).0,
+            path: orig,
+            copy: copy.to_string(),
+            copy_name: self.vault.title_from_path(copy).0,
+            hash: content_hash(&mine_text),
+            mine,
+            theirs,
+            parts,
+            preamble,
+            differ,
+        })
+    }
+
+    /// The page a conflict copy is a copy of: the file of that name next to it, else the page of that
+    /// name (a journal day's copy is often named by the day's title, not by its file's name).
+    fn copy_original(&self, copy: &str) -> Option<String> {
+        original_of(copy, &self.files).or_else(|| {
+            copy_stems(copy).into_iter().find_map(|stem| {
+                let name = stem.rsplit('/').next().unwrap_or(&stem);
+                let info = self.vault.page_info(name);
+                info.path.filter(|p| info.exists && p != copy && !conflict_copy_of(p, &self.files))
+            })
+        })
+    }
+
+    /// The conflict copy goes to the bin once its page has what was wanted from it (Compare and
+    /// merge). Only a conflict copy whose page is there.
+    pub fn bin_copy(&mut self, copy: &str) -> Result<(), String> {
+        if !self.files.contains_key(copy) || !conflict_copy_of(copy, &self.files) || self.copy_original(copy).is_none() {
+            return Err("That isn't a conflict copy in this notes folder.".into());
+        }
+        self.bin_file(copy).map_err(|e| format!("The copy couldn't be moved to the bin: {e}"))?;
+        self.forget(copy);
+        self.write_cache();
+        Ok(())
+    }
+
     /// Keep a copy of the editor's version before it's thrown away ("Load the new version").
     pub fn backup_doc(&self, name: &str, doc: &Doc) -> Result<(), String> {
         let rel = self.vault.page_info(name).path.ok_or("page has no path")?;
@@ -1961,6 +2058,19 @@ impl App {
 
     /// Put a page (or a picture) from the bin back. Returns its name (a picture: where it went in the
     /// notes folder, "assets/sub/x.png").
+    /// A deleted page as it is in the bin (Settings → "Deleted pages and pictures": a click shows it
+    /// before restoring): its name, its notes as the editor reads a page, and its page properties.
+    /// Only a plain `.md` file right in the bin; nothing is changed.
+    pub fn recycled_page(&self, file: &str) -> Result<serde_json::Value, String> {
+        if file.contains(['/', '\\']) || file.starts_with('.') || !file.ends_with(".md") {
+            return Err("Not a page in the bin.".into());
+        }
+        let text = read_text(&self.recycle_dir().join(file)).ok().flatten().ok_or("That file is gone or isn't plain text.")?;
+        let name = self.vault.title_from_path(&self.restore_rel(file)).0;
+        let props = crate::parse_page(&text, &self.vault.config.comma_props).props;
+        Ok(serde_json::json!({ "name": name, "doc": split_doc(&text), "props": props }))
+    }
+
     pub fn restore(&mut self, file: &str) -> Result<String, String> {
         if file.contains(['/', '\\']) || file.starts_with('.') {
             return Err("Not a file in the bin.".into());
@@ -2444,6 +2554,7 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
         }
         "recycled" => to_value(app.recycled()),
         "restore" => Ok(json!(app.restore(&s("file"))?)),
+        "recycled_page" => Ok(app.recycled_page(&s("file"))?),
         "templates" => to_value(app.vault.templates()),
         "template" => {
             let blocks = app.template(&s("name"), &s("page"), date("today")?, &s("time")).ok_or("No template with that name.")?;
@@ -2469,6 +2580,9 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
             app.backup_doc(&s("name"), &doc)?;
             Ok(json!(true))
         }
+        // a sync app's conflict copy next to its page (Check this folder → Compare and merge)
+        "compare_copy" => to_value(app.compare_copy(&s("copy"))?),
+        "bin_copy" => Ok(json!(app.bin_copy(&s("copy"))?)),
         "clash" => {
             let doc = |k: &str| serde_json::from_value::<Doc>(args.get(k).cloned().unwrap_or(Value::Null)).map_err(|e| e.to_string());
             to_value(app.clash(&s("name"), &doc("doc")?, &doc("base")?, args.get("path").and_then(Value::as_str))?)
@@ -2484,6 +2598,12 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
         "safety_note" => to_value(app.safety_note(&safety::folder()?, &s("id"), &s("path"), n("before") as u32)?),
         "safety_restore" => to_value(app.safety_restore(&safety::folder()?, &s("id"), &s("path"), n("before") as u32)?),
         // a page's earlier versions (history.rs); "path": the file the editor opened, as for save
+        // where a picture nothing uses now was used before (older.rs; read only)
+        "picture_in_older" => {
+            let (kind, dest) = (s("kind"), s("dest"));
+            let backup = (!kind.is_empty() && !dest.trim().is_empty()).then_some((kind.as_str(), dest.as_str()));
+            to_value(app.picture_in_older(data_dir().as_deref(), &s("picture"), backup)?)
+        }
         "history" => to_value(app.history(data_dir().as_deref(), &s("name"), args.get("path").and_then(Value::as_str))?),
         "history_version" => to_value(app.history_version(data_dir().as_deref(), &s("name"), args.get("path").and_then(Value::as_str), &s("id"))?),
         "history_keep" => to_value(app.history_keep(data_dir().as_deref(), &s("name"), args.get("path").and_then(Value::as_str), &s("id"))?),
@@ -2511,6 +2631,8 @@ pub struct DirList {
     pub files: usize,
     /// The notes folder it is inside, if any (not itself: `vault` says that).
     pub inside: Option<String>,
+    /// It holds a `.git` (a git clone): the backups' folder picker says so (settings.js `backupCard`).
+    pub git: bool,
 }
 
 /// A notes folder: Logseq's settings file, or a pages folder.
@@ -2551,7 +2673,7 @@ pub fn list_dir(path: &str) -> Result<DirList, String> {
     }
     dirs.sort_by_key(|d| d.name.to_lowercase());
     let inside = p.parent().and_then(crate::start::notes_folder_of).map(|v| v.display().to_string());
-    Ok(DirList { path: p.display().to_string(), parent: p.parent().map(|x| x.display().to_string()), dirs, vault: is_vault(p), files, inside })
+    Ok(DirList { path: p.display().to_string(), parent: p.parent().map(|x| x.display().to_string()), dirs, vault: is_vault(p), files, inside, git: p.join(".git").exists() })
 }
 
 #[derive(Serialize)]
@@ -2610,6 +2732,43 @@ pub fn alias_clashes(pages: &[crate::vault::PageEntry]) -> Vec<(String, Vec<Stri
 }
 
 /// "Page (1).md", "Page (conflict 2026-…).md", "Page [Conflict].md": a sync copy of "Page.md"?
+/// A note's words for comparing a page with its conflict copy (`compare_copy`): spaces at line ends
+/// dropped, and the fold mark `collapsed:: true/false`, which only says whether it was folded.
+fn same_words(text: &str) -> String {
+    text.lines()
+        .map(str::trim_end)
+        .filter(|l| !l.trim_start().strip_prefix("collapsed::").is_some_and(|v| matches!(v.trim(), "true" | "false")))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim_end()
+        .to_string()
+}
+
+/// The page a conflict copy is a copy of, when its file is there: "X (conflict 2026-11-08-13-18-30).md",
+/// "X.sync-conflict-20261108-131830-ABCDEFG.md" (Syncthing), "X (1).md", "X-conflict….md" → "X.md".
+fn original_of(rel: &str, all: &HashMap<String, Stamp>) -> Option<String> {
+    copy_stems(rel).into_iter().map(|c| format!("{c}.md")).find(|c| c != rel && all.contains_key(c))
+}
+
+/// What a conflict copy's file name is a copy of, without the sync app's mark: "Daily/X" for
+/// "Daily/X (conflict …).md" (folder kept), the likeliest first.
+fn copy_stems(rel: &str) -> Vec<String> {
+    let Some(stem) = rel.strip_suffix(".md") else { return vec![] };
+    let lower = stem.to_lowercase();
+    let mut cands = vec![];
+    for mark in [" (conflict", ".sync-conflict", " (sync-conflict", "-conflict", "_conflict", " conflict"] {
+        if let Some(k) = lower.rfind(mark) {
+            cands.push(stem[..k].to_string());
+        }
+    }
+    if let Some((base, tail)) = stem.rsplit_once(" (") {
+        if tail.strip_suffix(')').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())) {
+            cands.push(base.to_string());
+        }
+    }
+    cands.into_iter().map(|c| c.trim_end().to_string()).filter(|c| !c.is_empty() && !c.ends_with('/')).collect()
+}
+
 fn conflict_copy_of(rel: &str, all: &HashMap<String, Stamp>) -> bool {
     let Some(stem) = rel.strip_suffix(".md") else { return false };
     let lower = stem.to_lowercase();
