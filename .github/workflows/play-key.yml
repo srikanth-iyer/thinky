@@ -55,7 +55,7 @@ jobs:
           mkdir -p out
           java -jar tool/pepk.jar --keystore="$KS" --alias=leanoutliner --output=out/thinky-play-key.zip \
             --include-cert --rsa-aes-encryption --encryption-key-path=ci/play-encryption-key.pem \
-            --keystore-pass="pass:$KEY_PASS" --key-pass="pass:$KEY_PASS"
+            --keystore-pass="$KEY_PASS" --key-pass="$KEY_PASS"
           [ -s out/thinky-play-key.zip ] || { echo "::error::PEPK made nothing."; exit 1; }
           echo "::notice title=Play key::thinky-play-key.zip is ready (encrypted for Google Play)"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
