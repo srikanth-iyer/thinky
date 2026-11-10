@@ -364,6 +364,22 @@ the tick box is its own `label.pic-tick`, the picture + name a `.pic-open` butto
 bin: each page's name is a `.bin-see` button → history.js `showBinPage` (core `recycled_page`: a plain `.md` right in the bin,
 read only → {name, doc, props}; drawn as History draws a version, `.bin-view`, Esc/×/Close, "Restore this page" = the row's
 Restore); a picture's → `App.showImage`.
+Also Build 43 (he asked, Nov 10; tested by core tests/older.rs, tests/conflict_copy.rs, t10_safety): "Where was it used?"
+(`.pic-older` → `.pic-ctx` under the row; again closes) = core app/older.rs `picture_in_older(data, picture, backup)`, read
+only: notes mentioning the picture (`pictures::mentioned`, per note of `split_doc`, the page properties if no note) in every
+`logseq/bak/**/<backup>.md` (page = the folder's path + ".md"; time from `bak_name`), the safety copies (`copy_texts`, both
+devices'), and with backups on the snapshot zips (`backup::zip_files`, the old `read_from_zip` now one case of it) or a git
+backup (`git log --all -S<name> -n20 --name-only`, then the file at the commit or its parent); each hit = page, file, whether
+the page's file is there, the notes above (first lines), the note, from/which/when; one per (file, note), the newest, ≤30.
+"Open <page>…" (`.pc-go`) asks first. Conflict copies: Check this folder lists each with "Compare and merge…" (`.cc-merge`)
+→ clash.js `openCopyMerge` → core `compare_copy(copy)` (only `conflict_copy_of` files; the page = `copy_original`: the file
+without the sync app's mark next to it (`original_of`/`copy_stems`: " (conflict …)", ".sync-conflict…", " (N)", "-conflict…"),
+else the page of that name, as a journal day's copy is named by its title): `merge::lcs` lines them up, every stretch where they
+differ is a `Part::Clash` with an empty base (so "Keep both" is offered and pre-picked where both have notes; else the side that
+has them), `differ` false = same words (confirm, then `bin_copy`). The page opens (`app.go`), its outline found by path, flushed,
+compared again if it changed; `openClash(o, copy)` = the clash screen's copy mode (`.cl-copy`: "This page"/"The copy", no
+"Before both changes" row, "(not on this page)", Cancel; `keep` backs the page up first, `o.base` = the file as read, then
+saves and `bin_copy`s; `App.copyMerged` drops the row if Settings still shows).
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

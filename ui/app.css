@@ -974,6 +974,9 @@ a.tag .hash { display: var(--hash); }
 .cl-none { margin: 0; color: var(--ink-faint); font-style: italic; }
 .cl-props { margin: 0; font-size: 13px; white-space: pre-wrap; }
 .cl-base { margin-top: 8px; padding: 0 10px; }
+.conflict-copies li { display: flex; gap: 10px; align-items: center; padding: 6px 4px; border-bottom: 1px solid var(--line-soft); }
+.conflict-copies code { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.conflict-copies .cc-merge { flex: none; }
 .cl-base .cl-notes { font-size: 13.5px; color: var(--ink-soft); }
 .cl-all { margin-right: auto; font-size: 13px; color: var(--ink-soft); }
 button.link { border: 0; background: none; padding: 0; font: inherit; color: var(--link); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
@@ -1358,6 +1361,17 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 .pics { list-style: none; margin: 8px 0; padding: 0; max-height: 360px; overflow: auto; border: 1px solid var(--line-soft); border-radius: 8px; }
 .pics li { display: flex; gap: 10px; align-items: center; padding: 5px 8px; border-bottom: 1px solid var(--line-soft); }
 .pics li:last-child { border-bottom: 0; }
+.pics li { flex-wrap: wrap; }
+.pics .pic-older { flex: none; }
+.pics .pic-ctx { flex: 0 0 100%; padding: 4px 4px 8px 34px; }
+.pics .pic-ctx .note { margin: 4px 0; font-size: 13.5px; }
+.pics .pc-list { list-style: none; margin: 0; padding: 0; }
+.pics .pc-list li { display: block; padding: 8px 10px; margin: 6px 0; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--surface); }
+.pics .pc-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.pics .pc-head .pc-go { margin-left: auto; }
+.pics .pc-path { color: var(--ink-faint); font-size: 12.5px; margin-top: 2px; overflow-wrap: anywhere; }
+.pics .pc-note { margin-top: 4px; font-size: 14px; overflow-wrap: anywhere; }
+.pics .pc-note img { max-width: 100%; max-height: 160px; border-radius: 6px; }
 .pics .th { flex: none; width: 40px; height: 40px; border-radius: 6px; overflow: hidden; background: var(--surface-2); }
 .pics .th img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .pics .th img.broken { visibility: hidden; }

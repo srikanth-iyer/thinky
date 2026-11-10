@@ -94,15 +94,20 @@ function pageBlocks(c, picks) {
 }
 
 /** Show the clash screen for outline o (its page clashed while saving). Resolves when he chose
- *  (true) or put it off (false). */
-export async function openClash(o) {
+ *  (true) or put it off (false). With `copy` (Build 43: a sync app's conflict copy compared with this
+ *  page, core `compare_copy`, see `openCopyMerge`): the page as its file is on the left, the copy on
+ *  the right, every stretch where they differ a choice; no "before" (neither is older). */
+export async function openClash(o, copy = null) {
   if (document.querySelector('.clash-back')) return false;
   o.stopEdit();
   let c;
   const asked = docKey(o.doc); // the version compared (see keep)
   const mineWords = o.doc.blocks.map((b) => b.text);
-  try { c = await call('clash', { name: o.name, doc: o.doc, base: o.base, path: o.path }); }
-  catch (err) { wholeChoice(o, err); return false; }
+  if (copy) c = copy;
+  else {
+    try { c = await call('clash', { name: o.name, doc: o.doc, base: o.base, path: o.path }); }
+    catch (err) { wholeChoice(o, err); return false; }
+  }
   // what to choose from: the page properties (if both changed them), then each clash in page order
   const items = [];
   if (c.preamble) items.push({ props: true, base: c.preamble[0], mine: c.preamble[1], theirs: c.preamble[2], pick: 'mine' });
@@ -118,11 +123,16 @@ export async function openClash(o) {
   box.setAttribute('aria-modal', 'true');
   box.setAttribute('aria-labelledby', 'cl-title');
   const n = items.length;
+  const MINE = copy ? 'This page' : 'This device';
+  const THEIRS = copy ? 'The copy' : 'Other copy';
+  if (copy) box.classList.add('cl-copy');
   box.innerHTML = `<header class="panel-head cl-head">
-      <h2 id="cl-title">Changed in two places</h2>
-      <p class="note">“${esc(o.name)}” was changed here and ${o.elsewhere()} in the same ${whole ? 'page' : n === 1 ? 'note' : 'notes'}. ${whole ? 'It’s too long to compare note by note: choose which version to keep.' : `Choose which version to keep for ${n === 1 ? 'it' : 'each'}.`}</p>
+      <h2 id="cl-title">${copy ? 'Compare with the conflict copy' : 'Changed in two places'}</h2>
+      <p class="note">${copy
+        ? `“${esc(o.name)}” and its copy <code>${esc(copy.copy)}</code> ${whole ? 'differ, and the page is too long to compare note by note: choose which version to keep.' : `differ in ${n === 1 ? 'one place' : `${n} places`}. Choose what to keep for ${n === 1 ? 'it' : 'each'}: this page’s notes, the copy’s, or both. What both have stays as it is.`}`
+        : `“${esc(o.name)}” was changed here and ${o.elsewhere()} in the same ${whole ? 'page' : n === 1 ? 'note' : 'notes'}. ${whole ? 'It’s too long to compare note by note: choose which version to keep.' : `Choose which version to keep for ${n === 1 ? 'it' : 'each'}.`}`}</p>
       <div class="cl-bar">
-        <span class="cl-key"><i class="mine"></i>This device <i class="theirs"></i>Other copy <i class="base"></i>Before both changes</span>
+        <span class="cl-key"><i class="mine"></i>${MINE} <i class="theirs"></i>${THEIRS}${copy ? '' : ' <i class="base"></i>Before both changes'}</span>
         ${n > 1 ? `<span class="cl-nav"><span class="cl-n" aria-live="polite">1 of ${n}</span><button type="button" class="icon-btn" data-c="prev" aria-label="Previous difference">${ICON.up}</button><button type="button" class="icon-btn" data-c="next" aria-label="Next difference">${ICON.down}</button></span>` : ''}
       </div>
     </header>
@@ -131,22 +141,22 @@ export async function openClash(o) {
       <div class="cl-cols" role="radiogroup" aria-label="Version to keep">
         ${['mine', 'theirs'].map((side) => `<label class="cl-col ${side}">
           <input type="radio" name="cl${k}" value="${side}"${it.pick === side ? ' checked' : ''}>
-          <span class="cl-h"><i class="${side}"></i>${side === 'mine' ? 'This device' : 'Other copy'}${it.pick === side ? ' <em>suggested</em>' : ''}</span>
-          <div class="cl-notes">${it.props ? propsHtml(it[side]) : notesHtml(it[side])}</div>
+          <span class="cl-h"><i class="${side}"></i>${side === 'mine' ? MINE : THEIRS}${it.pick === side ? ' <em>suggested</em>' : ''}</span>
+          <div class="cl-notes">${it.props ? propsHtml(it[side]) : copy && !it[side].length ? `<p class="cl-none">(${side === 'mine' ? 'not on this page' : 'not in the copy'})</p>` : notesHtml(it[side])}</div>
         </label>`).join('')}
         ${it.both ? `<label class="cl-col both">
           <input type="radio" name="cl${k}" value="both"${it.pick === 'both' ? ' checked' : ''}>
-          <span class="cl-h"><i class="mine"></i><i class="theirs"></i>Keep both: this device’s, then the other copy’s${it.pick === 'both' ? ' <em>suggested</em>' : ''}</span>
+          <span class="cl-h"><i class="mine"></i><i class="theirs"></i>${copy ? 'Keep both: this page’s, then the copy’s' : 'Keep both: this device’s, then the other copy’s'}${it.pick === 'both' ? ' <em>suggested</em>' : ''}</span>
         </label>` : ''}
       </div>
-      <div class="cl-base"><span class="cl-h"><i class="base"></i>Before both changes</span><div class="cl-notes">${it.props ? propsHtml(it.base) : it.base.length ? notesHtml(it.base) : '<p class="cl-none">(not there yet)</p>'}</div></div>
+      ${copy ? '' : `<div class="cl-base"><span class="cl-h"><i class="base"></i>Before both changes</span><div class="cl-notes">${it.props ? propsHtml(it.base) : it.base.length ? notesHtml(it.base) : '<p class="cl-none">(not there yet)</p>'}</div></div>`}
     </section>`).join('')}</div>
     <footer class="panel-foot cl-foot">
-      <p class="note">The version you don’t keep is saved as a backup copy in <code>logseq/bak</code>, so nothing is lost.</p>
+      <p class="note">${copy ? 'The page as it is now is saved as a backup copy in <code>logseq/bak</code> first, and the copy goes to the bin afterwards, so nothing is lost.' : 'The version you don’t keep is saved as a backup copy in <code>logseq/bak</code>, so nothing is lost.'}</p>
       <div class="btn-row">
-        <button type="button" class="btn ghost" data-c="later">Decide later</button>
-        ${whole ? '<button type="button" class="btn ghost" data-c="theirs">Use the other copy</button><button type="button" class="btn" data-c="mine">Keep this device’s</button>'
-          : `<span class="cl-all">${n > 1 ? 'All: <button type="button" class="link" data-c="all-mine">this device</button> · <button type="button" class="link" data-c="all-theirs">other copy</button>' : ''}</span><button type="button" class="btn" data-c="apply"></button>`}
+        <button type="button" class="btn ghost" data-c="later">${copy ? 'Cancel' : 'Decide later'}</button>
+        ${whole ? `<button type="button" class="btn ghost" data-c="theirs">${copy ? 'Use the copy' : 'Use the other copy'}</button><button type="button" class="btn" data-c="mine">${copy ? 'Keep this page' : 'Keep this device’s'}</button>`
+          : `<span class="cl-all">${n > 1 ? `All: <button type="button" class="link" data-c="all-mine">${copy ? 'this page' : 'this device'}</button> · <button type="button" class="link" data-c="all-theirs">${copy ? 'the copy' : 'other copy'}</button>` : ''}</span><button type="button" class="btn" data-c="apply"></button>`}
       </div>
     </footer>`;
   back.append(box);
@@ -203,7 +213,7 @@ export async function openClash(o) {
       const picks = whole ? [] : picked();
       busy = true;
       box.querySelectorAll('button, input').forEach((x) => { x.disabled = true; });
-      await keep(o, c, asked, whole ? a : null, items, picks, whole ? [a] : picks, close);
+      await keep(o, c, asked, whole ? a : null, items, picks, whole ? [a] : picks, close, copy);
     });
   });
 }
@@ -212,21 +222,22 @@ export async function openClash(o) {
  *  that was compared; `close(done)` takes the screen away (once the backups are made, so nothing
  *  can be typed meanwhile). False if nothing was changed (a backup couldn't be made: the page's
  *  banner still offers the choice). */
-async function keep(o, c, asked, wholeSide, items, picks, sides, close = () => {}) {
+async function keep(o, c, asked, wholeSide, items, picks, sides, close = () => {}, copy = null) {
   let doc;
   if (wholeSide) doc = wholeSide === 'mine' ? o.doc : c.theirs;
   else {
     const blocks = pageBlocks(c, picks);
     const preamble = c.preamble ? (picks[0] === 'mine' ? o.doc.preamble : c.theirs.preamble)
-      : o.doc.preamble === o.base.preamble ? c.theirs.preamble : o.doc.preamble;
+      : copy || o.doc.preamble !== o.base.preamble ? o.doc.preamble : c.theirs.preamble;
     doc = { preamble, blocks, indent: c.theirs.indent, crlf: c.theirs.crlf };
   }
   // a backup copy of each version that loses something (this device's: unless that exact version
   // is in logseq/bak already, from when the clash showed); and this device's anyway if it changed
   // since it was compared (a note typed in while comparing isn't in the choices)
   try {
-    if (sides.includes('theirs') || docKey(o.doc) !== asked) await o.backupMine();
-    if (sides.includes('mine')) await call('backup', { name: o.name, doc: c.theirs });
+    if (copy) await o.backupMine(); // (the page as it was, before the copy's notes come in)
+    else if (sides.includes('theirs') || docKey(o.doc) !== asked) await o.backupMine();
+    if (sides.includes('mine') && !copy) await call('backup', { name: o.name, doc: c.theirs });
   } catch (err) {
     close(false);
     o.app.toast('Couldn’t keep a backup copy, so nothing was changed: ' + err, 6000);
@@ -237,7 +248,7 @@ async function keep(o, c, asked, wholeSide, items, picks, sides, close = () => {
   // no Undo back to before the choice: it would quietly bring back what was just chosen against
   // (only its backup copy would hold the other version)
   o.forgetUndo();
-  o.base = c.theirs;
+  o.base = copy ? c.mine : c.theirs; // (the file as it was read: the copy's text is in no file of this page)
   o.hash = c.hash;
   o.conflict = false;
   o.dirty = true;
@@ -245,6 +256,13 @@ async function keep(o, c, asked, wholeSide, items, picks, sides, close = () => {
   o.app.conflicts?.delete(o);
   o.render();
   await o.save(); // the file may have changed again meanwhile: merged then, or asked again
+  if (copy) {
+    if (o.conflict || o.dirty) { o.app.toast('The page couldn’t be saved yet, so the copy was left where it is.', 6000); return true; }
+    try { await call('bin_copy', { copy: copy.copy }); } catch (err) { o.app.toast(String(err?.message ?? err), 6000); return true; }
+    o.app.toast('Merged. The copy is in the bin, and the page as it was is in logseq/bak.', 4500);
+    o.app.copyMerged?.(copy.copy);
+    return true;
+  }
   const lost = sides.includes('mine') || sides.includes('theirs'); // ("both" loses nothing)
   if (!o.conflict) o.app.toast(lost ? 'Kept your choice; the other version is in logseq/bak.' : items.length ? 'Kept both.' : 'Saved.', 3500);
   return true;
@@ -277,4 +295,33 @@ function wholeChoice(o, err) {
     } else return;
     if (!o.conflict) o.app.conflicts?.delete(o);
   };
+}
+
+/** Check this folder → "Compare and merge…" beside a sync app's conflict copy (Build 43, he asked
+ *  Nov 10). The copy's page opens, then the clash screen in its conflict-copy mode compares the two
+ *  (core `compare_copy`). A copy that says just what the page says only offers to go to the bin. */
+export async function openCopyMerge(app, rel) {
+  let c;
+  try { c = await call('compare_copy', { copy: rel }); } catch (err) { app.toast(String(err?.message ?? err), 6000); return; }
+  if (!c.differ) {
+    const { confirmBox } = await import('./popups.js');
+    if (!(await confirmBox({ title: 'The copy is the same as the page', body: `<code>${esc(rel)}</code> says exactly what “${esc(c.name)}” says. Move the copy to the bin?`, ok: 'Move to the bin' }))) return;
+    try { await call('bin_copy', { copy: rel }); app.toast('The copy is in the bin.'); app.copyMerged?.(rel); } catch (err) { app.toast(String(err?.message ?? err), 6000); }
+    return;
+  }
+  app.go('page', c.name);
+  // the page's outline, once drawn (its file is the one compared)
+  let o = null;
+  for (let k = 0; k < 50 && !o; k++) {
+    await new Promise((r) => setTimeout(r, 100));
+    o = app.pane.outlines.find((x) => x.path === c.path && !x.opts?.preview) || null;
+  }
+  if (!o) { app.toast('The page couldn’t be opened to compare it.', 6000); return; }
+  await o.flush(); // typing not saved yet goes in first; then compare what the file says now
+  if (o.conflict) { app.toast('This page has a clash waiting: settle that first.', 6000); return; }
+  if (docKey(o.doc) !== docKey(c.mine)) {
+    try { c = await call('compare_copy', { copy: rel }); } catch (err) { app.toast(String(err?.message ?? err), 6000); return; }
+    if (docKey(o.doc) !== docKey(c.mine)) { app.toast('The page changed while it opened. Try again in a moment.', 6000); return; }
+  }
+  await openClash(o, c);
 }

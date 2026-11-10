@@ -917,6 +917,21 @@ impl App {
         v
     }
 
+    /// Every note text in every copy (both devices'), for looking something up in them (older.rs):
+    /// (note's file, when: the copy's time, or an earlier text's own, who made it, the text). Only
+    /// entries a copy's list names, read from inside that copy's file.
+    pub(super) fn copy_texts(&self, data: &Path) -> Vec<(String, u64, Made, String)> {
+        let mut v = vec![];
+        for (_, made, c) in self.all_copies(data) {
+            for e in c.list.files.iter().filter(|e| rel_ok(&e.path)) {
+                let Some(text) = c.text(e) else { continue };
+                let when = if e.before > 0 { e.mtime_ns / 1_000_000_000 } else { c.list.when };
+                v.push((e.path.clone(), when, made.clone(), text));
+            }
+        }
+        v
+    }
+
     /// One of this folder's copies, by its id ("<device>/<id>").
     fn open_copy(&self, data: &Path, full: &str) -> Result<(Made, Copy), String> {
         let (dev, id) = split_ref(full).ok_or("There’s no safety copy by that name.")?;

@@ -24,6 +24,8 @@ went up. Build 40 and older still update to it (each release keeps a signature f
 - Backups: a "Choose…" button beside the folder opens a folder picker, so the folder needn't be typed. It won't take a notes folder or a folder inside one, and for a GitHub backup it says whether the folder is a git clone.
 - In "Check this folder", a click on a picture nothing uses (or its name) shows it big, so you can see what it is before moving it to the bin. Its tick box works on its own.
 - In "Deleted pages and pictures", a click on a page shows what it holds (read-only, with "Restore this page" there too), and a click on a picture shows it big, so you can decide before bringing one back.
+- "Pictures nothing uses" has "Where was it used?" beside each picture: it looks through the older copies of your pages (the backups in logseq/bak, the safety copies, and your backups when they're on) and shows the notes that used the picture, with the notes above them and the date. "Open the page…" asks before taking you there, since the note isn't on the page now.
+- Sync-conflict copies (like "Page (conflict 2026-11-08-13-18-30).md") have "Compare and merge…" in "Check this folder". It opens the page and shows it side by side with the copy, only where they differ, with "Keep both" suggested where each has its own words, so nothing is lost by default. After you choose, the page is saved (its earlier version kept in logseq/bak) and the copy goes to the bin. A copy that says exactly what its page says is simply offered to the bin.
 
 ## Build 42 · version 0.5.3 (November 2026)
 

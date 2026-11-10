@@ -22,6 +22,9 @@ fs.mkdirSync(VAULT + '/assets/photo');
 // a bin with many deleted pages (Logseq keeps them there too)
 fs.mkdirSync(VAULT + '/logseq/.recycle', { recursive: true });
 for (let i = 0; i < 60; i++) write(`logseq/.recycle/pages_Old page ${i}.md`, `- deleted page ${i}\n`);
+// an older copy (Logseq's backup) of a page that used unused.png then (logseq/bak doesn't count as a use)
+fs.mkdirSync(VAULT + '/logseq/bak/pages/Sourdough Bread', { recursive: true });
+write('logseq/bak/pages/Sourdough Bread/2026-05-31T10_00_00.000Z.Desktop.md', '- Mix, fold, rest, shape\n\t- the crumb ![crumb](../assets/unused.png)\n');
 await go(page, '#/settings');
 await page.locator('[data-a="check"]').click();
 await page.waitForSelector('.pics-box h3', { timeout: 5000 });
@@ -39,6 +42,23 @@ check(await page.locator('.modal-back.lightbox img').count() === 1 && /keep\.png
 check(await page.locator('.pics input[type="checkbox"]:checked').count() === 4, 'and leaves its tick box as it was');
 await page.locator('.modal-back.lightbox').click();
 check(await page.locator('.modal-back.lightbox').count() === 0, 'a click closes it');
+// "Where was it used?": found in the page's older copy, with the notes above it; "Open …" asks first
+await page.locator('.pics li', { hasText: 'unused.png' }).locator('.pic-older').click();
+await page.waitForSelector('.pic-ctx .pc-list li, .pic-ctx p.note', { timeout: 8000 });
+const ctx = await page.locator('.pic-ctx').textContent();
+check(/Sourdough Bread/.test(ctx) && /Mix, fold, rest, shape/.test(ctx) && /Logseq on a computer/.test(ctx) && await page.locator('.pic-ctx .pc-note img').count() === 1, '“Where was it used?” finds the note in the page’s older copy, with the note above it and the picture', ctx);
+await page.screenshot({ path: SHOTS + '/picture-older.png' });
+await page.locator('.pic-ctx .pc-go').click();
+await page.waitForSelector('.modal');
+check(/isn’t on the page now/.test(await page.locator('.modal').textContent()), 'Open … asks first, saying the note isn’t there now');
+await page.locator('.modal button', { hasText: 'Cancel' }).click();
+await sleep(200);
+check(/settings/.test(await page.evaluate(() => location.hash)), 'Cancel stays here');
+await page.locator('.pics li', { hasText: 'keep.png' }).locator('.pic-older').click();
+await page.waitForSelector('.pics li:has-text("keep.png") .pic-ctx p.note', { timeout: 8000 });
+check(/Not in any older copy/.test(await page.locator('.pics li', { hasText: 'keep.png' }).locator('.pic-ctx').textContent()), 'a picture no older copy used: says so');
+await page.locator('.pics li', { hasText: 'keep.png' }).locator('.pic-older').click();
+check(await page.locator('.pics li', { hasText: 'keep.png' }).locator('.pic-ctx').count() === 0, 'pressed again: closes');
 await page.locator('.pics li', { hasText: 'keep.png' }).locator('input[type="checkbox"]').click(); // untick it
 check(await page.locator('[data-a="bin-pics"]').textContent() === 'Move 3 to the bin…', 'the button counts the ticked ones', await page.locator('[data-a="bin-pics"]').textContent());
 await page.screenshot({ path: SHOTS + '/check-pictures.png' });
@@ -175,6 +195,41 @@ check(read('pages/Marta Pell.md') === good, 'put back the same way', read('pages
 const kept2 = fs.readdirSync(bak).map((f) => fs.readFileSync(bak + '/' + f, 'utf8'));
 check(kept2.includes('- damaged later\n'), 'the text it replaced kept in logseq/bak first', JSON.stringify(kept2));
 
+console.log('Check this folder: a conflict copy compared with its page and merged');
+const SB = read('pages/Sourdough Bread.md');
+write('pages/Sourdough Bread (conflict 2026-11-08-13-18-30).md', SB.replace('- Mix, fold, rest, shape', '- Mix, fold, rest, shape, bake') + '- an oven note from the phone\n');
+write('pages/Copy me.md', '- the same words\n');
+write('pages/Copy me (1).md', '- the same words\n');
+await page.evaluate(() => window.leanApp.rescan?.());
+await go(page, '#/settings/notes');
+await page.locator('[data-a="check"]').click();
+await page.waitForSelector('.conflict-copies .cc-merge', { timeout: 8000 });
+check(await page.locator('.conflict-copies li').count() === 2, 'each conflict copy has Compare and merge', await page.locator('.conflict-copies').textContent());
+// one that says just what its page says: only offered to the bin
+await page.locator('.cc-merge[data-copy="pages/Copy me (1).md"]').click();
+await page.waitForSelector('.modal');
+check(/same as the page/.test(await page.locator('.modal').textContent()), 'a copy with the same words: offered to the bin only');
+await page.locator('.modal button', { hasText: 'Move to the bin' }).click();
+await sleep(600);
+check(!exists('pages/Copy me (1).md') && exists('pages/Copy me.md') && await page.locator('.conflict-copies li').count() === 1, 'it goes to the bin, its row too; the page stays');
+// the other: its page opens, then the clash screen in its copy mode
+await page.locator('.cc-merge').first().click();
+await page.waitForSelector('.clash-back .cl-copy, .clash-back.cl-copy, .panel.cl-copy', { timeout: 8000 });
+const cl = (await page.locator('.panel.cl-copy').textContent()).replace(/\s+/g, ' ');
+check(/Compare with the conflict copy/.test(cl) && /differ in 2 places/.test(cl) && /This page/.test(cl) && /The copy/.test(cl) && !/Before both changes/.test(cl) && /\(not on this page\)/.test(cl) && !/\(removed\)/.test(cl), 'the clash screen compares the page and the copy: 2 places, no “before”', cl);
+check(/#\/page\/Sourdough/.test(await page.evaluate(() => location.hash)), 'with the page open behind it');
+await page.screenshot({ path: SHOTS + '/conflict-copy.png' });
+const picks = await page.locator('.panel.cl-copy .cl-item').evaluateAll((els) => els.map((el) => el.querySelector('input:checked')?.value));
+check(picks.join(',') === 'both,theirs', 'pre-picked so nothing is lost: both where each has its own words, the copy’s where only it has some', picks.join(','));
+await page.locator('.panel.cl-copy [data-c="apply"]').click();
+await sleep(1200);
+const merged = read('pages/Sourdough Bread.md');
+check(merged.includes('- Mix, fold, rest, shape\n') && merged.includes('- Mix, fold, rest, shape, bake') && merged.includes('- an oven note from the phone') && merged.startsWith('alias:: SB'), 'the page has both versions of the changed note and the copy’s new one; its properties stay', merged);
+check(!exists('pages/Sourdough Bread (conflict 2026-11-08-13-18-30).md') && fs.readdirSync(VAULT + '/logseq/.recycle').some((f) => f.includes('Sourdough Bread (conflict')), 'the copy is in the bin');
+const bakSB = VAULT + '/logseq/bak/pages/Sourdough Bread';
+check(fs.readdirSync(bakSB).some((f) => fs.readFileSync(bakSB + '/' + f, 'utf8') === SB), 'the page as it was is in logseq/bak');
+check(/copy is in the bin/.test(await page.locator('#toast').textContent()), 'and it says so', await page.locator('#toast').textContent());
+
 console.log('Check this folder: one of a kind is said as one ("1 file looks like a copy"), several as several');
 const say = async (one) => {
   await page.unroute('**/api/check');
@@ -195,10 +250,10 @@ const say = async (one) => {
   return (await page.locator('.check-out').textContent()).replace(/\s+/g, ' ');
 };
 let words = await say(true);
-check(words.includes('1 file would be reformatted') && words.includes('1 file looks like a copy made by a sync conflict') && words.includes('Compare it with the original')
+check(words.includes('1 file would be reformatted') && words.includes('1 file looks like a copy made by a sync conflict') && words.includes('shows it side by side with its page')
   && words.includes('1 page name belongs to more than one file') && words.includes('1 file isn’t plain text'), 'one of each: said as one', words);
 words = await say(false);
-check(words.includes('2 files would be reformatted') && words.includes('2 files look like copies made by a sync conflict') && words.includes('Compare each with the original')
+check(words.includes('2 files would be reformatted') && words.includes('2 files look like copies made by a sync conflict') && words.includes('shows each side by side with its page')
   && words.includes('2 page names belong to more than one file') && words.includes('2 files aren’t plain text'), 'two of each: said as several', words);
 
 check(!errors.length, 'no script errors', errors.join(' | '));

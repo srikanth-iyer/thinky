@@ -5,7 +5,7 @@
 // is remembered.
 
 import { call, store, nowTime, isApp, isAndroid, assetUrl, today } from './api.js';
-import { esc, PROP_SHOWS, MARK_COLORS, builtinHidden, propsHtmlAs } from './render.js';
+import { esc, PROP_SHOWS, MARK_COLORS, builtinHidden, propsHtmlAs, renderBlock, whenText } from './render.js';
 import { h, ICON, BRAND, plural, SETTINGS_TABS, motionOn } from './dom.js';
 import { promptBox, confirmBox } from './popups.js';
 import { SKINS, accessCard, lookName, lookState } from './app.js';
@@ -127,13 +127,18 @@ function folderCard(app) {
       html += r.roundtrip_failures.length
         ? `<p class="err"><b>${count(r.roundtrip_failures, 'file would', 'files would')} be reformatted if saved untouched:</b></p>${list(r.roundtrip_failures)}`
         : '<p class="note">✓ Every file can be opened and saved without being reformatted.</p>';
-      if (r.conflict_copies.length) html += `<p class="note"><b>${count(r.conflict_copies, 'file looks like a copy', 'files look like copies')} made by a sync conflict</b> (e.g. “Page (1).md” next to “Page.md”). Compare ${r.conflict_copies.length === 1 ? 'it' : 'each'} with the original, keep what you need, then delete the copy:</p>${list(r.conflict_copies)}`;
+      // Build 43 (he asked): each copy can be compared with its page and merged (clash.js openCopyMerge)
+      if (r.conflict_copies.length) html += `<p class="note"><b>${count(r.conflict_copies, 'file looks like a copy', 'files look like copies')} made by a sync conflict</b> (e.g. “Page (1).md” next to “Page.md”). <b>Compare and merge</b> shows ${r.conflict_copies.length === 1 ? 'it' : 'each'} side by side with its page, so you can keep what you need; the copy then goes to the bin:</p>
+        <ul class="rows conflict-copies">${r.conflict_copies.map((f) => `<li><code>${esc(f)}</code><button type="button" class="btn ghost small cc-merge" data-copy="${esc(f)}">Compare and merge…</button></li>`).join('')}</ul>`;
       // Build 38 (he asked): two pages at the same place under a page and its alias, both listed there
       if (r.alias_clashes?.length) html += `<p class="note"><b>${count(r.alias_clashes, 'pair of pages sits', 'pairs of pages sit')} at the same place under a page and its alias.</b> Both show under the page; renaming one to the other’s name merges them:</p>${list(r.alias_clashes.map(([page, names]) => `${page}: ${names.join(' and ')}`))}`;
       if (r.duplicates.length) html += `<p class="note"><b>${count(r.duplicates, 'page name belongs', 'page names belong')} to more than one file.</b> The first file is the one shown:</p>${list(r.duplicates.map(([n, files]) => `${n}: ${files.join(', ')}`))}`;
       if (r.non_utf8.length) html += `<p class="note"><b>${count(r.non_utf8, 'file isn’t', 'files aren’t')} plain text</b> (shown read-only, never changed):</p>${list(r.non_utf8)}`;
       html += `<p class="note">Longest pages: ${r.biggest.map(([n, b]) => `${esc(n)} (${b} blocks)`).join(', ')}.<br>Most linked: ${r.most_linked.map(([n, c]) => `${esc(n)} (${c})`).join(', ')}.</p>`;
       out.innerHTML = html;
+      out.querySelectorAll('.cc-merge').forEach((b) => { b.onclick = () => import('./clash.js').then((m) => m.openCopyMerge(app, b.dataset.copy)); });
+      // a copy that went to the bin while Settings is still showing: its row goes
+      app.copyMerged = (rel) => out.querySelector(`.cc-merge[data-copy="${CSS.escape(rel)}"]`)?.closest('li')?.remove();
       out.append(missingBox(app, r));
       out.append(picturesBox(app, r));
     } catch (e) { out.innerHTML = `<p class="err">${esc(e)}</p>`; }
@@ -222,7 +227,7 @@ function picturesBox(app, r) {
   const n = pics.length;
   box.innerHTML = `<h3>Pictures nothing uses</h3>
     <p class="note">${n} of the ${plural(checked, 'picture')} in <code>assets</code> ${n === 1 ? 'isn’t' : 'aren’t'} used by any note, whiteboard or setting: ${fileSize(r.unused_pictures_bytes)} in total.${newer}</p>
-    <ul class="pics">${pics.map(([p, b]) => { const nm = esc(p.replace(/^assets\//i, '')); return `<li><label class="pic-tick"><input type="checkbox" checked data-p="${esc(p)}" aria-label="Move ${nm} to the bin"></label><button class="pic-open" type="button" data-src="${esc(assetUrl(p.split('/').map(encodeURIComponent).join('/')))}" title="See this picture"><span class="th"><img src="${esc(assetUrl(p.split('/').map(encodeURIComponent).join('/')))}" alt="" loading="lazy"></span><span class="nm">${nm}</span></button><span class="meta">${fileSize(b)}</span></li>`; }).join('')}</ul>
+    <ul class="pics">${pics.map(([p, b]) => { const nm = esc(p.replace(/^assets\//i, '')); return `<li><label class="pic-tick"><input type="checkbox" checked data-p="${esc(p)}" aria-label="Move ${nm} to the bin"></label><button class="pic-open" type="button" data-src="${esc(assetUrl(p.split('/').map(encodeURIComponent).join('/')))}" title="See this picture"><span class="th"><img src="${esc(assetUrl(p.split('/').map(encodeURIComponent).join('/')))}" alt="" loading="lazy"></span><span class="nm">${nm}</span></button><span class="meta">${fileSize(b)}</span><button class="btn ghost small pic-older" type="button" data-p="${esc(p)}" aria-expanded="false">Where was it used?</button></li>`; }).join('')}</ul>
     <div class="btn-row"><button class="btn ghost" data-a="bin-pics"></button></div>`;
   // pictures this window can't show (HEIC, TIFF…) keep a plain square
   box.addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.classList.add('broken'); }, true);
@@ -237,6 +242,41 @@ function picturesBox(app, r) {
   box.addEventListener('change', label);
   // a click on a picture or its name shows it big (the notes' own picture view; a click or Esc closes it)
   box.addEventListener('click', (e) => { const o = e.target.closest('.pic-open'); if (o) app.showImage(o.dataset.src); });
+  // "Where was it used?": no note uses it now, so its notes are looked for in the older copies of the
+  // pages (core older.rs: logseq/bak, the safety copies, the backups when on), shown under its row;
+  // "Open <page>" asks first (the note isn't on the page now). Again: closes it.
+  box.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.pic-older');
+    const go = e.target.closest('.pc-go');
+    if (go) {
+      const ok = await confirmBox({ title: `Open “${esc(go.dataset.page)}”?`, body: 'The note with this picture was in an older copy of this page; it isn’t on the page now. The page’s History (its ⋯ menu) has its older versions.', ok: 'Open the page' });
+      if (ok) app.go('page', go.dataset.page);
+      return;
+    }
+    if (!btn) return;
+    const li = btn.closest('li');
+    const open = li.querySelector('.pic-ctx');
+    if (open) { open.remove(); btn.setAttribute('aria-expanded', 'false'); return; }
+    const ctx = h('div', 'pic-ctx');
+    ctx.innerHTML = BRAND.wait('Looking in the older copies…');
+    li.append(ctx);
+    btn.setAttribute('aria-expanded', 'true');
+    const bk = app.backupPrefs?.();
+    const on = bk?.on && bk.dest && !isAndroid;
+    let hits;
+    try { hits = await call('picture_in_older', { picture: btn.dataset.p, kind: on ? bk.kind : '', dest: on ? bk.dest : '' }); }
+    catch (err) { ctx.innerHTML = `<p class="err">${esc(said(err))}</p>`; return; }
+    const FROM = { bak: 'backup by', copy: 'safety copy made by', zip: 'snapshot', git: 'git backup' };
+    const where = `<code>logseq/bak</code>, the safety copies${on ? ' and your backups' : ''}`;
+    ctx.innerHTML = !hits.length
+      ? `<p class="note">Not in any older copy of your pages (looked in ${where}). It may have been pasted and never kept in a note, or it was used before the oldest copy.</p>`
+      : `<p class="note">${hits.length === 1 ? 'A note used it' : `${hits.length} notes used it`} in older copies of your pages (newest first):</p>
+        <ul class="pc-list">${hits.map((x) => `<li>
+          <div class="pc-head"><b>${esc(x.page)}</b><span class="meta">${esc(whenText(x.when))} · ${esc(FROM[x.from] || '')} ${esc(x.which)}</span>
+            ${x.exists ? `<button class="btn ghost small pc-go" type="button" data-page="${esc(x.page)}">Open ${esc(x.page)}…</button>` : '<span class="meta">(the page isn’t in your notes now)</span>'}</div>
+          ${x.path.length ? `<div class="pc-path">${x.path.map((t) => esc(t)).join(' › ')}</div>` : ''}
+          <div class="pc-note">${renderBlock(x.note).html}</div></li>`).join('')}</ul>`;
+  });
   btn.onclick = async () => {
     const paths = ticked();
     const k = paths.length;
