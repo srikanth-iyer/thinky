@@ -6,7 +6,7 @@
 
 import { call, store, nowTime, isApp, isAndroid, assetUrl, today } from './api.js';
 import { esc, PROP_SHOWS, MARK_COLORS, builtinHidden, propsHtmlAs } from './render.js';
-import { h, ICON, BRAND, plural, SETTINGS_TABS } from './dom.js';
+import { h, ICON, BRAND, plural, SETTINGS_TABS, motionOn } from './dom.js';
 import { promptBox, confirmBox } from './popups.js';
 import { SKINS, accessCard, lookName, lookState } from './app.js';
 import { fitChips } from './views.js';
@@ -51,7 +51,7 @@ export async function settingsView(app, view, want = null) {
   bar.setAttribute('aria-label', 'Settings');
   const sfx = free('st-notes').slice(8); // (Settings open on both sides: ids of its own)
   bar.innerHTML = tabs.map(([id, label]) => `<button class="chip" role="tab" id="st-${id}${sfx}" data-tab="${id}" aria-controls="sp-${id}${sfx}">${label}</button>`).join('');
-  view.append(bar);
+  view.append(tabArrows(bar));
   fitChips(bar); // a hint (the end fades) if they still don't all fit
   const panels = {};
   const show = async (id) => {
@@ -760,6 +760,42 @@ function windowsCard(app) {
  *  property: Show, Quiet (smaller, lighter), Icon (a small sign; its words on hover) or Hidden (like
  *  id::), and an optional mark (a thin coloured line down the note's left edge). Saved in the notes
  *  folder (logseq/thinky.json) so the laptop and the phone agree; render.js applies it. */
+/** Settings' tab row on a phone (Build 43, he asked Nov 10: it wasn't plain that the tabs scroll): a small
+ *  ‹ / › at an edge while tabs are hidden past it (a press scrolls the row that way; screen readers skip
+ *  them, the tabs themselves are reachable), and the first time the row doesn't fit, a short nudge of it.
+ *  Still one line (he asked, Nov 9). Nothing shows when every tab fits (a laptop). */
+function tabArrows(bar) {
+  const wrap = h('div', 'set-tabs-wrap');
+  const arrow = (dir) => {
+    const b = h('button', `tab-arrow ${dir}`, dir === 'prev' ? '‹' : '›');
+    b.type = 'button';
+    b.tabIndex = -1;
+    b.setAttribute('aria-hidden', 'true');
+    b.hidden = true;
+    b.onclick = () => bar.scrollBy({ left: (dir === 'prev' ? -1 : 1) * bar.clientWidth * 0.7, behavior: 'smooth' });
+    return b;
+  };
+  const prev = arrow('prev'), next = arrow('next');
+  wrap.append(prev, bar, next);
+  const paint = () => {
+    const more = bar.scrollWidth > bar.clientWidth + 2;
+    prev.hidden = !more || bar.scrollLeft < 2;
+    next.hidden = !more || bar.scrollLeft + bar.clientWidth > bar.scrollWidth - 2;
+    wrap.classList.toggle('more', more);
+    if (more && !store.get('setTabsNudged', false) && bar.isConnected) {
+      store.set('setTabsNudged', true);
+      if (motionOn() && bar.scrollLeft < 2) {
+        bar.scrollTo({ left: 48, behavior: 'smooth' });
+        setTimeout(() => { if (bar.scrollLeft <= 50) bar.scrollTo({ left: 0, behavior: 'smooth' }); }, 450);
+      }
+    }
+  };
+  bar.addEventListener('scroll', paint, { passive: true });
+  new ResizeObserver(paint).observe(bar);
+  document.fonts?.ready.then(paint);
+  return wrap;
+}
+
 /** Writing (Build 40: its own tab): the spelling check (Build 34, he asked): the system's own check, as
  *  he types; the words are underlined and a right-click (on the phone, the keyboard) offers the right
  *  spelling. Nothing leaves the device. */
@@ -786,7 +822,7 @@ function propDisplayCard(app) {
     <div class="pd-note"${rule.mark ? ` data-mark="${rule.mark}"` : ''}><i class="pd-dot"></i><div class="pd-w">Draft the talk${propsHtmlAs(props, { by: { icon: '●', ...rule } })}</div></div></figure>`;
   card.innerHTML = `<h2>Property display</h2><p class="note">Choose how a property shows on your notes. Here is one note with <code>by:: claude</code> under each choice:</p>
     <div class="pd-demo" aria-label="Examples">${ex('Show', 'as usual', { show: 'show' })}${ex('Quiet', 'smaller, lighter', { show: 'quiet' })}${ex('Icon', 'its words on hover', { show: 'icon' })}${ex('Hidden', 'kept, not shown', { show: 'hidden' })}${ex('+ Mark', 'a line beside it', { show: 'show', mark: 'blue' })}</div>
-    <p class="note small">A mark goes with any of the four. A hidden property is still there: the note menu’s “Show hidden properties” shows it. Saved in your notes folder (<code>logseq/thinky.json</code>), so your laptop and phone agree. Properties Logseq is told to hide (<code>:block-hidden-properties</code> in <code>config.edn</code>) are hidden here too.</p>
+    <p class="note small">A mark goes with any of the four. A hidden property is still there: the note menu’s “Show hidden properties” shows it. Saved in your notes folder (<code>logseq/thinky.json</code>), so your laptop and phone agree. Each property’s own page (Properties → its name) has the same choice. Properties Logseq is told to hide (<code>:block-hidden-properties</code> in <code>config.edn</code>) are hidden here too.</p>
     <ul class="rows prop-rules"></ul>
     <form class="prop-add"><input class="prop-new" list="prop-keys" placeholder="A property’s name, e.g. by" aria-label="A property’s name" autocomplete="off" spellcheck="false"><datalist id="prop-keys"></datalist><button class="btn small" type="submit">Add</button></form>`;
   const list = $('.prop-rules', card), add = $('.prop-add', card), input = $('.prop-new', card);

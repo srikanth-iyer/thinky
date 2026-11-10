@@ -2,7 +2,7 @@
 // To-dos and Calendar.
 
 import { call, today, store } from './api.js';
-import { renderBlock, datesHtml, esc, whenText, pagesIn } from './render.js';
+import { renderBlock, datesHtml, esc, whenText, pagesIn, PROP_SHOWS, MARK_COLORS, builtinHidden } from './render.js';
 import { h, pageLink, ICON, BRAND, plural } from './dom.js';
 import { promptBox } from './popups.js';
 import { makeChips } from './chips.js';
@@ -227,13 +227,35 @@ export async function tagsView(app, view) {
   view.append(h('h1', 'page-title', 'Tags'));
   view.append(h('p', 'note', 'Tags from pages’ <code>tags::</code> property, and <code>#tags</code> written in notes.'));
   const tags = await call('tags');
+  // Build 43 (he asked, Nov 10): a filter box and A to Z / Most used, as the Properties list has
+  // ("most used" = pages with tags:: + notes with #name); the order is remembered like Properties'
+  const opt = store.get('tagsOpts', { sort: 'name' });
+  const tools = h('div', 'list-tools');
+  tools.innerHTML = `<input class="filter" type="search" placeholder="Filter tags" aria-label="Filter tags">
+    <div class="chips" role="group" aria-label="Sort">${[['name', 'A to Z', 'By name'], ['count', 'Most used', 'The most used first']].map(([k, l, tt]) => `<button class="chip" data-s="${k}" title="${tt}" aria-pressed="${opt.sort === k}">${l}</button>`).join('')}</div>`;
   const ul = h('ul', 'rows');
+  view.append(tools, ul);
+  const input = $('input', tools);
   // [name, pages with tags::, notes with #name] (Build 33: the #tags too, he asked)
   const says = (p, n) => [p && plural(p, 'page'), n && plural(n, 'note')].filter(Boolean).join(' · ');
-  ul.innerHTML = tags.map(([t, p, n]) => `<li><a href="#" data-page="${esc(t)}">${esc(t)}<span class="meta">${says(p, n || 0)}</span></a></li>`).join('')
-    || BRAND.empty('No tags yet.', 'li');
+  const used = ([, p, n]) => (p || 0) + (n || 0);
+  const draw = () => {
+    const q = input.value.trim().toLowerCase();
+    const list = tags.filter(([t]) => !q || t.toLowerCase().includes(q));
+    list.sort(opt.sort === 'count' ? (a, b) => used(b) - used(a) || a[0].localeCompare(b[0]) : (a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: 'base', numeric: true }));
+    ul.innerHTML = list.map(([t, p, n]) => `<li><a href="#" data-page="${esc(t)}">${esc(t)}<span class="meta">${says(p, n || 0)}</span></a></li>`).join('')
+      || BRAND.empty(tags.length ? 'No tags match.' : 'No tags yet.', 'li');
+  };
+  input.oninput = draw;
+  tools.onclick = (e) => {
+    const c = e.target.closest('[data-s]');
+    if (!c) return;
+    opt.sort = c.dataset.s; store.set('tagsOpts', opt);
+    tools.querySelectorAll('[data-s]').forEach((b) => b.setAttribute('aria-pressed', b === c));
+    draw();
+  };
   ul.addEventListener('click', (e) => app.linkClick(e));
-  view.append(ul);
+  draw();
 }
 
 // ---------------------------------------------------------------------------
@@ -286,7 +308,7 @@ export async function propsView(app, view, key) {
   // merges the two (core app.rs rename_property)
   const tools = h('div', 'btn-row');
   tools.innerHTML = '<button class="btn ghost small" data-a="rename">Rename or merge…</button>';
-  view.append(tools);
+  view.append(tools, propShowRow(app, key.toLowerCase()));
   tools.onclick = async (e) => {
     if (!e.target.closest('[data-a="rename"]')) return;
     const keys = (await call('props').catch(() => [])).map(([k]) => k).filter((k) => k !== key.toLowerCase());
@@ -315,6 +337,38 @@ export async function propsView(app, view, key) {
   input.oninput = () => { clearTimeout(t); t = setTimeout(draw, 200); };
   view.addEventListener('click', (e) => app.linkClick(e));
   await draw();
+}
+
+// ---------------------------------------------------------------------------
+const SHOW_SAY = { show: 'Show', quiet: 'Quiet', icon: 'Icon', hidden: 'Hidden' };
+/** How this property shows on notes (Build 43, he asked Nov 10: on its own page too, not only in
+ *  Settings → Writing → Property display). The same saved rule (logseq/thinky.json "propertyDisplay"),
+ *  so a change in either place is the other's too; read fresh before each save. */
+function propShowRow(app, key) {
+  const row = h('div', 'prop-show-row');
+  if (builtinHidden(key)) {
+    row.innerHTML = `<p class="note small"><code>${esc(key)}::</code> is one the app always hides (Logseq keeps it for itself).</p>`;
+    return row;
+  }
+  const cap = (c) => c[0].toUpperCase() + c.slice(1);
+  const draw = () => {
+    const x = app.folderSettings?.propertyDisplay?.[key] || {};
+    const show = PROP_SHOWS.includes(x.show) ? x.show : 'show';
+    row.innerHTML = `<span class="psr-l">Shows on notes as</span>
+      <select class="pr-show" aria-label="How ${esc(key)} shows">${PROP_SHOWS.map((v) => `<option value="${v}"${v === show ? ' selected' : ''}>${SHOW_SAY[v]}</option>`).join('')}</select>
+      <input class="pr-icon" value="${esc(x.icon || '●')}" maxlength="2" aria-label="The icon for ${esc(key)}" title="The icon (a character or emoji)"${show === 'icon' ? '' : ' hidden'}>
+      <select class="pr-mark" aria-label="A mark on notes with ${esc(key)}"><option value="">No mark</option>${MARK_COLORS.map((c) => `<option value="${c}"${c === x.mark ? ' selected' : ''}>${cap(c)} mark</option>`).join('')}</select>
+      <a class="psr-more small" href="#/settings/writing" title="Every property’s rule, with examples">All properties…</a>`;
+  };
+  row.addEventListener('change', async () => {
+    const r = { ...(app.folderSettings?.propertyDisplay || {}) };
+    const rule = { show: $('.pr-show', row).value, icon: $('.pr-icon', row).value.trim() || '●', mark: $('.pr-mark', row).value };
+    if (rule.show === 'show' && !rule.mark) delete r[key]; else r[key] = rule; // (as usual = no rule)
+    try { await app.setFolderSetting('propertyDisplay', Object.keys(r).length ? r : null); } catch (err) { app.toast(String(err), 6000); }
+    draw();
+  });
+  draw();
+  return row;
 }
 
 // ---------------------------------------------------------------------------

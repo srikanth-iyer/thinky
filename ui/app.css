@@ -726,7 +726,13 @@ a.tag .hash { display: var(--hash); }
 /* (room around the buttons, so a keyboard focus ring isn't cut off by the sideways scrolling) */
 .chips { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-width: none; padding: 4px; margin: -3px -4px; }
 .chips::-webkit-scrollbar { display: none; }
-.set-tabs { margin: 6px 0 18px; } /* Settings: one tab per kind of setting (settings.js) */
+.set-tabs-wrap { position: relative; margin: 6px 0 18px; } /* Settings: one tab per kind of setting (settings.js) */
+.set-tabs-wrap .tab-arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 1; width: 28px; height: 28px; padding: 0;
+  border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--ink); font-size: 18px; line-height: 1;
+  box-shadow: 0 1px 4px rgb(0 0 0 / .12); }
+.set-tabs-wrap .tab-arrow.prev { left: -4px; }
+.set-tabs-wrap .tab-arrow.next { right: -4px; }
+.set-tabs-wrap .tab-arrow[hidden] { display: none; }
 .chips .chip { flex: none; white-space: nowrap; }
 .chips .chip-end { margin-left: auto; } /* a switch rather than a filter: at the far end when there's room */
 .chips.fade-end { mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); }
@@ -1217,6 +1223,10 @@ body.side-hidden #app { --sw: 0px; }
   html.sliding #side { transition: transform .2s cubic-bezier(.2, .7, .3, 1); }
   html.sliding body.side-hidden #side { transition: transform .2s cubic-bezier(.2, .7, .3, 1), visibility 0s linear .2s; }
   html.sliding, html.sliding .pane { overflow-x: hidden; } /* (no scroll bar for what slides in from the side) */
+  /* peeking out while the mouse rests on its button (App.peekSidebar): over the notes, nothing moves */
+  body.side-hidden.side-peek #side { transform: none; visibility: visible; z-index: 30; box-shadow: 6px 0 28px rgb(0 0 0 / .16); border-radius: 0 10px 10px 0; }
+  body.side-hidden.peeking #side { transition: transform .18s cubic-bezier(.2, .7, .3, 1), visibility 0s linear .18s; }
+  body.side-hidden.peeking.side-peek #side { transition: transform .18s cubic-bezier(.2, .7, .3, 1); }
   /* the handles: the sidebar's right edge, and the line between two sides (App.grip) */
   .side-grip { display: block; grid-column: 1; grid-row: 2; justify-self: end; position: relative; z-index: 9; width: 8px; margin-right: -4px; cursor: col-resize; touch-action: none; }
   body.side-hidden .side-grip { display: none; }
@@ -1699,6 +1709,13 @@ html[data-motion="off"] .fading { display: none !important; }
 .prop-display .pr-icon[hidden] { display: none; }
 .prop-display .prop-add { display: flex; gap: 8px; margin-top: 10px; }
 .prop-display .prop-new { flex: 1; min-width: 0; max-width: 320px; }
+/* a property's own page: the same choice (Build 43) */
+.prop-show-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+.prop-show-row .psr-l { color: var(--ink-soft); font-size: 14px; }
+.prop-show-row select, .prop-show-row .pr-icon { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+.prop-show-row .pr-icon { width: 3.2em; text-align: center; }
+.prop-show-row .pr-icon[hidden] { display: none; }
+.prop-show-row .psr-more { margin-left: auto; font-size: 13px; }
 /* Settings → Notes → Backups (Build 37) */
 .backup-card .bk-on { display: flex; align-items: center; gap: 8px; font-weight: 600; margin: 6px 0 10px; }
 .backup-card .bk-opts.off { opacity: .55; }

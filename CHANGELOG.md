@@ -14,6 +14,14 @@ From Build 41 these versions are the app's own: they show in Settings → Update
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 43 · version 0.5.4 (November 2026)
+
+### New
+- A hidden sidebar peeks out when the mouse rests on its button, floating over your notes without moving them. Its links and buttons work as usual, and it slides away when the mouse leaves it (or with Esc). A click on the button still keeps it open, as before.
+- Each property's own page (Properties → its name) now has the same "shows on notes as" choice as Settings → Writing → Property display: Show, Quiet, Icon or Hidden, and a mark. A change in either place shows in the other.
+- The Tags list has a filter box and A to Z / Most used, like the Properties list. The order you pick is remembered.
+- On a phone, Settings' tab row shows a small › (and ‹) at its edge while more tabs are hidden there; a tap scrolls the row. The first time, the row also gives a short nudge so it's plain that it scrolls.
+
 ## Build 42 · version 0.5.3 (November 2026)
 
 ### New

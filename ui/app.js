@@ -7,7 +7,7 @@ import { Outline, EDGE, PIN_H, findAgain, caretAgain, foldedIn, lineLook } from 
 import { renderBlock, propsHtml, visibleProps, esc, pagesIn, setPropRules } from './render.js';
 import { Suggest, Preview, menu, confirmBox, promptBox, pickDate, place } from './popups.js';
 import { pagesView, tagsView, propsView, todosView, taskRow, taskClicks, taskDay, byDay, num } from './views.js';
-import { h, pageLink, ICON, BRAND, fadeAway } from './dom.js';
+import { h, pageLink, ICON, BRAND, fadeAway, motionOn } from './dom.js';
 import { keyOf } from './calendar.js';
 import { Find } from './find.js';
 import { Tabs, placeOf, parsePlace, sideNav } from './tabs.js';
@@ -2249,12 +2249,49 @@ class App {
   toggleSidebar(force) {
     const hide = force ?? !document.body.classList.contains('side-hidden');
     const done = hide !== document.body.classList.contains('side-hidden') && this.started ? this.slide() : null;
+    document.body.classList.remove('side-peek', 'peeking'); // (a peek ends when it's shown or hidden for good)
     document.body.classList.toggle('side-hidden', hide);
     store.set('sideHidden', hide);
     this.hideMore?.();
     const b = $('#histbar [data-a="side"]');
     if (b) { b.setAttribute('aria-expanded', String(!hide)); b.title = `${hide ? 'Show' : 'Hide'} the sidebar (t l)`; }
     done?.();
+  }
+  /** A hidden sidebar peeks out while the mouse rests on its button (Build 43, he asked Nov 10, as in
+   *  Notion): it floats over the notes (nothing moves), its links and buttons work, and it slides away
+   *  when the mouse has left both it and the button (or Esc). A click on the button still pins it open.
+   *  Wide windows with a mouse only; the phone's drawer is unchanged. */
+  peekSidebar(hb) {
+    const body = document.body, side = $('#side');
+    if (!side) return;
+    const can = () => body.classList.contains('side-hidden') && matchMedia('(min-width: 861px) and (hover: hover)').matches;
+    let openT, shutT;
+    const shut = () => { clearTimeout(openT); clearTimeout(shutT); body.classList.remove('side-peek'); };
+    const near = (e) => e.pointerType === 'mouse' || e.pointerType === 'pen';
+    hb.addEventListener('pointerover', (e) => {
+      if (!near(e) || !e.target.closest('[data-a="side"]') || !can()) return;
+      clearTimeout(shutT);
+      if (body.classList.contains('side-peek')) return;
+      openT = setTimeout(() => {
+        openT = null;
+        if (!can()) return;
+        body.classList.toggle('peeking', motionOn()); // (slides in and out; at once with reduced motion)
+        body.classList.add('side-peek');
+      }, 120);
+    });
+    const leave = (e) => {
+      if (!near(e) || !body.classList.contains('side-peek') && !openT) return;
+      const to = e.relatedTarget;
+      if (to && (side.contains(to) || to.closest?.('#histbar [data-a="side"]'))) return; // (moving between the two)
+      clearTimeout(openT); openT = null;
+      clearTimeout(shutT);
+      shutT = setTimeout(shut, 300);
+    };
+    hb.addEventListener('pointerout', (e) => { if (e.target.closest('[data-a="side"]')) leave(e); });
+    side.addEventListener('pointerleave', leave);
+    side.addEventListener('pointerenter', () => { if (body.classList.contains('side-peek')) clearTimeout(shutT); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && body.classList.contains('side-peek')) shut(); });
+    window.addEventListener('resize', () => { if (!can()) shut(); });
   }
   /** The sidebar is about to open or close in a wide window: what sits in the notes (each side's
    *  page, the find bar, the right side's buttons in the strip) is noted where it is now; the
@@ -2388,6 +2425,7 @@ class App {
       // a newer build: a button at the strip's right end, beside the window's own (Build 40, he asked: easier to spot and click)
       + `<button type="button" class="hb-update" data-a="update" aria-haspopup="menu" hidden><i class="spark-mark" aria-hidden="true"></i>Update ready</button>${winctl}</div>`;
     this.toggleSidebar(store.get('sideHidden', false));
+    this.peekSidebar(hb);
     hb.onclick = (e) => {
       const b = e.target.closest('button');
       if (!b || b.disabled) return;

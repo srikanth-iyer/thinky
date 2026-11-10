@@ -345,6 +345,17 @@ throw-away key; `release` publishes it with the others (7 files, 10 with the old
 release key (he chose it, Nov 10): `.github/workflows/play-key.yml` (run by hand on main, environment `release`) exports
 it with Google's PEPK, encrypted with Play Console's key saved as `ci/play-encryption-key.pem`, as the artifact
 `thinky-play-key.zip` for Play Console's App signing page. Package name on Play: `com.srikanth.leanoutliner`.
+Build 43 (0.5.4; the maintainer's notes of Nov 10; tested by t25_build43): a hidden sidebar peeks out on the mouse (as in
+Notion; `App.peekSidebar`: pointerover on the strip's sidebar button, 120 ms, adds `body.side-peek` (+ `.peeking` for the
+slide when `motionOn()`), the sidebar floats over the notes (z 30, shadow; app.css "peeking out"), its links work; leaving
+both it and the button for 300 ms, Esc, a resize to a narrow window or `toggleSidebar` ends it; the saved `sideHidden` is
+untouched; hidden by a click, it doesn't peek until the mouse comes back; wide windows with `(hover: hover)` only). A
+property's page has `propShowRow` (views.js): the same rule as Settings' `propDisplayCard` (`propertyDisplay` in
+logseq/thinky.json, read fresh before each save; Show with no mark = no rule; built-in hidden keys say so). The Tags list:
+filter box + A to Z / Most used (pages + notes), localStorage `tagsOpts`. Settings' tab row: `tabArrows` (settings.js) wraps
+it in `.set-tabs-wrap` with `.tab-arrow.prev/.next` (aria-hidden, not in the Tab order) shown only while tabs are hidden past
+that edge; a press scrolls 70% of the row; the first time it doesn't fit, a 48px nudge out and back (localStorage
+`setTabsNudged`; none without motion).
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 
