@@ -10,7 +10,7 @@ import { h, ICON, BRAND, plural, SETTINGS_TABS, motionOn } from './dom.js';
 import { promptBox, confirmBox } from './popups.js';
 import { SKINS, accessCard, lookName, lookState } from './app.js';
 import { fitChips } from './views.js';
-import { madeBy } from './history.js';
+import { madeBy, showBinPage } from './history.js';
 import { VERSION } from './version.js';
 import { BUILD } from './build.js';
 
@@ -222,7 +222,7 @@ function picturesBox(app, r) {
   const n = pics.length;
   box.innerHTML = `<h3>Pictures nothing uses</h3>
     <p class="note">${n} of the ${plural(checked, 'picture')} in <code>assets</code> ${n === 1 ? 'isn’t' : 'aren’t'} used by any note, whiteboard or setting: ${fileSize(r.unused_pictures_bytes)} in total.${newer}</p>
-    <ul class="pics">${pics.map(([p, b]) => `<li><label><input type="checkbox" checked data-p="${esc(p)}"><span class="th"><img src="${esc(assetUrl(p.split('/').map(encodeURIComponent).join('/')))}" alt="" loading="lazy"></span><span class="nm">${esc(p.replace(/^assets\//i, ''))}</span><span class="meta">${fileSize(b)}</span></label></li>`).join('')}</ul>
+    <ul class="pics">${pics.map(([p, b]) => { const nm = esc(p.replace(/^assets\//i, '')); return `<li><label class="pic-tick"><input type="checkbox" checked data-p="${esc(p)}" aria-label="Move ${nm} to the bin"></label><button class="pic-open" type="button" data-src="${esc(assetUrl(p.split('/').map(encodeURIComponent).join('/')))}" title="See this picture"><span class="th"><img src="${esc(assetUrl(p.split('/').map(encodeURIComponent).join('/')))}" alt="" loading="lazy"></span><span class="nm">${nm}</span></button><span class="meta">${fileSize(b)}</span></li>`; }).join('')}</ul>
     <div class="btn-row"><button class="btn ghost" data-a="bin-pics"></button></div>`;
   // pictures this window can't show (HEIC, TIFF…) keep a plain square
   box.addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.classList.add('broken'); }, true);
@@ -235,6 +235,8 @@ function picturesBox(app, r) {
   };
   label();
   box.addEventListener('change', label);
+  // a click on a picture or its name shows it big (the notes' own picture view; a click or Esc closes it)
+  box.addEventListener('click', (e) => { const o = e.target.closest('.pic-open'); if (o) app.showImage(o.dataset.src); });
   btn.onclick = async () => {
     const paths = ticked();
     const k = paths.length;
@@ -280,6 +282,9 @@ function freeName(list, base) {
  * - 'new' (the welcome screen's "Create a new notes folder"): a name and "Create notes folder": a new
  *   folder in the one shown, set up as a notes folder, with the tour if ticked. Starts in Documents
  *   when home has one.
+ * - 'choose' (Settings → Backups' "Choose…"): any folder outside every notes folder;
+ *   "Use this folder" hands its path to opts.pick, Cancel calls opts.cancel. With opts.git it says
+ *   whether the folder is a git clone (a GitHub backup needs one), but takes it either way.
  * Nothing is ever made in a notes folder or inside one (the core refuses too, start.rs).
  */
 export async function folderPicker(app, card, start, opts = {}) {
@@ -298,6 +303,8 @@ export async function folderPicker(app, card, start, opts = {}) {
     let l;
     try { l = await call('list_dir', { path: p }); }
     catch (e) {
+      // (a saved folder that's gone: start from the top instead)
+      if (first && p !== roots[0]) return show(roots[0]);
       box.innerHTML = `${crumbs(null)}<p class="err" style="padding:10px">${esc(e)}</p>`;
       return;
     }
@@ -314,6 +321,15 @@ export async function folderPicker(app, card, start, opts = {}) {
         <label class="toggle pk-tour"><input type="checkbox"${tour ? ' checked' : ''}> Add the short tour (4 pages)</label>
         <div class="btn-row"><button class="btn" data-create${blocked ? ' disabled' : ''}>Create notes folder</button>
         <span class="note pk-msg">${blocked || 'It’s made inside the folder shown above.'}</span></div></div>`;
+    } else if (mode === 'choose') {
+      // (backups: never in a notes folder or inside one, where they'd be synced and backed up again)
+      const no = l.vault ? 'This is a notes folder: choose a folder outside it.'
+        : l.inside ? `This is inside the notes folder <code>${esc(l.inside)}</code>: choose a folder outside it.` : '';
+      const why = no || (opts.git
+        ? (l.git ? 'A git repository: backups are saved and uploaded from here.' : 'Not a git repository yet: clone your backup repository into a folder first (<code>git clone …</code>), then choose that folder.')
+        : 'Backups are saved in this folder.');
+      foot = `<div class="foot"><button class="btn" data-use${no ? ' disabled' : ''}>Use this folder</button><button class="btn ghost pk-new" data-new>${ICON.plus}New folder</button><button class="btn ghost" data-cancel>Cancel</button>
+        <span class="note pk-msg">${why}</span></div>`;
     } else {
       const why = noAccess() ? 'First allow access to your files (above).'
         : l.vault ? 'This is a notes folder.'
@@ -332,12 +348,13 @@ export async function folderPicker(app, card, start, opts = {}) {
   box.onclick = async (ev) => {
     const b = ev.target.closest('[data-p]');
     if (b) return show(b.dataset.p);
+    if (ev.target.closest('[data-cancel]')) return opts.cancel?.();
     if (busy || !list) return;
     const act = ev.target.closest('[data-use], [data-new], [data-create]');
     if (!act || act.disabled) return;
     busy = true;
     try {
-      if (act.matches('[data-use]')) await useHere(app, list);
+      if (act.matches('[data-use]')) await (mode === 'choose' ? opts.pick(list.path) : useHere(app, list));
       else if (act.matches('[data-new]')) { const p = await newFolder(list); if (p) await show(p); }
       else await create();
     } finally { busy = false; }
@@ -881,7 +898,8 @@ function backupCard(app) {
         <label><input type="radio" name="bk-kind" value="zip"${b.kind !== 'git' ? ' checked' : ''}> <b>Snapshot folder</b>: a dated zip of the notes in a folder you choose (no account needed)</label>
         <label><input type="radio" name="bk-kind" value="git"${b.kind === 'git' ? ' checked' : ''}> <b>GitHub</b> (or any git repository): needs <a href="https://git-scm.com" target="_blank" rel="noopener">git</a> and a folder cloned from your backup repository; every snapshot stays in its history</label>
       </fieldset>
-      <label class="bk-row"><span class="bk-l">Folder</span><input class="bk-dest" type="text" value="${esc(b.dest)}" placeholder="${b.kind === 'git' ? 'C:\\Users\\you\\notes-backup (a git clone)' : 'C:\\Users\\you\\notes-backups'}" spellcheck="false" autocomplete="off"></label>
+      <div class="bk-row"><label class="bk-l" for="bk-dest">Folder</label><span class="bk-dest-row"><input class="bk-dest" id="bk-dest" type="text" value="${esc(b.dest)}" placeholder="${b.kind === 'git' ? 'C:\\Users\\you\\notes-backup (a git clone)' : 'C:\\Users\\you\\notes-backups'}" spellcheck="false" autocomplete="off"><button class="btn ghost small bk-choose" type="button" aria-expanded="false">Choose…</button></span></div>
+      <div class="bk-pick"></div>
       <p class="note bk-hint">Outside your notes folder (a backup inside it would be synced and backed up again).</p>
       <label class="bk-row"><span class="bk-l">How often</span><select class="bk-every"><option value="week"${b.every !== 'day' ? ' selected' : ''}>Once a week</option><option value="day"${b.every === 'day' ? ' selected' : ''}>Once a day</option></select></label>
       <label class="bk-row bk-keep-row"${b.kind === 'git' ? ' hidden' : ''}><span class="bk-l">Keep</span><select class="bk-keep">${[2, 4, 8, 12].map((n) => `<option value="${n}"${n === Number(b.keep) ? ' selected' : ''}>the last ${n}</option>`).join('')}</select></label>
@@ -904,6 +922,18 @@ function backupCard(app) {
     else if (t.matches('.bk-keep')) app.setBackupPrefs({ keep: Number(t.value) });
     paint();
   });
+  // "Choose…": the app's folder picker under the box (again: closes it); a folder picked goes in the box
+  const shut = () => { $$('.bk-pick').replaceChildren(); $$('.bk-choose').setAttribute('aria-expanded', 'false'); };
+  $$('.bk-choose').onclick = () => {
+    if ($$('.bk-pick').firstChild) return shut();
+    $$('.bk-choose').setAttribute('aria-expanded', 'true');
+    folderPicker(app, $$('.bk-pick'), $$('.bk-dest').value.trim(), {
+      mode: 'choose',
+      git: app.backupPrefs().kind === 'git',
+      pick: (path) => { $$('.bk-dest').value = path; app.setBackupPrefs({ dest: path }); shut(); paint(); $$('.bk-choose').focus(); },
+      cancel: () => { shut(); $$('.bk-choose').focus(); },
+    });
+  };
   $$('.bk-now').onclick = async () => {
     app.setBackupPrefs({ dest: $$('.bk-dest').value.trim() });
     const btn = $$('.bk-now');
@@ -927,15 +957,14 @@ function binCard(app) {
     try { items = await call('recycled'); } catch { /* none */ }
     const p = items.filter((r) => !r.picture);
     const q = items.filter((r) => r.picture); // newest move first (the list comes newest first)
-    pages.innerHTML = p.slice(0, 50).map((r) => `<li><span>${esc(r.name)}</span><span class="meta">${when(r)}</span><button class="btn ghost small" data-f="${esc(r.file)}">Restore</button></li>`).join('')
+    pages.innerHTML = p.slice(0, 50).map((r) => `<li><button type="button" class="bin-see" data-see="${esc(r.file)}" title="See this page">${esc(r.name)}</button><span class="meta">${when(r)}</span><button class="btn ghost small" data-f="${esc(r.file)}">Restore</button></li>`).join('')
       || '<li class="note">No deleted pages.</li>';
-    pics.innerHTML = q.map((r) => `<li><span>${thumb(r)}${esc(r.picture.replace(/^assets\//i, ''))}</span><span class="meta">${when(r)}</span><button class="btn ghost small" data-f="${esc(r.file)}" data-pic>Put back</button></li>`).join('');
+    pics.innerHTML = q.map((r) => `<li><button type="button" class="bin-see bin-pic" data-src="${esc(assetUrl('logseq/.recycle/' + encodeURIComponent(r.file)))}" title="See this picture">${thumb(r)}${esc(r.picture.replace(/^assets\//i, ''))}</button><span class="meta">${when(r)}</span><button class="btn ghost small" data-f="${esc(r.file)}" data-pic>Put back</button></li>`).join('');
     pics.hidden = $('.bin-pics-h', card).hidden = !q.length;
   };
   card.addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.classList.add('broken'); }, true);
-  card.onclick = async (e) => {
-    const b = e.target.closest('[data-f]');
-    if (!b) return;
+  // a click on a page or a picture shows it (read-only), to decide whether to bring it back
+  const restore = async (b) => {
     try {
       const name = await call('restore', { file: b.dataset.f }); // a picture: where it went ("assets/sub/x.png")
       const at = name.lastIndexOf('/');
@@ -943,6 +972,13 @@ function binCard(app) {
       else { await app.refreshNames(); app.toast(`Restored “${name}”`); }
       draw();
     } catch (err) { app.toast(String(err), 6000); }
+  };
+  card.onclick = (e) => {
+    const see = e.target.closest('.bin-see');
+    if (see?.dataset.src) return app.showImage(see.dataset.src);
+    if (see) return showBinPage(app, see.dataset.see, () => restore(card.querySelector(`[data-f="${CSS.escape(see.dataset.see)}"]`)));
+    const b = e.target.closest('[data-f]');
+    if (b) restore(b);
   };
   app.binChanged = draw; // pictures moved to the bin from the check above show up here
   draw();

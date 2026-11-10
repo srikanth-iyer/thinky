@@ -1961,6 +1961,19 @@ impl App {
 
     /// Put a page (or a picture) from the bin back. Returns its name (a picture: where it went in the
     /// notes folder, "assets/sub/x.png").
+    /// A deleted page as it is in the bin (Settings → "Deleted pages and pictures": a click shows it
+    /// before restoring): its name, its notes as the editor reads a page, and its page properties.
+    /// Only a plain `.md` file right in the bin; nothing is changed.
+    pub fn recycled_page(&self, file: &str) -> Result<serde_json::Value, String> {
+        if file.contains(['/', '\\']) || file.starts_with('.') || !file.ends_with(".md") {
+            return Err("Not a page in the bin.".into());
+        }
+        let text = read_text(&self.recycle_dir().join(file)).ok().flatten().ok_or("That file is gone or isn't plain text.")?;
+        let name = self.vault.title_from_path(&self.restore_rel(file)).0;
+        let props = crate::parse_page(&text, &self.vault.config.comma_props).props;
+        Ok(serde_json::json!({ "name": name, "doc": split_doc(&text), "props": props }))
+    }
+
     pub fn restore(&mut self, file: &str) -> Result<String, String> {
         if file.contains(['/', '\\']) || file.starts_with('.') {
             return Err("Not a file in the bin.".into());
@@ -2444,6 +2457,7 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
         }
         "recycled" => to_value(app.recycled()),
         "restore" => Ok(json!(app.restore(&s("file"))?)),
+        "recycled_page" => Ok(app.recycled_page(&s("file"))?),
         "templates" => to_value(app.vault.templates()),
         "template" => {
             let blocks = app.template(&s("name"), &s("page"), date("today")?, &s("time")).ok_or("No template with that name.")?;
@@ -2511,6 +2525,8 @@ pub struct DirList {
     pub files: usize,
     /// The notes folder it is inside, if any (not itself: `vault` says that).
     pub inside: Option<String>,
+    /// It holds a `.git` (a git clone): the backups' folder picker says so (settings.js `backupCard`).
+    pub git: bool,
 }
 
 /// A notes folder: Logseq's settings file, or a pages folder.
@@ -2551,7 +2567,7 @@ pub fn list_dir(path: &str) -> Result<DirList, String> {
     }
     dirs.sort_by_key(|d| d.name.to_lowercase());
     let inside = p.parent().and_then(crate::start::notes_folder_of).map(|v| v.display().to_string());
-    Ok(DirList { path: p.display().to_string(), parent: p.parent().map(|x| x.display().to_string()), dirs, vault: is_vault(p), files, inside })
+    Ok(DirList { path: p.display().to_string(), parent: p.parent().map(|x| x.display().to_string()), dirs, vault: is_vault(p), files, inside, git: p.join(".git").exists() })
 }
 
 #[derive(Serialize)]

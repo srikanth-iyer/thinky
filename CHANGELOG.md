@@ -21,6 +21,9 @@ went up. Build 40 and older still update to it (each release keeps a signature f
 - Each property's own page (Properties → its name) now has the same "shows on notes as" choice as Settings → Writing → Property display: Show, Quiet, Icon or Hidden, and a mark. A change in either place shows in the other.
 - The Tags list has a filter box and A to Z / Most used, like the Properties list. The order you pick is remembered.
 - On a phone, Settings' tab row shows a small › (and ‹) at its edge while more tabs are hidden there; a tap scrolls the row. The first time, the row also gives a short nudge so it's plain that it scrolls.
+- Backups: a "Choose…" button beside the folder opens a folder picker, so the folder needn't be typed. It won't take a notes folder or a folder inside one, and for a GitHub backup it says whether the folder is a git clone.
+- In "Check this folder", a click on a picture nothing uses (or its name) shows it big, so you can see what it is before moving it to the bin. Its tick box works on its own.
+- In "Deleted pages and pictures", a click on a page shows what it holds (read-only, with "Restore this page" there too), and a click on a picture shows it big, so you can decide before bringing one back.
 
 ## Build 42 · version 0.5.3 (November 2026)
 

@@ -356,6 +356,14 @@ filter box + A to Z / Most used (pages + notes), localStorage `tagsOpts`. Settin
 it in `.set-tabs-wrap` with `.tab-arrow.prev/.next` (aria-hidden, not in the Tab order) shown only while tabs are hidden past
 that edge; a press scrolls 70% of the row; the first time it doesn't fit, a 48px nudge out and back (localStorage
 `setTabsNudged`; none without motion).
+Also Build 43 (he asked, Nov 10; tested by t21_build37, t10_safety): Settings → Backups' "Choose…" (`.bk-choose`) opens
+`folderPicker` in mode 'choose' under the box (`.bk-pick`; again or Cancel closes it): "Use this folder" → `opts.pick` (the box
+and `setBackupPrefs`), refused for a notes folder or one inside one; with `opts.git` it says whether `list_dir`'s new `git`
+(a `.git` there) is true, but takes either; a saved folder that's gone starts the picker at the top. "Pictures nothing uses":
+the tick box is its own `label.pic-tick`, the picture + name a `.pic-open` button → `App.showImage` (the notes' lightbox). The
+bin: each page's name is a `.bin-see` button → history.js `showBinPage` (core `recycled_page`: a plain `.md` right in the bin,
+read only → {name, doc, props}; drawn as History draws a version, `.bin-view`, Esc/×/Close, "Restore this page" = the row's
+Restore); a picture's → `App.showImage`.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

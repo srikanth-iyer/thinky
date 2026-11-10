@@ -33,7 +33,13 @@ check(said.includes('One picture was added in the last 3 days, so it was left ou
 const shows = await page.waitForFunction(() => { const i = document.querySelector('.pics img'); return i && i.complete && i.naturalWidth === 40; }, null, { timeout: 3000 }).then(() => true, () => false);
 check(shows, 'a small picture of each shows');
 check(await page.locator('.pics input[type="checkbox"]:checked').count() === 4, 'each has a tick box, all ticked');
-await page.locator('.pics label', { hasText: 'keep.png' }).click(); // untick it
+// a click on a picture or its name shows it big, and doesn't touch its tick box; a click closes it
+await page.locator('.pics .pic-open', { hasText: 'keep.png' }).click();
+check(await page.locator('.modal-back.lightbox img').count() === 1 && /keep\.png/.test(await page.locator('.modal-back.lightbox img').getAttribute('src')), 'a click on a picture shows it big');
+check(await page.locator('.pics input[type="checkbox"]:checked').count() === 4, 'and leaves its tick box as it was');
+await page.locator('.modal-back.lightbox').click();
+check(await page.locator('.modal-back.lightbox').count() === 0, 'a click closes it');
+await page.locator('.pics li', { hasText: 'keep.png' }).locator('input[type="checkbox"]').click(); // untick it
 check(await page.locator('[data-a="bin-pics"]').textContent() === 'Move 3 to the bin…', 'the button counts the ticked ones', await page.locator('[data-a="bin-pics"]').textContent());
 await page.screenshot({ path: SHOTS + '/check-pictures.png' });
 await page.locator('[data-a="bin-pics"]').click();
@@ -53,9 +59,26 @@ const binShows = await page.waitForFunction(() => { const i = document.querySele
 check(binShows, 'each with a small picture');
 await page.locator('.bin-pics').evaluate((el) => el.previousElementSibling.scrollIntoView());
 await page.screenshot({ path: SHOTS + '/bin-pictures.png' });
+// a click on a picture in the bin shows it big; on a page, the page read-only, with Restore there too
+await page.locator('.bin-pics .bin-see', { hasText: 'unused.png' }).click();
+check(/assets%252Funused\.png|assets%2Funused\.png/.test(await page.locator('.modal-back.lightbox img').getAttribute('src') || ''), 'a click on a picture in the bin shows it big', await page.locator('.modal-back.lightbox img').getAttribute('src'));
+await page.locator('.modal-back.lightbox').click();
+const oldOne = (await page.locator('.bin-pages .bin-see').first().textContent()).trim(); // ("Old page N")
+const oldN = oldOne.replace('Old page ', '');
+await page.locator('.bin-pages .bin-see').first().click();
+await page.waitForSelector('.bin-view .hv-page .blk');
+check((await page.locator('.bin-view .hv-page').textContent()).includes('deleted page ' + oldN) && (await page.locator('#bv-title').textContent()).includes(oldOne), 'a click on a deleted page shows what it holds', await page.locator('.bin-view').textContent());
+check(await page.locator('.bin-view textarea, .bin-view [contenteditable="true"]').count() === 0 && exists(`logseq/.recycle/pages_${oldOne}.md`), 'read-only: nothing changes');
+await page.screenshot({ path: SHOTS + '/bin-page.png' });
+await page.keyboard.press('Escape');
+check(await page.locator('.bin-view').count() === 0, 'Esc closes it');
+await page.locator('.bin-pages .bin-see', { hasText: oldOne }).first().click();
+await page.locator('.bin-view [data-h="restore"]').click();
+await sleep(600);
+check(exists(`pages/${oldOne}.md`) && !exists(`logseq/.recycle/pages_${oldOne}.md`) && await page.locator('.bin-view').count() === 0, 'Restore this page: it is back in pages, the box closed');
 for (const n of ['Screenshot (2).png', 'photo_2024.png', 'unused.png']) {
   const row = page.locator('.bin-pics li', { hasText: n });
-  await row.locator('button').click();
+  await row.locator('button[data-f]').click();
   await sleep(500);
   check(exists('assets/' + n) && !exists('logseq/.recycle/assets%2F' + n), `Put back: “${n}” is in assets again, exactly as it was`);
   check((await page.locator('#toast').textContent()).includes(`Put “${n}” back in assets`), 'and it says so', await page.locator('#toast').textContent());
@@ -64,7 +87,7 @@ check(!fs.readdirSync(VAULT + '/assets/photo').length && await binPics.count() =
 // one from a folder inside assets (moved to the bin earlier): it goes back there, and the message says so
 fs.copyFileSync(VAULT + '/assets/unused.png', VAULT + '/logseq/.recycle/assets%2Fsub%2Fdeep.png');
 await page.evaluate(() => window.leanApp.binChanged());
-await page.locator('.bin-pics li', { hasText: 'sub/deep.png' }).locator('button').click();
+await page.locator('.bin-pics li', { hasText: 'sub/deep.png' }).locator('button[data-f]').click();
 await sleep(500);
 check(exists('assets/sub/deep.png') && !exists('logseq/.recycle/assets%2Fsub%2Fdeep.png'), 'a picture from a folder inside assets goes back into that folder (made again if gone)');
 check((await page.locator('#toast').textContent()).includes('Put “deep.png” back in assets/sub.'), 'and the message names that folder', await page.locator('#toast').textContent());
