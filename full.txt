@@ -1,0 +1,30 @@
+thinky is a small, fast outliner for your notes. Write in bullets, link pages together and keep a daily journal, all in plain Markdown files in a folder you choose.
+
+Write and link
+• A journal page for every day, ready when you open the app
+• Pages, [[links]], #tags and properties
+• Linked references: every note that mentions a page, shown under it
+• To-dos with scheduled and deadline dates
+• Quick search that forgives typos in page names
+
+Your notes stay yours
+• Plain Markdown files on your own device. No account, no servers, no ads, no tracking.
+• To use the same notes on your phone and computer, keep the folder in a sync app you already use, such as Google Drive or Syncthing.
+• Safe with sync: if a page changed on another device while you were writing, thinky merges the two, or shows both versions side by side. Nothing is silently overwritten.
+• Safety copies and each page's history let you go back to an earlier version.
+
+Works with Logseq folders
+thinky opens an existing Logseq Markdown folder as it is, with its settings, and writes back the lines you didn't touch exactly as they were. You can keep using both.
+
+Quick capture on Android
+• Home-screen widgets for today's journal and a one-tap "+"
+• A Quick Settings tile and "Add to journal" in the share sheet
+• "Add to thinky" in the text selection menu
+
+Many looks, light and dark
+Pick a day look and a night look, or follow the system.
+
+Why it needs "All files access"
+thinky reads and writes your notes folder where your sync app keeps it, so the same plain files work on every device. It only opens the folder you choose.
+
+thinky is open source (AGPL). Feedback and ideas are welcome on GitHub.

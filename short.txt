@@ -1,0 +1,1 @@
+A small, fast outliner for your notes: journals, links and to-dos in Markdown.
