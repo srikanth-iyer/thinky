@@ -71,6 +71,13 @@ await sleep(800);
 check(['unused.png', 'Screenshot (2).png', 'photo_2024.png'].every((n) => !exists('assets/' + n) && exists('logseq/.recycle/assets%2F' + n)), '“Move to the bin” moves the ticked ones into logseq/.recycle, each named by where it came from');
 check(exists('assets/keep.png') && exists('assets/fresh.png') && exists('assets/dot.png') && exists('assets/board.png') && exists('assets/paper.pdf'), 'the unticked one and the others stay in assets');
 check((await page.locator('.pics-box').textContent()).includes('Moved 3 pictures to the bin'), 'and it says so');
+console.log('Check this folder: the report stays when coming back');
+await go(page, '#/journals');
+await go(page, '#/settings/notes');
+await page.waitForSelector('.check-out .check-when', { timeout: 5000 });
+const back = (await page.locator('.check-out').textContent()).replace(/\s+/g, ' ');
+check(/Checked at \d/.test(back) && /Moved 3 pictures to the bin|Pictures nothing uses/.test(back) && await page.locator('[data-a="check"]').textContent() === 'Check again', 'back on Settings → Notes: the last report is there, saying when, with “Check again”', back.slice(0, 300));
+check(!(await page.locator('.pics .nm').allTextContents()).some((n) => ['unused.png', 'Screenshot (2).png', 'photo_2024.png'].includes(n)), 'without the pictures already moved to the bin', (await page.locator('.pics .nm').allTextContents()).join(','));
 console.log('the bin lists the pictures, all of them, with “Put back”');
 await go(page, '#/settings/safety'); // (the bin is on Safety since Build 40)
 const binPics = page.locator('.bin-pics li');
@@ -220,15 +227,38 @@ check(/Compare with the conflict copy/.test(cl) && /differ in 2 places/.test(cl)
 check(/#\/page\/Sourdough/.test(await page.evaluate(() => location.hash)), 'with the page open behind it');
 await page.screenshot({ path: SHOTS + '/conflict-copy.png' });
 const picks = await page.locator('.panel.cl-copy .cl-item').evaluateAll((els) => els.map((el) => el.querySelector('input:checked')?.value));
-check(picks.join(',') === 'both,theirs', 'pre-picked so nothing is lost: both where each has its own words, the copy’s where only it has some', picks.join(','));
+check(picks.join(',') === 'mine,theirs', 'pre-picked: the page’s where both have the note with a word changed (no note twice), the copy’s where only it has some', picks.join(','));
 await page.locator('.panel.cl-copy [data-c="apply"]').click();
 await sleep(1200);
 const merged = read('pages/Sourdough Bread.md');
-check(merged.includes('- Mix, fold, rest, shape\n') && merged.includes('- Mix, fold, rest, shape, bake') && merged.includes('- an oven note from the phone') && merged.startsWith('alias:: SB'), 'the page has both versions of the changed note and the copy’s new one; its properties stay', merged);
+check(merged.includes('- Mix, fold, rest, shape\n') && !merged.includes('shape, bake') && merged.includes('- an oven note from the phone') && merged.startsWith('alias:: SB'), 'the page keeps its version of the changed note and gets the copy’s new one; its properties stay', merged);
 check(!exists('pages/Sourdough Bread (conflict 2026-11-08-13-18-30).md') && fs.readdirSync(VAULT + '/logseq/.recycle').some((f) => f.includes('Sourdough Bread (conflict')), 'the copy is in the bin');
 const bakSB = VAULT + '/logseq/bak/pages/Sourdough Bread';
 check(fs.readdirSync(bakSB).some((f) => fs.readFileSync(bakSB + '/' + f, 'utf8') === SB), 'the page as it was is in logseq/bak');
 check(/copy is in the bin/.test(await page.locator('#toast').textContent()), 'and it says so', await page.locator('#toast').textContent());
+
+console.log('Compare and merge: what differs is highlighted; spaces at line ends are no difference');
+const LONG = 'The calendar menu opens with a soft fade but many other transitions are blunt and lacking, so can we look at other apps';
+write('pages/Week.md', `- [[thinky]]\n\t- DONE ${LONG}\n\t- the same note\n- App data note\n`);
+write('pages/Week (conflict 2026-11-08-13-18-30).md', `- [[thinky]]\n\t- TODO ${LONG}\n\t- the same note \n\t\t- App data note\n`);
+await page.evaluate(() => window.leanApp.rescan?.());
+await go(page, '#/settings/notes');
+await page.locator('[data-a="check"]').click();
+await page.waitForSelector('.cc-merge[data-copy="pages/Week (conflict 2026-11-08-13-18-30).md"]', { timeout: 8000 });
+await page.locator('.cc-merge[data-copy="pages/Week (conflict 2026-11-08-13-18-30).md"]').click();
+await page.waitForSelector('.panel.cl-copy', { timeout: 8000 });
+await sleep(400);
+const wk = (await page.locator('.panel.cl-copy .cl-head').textContent()).replace(/\s+/g, ' ');
+check(/differ in 2 places/.test(wk), 'two places: the changed word and the indent; the space at a line end is no difference', wk);
+const hl = await page.evaluate(() => ['cl-mine', 'cl-theirs'].map((n) => [...(CSS.highlights.get(n) || [])].map((r) => r.toString())));
+check(JSON.stringify(hl) === JSON.stringify([['DONE'], ['TODO']]), 'in the long note only the word that differs is highlighted, on each side', JSON.stringify(hl));
+const why = await page.locator('.panel.cl-copy .cl-why').allTextContents();
+check(why.join('|') === 'not indented|indented 2 levels', 'the note with the same words says how its indent differs on each side', why.join('|'));
+const wkPicks = await page.locator('.panel.cl-copy .cl-item').evaluateAll((els) => els.map((el) => el.querySelector('input:checked')?.value));
+check(wkPicks.join(',') === 'mine,mine', 'notes that only differ by a word or an indent: this page’s pre-picked (keeping both would show them twice)', wkPicks.join(','));
+await page.screenshot({ path: SHOTS + '/conflict-diff.png' });
+await page.locator('.panel.cl-copy [data-c="later"]').click();
+check(await page.evaluate(() => !CSS.highlights.has('cl-mine')) && exists('pages/Week (conflict 2026-11-08-13-18-30).md'), 'Cancel: the highlights go, nothing changes');
 
 console.log('Check this folder: one of a kind is said as one ("1 file looks like a copy"), several as several');
 const say = async (one) => {

@@ -384,6 +384,15 @@ has them), `differ` false = same words (confirm, then `bin_copy`). The page open
 compared again if it changed; `openClash(o, copy)` = the clash screen's copy mode (`.cl-copy`: "This page"/"The copy", no
 "Before both changes" row, "(not on this page)", Cancel; `keep` backs the page up first, `o.base` = the file as read, then
 saves and `bin_copy`s; `App.copyMerged` drops the row if Settings still shows).
+Also Build 43 (he asked, Nov 10, after trying it on his own copies: long notes differing by "TODO"/"DONE" looked the
+same; tested by t10_safety, core tests/conflict_copy.rs): `compare_copy` matches notes by `same_words` (spaces at line ends
+and `collapsed::` lines dropped; the page's own note kept). clash.js `markDiffs` (both clash modes): `pairNotes` (in order,
+each note the most alike of the other side's next 6, ≥40% shared words), `wordDiff` (a longest common run of words over the
+drawn rows' text) → CSS highlights `cl-mine`/`cl-theirs` in `--mine`/`--theirs` (cleared by `unmark` on close); unpaired
+rows `.cl-solo`; same words at another depth `.cl-indent` + `.cl-why` ("indented 2 levels"); `notesHtml(blocks, min)` draws
+both sides from `minDepth(it)`; the to-do word is followed by a real space. `copyPick`: every note paired → "mine", else as
+before. Check this folder's report stays (`app.lastCheck` {vault, r, at}, this run only; "Checked at …", the button "Check
+again"); binning pictures, restoring a missing one and a merged copy update `r` too.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

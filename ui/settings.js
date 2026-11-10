@@ -114,33 +114,48 @@ function folderCard(app) {
     location.reload();
   };
   const chk = $('[data-a="check"]', vc);
+  const out = $('.check-out', vc);
+  // the last check's report stays (he asked, Nov 10): going elsewhere and back shows it again, with
+  // when it was made, until "Check again" or another notes folder (app.lastCheck, this run only)
+  const show = (r, at) => {
+    const list = (items) => `<div class="path">${items.map(esc).join('<br>')}</div>`;
+    let html = `<p class="note">${r.files} files read in ${r.load_ms} ms.</p>`;
+    // (one or many: "1 file looks…", "2 files look…")
+    const count = (items, one, many) => (items.length === 1 ? `1 ${one}` : `${items.length} ${many}`);
+    html += r.roundtrip_failures.length
+      ? `<p class="err"><b>${count(r.roundtrip_failures, 'file would', 'files would')} be reformatted if saved untouched:</b></p>${list(r.roundtrip_failures)}`
+      : '<p class="note">✓ Every file can be opened and saved without being reformatted.</p>';
+    // Build 43 (he asked): each copy can be compared with its page and merged (clash.js openCopyMerge)
+    if (r.conflict_copies.length) html += `<p class="note"><b>${count(r.conflict_copies, 'file looks like a copy', 'files look like copies')} made by a sync conflict</b> (e.g. “Page (1).md” next to “Page.md”). <b>Compare and merge</b> shows ${r.conflict_copies.length === 1 ? 'it' : 'each'} side by side with its page, so you can keep what you need; the copy then goes to the bin:</p>
+      <ul class="rows conflict-copies">${r.conflict_copies.map((f) => `<li><code>${esc(f)}</code><button type="button" class="btn ghost small cc-merge" data-copy="${esc(f)}">Compare and merge…</button></li>`).join('')}</ul>`;
+    // Build 38 (he asked): two pages at the same place under a page and its alias, both listed there
+    if (r.alias_clashes?.length) html += `<p class="note"><b>${count(r.alias_clashes, 'pair of pages sits', 'pairs of pages sit')} at the same place under a page and its alias.</b> Both show under the page; renaming one to the other’s name merges them:</p>${list(r.alias_clashes.map(([page, names]) => `${page}: ${names.join(' and ')}`))}`;
+    if (r.duplicates.length) html += `<p class="note"><b>${count(r.duplicates, 'page name belongs', 'page names belong')} to more than one file.</b> The first file is the one shown:</p>${list(r.duplicates.map(([n, files]) => `${n}: ${files.join(', ')}`))}`;
+    if (r.non_utf8.length) html += `<p class="note"><b>${count(r.non_utf8, 'file isn’t', 'files aren’t')} plain text</b> (shown read-only, never changed):</p>${list(r.non_utf8)}`;
+    html += `<p class="note">Longest pages: ${r.biggest.map(([n, b]) => `${esc(n)} (${b} blocks)`).join(', ')}.<br>Most linked: ${r.most_linked.map(([n, c]) => `${esc(n)} (${c})`).join(', ')}.</p>`;
+    const when = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    out.innerHTML = `<p class="note check-when">Checked at ${esc(when)}. <b>Check again</b> to see changes since.</p>` + html;
+    out.querySelectorAll('.cc-merge').forEach((b) => { b.onclick = () => import('./clash.js').then((m) => m.openCopyMerge(app, b.dataset.copy)); });
+    // a copy that went to the bin: its row goes (and from the kept report, for coming back)
+    app.copyMerged = (rel) => {
+      out.querySelector(`.cc-merge[data-copy="${CSS.escape(rel)}"]`)?.closest('li')?.remove();
+      r.conflict_copies = r.conflict_copies.filter((f) => f !== rel);
+    };
+    out.append(missingBox(app, r));
+    out.append(picturesBox(app, r));
+  };
+  if (chk && app.lastCheck?.vault === path) {
+    show(app.lastCheck.r, app.lastCheck.at);
+    chk.textContent = 'Check again';
+  }
   if (chk) chk.onclick = async () => {
     chk.disabled = true;
-    const out = $('.check-out', vc);
     out.innerHTML = BRAND.wait('Reading every page…');
     try {
       const r = await call('check');
-      const list = (items) => `<div class="path">${items.map(esc).join('<br>')}</div>`;
-      let html = `<p class="note">${r.files} files read in ${r.load_ms} ms.</p>`;
-      // (one or many: "1 file looks…", "2 files look…")
-      const count = (items, one, many) => (items.length === 1 ? `1 ${one}` : `${items.length} ${many}`);
-      html += r.roundtrip_failures.length
-        ? `<p class="err"><b>${count(r.roundtrip_failures, 'file would', 'files would')} be reformatted if saved untouched:</b></p>${list(r.roundtrip_failures)}`
-        : '<p class="note">✓ Every file can be opened and saved without being reformatted.</p>';
-      // Build 43 (he asked): each copy can be compared with its page and merged (clash.js openCopyMerge)
-      if (r.conflict_copies.length) html += `<p class="note"><b>${count(r.conflict_copies, 'file looks like a copy', 'files look like copies')} made by a sync conflict</b> (e.g. “Page (1).md” next to “Page.md”). <b>Compare and merge</b> shows ${r.conflict_copies.length === 1 ? 'it' : 'each'} side by side with its page, so you can keep what you need; the copy then goes to the bin:</p>
-        <ul class="rows conflict-copies">${r.conflict_copies.map((f) => `<li><code>${esc(f)}</code><button type="button" class="btn ghost small cc-merge" data-copy="${esc(f)}">Compare and merge…</button></li>`).join('')}</ul>`;
-      // Build 38 (he asked): two pages at the same place under a page and its alias, both listed there
-      if (r.alias_clashes?.length) html += `<p class="note"><b>${count(r.alias_clashes, 'pair of pages sits', 'pairs of pages sit')} at the same place under a page and its alias.</b> Both show under the page; renaming one to the other’s name merges them:</p>${list(r.alias_clashes.map(([page, names]) => `${page}: ${names.join(' and ')}`))}`;
-      if (r.duplicates.length) html += `<p class="note"><b>${count(r.duplicates, 'page name belongs', 'page names belong')} to more than one file.</b> The first file is the one shown:</p>${list(r.duplicates.map(([n, files]) => `${n}: ${files.join(', ')}`))}`;
-      if (r.non_utf8.length) html += `<p class="note"><b>${count(r.non_utf8, 'file isn’t', 'files aren’t')} plain text</b> (shown read-only, never changed):</p>${list(r.non_utf8)}`;
-      html += `<p class="note">Longest pages: ${r.biggest.map(([n, b]) => `${esc(n)} (${b} blocks)`).join(', ')}.<br>Most linked: ${r.most_linked.map(([n, c]) => `${esc(n)} (${c})`).join(', ')}.</p>`;
-      out.innerHTML = html;
-      out.querySelectorAll('.cc-merge').forEach((b) => { b.onclick = () => import('./clash.js').then((m) => m.openCopyMerge(app, b.dataset.copy)); });
-      // a copy that went to the bin while Settings is still showing: its row goes
-      app.copyMerged = (rel) => out.querySelector(`.cc-merge[data-copy="${CSS.escape(rel)}"]`)?.closest('li')?.remove();
-      out.append(missingBox(app, r));
-      out.append(picturesBox(app, r));
+      app.lastCheck = { vault: path, r, at: Date.now() };
+      show(r, app.lastCheck.at);
+      chk.textContent = 'Check again';
     } catch (e) { out.innerHTML = `<p class="err">${esc(e)}</p>`; }
     chk.disabled = false;
   };
@@ -198,6 +213,7 @@ function missingBox(app, r) {
       try {
         await call('backup_restore', { kind: bk.kind, dest: bk.dest, rel: btn.dataset.rel });
         btn.replaceWith(Object.assign(document.createElement('span'), { className: 'note', textContent: `✓ ${btn.dataset.rel.slice(7)} is back` }));
+        r.missing_pictures = r.missing_pictures.filter(([, f]) => 'assets/' + f !== btn.dataset.rel); // (the kept report too)
       } catch (err) { app.toast(String(err), 6000); }
     });
   }
@@ -292,6 +308,10 @@ function picturesBox(app, r) {
       await app.rescan(); // take in notes changed elsewhere since the check
       const res = await call('bin_pictures', { paths });
       const m = res.moved.length;
+      // the kept report (coming back to Settings) no longer lists the ones moved
+      const moved = new Set(res.moved);
+      r.unused_pictures = r.unused_pictures.filter(([p]) => !moved.has(p));
+      r.unused_pictures_bytes = r.unused_pictures.reduce((n, [, b]) => n + b, 0);
       const left = res.skipped.length;
       box.innerHTML = `<h3>Pictures nothing uses</h3><p class="note">✓ Moved ${plural(m, 'picture')} to the bin (<code>logseq/.recycle</code>).</p>
         ${left ? `<p class="note"><b>${left} stayed where ${left === 1 ? 'it was' : 'they were'}:</b></p>${list(res.skipped.map(([p, why]) => `${p}: ${why}`))}` : ''}`;

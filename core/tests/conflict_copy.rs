@@ -59,6 +59,14 @@ fn a_conflict_copy_compared_with_its_page() {
     );
     assert!(c.preamble.is_none());
 
+    // spaces at line ends and the fold mark aren't differences: no choice for them
+    put(&v, "pages/Spaces.md", "- one\n\t- two\n- three\n");
+    put(&v, "pages/Spaces (conflict 2026-11-08).md", "- one \n  collapsed:: true\n\t- two\n- three changed\n");
+    let app3 = App::open(&v).unwrap();
+    let c = app3.compare_copy("pages/Spaces (conflict 2026-11-08).md").unwrap();
+    let choices: Vec<_> = c.parts.unwrap().into_iter().filter_map(|p| match p { Part::Clash { mine, theirs, .. } => Some((texts(&mine).join("|"), texts(&theirs).join("|"))), _ => None }).collect();
+    assert_eq!(choices, vec![("three".to_string(), "three changed".to_string())]);
+
     // the same words: nothing to choose, only the file can go
     let c = app2.compare_copy("pages/Same (1).md").unwrap();
     assert!(!c.differ);

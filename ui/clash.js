@@ -25,15 +25,108 @@ function suggest(c) {
   const m = words(c.mine), t = words(c.theirs);
   return t.includes(m) && !m.includes(t) ? 'theirs' : 'mine';
 }
-/** Notes as they'd show on the page (one level of indent per depth, relative to the first). */
-function notesHtml(blocks) {
+/** Notes as they'd show on the page (one level of indent per depth, from `min`: the same for both
+ *  sides of a choice, so a note indented differently shows it). Each row says which note it is
+ *  (`data-i`), for the highlighting of what differs (`markDiffs`). */
+function notesHtml(blocks, min = Math.min(...blocks.map((b) => b.depth))) {
   if (!blocks.length) return '<p class="cl-none">(removed)</p>';
-  const min = Math.min(...blocks.map((b) => b.depth));
-  return blocks.map((b) => {
+  return blocks.map((b, i) => {
     const r = renderBlock(b.text);
-    return `<div class="cl-b" style="--d:${Math.min(b.depth - min, 6)}">${r.marker ? `<span class="mk">${esc(r.marker)}</span>` : ''}${r.html || '&nbsp;'}</div>`;
+    return `<div class="cl-b" data-i="${i}" style="--d:${Math.min(Math.max(b.depth - min, 0), 6)}">${r.marker ? `<span class="mk">${esc(r.marker)}</span> ` : ''}${r.html || '&nbsp;'}</div>`;
   }).join('');
 }
+/** The smallest depth among a choice's notes (both sides and before), so all are drawn from one edge. */
+const minDepth = (it) => Math.min(...[...it.mine, ...it.theirs, ...(it.base || [])].map((b) => b.depth), 99);
+
+// ----- what differs, highlighted (Build 43, he asked: long notes that differ by one word looked the same)
+const tokens = (t) => [...t.matchAll(/\S+/g)].map((m) => ({ w: m[0], at: m.index, end: m.index + m[0].length }));
+const wordSet = (t) => new Set(t.toLowerCase().split(/\s+/).filter(Boolean));
+/** How alike two notes' words are, 0 to 1 (shared words over all words). */
+function alike(a, b) {
+  const A = wordSet(a), B = wordSet(b);
+  if (!A.size && !B.size) return 1;
+  let n = 0;
+  for (const w of A) if (B.has(w)) n++;
+  return n / (A.size + B.size - n);
+}
+/** Which note on one side goes with which on the other, in order: each of this side's notes takes the
+ *  most alike of the next few on the other side, if at least 40% alike. [[i, k]…] */
+function pairNotes(mine, theirs) {
+  const pairs = [];
+  let j = 0;
+  for (let i = 0; i < mine.length && j < theirs.length; i++) {
+    let best = -1, score = 0.4;
+    for (let k = j; k < Math.min(theirs.length, j + 6); k++) {
+      const s = mine[i].text === theirs[k].text ? 2 : alike(mine[i].text, theirs[k].text);
+      if (s >= score) { best = k; score = s; }
+    }
+    if (best >= 0) { pairs.push([i, best]); j = best + 1; }
+  }
+  return pairs;
+}
+/** The words of a and b that the other doesn't have, in order (a longest common run of words). */
+function wordDiff(a, b) {
+  const A = tokens(a), B = tokens(b);
+  if (A.length * B.length > 250000) return [A, B]; // too long to compare: all of both
+  const L = Array.from({ length: A.length + 1 }, () => new Uint16Array(B.length + 1));
+  for (let i = A.length - 1; i >= 0; i--) for (let k = B.length - 1; k >= 0; k--) L[i][k] = A[i].w === B[k].w ? L[i + 1][k + 1] + 1 : Math.max(L[i + 1][k], L[i][k + 1]);
+  const goneA = [], goneB = [];
+  let i = 0, k = 0;
+  while (i < A.length && k < B.length) {
+    if (A[i].w === B[k].w) { i++; k++; } else if (L[i + 1][k] >= L[i][k + 1]) goneA.push(A[i++]); else goneB.push(B[k++]);
+  }
+  return [goneA.concat(A.slice(i)), goneB.concat(B.slice(k))];
+}
+/** A Range over characters [start, end) of el's text. */
+function rangeIn(el, start, end) {
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const r = document.createRange();
+  let pos = 0, set = false;
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    const len = n.data.length;
+    if (!set && start < pos + len) { r.setStart(n, start - pos); set = true; }
+    if (set && end <= pos + len) { r.setEnd(n, end - pos); return r; }
+    pos += len;
+  }
+  return null;
+}
+/** Marks what differs in each choice: paired notes' differing words (`::highlight(cl-mine)` on this
+ *  side's, `cl-theirs` on the other's), a note only one side has (`.cl-solo`), and a note whose words
+ *  are the same but whose indent isn't (`.cl-indent`, with a word saying so). */
+function markDiffs(box, items) {
+  const gone = [], added = [];
+  items.forEach((it, k) => {
+    if (it.props) return;
+    const sec = box.querySelector(`.cl-item[data-k="${k}"]`);
+    if (!sec) return;
+    const row = (side, i) => sec.querySelector(`.cl-col.${side} .cl-b[data-i="${i}"]`);
+    const pairs = pairNotes(it.mine, it.theirs);
+    const pm = new Set(pairs.map((p) => p[0])), pt = new Set(pairs.map((p) => p[1]));
+    it.mine.forEach((_, i) => { if (!pm.has(i)) row('mine', i)?.classList.add('cl-solo'); });
+    it.theirs.forEach((_, i) => { if (!pt.has(i)) row('theirs', i)?.classList.add('cl-solo'); });
+    for (const [i, j] of pairs) {
+      const a = row('mine', i), b = row('theirs', j);
+      if (!a || !b) continue;
+      if (a.textContent === b.textContent) {
+        if (it.mine[i].depth !== it.theirs[j].depth) {
+          for (const [el, d] of [[a, it.mine[i].depth], [b, it.theirs[j].depth]]) {
+            el.classList.add('cl-indent');
+            el.insertAdjacentHTML('beforeend', `<span class="cl-why">${d === 0 ? 'not indented' : `indented ${d === 1 ? 'one level' : `${d} levels`}`}</span>`);
+          }
+        }
+        continue;
+      }
+      const [ga, gb] = wordDiff(a.textContent, b.textContent);
+      for (const w of ga) { const r = rangeIn(a, w.at, w.end); if (r) gone.push(r); }
+      for (const w of gb) { const r = rangeIn(b, w.at, w.end); if (r) added.push(r); }
+    }
+  });
+  if (window.CSS?.highlights && window.Highlight) {
+    CSS.highlights.set('cl-mine', new Highlight(...gone));
+    CSS.highlights.set('cl-theirs', new Highlight(...added));
+  }
+}
+const unmark = () => { if (window.CSS?.highlights) { CSS.highlights.delete('cl-mine'); CSS.highlights.delete('cl-theirs'); } };
 const propsHtml = (t) => (t.trim() ? `<pre class="cl-props">${esc(t.trim())}</pre>` : '<p class="cl-none">(none)</p>');
 /** Both devices added notes where nothing (or only empty bullets) was before: keeping both loses nothing. */
 const bothAdded = (p) => p.mine.length > 0 && p.theirs.length > 0 && p.base.every((b) => !b.text.trim());
@@ -56,6 +149,15 @@ function prePick(p) {
   if (hasAll(p.mine, p.theirs)) return 'mine';
   if (hasAll(p.theirs, p.mine)) return 'theirs';
   return 'both';
+}
+/** The pre-pick comparing a page with its conflict copy: where every note on each side has a close
+ *  partner on the other (a word or an indent changed), this page's, since keeping both would put the
+ *  note there twice; else the side that has notes, or both where each has its own. */
+function copyPick(p) {
+  if (!p.mine.length) return 'theirs';
+  if (!p.theirs.length) return 'mine';
+  const pairs = pairNotes(p.mine, p.theirs);
+  return pairs.length === p.mine.length && pairs.length === p.theirs.length ? 'mine' : 'both';
 }
 /** How many times each note's words are on a page (empty notes don't count). */
 function counts(texts) {
@@ -111,7 +213,7 @@ export async function openClash(o, copy = null) {
   // what to choose from: the page properties (if both changed them), then each clash in page order
   const items = [];
   if (c.preamble) items.push({ props: true, base: c.preamble[0], mine: c.preamble[1], theirs: c.preamble[2], pick: 'mine' });
-  for (const p of c.parts || []) if (p.kind === 'clash') items.push({ ...p, both: bothAdded(p), pick: prePick(p) });
+  for (const p of c.parts || []) if (p.kind === 'clash') items.push({ ...p, both: bothAdded(p), pick: copy ? copyPick(p) : prePick(p) });
   const whole = !c.parts; // too long to compare note by note: keep one version or the other
   if (!whole && !items.length) return keep(o, c, asked, null, [], [], []); // the file changed again: nothing clashes now
   if (!whole) noTwice(c, items, mineWords);
@@ -142,14 +244,14 @@ export async function openClash(o, copy = null) {
         ${['mine', 'theirs'].map((side) => `<label class="cl-col ${side}">
           <input type="radio" name="cl${k}" value="${side}"${it.pick === side ? ' checked' : ''}>
           <span class="cl-h"><i class="${side}"></i>${side === 'mine' ? MINE : THEIRS}${it.pick === side ? ' <em>suggested</em>' : ''}</span>
-          <div class="cl-notes">${it.props ? propsHtml(it[side]) : copy && !it[side].length ? `<p class="cl-none">(${side === 'mine' ? 'not on this page' : 'not in the copy'})</p>` : notesHtml(it[side])}</div>
+          <div class="cl-notes">${it.props ? propsHtml(it[side]) : copy && !it[side].length ? `<p class="cl-none">(${side === 'mine' ? 'not on this page' : 'not in the copy'})</p>` : notesHtml(it[side], minDepth(it))}</div>
         </label>`).join('')}
         ${it.both ? `<label class="cl-col both">
           <input type="radio" name="cl${k}" value="both"${it.pick === 'both' ? ' checked' : ''}>
           <span class="cl-h"><i class="mine"></i><i class="theirs"></i>${copy ? 'Keep both: this page’s, then the copy’s' : 'Keep both: this device’s, then the other copy’s'}${it.pick === 'both' ? ' <em>suggested</em>' : ''}</span>
         </label>` : ''}
       </div>
-      ${copy ? '' : `<div class="cl-base"><span class="cl-h"><i class="base"></i>Before both changes</span><div class="cl-notes">${it.props ? propsHtml(it.base) : it.base.length ? notesHtml(it.base) : '<p class="cl-none">(not there yet)</p>'}</div></div>`}
+      ${copy ? '' : `<div class="cl-base"><span class="cl-h"><i class="base"></i>Before both changes</span><div class="cl-notes">${it.props ? propsHtml(it.base) : it.base.length ? notesHtml(it.base, minDepth(it)) : '<p class="cl-none">(not there yet)</p>'}</div></div>`}
     </section>`).join('')}</div>
     <footer class="panel-foot cl-foot">
       <p class="note">${copy ? 'The page as it is now is saved as a backup copy in <code>logseq/bak</code> first, and the copy goes to the bin afterwards, so nothing is lost.' : 'The version you don’t keep is saved as a backup copy in <code>logseq/bak</code>, so nothing is lost.'}</p>
@@ -161,6 +263,7 @@ export async function openClash(o, copy = null) {
     </footer>`;
   back.append(box);
   document.body.append(back);
+  if (!whole) markDiffs(box, items);
 
   const radios = (k) => box.querySelectorAll(`input[name="cl${k}"]`);
   const picked = () => items.map((it, k) => [...radios(k)].find((r) => r.checked)?.value || it.pick);
@@ -186,6 +289,7 @@ export async function openClash(o, copy = null) {
   return new Promise((resolve) => {
     let busy = false; // keeping a choice: the backups are being made
     const close = (done) => {
+      unmark();
       back.remove();
       document.removeEventListener('keydown', onKey, true);
       resolve(done);

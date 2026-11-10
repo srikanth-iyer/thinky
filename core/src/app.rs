@@ -1361,7 +1361,12 @@ impl App {
         let read = |rel: &str| read_text(&self.root.join(rel)).map_err(|e| e.say(rel))?.ok_or_else(|| format!("{rel} is gone."));
         let (mine_text, theirs_text) = (read(&orig)?, read(copy)?);
         let (mine, theirs) = (split_doc(&mine_text), split_doc(&theirs_text));
-        let parts = crate::merge::lcs(&crate::merge::keys(&mine.blocks), &crate::merge::keys(&theirs.blocks)).map(|pairs| {
+        // notes match when their words do: spaces at line ends and Logseq's fold mark (collapsed::)
+        // aren't differences anyone can see or wants to choose between (the page's own is kept)
+        let norm = |b: &[DocBlock]| -> Vec<(usize, String)> { b.iter().map(|x| (x.depth, same_words(&x.text))).collect() };
+        let (nm, nt) = (norm(&mine.blocks), norm(&theirs.blocks));
+        let (km, kt): (Vec<(usize, &str)>, Vec<(usize, &str)>) = (nm.iter().map(|(d, t)| (*d, t.as_str())).collect(), nt.iter().map(|(d, t)| (*d, t.as_str())).collect());
+        let parts = crate::merge::lcs(&km, &kt).map(|pairs| {
             let mut parts: Vec<crate::merge::Part> = vec![];
             let (mut i, mut j) = (0, 0);
             let mut same: Vec<DocBlock> = vec![];
@@ -2727,6 +2732,18 @@ pub fn alias_clashes(pages: &[crate::vault::PageEntry]) -> Vec<(String, Vec<Stri
 }
 
 /// "Page (1).md", "Page (conflict 2026-…).md", "Page [Conflict].md": a sync copy of "Page.md"?
+/// A note's words for comparing a page with its conflict copy (`compare_copy`): spaces at line ends
+/// dropped, and the fold mark `collapsed:: true/false`, which only says whether it was folded.
+fn same_words(text: &str) -> String {
+    text.lines()
+        .map(str::trim_end)
+        .filter(|l| !l.trim_start().strip_prefix("collapsed::").is_some_and(|v| matches!(v.trim(), "true" | "false")))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim_end()
+        .to_string()
+}
+
 /// The page a conflict copy is a copy of, when its file is there: "X (conflict 2026-11-08-13-18-30).md",
 /// "X.sync-conflict-20261108-131830-ABCDEFG.md" (Syncthing), "X (1).md", "X-conflict….md" → "X.md".
 fn original_of(rel: &str, all: &HashMap<String, Stamp>) -> Option<String> {
