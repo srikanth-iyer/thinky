@@ -320,6 +320,10 @@ an APK whose versionCode isn't higher than the last release's (`prev-cert` reads
 `--verify-update` (old kind) and `--verify-update-newer` (thinky-update.sig) cases. Suggest which number to raise.
 (Builds 34–40's titles were renamed by hand on GitHub, Nov 9; the cloud session's gh can't edit releases.)
 CHANGELOG.md gets a section for every release (Builds 38 and 39 were added late).
+Website changelog (he asked, Nov 10): every release ALSO adds its entry at the top of `site/changelog.html` (the
+public page at srikanth-iyer.github.io/thinky/changelog.html), in the same commit as CHANGELOG.md: heading
+"Build N · version X (Month Year)" and a short <ul> of 2–6 plain one-line points (shorter than CHANGELOG.md, no
+"Under the hood" detail; escape & as &amp;). Builds 38–42 were added late (Nov 10). New site pages go in `site/sitemap.xml`.
 Build 41 (0.5.2; the maintainer's picks of Nov 9, from a clickable preview; tested by t24_build41): the laptop strip
 (app.js `buildChrome`, tabs.js `sideNav`/`alignStrip`, app.css "the top strip"): above the sidebar, fixed spots: the
 sidebar's button, `.hb-dv`, Search, Back, Forward, then Go to date on today's journal / Home elsewhere (one spot, `.hb-nav.at-today`
