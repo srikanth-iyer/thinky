@@ -11,9 +11,15 @@ Run from the repo root after init. Idempotent. Touches only src-tauri/gen/androi
 - launcher icons: copied from src-tauri/icons/android
 - the start-up screen (themes): the brand's cream from the first moment, no icon on Android's own
   splash (the app's start-up drawing comes right after it), so nothing dark flashes first
+
+THINKY_PLAY=1: the Google Play version (an .aab for the Play Store). Play apps may update only through
+Play, so it has no one-click updates: no permission to install apps, no UpdateReceiver, no
+`LeanAndroid.update`/`installUpdate`, and `LeanAndroid.fromPlay()` is true (the page then doesn't
+check GitHub for updates). Run again without it to go back to the downloadable APK's shape.
 """
 import glob, os, re, shutil, sys
 
+PLAY = os.environ.get("THINKY_PLAY") == "1"
 GEN = "src-tauri/gen/android"
 if not os.path.isdir(GEN):
     sys.exit("run `tauri android init` first")
@@ -31,6 +37,13 @@ body = re.sub(r"^(//.*\n)*", "", ours, count=1)
 body = re.sub(r"^import\s+[\w.]+\s*\n", "", body, flags=re.M).lstrip()
 edge = "enableEdgeToEdge()" if "enableEdgeToEdge" in gen_src else ""
 body = body.replace("__EDGE__", edge)
+body = body.replace("__PLAY__", "true" if PLAY else "false")
+if PLAY:
+    for line in ("    @JavascriptInterface fun update(tag: String) { this@MainActivity.startUpdate(tag) }\n",
+                 "    @JavascriptInterface fun installUpdate() { this@MainActivity.installUpdate() }\n"):
+        if line not in body:
+            sys.exit(f"MainActivity.kt has no line {line.strip()!r} to leave out of the Play version")
+        body = body.replace(line, "")
 imports = sorted(set(gen_imports) | set(our_imports))
 open(acts[0], "w").write(f"package {pkg}\n\n" + "\n".join(imports) + "\n\n" + body)
 print("MainActivity ->", acts[0], "package", pkg)
@@ -80,6 +93,10 @@ perms = [
     '<uses-permission android:name="android.permission.INTERNET" />',
     '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />',
 ]
+INSTALL = "android.permission.REQUEST_INSTALL_PACKAGES"
+if PLAY:
+    perms = [p for p in perms if INSTALL not in p]
+    man = re.sub(r"[ \t]*<uses-permission android:name=\"" + re.escape(INSTALL) + r"\"\s*/>\n?", "", man)
 missing = [p for p in perms if p.split('"')[1] not in man]
 if missing:
     man = re.sub(r"(<manifest[^>]*>)", lambda m: m.group(1) + "\n    " + "\n    ".join(missing), man, count=1)
@@ -130,7 +147,9 @@ if ".JournalWidget" not in man:
     man = man[:i] + COMPONENTS + "    " + man[i:]
 # Android's installer reports how an update went (MainActivity.kt); not exported, so only Android,
 # through the app's own PendingIntent, can reach it
-if ".UpdateReceiver" not in man:
+if PLAY:
+    man = re.sub(r"[ \t]*<receiver android:name=\"\.UpdateReceiver\" android:exported=\"false\" />\n?[ \t]*", "    ", man)
+elif ".UpdateReceiver" not in man:
     i = man.rindex("</application>")
     man = man[:i] + '    <receiver android:name=".UpdateReceiver" android:exported="false" />\n    ' + man[i:]
 # leanoutliner://page/… and …/note/… links (the app's "Copy link") open the app at that page:
@@ -153,7 +172,10 @@ if 'android:scheme="leanoutliner"' not in man:
         man = man[:i] + LINKS + man[i:]
 if "requestLegacyExternalStorage" not in man:
     man = man.replace("<application", '<application android:requestLegacyExternalStorage="true"', 1)
+if PLAY and (INSTALL in man or ".UpdateReceiver" in man):
+    sys.exit("the Play version's manifest still asks to install apps")
 open(man_path, "w").write(man)
+print("Manifest:", "the Google Play version (no one-click updates)" if PLAY else "the downloadable APK")
 print("Manifest patched")
 
 # --- Icons

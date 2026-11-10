@@ -7,7 +7,7 @@
 // updates compare it: a release is newer when its version is higher, whichever part went up. The
 // release job on GitHub refuses a build whose version isn't higher than the last release's. The build
 // number is ui/build.js's (made by CI).
-export const VERSION = '0.5.2';
+export const VERSION = '0.5.3';
 
 /** "0.5.2" → [0, 5, 2]; anything else → null. */
 export const parseVersion = (s) => { const m = /^(\d{1,6})\.(\d{1,6})\.(\d{1,6})$/.exec(String(s ?? '').trim()); return m ? m.slice(1).map(Number) : null; };

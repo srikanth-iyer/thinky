@@ -384,6 +384,9 @@ class MainActivity : TauriActivity() {
      *  ("lean-update" events) and, once it has saved everything, calls installUpdate. */
     @JavascriptInterface fun update(tag: String) { this@MainActivity.startUpdate(tag) }
     @JavascriptInterface fun installUpdate() { this@MainActivity.installUpdate() }
+    /** The Google Play version (android_overlay.py with THINKY_PLAY=1 fills this in, and leaves out
+     *  update/installUpdate above): Play updates it, so the page neither checks GitHub nor offers updates. */
+    @JavascriptInterface fun fromPlay(): Boolean = __PLAY__
     /** Test builds only (debuggable: the emulator test): hand this app's own APK to Android's
      *  installer, to check the steps after "ready" (the test then cancels). Does nothing in a release. */
     @JavascriptInterface fun testInstallSelf() {

@@ -1004,6 +1004,7 @@ function keysCard(app) {
 // "Send feedback": opens a new issue on the public GitHub repo in the browser, with the words
 // typed here and the app's version filled in. The app itself sends nothing: the person sees it all
 // on GitHub, can change it, and sends it there (it is public). Needs a GitHub account.
+export const PRIVACY_URL = 'https://srikanth-iyer.github.io/thinky/privacy.html';
 export const FEEDBACK_URL = 'https://github.com/srikanth-iyer/thinky/issues/new';
 
 // The address of a new issue with this message and the app's details (version and system only).
@@ -1047,7 +1048,9 @@ function problemsCard() {
 async function aboutCard(app) {
   const card = h('div', 'card');
   // Build 41: the version (also the app's own) with the build number (ui/build.js, made by CI)
-  card.innerHTML = `<h2>About ${BRAND.word}</h2><p class="note">${BRAND.word} ${esc(VERSION)}${BUILD ? ` · Build ${BUILD}` : ' (preview)'}. Your notes stay as plain Markdown files in your folder.</p>`;
+  card.innerHTML = `<h2>About ${BRAND.word}</h2><p class="note">${BRAND.word} ${esc(VERSION)}${BUILD ? ` · Build ${BUILD}` : ' (preview)'}. Your notes stay as plain Markdown files in your folder. <a href="${PRIVACY_URL}" data-privacy>Privacy</a></p>`;
+  // (Build 42: Google Play wants the privacy policy reachable inside the app too)
+  card.querySelector('[data-privacy]').addEventListener('click', (e) => { e.preventDefault(); app.openUrl(PRIVACY_URL); });
   if (isApp) card.append(await updateBox(app));
   card.append(whatsNew(app));
   return card;
@@ -1153,7 +1156,8 @@ async function updateBox(app) {
     }
     if (a === 'update' && !job.busy && app.latest) updateNow(app, app.latest.tag);
   };
-  if (job.busy || job.stage === 'confirm' || job.stage === 'error') job.show(job.stage, job.html);
+  if (window.LeanAndroid?.fromPlay?.()) draw('play', 'Updates come from Google Play.');
+  else if (job.busy || job.stage === 'confirm' || job.stage === 'error') job.show(job.stage, job.html);
   else if (await app.checkUpdate(6e4)) offer(); // (a build that came out today shows here at once)
   else idle();
   return box;

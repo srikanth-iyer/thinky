@@ -14,6 +14,11 @@ From Build 41 these versions are the app's own: they show in Settings → Update
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 42 · version 0.5.3 (November 2026)
+
+### New
+- A Google Play version of the Android app, for its listing on the Play Store. It is the same app; it updates through Google Play, so it has no "Update now" and doesn't ask to install apps. The downloadable APK is unchanged and keeps its one-click updates.
+
 ## Build 41 · version 0.5.2 (November 2026)
 
 ### New
