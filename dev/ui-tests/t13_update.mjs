@@ -317,6 +317,7 @@ console.log('the Google Play version: updates come from Play, nothing offered he
 ({ browser, page, errors } = await start({ android: {}, hash: '#/journals' }));
 await page.evaluate(() => { delete window.LeanAndroid.update; delete window.LeanAndroid.installUpdate; window.LeanAndroid.fromPlay = () => true; location.hash = '#/settings/about'; });
 await page.waitForSelector('.upd[data-stage]');
+check(await page.locator('.card [data-privacy]').getAttribute('href') === 'https://srikanth-iyer.github.io/thinky/privacy.html', 'About links to the privacy policy');
 check(await stage(page) === 'play' && await page.locator('.upd [data-a]').count() === 0 && /Updates come from Google Play/.test(await text(page)), 'no Update now or Check, "Updates come from Google Play"', await text(page));
 allErrors.push(...errors);
 await browser.close();
