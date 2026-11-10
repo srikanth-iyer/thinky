@@ -335,6 +335,16 @@ copy of its icon (`.pop-hic`; a dot = `.pop-dot`) and its title or colours besid
 one low down scrolls, `maxHeight`); else placed as before, growing from its corner nearest. A right-click on a dot opens the
 note menu from the dot. Motion: dom.js `OPEN_MS` 200 / `CLOSE_MS` 150 / `EASE` cubic-bezier(.2,.8,.2,1), also app.css's
 opening/closing keyframes and `SLIDE_EASE`; tabs widen in / slide over (`paint`, WAAPI, by tab object `el.tab`).
+Build 42 (0.5.3; he said go, Nov 10; tested by t13_update "the Google Play version"): the Google Play version. CI's
+`android` job builds the APK, then runs android_overlay.py again with `THINKY_PLAY=1` and builds `thinky-play.aab`
+(Play takes bundles): no REQUEST_INSTALL_PACKAGES, no UpdateReceiver, no `LeanAndroid.update`/`installUpdate` (Play apps
+may update only through Play), `LeanAndroid.fromPlay()` true → app.js `checkUpdate` asks GitHub nothing and About says
+"Updates come from Google Play" (`play` stage). `sign` signs the bundle with jarsigner and the same release key (Play's
+upload key; its certificate must equal the APK's; its manifest checked for the install permission); `sign-wip` with the
+throw-away key; `release` publishes it with the others (7 files, 10 with the old names). Play App Signing reuses the
+release key (he chose it, Nov 10): `.github/workflows/play-key.yml` (run by hand on main, environment `release`) exports
+it with Google's PEPK, encrypted with Play Console's key saved as `ci/play-encryption-key.pem`, as the artifact
+`thinky-play-key.zip` for Play Console's App signing page. Package name on Play: `com.srikanth.leanoutliner`.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

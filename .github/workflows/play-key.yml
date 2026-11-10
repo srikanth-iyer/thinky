@@ -1,0 +1,62 @@
+# Run once, by hand (Actions → "Play App Signing key" → Run workflow, on main): gives Google Play
+# thinky's Android signing key, encrypted for Google with the key Play Console shows on the app's
+# "App signing" page (saved as ci/play-encryption-key.pem). Play then signs the phones' copies with the
+# same key as the downloadable APK, so a phone with that APK updates straight from Play.
+# The output (thinky-play-key.zip) is encrypted for Google: only Google can read it. Upload it in
+# Play Console → the app → Test and release → App integrity → App signing.
+name: Play App Signing key
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Google's own tool (PEPK), fetched here in a job with no secrets; the next job checks it's this file.
+  tool:
+    runs-on: ubuntu-latest
+    outputs:
+      sum: ${{ steps.get.outputs.sum }}
+    steps:
+      - id: get
+        run: |
+          set -euo pipefail
+          curl -fsSL --proto '=https' -o pepk.jar https://www.gstatic.com/play-apps-publisher-rapid/signing-tool/prod/pepk.jar
+          SUM=$(sha256sum pepk.jar | cut -d' ' -f1)
+          echo "sum=$SUM" >> "$GITHUB_OUTPUT"
+          echo "::notice title=PEPK::pepk.jar SHA-256 $SUM"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: pepk, path: pepk.jar, retention-days: 1 }
+
+  export:
+    needs: tool
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false, sparse-checkout: ci, sparse-checkout-cone-mode: true }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: pepk, path: tool }
+      - name: Export the key, encrypted for Google Play
+        env:
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          SUM: ${{ needs.tool.outputs.sum }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [ -f ci/play-encryption-key.pem ] || { echo "::error::ci/play-encryption-key.pem is missing: save the key from Play Console's App signing page there first."; exit 1; }
+          echo "$SUM  tool/pepk.jar" | sha256sum -c -
+          [ -n "$KEY_PASS" ] && [ -n "$KEYSTORE_B64" ] || { echo "::error::The release environment's secrets are missing."; exit 1; }
+          KS="$RUNNER_TEMP/release.keystore"; trap 'rm -f "$KS"' EXIT
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$KS"
+          mkdir -p out
+          java -jar tool/pepk.jar --keystore="$KS" --alias=leanoutliner --output=out/thinky-play-key.zip \
+            --include-cert --rsa-aes-encryption --encryption-key-path=ci/play-encryption-key.pem \
+            --keystore-pass="pass:$KEY_PASS" --key-pass="pass:$KEY_PASS"
+          [ -s out/thinky-play-key.zip ] || { echo "::error::PEPK made nothing."; exit 1; }
+          echo "::notice title=Play key::thinky-play-key.zip is ready (encrypted for Google Play)"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: thinky-play-key, path: out/thinky-play-key.zip, retention-days: 7 }

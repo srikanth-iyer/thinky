@@ -63,7 +63,7 @@ There is a single executable, `lean-outliner.exe`. What it does depends on how i
 | `--hotkey-selftest <dir>`, `--capture-box-selftest <dir>` | CI only. **Never run on your own computer** (they press keys / use the clipboard). | — | `hotkey/selftest.rs`, `capture_box/selftest.rs` |
 | *(no arguments)* | The **main app** window. | Yes (WebView2) | `src-tauri/src/lib.rs` + `ui/` |
 
-On Android there is one app (the APK) plus Kotlin extras (section 4).
+On Android there is one app (the APK) plus Kotlin extras (section 4). The Google Play version (`thinky-play.aab`, Build 42) is the same app built with `THINKY_PLAY=1`: no one-click updates (Play updates it), `LeanAndroid.fromPlay()` true.
 
 ---
 
