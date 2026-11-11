@@ -457,6 +457,18 @@ scroll-padding (`updateToolbar`); the toolbar's tools are `--tb-w` wide = the ro
 and `#side`, a step down: he wanted filter buttons small, and the sidebar's menu now matches its lists); t26 fails on a
 fixed px size or rounding in app.css, so new rules take a step. The looks' own tokens (`--body-size`, `--title-size`,
 `--props-size`, `--btn-radius`…) and em sizes are as they were.
+Build 45 (0.5.6; his note of Nov 11, a picture of All pages' filter box against the title: "check for other such
+situations in the ui everywhere"; tested by t27_build45): what sits right under a page's title keeps `--title-gap`
+from it (skins.css: `calc(var(--title-size) * .38)`, 16px under a 42px title, 11px under a phone's 30px one):
+`.view > .page-title { margin-bottom }` (the list screens' filter box, Settings' tabs, a property's "Rename or merge…"
+row) and `.page-head .page-props { margin-top }` (a page's properties box; it was 4px). `.list-tools .filter` and
+`.set-tabs-wrap` lost their own 6px above. A new screen: put its title straight in `.view` (or its box in
+`.page-head`) and it follows; don't give the thing under a title a top margin of its own. `.card h3.look-h` has 10px
+under it (`.card h3`'s 2px let the chosen look's ring, 5px outside its card, touch "Day look"). How it was found: a
+script measured, on every screen (laptop and phone, six looks), each heading's letters against the nearest box edge
+under and above. Measured and left as they are: a 15px section heading 5.5–7.5px above its filter box or first
+reference box (in proportion); a pop-up's head row 0–3px above its first row (his pick, Build 41); the search box's
+small group headings.
 The to-do words' colours stay as they are (his decision, Nov 11). In every look `.mk` takes the look's accent, so
 LATER, DOING and WAITING look alike, and in thinky like overdue. A preview for all 12 looks proposed grey (`--ink-soft`)
 for LATER/WAITING and the look's link colour for DOING/NOW; he didn't like that solution and said to keep it as it is.

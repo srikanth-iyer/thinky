@@ -255,11 +255,15 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
 .weekday::before { content: var(--weekday-before); }
 .weekday::after { content: var(--weekday-after); }
 .page-head { margin-bottom: 14px; }
+/* What sits right under a page's title keeps clear of its letters, by one gap everywhere (--title-gap, skins.css;
+   he asked, Nov 11: All pages' filter box nearly touched the title): a list's filter box, Settings' tabs, a
+   property's Rename button, and below, a page's properties box. t27 measures it on every screen. */
+.view > .page-title { margin-bottom: var(--title-gap); }
 /* a page's icon:: emoji, before its name (title, lists, sidebar, search, references) */
 .pg-ic { margin-right: .35em; font-style: normal; }
 .page-title .pg-ic { font-size: .82em; vertical-align: .04em; }
 /* page properties sit right under the title (none: nothing; the ⋯ menu adds them) */
-.page-head .page-props { margin: 4px 0 0; }
+.page-head .page-props { margin: var(--title-gap) 0 0; }
 
 /* ---------- sheets (journal day / page body / cards) ---------- */
 .sheet, .card {
@@ -742,7 +746,7 @@ a.tag .hash { display: var(--hash); }
 .tree { list-style: none; margin: 0; padding: 0; columns: 2 240px; }
 .tree li { padding-top: 2px; padding-bottom: 2px; }
 .list-tools { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
-.list-tools .filter { margin: 6px 0 0; }
+.list-tools .filter { margin: 0; } /* (the title's gap is above it) */
 .toggles { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
 .toggles select, .ex-opts select { font: inherit; font-size: var(--fs-ui); border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); color: var(--ink); padding: 3px 6px; }
 .chip { font: inherit; font-size: var(--fs-sub); border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); border-radius: var(--r-pill); padding: 3px 11px; cursor: pointer; }
@@ -751,7 +755,7 @@ a.tag .hash { display: var(--hash); }
 /* (room around the buttons, so a keyboard focus ring isn't cut off by the sideways scrolling) */
 .chips { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-width: none; padding: 4px; margin: -3px -4px; }
 .chips::-webkit-scrollbar { display: none; }
-.set-tabs-wrap { position: relative; margin: 6px 0 18px; } /* Settings: one tab per kind of setting (settings.js) */
+.set-tabs-wrap { position: relative; margin: 0 0 18px; } /* Settings: one tab per kind of setting (settings.js) */
 .set-tabs-wrap .tab-arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 1; width: 28px; height: 28px; padding: 0;
   border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--ink); font-size: var(--fs-head); line-height: 1;
   box-shadow: 0 1px 4px rgb(0 0 0 / .12); }
@@ -1174,6 +1178,7 @@ html.welcome #topbar:not(.has-winctl) { display: none; }
 .look-mode button[aria-checked="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
 .look-mode button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .look-h { font-size: var(--fs-sub); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--ink-faint); margin: 16px 0 8px; }
+.card h3.look-h { margin-bottom: 10px; } /* (".card h3" gave it 2px: the chosen card's ring, 5px outside the card, touched "Day look") */
 .look-h[hidden], .skin-cards[hidden] { display: none; }
 .looks-h { margin: 6px 8px 3px; font-size: var(--fs-small); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); }
 .looks ul + .looks-h { border-top: 1px solid var(--line); padding-top: 9px; margin-top: 6px; }

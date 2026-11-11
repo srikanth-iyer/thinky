@@ -14,6 +14,15 @@ From Build 41 these versions are the app's own: they show in Settings → Update
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 45 · version 0.5.6 (November 2026)
+
+### Fixed
+- A page's title has room under it. The filter box of All pages, To-dos and Properties, the row of tabs in Settings, the "Rename or merge…" button on a property's page and a page's properties box sat right against the title's letters (1 to 4 pixels away; the button touched them). They now all keep the same distance from it: 16 pixels under a laptop's title, 11 under a phone's smaller one.
+- Settings → Look: the ring round the look in use no longer touches the "Day look" / "Night look" heading above it.
+
+### Under the hood
+- One number sets that distance for every screen (`--title-gap`, a share of the title's size), and a new check measures it on each screen, on a laptop and a phone, and in every look (t27_build45), so a new screen can't bring the crowding back unnoticed.
+
 ## Build 44 · version 0.5.5 (November 2026)
 
 ### New

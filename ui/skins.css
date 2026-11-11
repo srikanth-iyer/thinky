@@ -106,6 +106,8 @@
   --title-size: clamp(30px, 5.2vw, 42px); /* page titles and journal dates on a laptop */
   --title-weight: 500; --title-style: normal; --title-transform: none; --title-tracking: -0.015em;
   --title-ornament: "";
+  --title-gap: calc(var(--title-size) * .38); /* between a page title's words and what sits right under them (a filter box,
+     Settings' tabs, a button, the properties box): 16px under a 42px title, 11px under a phone's 30px one */
   --weekday-font: var(--font-title); --weekday-style: italic; --weekday-transform: none;
   --weekday-before: ""; --weekday-after: ""; --weekday-ink: var(--ink-faint);
   /* bullets; on a laptop the dot under the mouse grows a little on a soft round patch (Logseq's) */
