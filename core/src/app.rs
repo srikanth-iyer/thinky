@@ -464,35 +464,38 @@ const AT_ONCE: usize = 8;
 /// Each result comes with the file's stamp as it was right after its own work (for
 /// `record_written`), so a save made elsewhere a moment later still shows as a change.
 fn each_file<I: Sync, T: Send>(root: &Path, items: &[I], rel: impl Fn(&I) -> &str + Sync, work: impl Fn(&Path, &I) -> T + Sync) -> Vec<(T, Option<std::fs::Metadata>)> {
-    let one = |it: &I| {
-        let path = root.join(rel(it));
-        let r = work(&path, it);
-        (r, std::fs::metadata(&path).ok())
-    };
-    if items.len() < AT_ONCE {
-        return items.iter().map(one).collect();
+    // (each result into its own place, so they come back in the items' order)
+    let out: Vec<Mutex<Option<(T, Option<std::fs::Metadata>)>>> = items.iter().map(|_| Mutex::new(None)).collect();
+    at_once(items.len(), &|i| {
+        let path = root.join(rel(&items[i]));
+        let r = work(&path, &items[i]);
+        *out[i].lock().unwrap_or_else(|p| p.into_inner()) = Some((r, std::fs::metadata(&path).ok()));
+    });
+    out.into_iter().map(|m| m.into_inner().unwrap_or_else(|p| p.into_inner()).expect("every file was worked on")).collect()
+}
+
+/// `job(i)` for every i below `n`: `AT_ONCE` at a time on threads of their own when there are that many
+/// or more, else here, one after another. Written once for every kind of work (`each_file` only wraps
+/// it), so the app's size grows by this little and not by a copy for each action. A job that breaks off
+/// breaks this off too when the threads are done, as it would have one by one.
+fn at_once(n: usize, job: &(dyn Fn(usize) + Sync)) {
+    if n < AT_ONCE {
+        (0..n).for_each(job);
+        return;
     }
     let next = AtomicUsize::new(0);
-    let mut got: Vec<(usize, (T, Option<std::fs::Metadata>))> = std::thread::scope(|s| {
-        let hands: Vec<_> = (0..AT_ONCE)
-            .map(|_| {
-                s.spawn(|| {
-                    let mut mine = vec![];
-                    loop {
-                        // (each thread takes the next file nobody has taken yet)
-                        let i = next.fetch_add(1, Ordering::Relaxed);
-                        let Some(it) = items.get(i) else { break };
-                        mine.push((i, one(it)));
-                    }
-                    mine
-                })
-            })
-            .collect();
-        // (a thread that broke off breaks this off too, as it would have done one by one)
-        hands.into_iter().flat_map(|h| h.join().unwrap_or_else(|e| std::panic::resume_unwind(e))).collect()
+    std::thread::scope(|s| {
+        for _ in 0..AT_ONCE {
+            s.spawn(|| loop {
+                // (each thread takes the next one nobody has taken yet)
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                if i >= n {
+                    break;
+                }
+                job(i);
+            });
+        }
     });
-    got.sort_by_key(|(i, _)| *i);
-    got.into_iter().map(|(_, r)| r).collect()
 }
 
 /// A settings change that met config.edn being saved elsewhere at each try.

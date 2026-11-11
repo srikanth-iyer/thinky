@@ -435,7 +435,8 @@ Also Build 44 (he asked, Nov 11: the flush made many-file actions slow on a slow
 (`link_files`: each once), a merge's Undo and `rename_property` on `AT_ONCE` = 8 threads when there are 8 files or more
 (fewer: one by one on the calling thread, where the tests' write hook lives); every file is still flushed before its
 rename and checked with `Expect::Bytes`; results come back in order with each file's stamp taken right after its own
-work (`record_written`), so a save made elsewhere a moment later still shows as a change. core/tests/many_files.rs
+work (`record_written`), so a save made elsewhere a moment later still shows as a change. The threads are in `at_once`
+(not generic, a `&dyn Fn(usize)`), which `each_file` only wraps: written per action it cost 52 KB of program, so 13 KB. core/tests/many_files.rs
 (rename over 60 files, a property in 40, merge + Undo over 30, bytes compared); the bench renames a page 300 files link
 to (`rename_ms`) and prints 300 flushed writes one after another against 8 at a time.
 Also Build 44 (his comments on the review's doc, Nov 11; tested by t26_build44, t15_edit, t16_logo): the "/" list has an
