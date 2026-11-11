@@ -393,6 +393,49 @@ rows `.cl-solo`; same words at another depth `.cl-indent` + `.cl-why` ("indented
 both sides from `minDepth(it)`; the to-do word is followed by a real space. `copyPick`: every note paired → "mine", else as
 before. Check this folder's report stays (`app.lastCheck` {vault, r, at}, this run only; "Checked at …", the button "Check
 again"); binning pictures, restoring a missing one and a merged copy update `r` too.
+Build 44 (0.5.5; from a review of the app, Nov 10–11, the maintainer said go for these; tested by t26_build44, t23_build39):
+a save is flushed before the rename (app.rs `write_flushed`: `File::create`, `write_all`, `sync_all`, used for the temp file
+and for the direct write a synced drive may need; a flush the drive refuses is skipped, the save isn't). Azulejo taken out
+(`REMOVED` in app.js and boot.js's map: a saved "azulejo", as `skin`, `skinDay` or `skinNight`, opens as thinky; 12 looks;
+`ui/skins/azulejo*.svg` gone; `--sheet-band` stays for a future look). Faint words ≥ 4.5:1 as drawn in every look
+(`--ink-faint`: thinky #716A79, Sticker #716C8B, Automaton #646F89, Plain teal #92AAAD with its `--ink-soft` #9BAFB1 and
+`--mark-bg` #4A441E; Sticker's `--danger` #B43128): t26 walks every drawn word on Journals, a page, To-dos and All pages in
+all 12 looks (not judged: done to-dos and "quiet" properties, faded on purpose). Tables (render.js `tableLines`/`tableCells`/
+`table`: a row `| a | b |`, then a dashes line `|---|:-:|`, then rows; `\|` and a "|" in `code` stay in a cell; cells drawn
+by `inline`; `.tbl-wrap` scrolls sideways and a sideways swipe on it doesn't move the note; without the dashes line the
+rows stay as typed; find.js `hiddenSpans` skips the "|"s, the spaces round them and the dashes line). Fingers
+(`@media (pointer: coarse)`, app.css "Fingers"): invisible `::before` reach on `.bul` (left only, 16px into the margin, 4px
+up and down), `.todo` (up, down, left; never right: Chromium already gives a tap within ~10px of a button to the button,
+so a tap on a note's first letters went to the dot before and would go to the box), `.chip`, `.btn`, `.icon-btn`,
+`.tab-arrow`, `.side-h.side-fold` (to 40px by `min(0px, (100% - 40px) / 2)`); `.chips` has more padding taken back by its
+margin so the reach isn't cut off; `.seg` no longer clips (round ends on its first and last child); the menu's rows 35px.
+The maintainer found filter buttons too big on a phone (Nov 6), so they are drawn as before: only the reach grew. A change
+draws only what changed: `Outline.render` hands the drawn rows to `keepRows`, which keeps the rows at the start and the end
+of the page whose `rowSig` (the note's words, depth, the level its line ends at, has-kids/folded, list number, placeholder,
+and render.js `drawStamp`: the Property display rules' count + the day) is what they were drawn from (`div.sig`) and whose
+words weren't drawn again in place since (`bc.from`), makes the rows between, renumbers `data-i`, and sets hidden/selected
+on kept rows; a row being typed in, one with a ((reference)) (`bc.noKeep`: its words are fetched) or with any passing class
+is made again; more than `CHUNK` new rows, or nothing kept, falls back to the old way (all rows, in parts). `shownStart`/
+`shownEnd`: what the last render showed. t26 compares the page after each kind of change with the same page drawn from
+scratch (`o.shownEnd = -1; o.render()`): keep that check when touching `blockEl`/`viewEl`, and put anything new a row is
+made from into `rowSig`. Long lists: views.js `drawInParts(host, items, html, {first, each, done})` (an invisible
+`.more-tail` over the last 700px; an IntersectionObserver draws the next 300), used by `todosView` (group after group;
+`draw(keep)` draws at least as many rows as were showing, so ticking one far down keeps the place) and by today's
+`scheduledBox` (a group's rows only once it shows). Journals: `journalsView`'s `list.farObs` marks a `.sheet.day` that is off
+the screen (where the whole page scrolls, phones: more than 1.5 screens away; an IntersectionObserver's margin doesn't
+reach past a scrolling pane) `far` = `content-visibility: auto` (only far days, so the containment never clips a day on
+screen; its notes stay in the page: find, Undo and saving as before); every day has `contain-intrinsic-size: auto 400px`,
+so the browser notes its height while it is drawn and holds a far day at it; `textSize` takes `far` off every day and
+watches it again, so each is measured at the new text size (t26; t3_pages' "end of the notes can still be reached").
+Measured (cloud machine, Chromium; a phone is slower): 850-note page, Enter 42–102 → 20 ms, Tab 40–96 → 13–19, Undo 40–94 →
+13–19; To-dos with 2,290 rows 313 → 144 ms to open (16,295 → 1,316 elements); Journals' first screen 16,483 → 460 elements
+with 2,290 overdue to-dos; Enter in today's notes with 300 days loaded 45 → 7–10 ms.
+Seen in the review, not changed (his call): the page properties box and the list filter box touch the title; red does many
+jobs in the thinky look (every to-do word the same red); the "/" list has no icons; the sidebar's corner drawing sits
+under long Favourites/Recent lists; 30 font sizes and 14 corner radii in app.css; while typing on a phone the top bar's
+strip stays empty; a second line starting "- " in a note becomes a sub-note when read again; a page name over ~250 bytes
+says "File name too long … Google Drive"; WebView2 on Windows holds ~200 MB private (the app itself 27 MB) and its profile
+folder 86 MB.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 
@@ -1142,7 +1185,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   sidebar's Look button opens a list with small samples, Settings shows large previews. Add a look:
   token block + entry (id, name, note) in `SKINS` (app.js). Images live in `ui/skins/`. Looks: Plain, Plain night (near-black), Plain teal (Logseq's dark blue-green),
   Calm, Night, Paper, Sticker, Sticker night (from the first mockups), thinky night (Build 39), Automaton (a rule 30
-  pattern around the cards), Azulejo, Calm plain (Calm without cards on a white page, a hairline between days). thinky (Build 32: the logo's
+  pattern around the cards), Calm plain (Calm without cards on a white page, a hairline between days); Azulejo went in Build 44. thinky (Build 32: the logo's
   colours laid out like Calm plain (the maintainer asked: a white page, no cards, a hairline between days; the menu a hint of
   cream #F4F2EE; the cream page was "too creamy"), ink #1D1A2E, its in-app icon an ink tile, accent #C2331A (a deeper red from the spark, so
   words in it read ≥4.5:1; the spark's own red stays `--spark`), ink-blue links with a red line, Inter; the scribble

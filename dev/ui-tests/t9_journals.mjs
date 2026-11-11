@@ -29,7 +29,9 @@ console.log('today: "Scheduled & deadline"');
 const box = todaySheet.locator('.sched');
 check(await box.isVisible(), 'today’s journal has the box');
 const grp = async () => box.locator('.sched-grp').evaluateAll((gs) => gs.map((g) => `${g.dataset.g}:${g.querySelectorAll('.todo-item').length}:${g.querySelector('.sched-list').hidden ? 'folded' : 'open'}`));
-check((await grp()).join(' ') === 'overdue:1:folded today:1:open soon:1:open', 'overdue (folded), today and the next days', (await grp()).join(' '));
+// (Build 44: a folded group's rows are drawn only once it is opened, so "Overdue" has none yet)
+check((await grp()).join(' ') === 'overdue:0:folded today:1:open soon:1:open', 'overdue (folded, its rows not drawn yet), today and the next days', (await grp()).join(' '));
+check(await box.locator('.sched-grp[data-g="overdue"] h4').textContent().then((t) => /1/.test(t)), 'the folded group still says how many it has', await box.locator('.sched-grp[data-g="overdue"] h4').textContent());
 check(await box.locator('.sched-grp[data-g="soon"] h4').textContent().then((t) => t.startsWith('Next 7 days')), 'it looks 7 days ahead by default');
 await box.locator('[data-f="overdue"]').click();
 await sleep(100);

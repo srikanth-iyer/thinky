@@ -7,7 +7,7 @@
 import { ICON } from './dom.js';
 import { confirmBox } from './popups.js';
 import { esc } from './render.js';
-import { hiddenKey, PROP, MARKERS, hasEnd } from './render.js';
+import { hiddenKey, PROP, MARKERS, hasEnd, tableLines, tableCells } from './render.js';
 import { findMath } from './math.js';
 
 const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -18,11 +18,19 @@ const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  *  [from, to) pairs. */
 function hiddenSpans(text) {
   const out = [];
-  let pos = 0, drawer = false, fence = false, math = false, first = true, box = null;
+  let pos = 0, drawer = false, fence = false, math = false, first = true, box = null, tbl = 0, row = 0;
   const lines = text.split('\n');
   lines.forEach((l, li) => {
     const t = l.trim();
     const end = pos + l.length;
+    // a table (render.js): its "|"s with the spaces round them and its dashes line aren't shown
+    if (!tbl && !fence && !math && !drawer && box === null) { tbl = tableLines(lines, li); row = 0; }
+    if (tbl) {
+      if (row === 1) out.push([pos, end]); // the dashes
+      else { let from = pos; for (const [x, y] of tableCells(l)) { out.push([from, pos + x]); from = pos + y; } out.push([from, end]); }
+      tbl--; row++; first = false; pos = end + 1;
+      return;
+    }
     if (first && !fence) { // the first line's to-do word, priority and heading marks show as a box/chips/size
       first = false;
       const mm = l.match(MARKERS);

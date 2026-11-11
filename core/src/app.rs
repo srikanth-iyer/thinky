@@ -349,7 +349,8 @@ pub fn set_write_hook(f: Option<WriteHook>) {
 /// rename that fails (Google Drive or a virus checker holding the file for a moment) is tried
 /// again for about half a second before the direct write that some synced drives need, each try
 /// checked first too; a file that can't be read just then is waited for within that half second,
-/// and never written over unseen (Ok(false)).
+/// and never written over unseen (Ok(false)). The new text is flushed to the disk before the rename
+/// (`write_flushed`).
 pub fn write_atomic_checked(path: &Path, text: &str, expect: Expect) -> Result<bool, String> {
     static N: AtomicUsize = AtomicUsize::new(0);
     if let Some(dir) = path.parent() {
@@ -359,7 +360,7 @@ pub fn write_atomic_checked(path: &Path, text: &str, expect: Expect) -> Result<b
     let fname = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     // hidden (a leading dot), so other apps and the app's own scan ignore it
     let tmp = path.with_file_name(format!(".{fname}.{}-{}.tmp", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
-    std::fs::write(&tmp, text).map_err(|e| {
+    write_flushed(&tmp, text).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         format!("Couldn't write the page: {e}")
     })?;
@@ -403,8 +404,20 @@ pub fn write_atomic_checked(path: &Path, text: &str, expect: Expect) -> Result<b
         return Ok(false);
     }
     let e = last.map(|e| e.to_string()).unwrap_or_default();
-    std::fs::write(path, text).map_err(|e2| format!("Couldn't save the page: {e} / {e2}"))?;
+    write_flushed(path, text).map_err(|e2| format!("Couldn't save the page: {e} / {e2}"))?;
     Ok(true)
+}
+
+/// Write `text` to `path` and ask the system to put it on the disk before going on (Build 44). Without
+/// this, the rename that follows can reach the disk before the words do: a power cut right then leaves
+/// the note's file empty or cut short. A drive that can't do it (some synced or network drives say so)
+/// still gets the words written, as before: only the flush is skipped, never the save.
+fn write_flushed(path: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut f = std::fs::File::create(path)?;
+    f.write_all(text.as_bytes())?;
+    let _ = f.sync_all();
+    Ok(())
 }
 
 /// What `rewrite` did.

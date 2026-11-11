@@ -9,7 +9,7 @@ write('pages/Look test.md', '- [[Marta Pell]] wrote [the book]([[Notes on Wild Y
   + '- DONE ## a finished heading\n- DONE a done note with [[Rosa Penhallow]]\n  status:: closed\n'
   + '- a note with properties\n  type:: book\n  author:: [[Marta Pell]]\n\t- its child\n');
 
-const LOOKS = ['plain', 'plainnight', 'calm', 'calmplain', 'night', 'paper', 'sticker', 'stickernight', 'automaton', 'azulejo'];
+const LOOKS = ['plain', 'plainnight', 'calm', 'calmplain', 'night', 'paper', 'sticker', 'stickernight', 'automaton'];
 const { browser, page, errors } = await open();
 const look = async (id, hash = '#/journals') => {
   await page.evaluate((l) => localStorage.setItem('skin', JSON.stringify(l)), id);

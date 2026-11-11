@@ -270,6 +270,12 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
    today's is taller (Logseq: 250px, today 500). Oct 28: a little roomier still (he asked) */
 .sheet.day, .sheet.page { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 22px); padding-bottom: calc(var(--sheet-pad-bottom) + 22px); }
 .sheet.day { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 30px); padding-bottom: calc(var(--sheet-pad-bottom) + 32px); }
+/* Build 44: a Journals day away from the screen (app.js journalsView marks it) is left undrawn by
+   the browser, at the height it had, until it comes near again: typing stays quick after a long scroll back.
+   The height is noted while the day is drawn (contain-intrinsic-size: auto, which does nothing else to a
+   day on screen); only a far day is contained, so nothing of a day on screen is ever cut off at its edge */
+.sheet.day { contain-intrinsic-size: auto 400px; }
+.sheet.day.far { content-visibility: auto; }
 /* a page's end: room under the faint "+" (it takes no room of its own), and in the looks without cards no
    line under it (he asked: the "+" and the space are end enough; the line stays between days in the
    Journals list). A card keeps its whole edge. --sheet-page-end: 0 in those looks (skins.css). */
@@ -434,6 +440,16 @@ a.tag .hash { display: var(--hash); }
 .bc code { font-size: .86em; background: var(--surface-2); border-radius: 4px; padding: 1px 4px; }
 .bc pre { font-size: 13px; line-height: var(--lh); background: var(--surface-2); border-radius: 8px; padding: 0 12px; overflow-x: auto; margin: 0; white-space: pre; }
 .bc pre code { background: none; padding: 0; }
+/* A long list drawn in parts (Build 44; views.js drawInParts): this invisible marker lies over the last
+   screenful of the rows drawn so far; when it comes on screen, the next part is drawn */
+.more-tail { height: 700px; margin-top: -700px; pointer-events: none; visibility: hidden; }
+/* Tables in notes (Build 44; render.js `table`): a wide one scrolls sideways inside its note */
+.tbl-wrap { overflow-x: auto; max-width: 100%; margin: 4px 0; }
+.tbl { border-collapse: collapse; font-size: .95em; }
+.tbl th, .tbl td { border: 1px solid var(--line); padding: 4px 10px; text-align: left; vertical-align: top; }
+.tbl th { background: var(--surface-2); font-weight: 600; }
+.tbl .ta-c { text-align: center; }
+.tbl .ta-r { text-align: right; }
 .bc mark { background: var(--mark-bg); color: inherit; border-radius: 3px; padding: 0 2px; }
 .bc .macro { font-family: var(--font-mono); font-size: .8em; color: var(--ink-faint); background: var(--surface-2); border-radius: 4px; padding: 1px 5px; }
 /* a flashcard's hidden words ({{cloze …}}; he reviews them in Anki): shown, marked */
@@ -1777,4 +1793,27 @@ html[data-motion="off"] .fading { display: none !important; }
   .fold::after { content: ""; position: absolute; inset: -8px 0; }
   .disclose { position: relative; }
   .disclose::after { content: ""; position: absolute; inset: -11px -6px; }
+  /* Build 44 (a review measured what answers a tap): the same invisible reach for the other small
+     things, each drawn exactly as before. A note's dot reaches into the empty margin on its left, and a
+     to-do's box up, down and to its left: never towards the words (a phone already gives a tap within
+     about 10px of a button to that button, so reaching right would take taps meant for the first
+     letters); filter buttons, the small buttons and the icon buttons to 40px. */
+  .bul::before { content: ""; position: absolute; inset: -4px 0 -4px -16px; }
+  .todo { position: relative; }
+  .todo::before { content: ""; position: absolute; inset: -12px 0 -12px -6px; }
+  .todo-item .todo::before { left: -12px; }
+  .chip, .btn, .icon-btn, .side-h.side-fold { position: relative; }
+  .chip::before, .btn::before, .icon-btn::before, .tab-arrow::before, .side-h.side-fold::before {
+    content: ""; position: absolute; left: 0; right: 0; top: min(0px, calc((100% - 40px) / 2)); bottom: min(0px, calc((100% - 40px) / 2));
+  }
+  .icon-btn::before, .tab-arrow::before { left: min(0px, calc((100% - 40px) / 2)); right: min(0px, calc((100% - 40px) / 2)); }
+  .side-h.side-fold::before { top: -10px; bottom: -3px; }
+  /* (a row of filter buttons scrolls sideways, which cuts off what reaches past it up or down: more
+     room inside it, taken back outside, so nothing moves) */
+  .chips { padding: 7px 4px; margin: -6px -4px; }
+  .seg { overflow: visible; }
+  .seg > :first-child { border-radius: 999px 0 0 999px; }
+  .seg > :last-child { border-radius: 0 999px 999px 0; }
+  /* the phone's menu: its rows a little taller (35px, were 29) */
+  .nav a, .side-list a, .nav .nav-btn { padding-top: 7px; padding-bottom: 7px; }
 }

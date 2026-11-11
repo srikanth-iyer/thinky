@@ -14,6 +14,26 @@ From Build 41 these versions are the app's own: they show in Settings → Update
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 44 · version 0.5.5 (November 2026)
+
+### New
+- Tables in notes. Rows of cells between "|"s, with a line of dashes under the first row (`| Loaf | Water |`, then `|---|---|`), now show as a table instead of as typed. Colons in the dashes line set which way a column lines up (`:--` left, `--:` right, `:-:` centre); a wide table scrolls sideways inside its note. The file is unchanged, so Logseq shows the same table. Find on the page looks in the cells, never at the table's own "|"s.
+
+### Fixed
+- A save is now put on the disk before the page's file is replaced. Before, a power cut or crash in the moment after a save could, rarely, leave that note's file empty or cut short.
+- Faint words (the menu's headings, counts, property names, dates) are darker in thinky, Sticker, Automaton and Plain teal, so they read clearly (at least 4.5 to 1 against what they sit on; they were between 3.0 and 4.2). Sticker's overdue dates and Plain teal's highlighted words too. The other looks already met this.
+- On a phone, small things are easier to hit without looking any bigger: a note's dot answers a tap in the margin to its left, a to-do's box a tap just above, below or left of it, and filter buttons, small buttons and the page's icon buttons answer a tap 36 to 40px tall (they are drawn 28 to 34). The menu's rows are a little taller (35px, were 29). Nothing reaches over a note's words, so a tap on its first letters still edits it.
+- Long pages stay quick to edit. Enter, Tab, Backspace at the start of a note and Undo used to draw the whole page again each time, which took 40 to 100 ms on an 850-note page; now only the rows that changed are drawn (about 20 ms, most of it the screen's own next frame).
+- The To-dos list opens faster with thousands of to-dos: it draws the first 150 and the rest as you scroll towards them. Its counts, filter and sort work on all of them as before, and ticking one far down keeps your place.
+- After a long scroll back through the Journals list, typing in today's notes no longer slows down (with 300 days loaded, Enter took 45 ms; now 7 to 10): days far from the screen are left undrawn until you come back near them.
+- Today's "Scheduled & deadline" draws the overdue to-dos only when you unfold them.
+
+### Removed
+- The Azulejo look. If it was your look, thinky shows instead.
+
+### Under the hood
+- `write_atomic_checked` flushes the temp file (`sync_all`) before the rename; a drive that can't flush still saves. `Outline.keepRows` (editor.js) keeps the rows whose `rowSig` is unchanged at the start and end of the page. `drawInParts` (views.js) draws long lists a part at a time. Journal days far from the screen get `content-visibility: auto` (`.sheet.day.far`). New UI test t26_build44 measures all of it (contrast of every drawn word in all 12 looks, what answers a tap on a phone, a page after each change against one drawn from scratch).
+
 ## Build 43 · version 0.5.4 (November 2026)
 
 ### New

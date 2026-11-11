@@ -6,7 +6,7 @@
 // the emulator test (scripts/android_test.sh step 7b) checks the widgets themselves.
 import { open, check, failures, sleep, BASE } from './lib.mjs';
 
-const LOOKS = ['plain', 'plainnight', 'plainteal', 'calm', 'calmplain', 'night', 'paper', 'sticker', 'stickernight', 'automaton', 'azulejo'];
+const LOOKS = ['plain', 'plainnight', 'plainteal', 'calm', 'calmplain', 'night', 'paper', 'sticker', 'stickernight', 'automaton'];
 const { browser, page, errors } = await open();
 await page.addInitScript(() => {
   window.__widget = [];
@@ -36,7 +36,7 @@ for (const id of LOOKS) {
 }
 check(all, `every look change hands over that look’s colours, as #rrggbb (${LOOKS.length} looks)`, JSON.stringify(bad));
 const teal = await page.evaluate(() => { window.leanApp.setSkin('plainteal'); return window.__widget.at(-1); });
-check(JSON.stringify(teal) === JSON.stringify(['#023643', '#a4b5b6', '#6a8a8f', '#8ec2c2']), 'Plain teal: Logseq’s dark blue-green', JSON.stringify(teal));
+check(JSON.stringify(teal) === JSON.stringify(['#023643', '#a4b5b6', '#92aaad', '#8ec2c2']), 'Plain teal: Logseq’s dark blue-green', JSON.stringify(teal));
 // a colour Android couldn't read as written: handed over as the colour seen
 const odd = await page.evaluate(() => {
   const s = document.documentElement.style;

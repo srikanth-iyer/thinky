@@ -25,13 +25,13 @@ const layers = (s) => s === 'none' ? [] : [...s.matchAll(/(?:rgba?\([^)]*\)|#\w+
   .map((m) => ({ x: +m[1], y: +m[2], blur: +m[3], inset: !!m[4] }));
 
 // ---------- shadows: the raised sheets soft and diffused, no hard lines; the reference wells as in round 1 ----------
-for (const id of ['calm', 'calmplain', 'night', 'paper', 'automaton', 'azulejo']) {
+for (const id of ['calm', 'calmplain', 'night', 'paper', 'automaton']) {
   await look(id, '#/page/Tobias%20Wren%20Okafor');
   const s = await page.evaluate(() => ({ sheet: getComputedStyle(document.querySelector('.sheet.page')).boxShadow, refs: getComputedStyle(document.querySelector('.refgrp')).boxShadow }));
   const sh = layers(s.sheet), rf = layers(s.refs);
   if (id !== 'calmplain') check(sh.length >= 2 && sh.every((l) => l.blur >= 3 && !l.inset) && sh.some((l) => l.y >= 6), `${id}: the sheet is raised by soft shadows only (every layer blurred ≥ 3px, no hard offset)`, s.sheet);
   const well = { calm: 'rgba(26, 33, 48, 0.18) 0px 3px 6px -2px inset', calmplain: 'rgba(26, 33, 48, 0.14) 0px 3px 6px -2px inset', night: 'rgba(0, 0, 0, 0.38) 0px 2px 5px 0px inset',
-    paper: 'rgba(70, 50, 20, 0.08) 0px 1px 3px 0px inset', automaton: 'rgba(23, 32, 51, 0.15) 0px 3px 6px -2px inset', azulejo: 'rgba(26, 33, 48, 0.18) 0px 3px 6px -2px inset' }[id];
+    paper: 'rgba(70, 50, 20, 0.08) 0px 1px 3px 0px inset', automaton: 'rgba(23, 32, 51, 0.15) 0px 3px 6px -2px inset' }[id];
   check(rf.some((l) => l.inset) && s.refs.startsWith(well), `${id}: the reference box pressed in as in round 1 (its inner shade at the top)`, s.refs);
 }
 await look('sticker', '#/journals');
