@@ -267,7 +267,7 @@ console.log('7. the look "thinky": the logo\'s cream, ink and red');
       inkOnSheet: con('var(--ink)', 'var(--surface)'), linkOnSheet: con('var(--link)', 'var(--surface)'), linkOnPage: con('var(--link)', 'var(--bg)'),
       accentOnPage: con('var(--accent)', 'var(--bg)'), accentOnSheet: con('var(--accent)', 'var(--surface)'), onAccent: con('var(--accent-ink)', 'var(--accent)'),
       faint: con('var(--ink-faint)', 'var(--surface)'), tag: con('var(--tag-ink)', 'var(--tag-bg)'),
-      side: getComputedStyle(document.querySelector('#side')).backgroundImage,
+      side: getComputedStyle(document.querySelector('#side .side-art')).backgroundImage,
       name: !!document.querySelector('#side .look-cur svg.wm-in'),
     };
   });

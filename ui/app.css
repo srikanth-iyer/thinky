@@ -188,7 +188,16 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
 .side-sec.folded .side-list { display: none; }
 .side-sec { display: flex; flex-direction: column; min-height: 0; }
 .side-sec > .side-h { flex: none; }
-.side-sec[data-sec="recent"] { flex: 1 1 0; min-height: 1.6em; } /* never smaller than its heading */
+.side-sec[data-sec="recent"] { flex: 0 1 auto; min-height: 1.6em; } /* as tall as its pages, less when they don't all fit (App.fitRecent); never smaller than its heading */
+/* A look's drawing low in the sidebar (thinky's scribble and spark). Build 44 (he asked: keep it, but
+   keep the words apart from it): it was a picture behind the lists, so a long Recent list ran over it.
+   Now it has the room between the lists and the foot to itself: as big as that room allows, at most
+   125px tall, drawn at its lower end; with little room it gets smaller, down to 52px, and only then
+   does Recent show fewer pages. Words never sit on it. A window too short for even that (under 520px)
+   leaves it out, so the sidebar doesn't need a scroll bar for a drawing's sake. */
+.side-art { display: var(--side-art-show, none); flex: 1 0 52px; min-height: 52px; pointer-events: none;
+  background: var(--side-art) 50% calc(100% - 6px) / auto min(100% - 6px, 125px) no-repeat; }
+@media (max-height: 520px) { .side-art { display: none; } }
 .side-sec.folded { flex: 0 0 auto; }
 #recent { min-height: 0; overflow: hidden; }
 #favs { flex: none; max-height: 45%; display: flex; flex-direction: column; } /* leaves Recent some room */
@@ -913,6 +922,12 @@ a.tag .hash { display: var(--hash); }
 #ac li { padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #ac li[aria-selected="true"] { background: var(--accent-tint); }
 #ac li .new { color: var(--ink-faint); }
+/* the "/" list's icons (Build 44): one before each name, all the same width, quieter than the words */
+#ac .ac-ic { display: inline-block; width: 18px; height: 18px; margin: 0 9px 0 -1px; vertical-align: -4px; color: var(--ink-soft); text-align: center; overflow: hidden; /* (so a letter badge sits on the line as a drawing does) */ }
+#ac .ac-ic svg { width: 17px; height: 17px; display: block; margin: .5px auto 0; }
+#ac .ac-ic.ac-t { font: 700 10.5px/18px var(--font-body); letter-spacing: -.02em; }
+#ac .ac-ic.ac-b { box-sizing: border-box; border: 1.4px solid currentColor; border-radius: 4px; line-height: 15px; height: 18px; }
+#ac li[aria-selected="true"] .ac-ic { color: var(--ink); }
 #ac li .hint { float: right; margin-left: 14px; color: var(--ink-faint); font-size: 12.5px; font-family: var(--font-mono); }
 
 /* ---------- popovers, date picker, menus, dialogs ---------- */
@@ -1056,7 +1071,14 @@ button.link { border: 0; background: none; padding: 0; font: inherit; color: var
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; align-items: center;
   background: var(--surface); border-top: 1px solid var(--line); padding: 0 4px;
 }
-.tb-scroll { display: flex; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
+.tb-scroll { display: flex; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; scroll-snap-type: x mandatory; }
+/* Build 44: a whole number of tools fit (--tb-w, app.js fitTools), the row stops on whole tools, and an
+   edge with more tools past it fades softly, so nothing ever shows cut in half */
+.tb-scroll > button { scroll-snap-align: start; }
+#toolbar .tb-scroll > button { width: var(--tb-w, 36px); }
+.tb-scroll.more-r { -webkit-mask-image: linear-gradient(to left, transparent, #000 14px); mask-image: linear-gradient(to left, transparent, #000 14px); }
+.tb-scroll.more-l { -webkit-mask-image: linear-gradient(to right, transparent, #000 14px); mask-image: linear-gradient(to right, transparent, #000 14px); }
+.tb-scroll.more-l.more-r { -webkit-mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent); }
 .tb-scroll::-webkit-scrollbar { display: none; }
 #toolbar button { flex: 0 0 auto; width: 36px; height: 44px; border: 0; background: none; border-radius: 8px; font-size: 16px; letter-spacing: -0.04em; white-space: nowrap; color: var(--ink-soft); cursor: pointer; display: grid; place-items: center; font-family: var(--font-mono); }
 #toolbar button:active { background: var(--accent-tint); }
@@ -1311,7 +1333,7 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   #topbar {
     display: flex; align-items: center; gap: 2px; position: sticky; top: 0; z-index: 30; height: var(--topbar-h);
     background: var(--bg); padding: 0 4px; line-height: 1.3;
-    transition: transform .2s ease, background-color .15s ease, box-shadow .15s ease;
+    transition: transform .2s ease, margin-bottom .2s ease, background-color .15s ease, box-shadow .15s ease;
   }
   /* back on the page mid-page: solid, its lower edge a soft fade into the page, no line (his pick "A",
      Nov 9). With pinned parents showing, the fade moves under them: the bar and the parents read as one
@@ -1323,6 +1345,11 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   .pins-in::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 18px; pointer-events: none;
     background: linear-gradient(var(--sheet-bg, var(--bg)), color-mix(in srgb, var(--sheet-bg, var(--bg)) 0%, transparent)); }
   #topbar.away, #topbar.typing { transform: translateY(-100%); box-shadow: none; }
+  /* Build 44 (he said go): while typing, the bar's own strip goes to the notes too (it used to stay
+     empty at the top of the page, 45px of a small screen above the keyboard): the bar takes no room,
+     and a note scrolled into view needn't keep clear of it */
+  #topbar.typing { margin-bottom: calc(-1 * var(--topbar-h)); }
+  html.typing-in { scroll-padding-top: 8px; }
   body.drawer #topbar { transform: none; }
   #topbar button { flex: none; border: 0; background: none; width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; color: color-mix(in srgb, var(--ink) 58%, var(--bg)); }
   #topbar svg { width: 19px; height: 19px; }

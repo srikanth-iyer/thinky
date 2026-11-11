@@ -478,7 +478,12 @@ class App {
     tb.hidden = !(narrow && (text || (o && (o.cur !== null || o.sel))));
     tb.classList.toggle('tb-text', !!text);
     if (tb.hidden) $('#addnote')?.classList.remove('away'); // (done typing: the "+" is back)
-    $('#topbar')?.classList.toggle('typing', !tb.hidden && !text && !!document.querySelector('textarea.ed')); // (typing in a note: the bar out of the way; not for selected notes)
+    const typing = !tb.hidden && !text && !!document.querySelector('textarea.ed');
+    $('#topbar')?.classList.toggle('typing', typing); // (typing in a note: the bar out of the way; not for selected notes)
+    // Build 44 (he said go): the bar's strip is given to the notes while it's away, so the top of a
+    // small screen isn't left empty above the keyboard (app.css html.typing-in)
+    document.documentElement.classList.toggle('typing-in', typing);
+    if (!tb.hidden) this.fitTools?.(); // (which tools show may have changed: the fades at its edges too)
   }
   /** Press and hold (or right-click) the phone bar's Back or Forward: the places that way in this tab,
    *  nearest first (at most 12), as a browser lists them; picking one goes there in one step. */
@@ -2372,6 +2377,7 @@ class App {
       </nav>
       <div id="favs"></div>
       <div class="side-sec" data-sec="recent"><button type="button" class="side-h side-fold" aria-expanded="true">Recent</button><div class="side-list" id="recent"></div></div>
+      <div class="side-art" aria-hidden="true"></div>
       <div class="side-foot">
         <nav class="nav">
           <button type="button" class="nav-btn cmd-btn" data-a="commands" aria-haspopup="dialog">${ICON.cmd}Commands</button>
@@ -2407,9 +2413,12 @@ class App {
     this.textSize(this.textSize());
     this.applyTextStyle();
     // Recent shows only what fits: check again whenever its space changes (window size, the sidebar
-    // shown again, Favourites folded, the update notice appearing…). The section's size doesn't
-    // depend on how many pages it shows, so hiding some can't set this off again.
-    new ResizeObserver(() => this.fitRecent()).observe($('.side-sec[data-sec="recent"]', side));
+    // shown again, Favourites folded, the update notice appearing…). Build 44: the section is as tall
+    // as the pages it shows (the look's drawing has the room under it, app.css .side-art), so the
+    // sidebar, Favourites and the foot are watched too: more room must bring hidden pages back.
+    // (fitRecent ends with the section the size it had when nothing else changed, so it settles.)
+    const fit = new ResizeObserver(() => this.fitRecent());
+    for (const el of [side, $('.side-sec[data-sec="recent"]', side), $('#favs', side), $('.side-foot', side)]) fit.observe(el);
     // Small buttons (the bars, fold headings, a page's star and menu) don't keep the keyboard focus
     // after a click, like a window's own buttons, so Space or Enter afterwards scroll instead of
     // pressing them again; Tab still reaches them. (The message's button, e.g. Undo, neither: the note
@@ -2568,6 +2577,23 @@ class App {
     const POPS = { more: 'menu', date: 'menu', slash: 'listbox' }; // (what each opens, for screen readers)
     const tbBtn = ([k, label], cls = '') => `<button data-t="${k}"${cls ? ` class="${cls}"` : ''}${POPS[k] ? ` aria-haspopup="${POPS[k]}"${k === 'slash' ? '' : ' aria-expanded="false"'}` : ''} aria-label="${label}" title="${label}">${ICON[k]}</button>`;
     tb.innerHTML = `<div class="tb-scroll">${tools.map((t) => tbBtn(t)).join('')}</div>${tbBtn(['done', 'Close keyboard'], 'tb-pin')}`;
+    // Build 44 (he said go: the last tool before "close keyboard" showed cut in half, which looked
+    // like a mistake): a whole number of tools fit. Each is as wide as the row divided by how many
+    // 36px ones fit in it (--tb-w); scrolled, the row stops on whole tools (CSS scroll snap); and an
+    // edge where more are hidden fades softly (.more-l / .more-r), which says "there is more".
+    const row = tb.firstChild;
+    const edges = () => {
+      row.classList.toggle('more-l', row.scrollLeft > 2);
+      row.classList.toggle('more-r', row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
+    };
+    this.fitTools = () => {
+      const w = row.clientWidth;
+      if (!w) return; // (hidden)
+      row.style.setProperty('--tb-w', `${w / Math.max(1, Math.floor(w / 36))}px`);
+      edges();
+    };
+    new ResizeObserver(() => this.fitTools()).observe(row);
+    row.addEventListener('scroll', edges, { passive: true });
     // A button acts when it's tapped (the finger lifted where it went down), not as soon as a finger
     // lands on it: a sideways swipe that starts on a button scrolls the toolbar and presses nothing
     // (moving more than 10px, or the browser taking the touch over for scrolling, cancels it).

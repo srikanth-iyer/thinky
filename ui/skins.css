@@ -49,7 +49,8 @@
   --find-bg: rgba(255, 196, 0, .32); --find-cur-bg: rgba(255, 140, 0, .62);
   /* page */
   --page-image: none; --page-image-size: auto; --side-bg: transparent;
-  --side-image: none; --side-image-size: auto; --side-image-pos: 0 0; --side-image-repeat: repeat; /* a pattern or a picture on the sidebar (also the phone's menu) */
+  --side-image: none; --side-image-size: auto; --side-image-pos: 0 0; --side-image-repeat: repeat; /* a pattern on the sidebar (also the phone's menu) */
+  --side-art: none; --side-art-show: none; /* a drawing low in the sidebar, in room of its own (app.css .side-art): thinky's scribble */
   /* sheets (journal days, page bodies, cards) */
   --sheet-bg: var(--surface); --sheet-image: none; --sheet-image-size: auto;
   --sheet-border: 1.5px solid #C9CFD8; --sheet-radius: 16px;
@@ -391,7 +392,7 @@
   --mark-bg: #FBE7A8; --danger: #A8261B; --danger-tint: #F9DCD6;
   --edit-bg: #FAF9F6; --guide-ink: #E5E1D9; --bullet-ink: #9A92A0;
   --quote-bar: color-mix(in srgb, var(--accent) 40%, transparent);
-  --side-image: url(skins/thinky-corner.svg); --side-image-size: 132px auto; --side-image-pos: 50% calc(100% - 128px); --side-image-repeat: no-repeat;
+  --side-art: url(skins/thinky-corner.svg); --side-art-show: block;
   /* no cards, as in Calm plain (he asked, Oct 29): the notes sit on the white page, a hairline between days */
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
   --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
@@ -429,7 +430,7 @@
   --mark-bg: #5A4A1C; --danger: #F2B8B5; --danger-tint: #3A2523;
   --edit-bg: #1E1C22; --guide-ink: #2A272F; --bullet-ink: #6F6A76; --bullet-ring: #34313A;
   --quote-bar: color-mix(in srgb, var(--accent) 45%, transparent);
-  --side-image: url(skins/thinky-night-corner.svg); --side-image-size: 132px auto; --side-image-pos: 50% calc(100% - 128px); --side-image-repeat: no-repeat;
+  --side-art: url(skins/thinky-night-corner.svg); --side-art-show: block;
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
   --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
   --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
