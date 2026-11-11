@@ -430,12 +430,40 @@ watches it again, so each is measured at the new text size (t26; t3_pages' "end 
 Measured (cloud machine, Chromium; a phone is slower): 850-note page, Enter 42–102 → 20 ms, Tab 40–96 → 13–19, Undo 40–94 →
 13–19; To-dos with 2,290 rows 313 → 144 ms to open (16,295 → 1,316 elements); Journals' first screen 16,483 → 460 elements
 with 2,290 overdue to-dos; Enter in today's notes with 300 days loaded 45 → 7–10 ms.
-Seen in the review, not changed (his call): the page properties box and the list filter box touch the title; red does many
-jobs in the thinky look (every to-do word the same red); the "/" list has no icons; the sidebar's corner drawing sits
-under long Favourites/Recent lists; 30 font sizes and 14 corner radii in app.css; while typing on a phone the top bar's
-strip stays empty; a second line starting "- " in a note becomes a sub-note when read again; a page name over ~250 bytes
-says "File name too long … Google Drive"; WebView2 on Windows holds ~200 MB private (the app itself 27 MB) and its profile
-folder 86 MB.
+Also Build 44 (he asked, Nov 11: the flush made many-file actions slow on a slow disk, 21.5 ms a save on GitHub's;
+"isn't there a way without compromising on the safety?"): `each_file` (app.rs) does a rename's and a merge's link files
+(`link_files`: each once), a merge's Undo and `rename_property` on `AT_ONCE` = 8 threads when there are 8 files or more
+(fewer: one by one on the calling thread, where the tests' write hook lives); every file is still flushed before its
+rename and checked with `Expect::Bytes`; results come back in order with each file's stamp taken right after its own
+work (`record_written`), so a save made elsewhere a moment later still shows as a change. core/tests/many_files.rs
+(rename over 60 files, a property in 40, merge + Undo over 30, bytes compared); the bench renames a page 300 files link
+to (`rename_ms`) and prints 300 flushed writes one after another against 8 at a time.
+Also Build 44 (his comments on the review's doc, Nov 11; tested by t26_build44, t15_edit, t16_logo): the "/" list has an
+icon before each row (dom.js `SLASH_ICON` by the row's id: drawings, a letter badge `{t}` for H1–H6 and a boxed one
+`{t, b}` for a priority; popups.js `slashIcon`, `.ac-ic`, aria-hidden, `overflow: hidden` so a badge sits on the line as
+a drawing does; a test that reads a row's name skips `.ac-ic`). The thinky looks' sidebar drawing ("don't hide the logo
+but ensure better separation of the text from the logo"): no longer `--side-image` behind the lists but `.side-art`
+(app.js, between Recent and `.side-foot`; `--side-art` + `--side-art-show: block` in skins.css): `flex: 1 0 52px`, the
+picture at its lower end, `auto min(100% - 6px, 125px)`; Recent is `flex: 0 1 auto` (as tall as its pages) and gives up
+pages only once the drawing is down to 52px (`fitRecent`, whose ResizeObserver now also watches #side, #favs and the
+foot, so more room brings pages back); under 520px of window height the drawing is left out. The phone while typing:
+`#topbar.typing` has `margin-bottom: -topbar-h` (the notes move up into its strip) and `html.typing-in` a small
+scroll-padding (`updateToolbar`); the toolbar's tools are `--tb-w` wide = the row's width over how many 36px ones fit
+(`App.fitTools`, a ResizeObserver on `.tb-scroll`), the row snaps to whole tools and fades at an edge with more past it
+(`.more-l`/`.more-r`, a mask). One scale (skins.css `--fs-tiny/small/sub/ui/read/big/head/top` = 11–16, 18, 22px and
+`--r-line/s/m/l/xl/pill` = 2, 4, 6, 8, 12px, 999px): every fixed text size and rounding in app.css is one of them
+(17 sizes and 13 roundings before; halves went up, except `.chip`, `.chip-find input`, `.crumbs`, `.sec-h .n`, `.pg-col`
+and `#side`, a step down: he wanted filter buttons small, and the sidebar's menu now matches its lists); t26 fails on a
+fixed px size or rounding in app.css, so new rules take a step. The looks' own tokens (`--body-size`, `--title-size`,
+`--props-size`, `--btn-radius`…) and em sizes are as they were.
+Shown to him as a preview, NOT in the app (he asked what the solution is, "this is only for one theme"): the to-do words
+(`.mk`) take the look's accent in every look, so LATER, DOING and WAITING look alike, and in thinky like overdue; the
+proposal is grey (`--ink-soft`) for LATER/WAITING, the look's link colour for DOING/NOW, red left to overdue, by tokens so
+all 12 looks follow (≥ 5.4:1 in each). Wait for his word.
+Seen in the review, not changed (his call): the page properties box and the list filter box touch the title; the to-do
+words' colours (above); a second line starting "- " in a note becomes a sub-note when read again; a page name over ~250
+bytes says "File name too long … Google Drive"; numbered lines inside a note show as typed; Automaton's To-dos list on a
+phone sits on the pattern; WebView2 on Windows holds ~200 MB private (the app itself 27 MB) and its profile folder 86 MB.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 
@@ -1189,7 +1217,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   colours laid out like Calm plain (the maintainer asked: a white page, no cards, a hairline between days; the menu a hint of
   cream #F4F2EE; the cream page was "too creamy"), ink #1D1A2E, its in-app icon an ink tile, accent #C2331A (a deeper red from the spark, so
   words in it read ≥4.5:1; the spark's own red stays `--spark`), ink-blue links with a red line, Inter; the scribble
-  faint in the sidebar's corner, `ui/skins/thinky-corner.svg` as `--side-image` (no `--` in SVG comments: XML
+  faint low in the sidebar, `ui/skins/thinky-corner.svg` as `--side-art` (Build 44: in room of its own, `.side-art`; no `--` in SVG comments: XML
   refuses it); its name is drawn as the wordmark where looks are listed (`SKINS` `word: true`, `lookName`)). Grimoire was
   taken out (Build 32, the maintainer asked): a saved "grimoire" opens as Calm (`setSkin`'s fallback, and boot.js's
   small map of removed looks before the first paint). Automaton (refined, Build 32): a stronger

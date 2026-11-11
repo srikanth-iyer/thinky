@@ -1673,7 +1673,7 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 .menu .m-head { padding: 6px 10px 2px; font-size: var(--fs-small); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); }
 /* Menus with headings (Build 39, he asked: which line is a heading and which a choice wasn't clear): a line
    and room before each heading after the first, a group's choices close together. */
-.menu.grouped .m-head { padding: 8px 10px 3px; }
+.menu.grouped .m-head { padding: 8px 10px 2px; } /* (2px under it since the scale made its words 12px, were 11.5: the menu stays as short) */
 .menu.grouped .m-head:not(:first-child) { border-top: 1px solid var(--line); margin-top: 5px; padding-top: 11px; }
 .menu.grouped button { padding-top: 6px; padding-bottom: 6px; }
 /* One of several (the Sort menus): a round radio dot, filled for the one in use, which is also bold on a soft fill. */

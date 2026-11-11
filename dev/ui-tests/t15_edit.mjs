@@ -31,7 +31,8 @@ const ta = page.locator('textarea.ed');
 const val = () => ta.inputValue();
 const sel = () => ta.evaluate((t) => [t.selectionStart, t.selectionEnd]);
 const ac = page.locator('#ac');
-const acItems = () => page.evaluate(() => (document.querySelector('#ac').hidden ? [] : [...document.querySelectorAll('#ac li')].map((l) => l.firstChild?.textContent?.trim() ?? l.textContent.trim())));
+// (a row's name: its first part that isn't the "/" list's icon)
+const acItems = () => page.evaluate(() => (document.querySelector('#ac').hidden ? [] : [...document.querySelectorAll('#ac li')].map((l) => ([...l.childNodes].find((n) => !n.classList?.contains('ac-ic')) ?? l).textContent.trim())));
 // (the "((" list: each note's words, then its page)
 async function slash(q, pick = null) {
   await page.keyboard.type('/' + q, { delay: 15 });
