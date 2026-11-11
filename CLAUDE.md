@@ -393,6 +393,80 @@ rows `.cl-solo`; same words at another depth `.cl-indent` + `.cl-why` ("indented
 both sides from `minDepth(it)`; the to-do word is followed by a real space. `copyPick`: every note paired → "mine", else as
 before. Check this folder's report stays (`app.lastCheck` {vault, r, at}, this run only; "Checked at …", the button "Check
 again"); binning pictures, restoring a missing one and a merged copy update `r` too.
+Build 44 (0.5.5; from a review of the app, Nov 10–11, the maintainer said go for these; tested by t26_build44, t23_build39):
+a save is flushed before the rename (app.rs `write_flushed`: `File::create`, `write_all`, `sync_all`, used for the temp file
+and for the direct write a synced drive may need; a flush the drive refuses is skipped, the save isn't). Azulejo taken out
+(`REMOVED` in app.js and boot.js's map: a saved "azulejo", as `skin`, `skinDay` or `skinNight`, opens as thinky; 12 looks;
+`ui/skins/azulejo*.svg` gone; `--sheet-band` stays for a future look). Faint words ≥ 4.5:1 as drawn in every look
+(`--ink-faint`: thinky #716A79, Sticker #716C8B, Automaton #646F89, Plain teal #92AAAD with its `--ink-soft` #9BAFB1 and
+`--mark-bg` #4A441E; Sticker's `--danger` #B43128): t26 walks every drawn word on Journals, a page, To-dos and All pages in
+all 12 looks (not judged: done to-dos and "quiet" properties, faded on purpose). Tables (render.js `tableLines`/`tableCells`/
+`table`: a row `| a | b |`, then a dashes line `|---|:-:|`, then rows; `\|` and a "|" in `code` stay in a cell; cells drawn
+by `inline`; `.tbl-wrap` scrolls sideways and a sideways swipe on it doesn't move the note; without the dashes line the
+rows stay as typed; find.js `hiddenSpans` skips the "|"s, the spaces round them and the dashes line). Fingers
+(`@media (pointer: coarse)`, app.css "Fingers"): invisible `::before` reach on `.bul` (left only, 16px into the margin, 4px
+up and down), `.todo` (up, down, left; never right: Chromium already gives a tap within ~10px of a button to the button,
+so a tap on a note's first letters went to the dot before and would go to the box), `.chip`, `.btn`, `.icon-btn`,
+`.tab-arrow`, `.side-h.side-fold` (to 40px by `min(0px, (100% - 40px) / 2)`); `.chips` has more padding taken back by its
+margin so the reach isn't cut off; `.seg` no longer clips (round ends on its first and last child); the menu's rows 35px.
+The maintainer found filter buttons too big on a phone (Nov 6), so they are drawn as before: only the reach grew. A change
+draws only what changed: `Outline.render` hands the drawn rows to `keepRows`, which keeps the rows at the start and the end
+of the page whose `rowSig` (the note's words, depth, the level its line ends at, has-kids/folded, list number, placeholder,
+and render.js `drawStamp`: the Property display rules' count + the day) is what they were drawn from (`div.sig`) and whose
+words weren't drawn again in place since (`bc.from`), makes the rows between, renumbers `data-i`, and sets hidden/selected
+on kept rows; a row being typed in, one with a ((reference)) (`bc.noKeep`: its words are fetched) or with any passing class
+is made again; more than `CHUNK` new rows, or nothing kept, falls back to the old way (all rows, in parts). `shownStart`/
+`shownEnd`: what the last render showed. t26 compares the page after each kind of change with the same page drawn from
+scratch (`o.shownEnd = -1; o.render()`): keep that check when touching `blockEl`/`viewEl`, and put anything new a row is
+made from into `rowSig`. Long lists: views.js `drawInParts(host, items, html, {first, each, done})` (an invisible
+`.more-tail` over the last 700px; an IntersectionObserver draws the next 300), used by `todosView` (group after group;
+`draw(keep)` draws at least as many rows as were showing, so ticking one far down keeps the place) and by today's
+`scheduledBox` (a group's rows only once it shows). Journals: `journalsView`'s `list.farObs` marks a `.sheet.day` that is off
+the screen (where the whole page scrolls, phones: more than 1.5 screens away; an IntersectionObserver's margin doesn't
+reach past a scrolling pane) `far` = `content-visibility: auto` (only far days, so the containment never clips a day on
+screen; its notes stay in the page: find, Undo and saving as before); every day has `contain-intrinsic-size: auto 400px`,
+so the browser notes its height while it is drawn and holds a far day at it; `textSize` takes `far` off every day and
+watches it again, so each is measured at the new text size (t26; t3_pages' "end of the notes can still be reached").
+Measured (cloud machine, Chromium; a phone is slower): 850-note page, Enter 42–102 → 20 ms, Tab 40–96 → 13–19, Undo 40–94 →
+13–19; To-dos with 2,290 rows 313 → 144 ms to open (16,295 → 1,316 elements); Journals' first screen 16,483 → 460 elements
+with 2,290 overdue to-dos; Enter in today's notes with 300 days loaded 45 → 7–10 ms.
+Also Build 44 (he asked, Nov 11: the flush made many-file actions slow on a slow disk, 21.5 ms a save on GitHub's;
+"isn't there a way without compromising on the safety?"): `each_file` (app.rs) does a rename's and a merge's link files
+(`link_files`: each once), a merge's Undo and `rename_property` on `AT_ONCE` = 8 threads when there are 8 files or more
+(fewer: one by one on the calling thread, where the tests' write hook lives); every file is still flushed before its
+rename and checked with `Expect::Bytes`; results come back in order with each file's stamp taken right after its own
+work (`record_written`), so a save made elsewhere a moment later still shows as a change. The threads are in `at_once`
+(not generic, a `&dyn Fn(usize)`), which `each_file` only wraps: written per action it cost 52 KB of program, so 13 KB. core/tests/many_files.rs
+(rename over 60 files, a property in 40, merge + Undo over 30, bytes compared); the bench renames a page 300 files link
+to (`rename_ms`) and prints 300 flushed writes one after another against 8 at a time.
+Also Build 44 (his comments on the review's doc, Nov 11; tested by t26_build44, t15_edit, t16_logo): the "/" list has an
+icon before each row (dom.js `SLASH_ICON` by the row's id: drawings, a letter badge `{t}` for H1–H6 and a boxed one
+`{t, b}` for a priority; popups.js `slashIcon`, `.ac-ic`, aria-hidden, `overflow: hidden` so a badge sits on the line as
+a drawing does; a test that reads a row's name skips `.ac-ic`). The thinky looks' sidebar drawing ("don't hide the logo
+but ensure better separation of the text from the logo"): no longer `--side-image` behind the lists but `.side-art`
+(app.js, between Recent and `.side-foot`; `--side-art` + `--side-art-show: block` in skins.css): `flex: 1 0 52px`, the
+picture at its lower end, `auto min(100% - 6px, 125px)`; Recent is `flex: 0 1 auto` (as tall as its pages) and gives up
+pages only once the drawing is down to 52px (`fitRecent`, whose ResizeObserver now also watches #side, #favs and the
+foot, so more room brings pages back); under 520px of window height the drawing is left out. The phone while typing:
+`#topbar.typing` has `margin-bottom: -topbar-h` (the notes move up into its strip) and `html.typing-in` a small
+scroll-padding (`updateToolbar`); the toolbar's tools are `--tb-w` wide = the row's width over how many 36px ones fit
+(`App.fitTools`, a ResizeObserver on `.tb-scroll`), the row snaps to whole tools and fades at an edge with more past it
+(`.more-l`/`.more-r`, a mask). One scale (skins.css `--fs-tiny/small/sub/ui/read/big/head/top` = 11–16, 18, 22px and
+`--r-line/s/m/l/xl/pill` = 2, 4, 6, 8, 12px, 999px): every fixed text size and rounding in app.css is one of them
+(17 sizes and 13 roundings before; halves went up, except `.chip`, `.chip-find input`, `.crumbs`, `.sec-h .n`, `.pg-col`
+and `#side`, a step down: he wanted filter buttons small, and the sidebar's menu now matches its lists); t26 fails on a
+fixed px size or rounding in app.css, so new rules take a step. The looks' own tokens (`--body-size`, `--title-size`,
+`--props-size`, `--btn-radius`…) and em sizes are as they were.
+The to-do words' colours stay as they are (his decision, Nov 11). In every look `.mk` takes the look's accent, so
+LATER, DOING and WAITING look alike, and in thinky like overdue. A preview for all 12 looks proposed grey (`--ink-soft`)
+for LATER/WAITING and the look's link colour for DOING/NOW; he didn't like that solution and said to keep it as it is.
+Don't bring it back unasked; another idea for it needs his word first.
+The speed check's reference for a save is 5 ms (he agreed, Nov 11: with the flush, GitHub's machines measured 21.5,
+3.3 and 4.7 ms; `ci/baseline.json` `save_ms`, so it warns above 10).
+Seen in the review, not changed (his call): the page properties box and the list filter box touch the title; a second
+line starting "- " in a note becomes a sub-note when read again; a page name over ~250 bytes says "File name too long …
+Google Drive"; numbered lines inside a note show as typed; Automaton's To-dos list on a phone sits on the pattern;
+WebView2 on Windows holds ~200 MB private (the app itself 27 MB) and its profile folder 86 MB.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 
@@ -1142,11 +1216,11 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   sidebar's Look button opens a list with small samples, Settings shows large previews. Add a look:
   token block + entry (id, name, note) in `SKINS` (app.js). Images live in `ui/skins/`. Looks: Plain, Plain night (near-black), Plain teal (Logseq's dark blue-green),
   Calm, Night, Paper, Sticker, Sticker night (from the first mockups), thinky night (Build 39), Automaton (a rule 30
-  pattern around the cards), Azulejo, Calm plain (Calm without cards on a white page, a hairline between days). thinky (Build 32: the logo's
+  pattern around the cards), Calm plain (Calm without cards on a white page, a hairline between days); Azulejo went in Build 44. thinky (Build 32: the logo's
   colours laid out like Calm plain (the maintainer asked: a white page, no cards, a hairline between days; the menu a hint of
   cream #F4F2EE; the cream page was "too creamy"), ink #1D1A2E, its in-app icon an ink tile, accent #C2331A (a deeper red from the spark, so
   words in it read ≥4.5:1; the spark's own red stays `--spark`), ink-blue links with a red line, Inter; the scribble
-  faint in the sidebar's corner, `ui/skins/thinky-corner.svg` as `--side-image` (no `--` in SVG comments: XML
+  faint low in the sidebar, `ui/skins/thinky-corner.svg` as `--side-art` (Build 44: in room of its own, `.side-art`; no `--` in SVG comments: XML
   refuses it); its name is drawn as the wordmark where looks are listed (`SKINS` `word: true`, `lookName`)). Grimoire was
   taken out (Build 32, the maintainer asked): a saved "grimoire" opens as Calm (`setSkin`'s fallback, and boot.js's
   small map of removed looks before the first paint). Automaton (refined, Build 32): a stronger

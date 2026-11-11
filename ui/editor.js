@@ -4,7 +4,7 @@
 // the user chooses (the other version is kept as a backup copy).
 
 import { call, today, nowTime, noteLinkUrl, store } from './api.js';
-import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, hiddenKey, parseStamp, stampText, withPictureSize, playVideo } from './render.js';
+import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, hiddenKey, parseStamp, stampText, withPictureSize, playVideo, drawStamp } from './render.js';
 import { pickDate, caretRect, noteMenu, menu, formBox, confirmBox } from './popups.js';
 // the clash screen loads when a clash first shows (Build 39: a faster start)
 const openClash = (...a) => import('./clash.js').then((m) => m.openClash(...a));
@@ -387,16 +387,75 @@ export class Outline {
   render() {
     clearTimeout(this.chunkT);
     this.press?.end(false); // (a dot being pressed or a note dragged: its rows are about to go)
-    this.drawn = this.start;
+    const old = this.drawn === this.shownEnd && this.divs ? this.divs.slice(this.shownStart, this.shownEnd) : null; // (all drawn: its rows in order)
     this.hidden = this.hiddenSet();
     this.nums = this.listMarks();
-    this.divs = [];
-    this.el.replaceChildren();
-    this.drawMore(CHUNK);
+    this.stamp = drawStamp();
+    if (!old || !this.keepRows(old)) {
+      this.drawn = this.start;
+      this.divs = [];
+      this.el.replaceChildren();
+      this.drawMore(CHUNK);
+    }
+    this.shownStart = this.start;
+    this.shownEnd = this.end;
     this.renderCrumbs();
     this.endPlus();
     this.pinned = null; // notes moved: the pinned ones are worked out again
     this.app.pinSoon?.();
+  }
+  /** Everything a drawn row is made from, as one text (blockEl, viewEl): while it's the same, the row
+   *  can stay as it is. Selected and hidden aren't in it: `keepRows` sets those on a kept row. */
+  rowSig(i) {
+    const b = this.blocks[i], d = b.depth - this.baseDepth, folded = this.isCollapsed(i);
+    const next = folded ? this.subtreeEnd(i) : i + 1;
+    const e = next < this.end ? this.blocks[next].depth - this.baseDepth : 0;
+    const ph = !b.text.trim() && i === this.start && this.end - this.start === 1;
+    return `${this.stamp}|${b.depth}|${d}|${e < d ? Math.max(e, 0) : ''}|${folded ? 'c' : this.hasKids(i) ? 'k' : ''}|${this.nums?.get(i)?.mark ?? ''}|${ph ? 1 : 0}|${b.text}`;
+  }
+  /** Build 44 (a review timed Enter, Tab and Undo on an 855-note page: 40–100 ms, the whole page drawn
+   *  again each time): after a change, keep the rows that are the same at the start and at the end of
+   *  the page and draw only the ones between. `old`: the rows on the page, in order, all drawn. False:
+   *  nothing to keep, or too much changed (the caller draws the page from scratch, in parts, as before).
+   *  A row is kept only as it was drawn: one being typed in, one holding a ((reference)) (its words
+   *  are fetched) or carrying a passing mark (found, lifted, swiped…) is drawn again. */
+  keepRows(old) {
+    const [a, z] = [this.start, this.end];
+    const PLAIN = new Set(['blk', 'has-kids', 'collapsed', 'sel', 'marker-done']);
+    const same = (div, i) => {
+      if (!div || div.sig !== this.rowSig(i) || div.parentElement !== this.el) return false;
+      const bc = div.lastElementChild;
+      if (!bc?.classList.contains('bc') || bc.noKeep || bc.from !== this.blocks[i].text) return false;
+      for (const c of div.classList) if (!PLAIN.has(c)) return false;
+      return true;
+    };
+    let p = 0;
+    while (p < old.length && a + p < z && same(old[p], a + p)) p++;
+    let s = 0;
+    while (s < old.length - p && z - 1 - s >= a + p && same(old[old.length - 1 - s], z - 1 - s)) s++;
+    const fresh = z - a - p - s; // rows to draw
+    if (!(p + s) || fresh > CHUNK) return false;
+    for (const c of [...this.el.children]) if (!c.classList.contains('blk')) c.remove(); // (a drop line, the line under the mouse: as a fresh page has none)
+    for (let k = p; k < old.length - s; k++) old[k].remove();
+    const divs = [];
+    const keep = (div, i) => {
+      divs[i] = div;
+      if (+div.dataset.i !== i) div.dataset.i = i;
+      const hide = this.hidden.has(i);
+      if (div.hidden !== hide) div.hidden = hide;
+      const sel = this.inSel(i);
+      if (div.classList.contains('sel') !== sel) div.classList.toggle('sel', sel);
+    };
+    for (let k = 0; k < p; k++) keep(old[k], a + k);
+    for (let k = 0; k < s; k++) keep(old[old.length - s + k], z - s + k);
+    this.divs = divs;
+    if (fresh) {
+      const frag = document.createDocumentFragment();
+      for (let i = a + p; i < z - s; i++) frag.append(this.blockEl(i));
+      if (p) old[p - 1].after(frag); else old[old.length - s].before(frag);
+    }
+    this.drawn = z;
+    return true;
   }
   /** The faint "+" after the last note: hidden where nothing can be written, and while the page's
    *  only note is still empty (its "Click to write…" does that job). */
@@ -436,6 +495,7 @@ export class Outline {
     const div = document.createElement('div');
     div.className = 'blk';
     div.dataset.i = i;
+    div.sig = this.rowSig(i); // (what it was drawn from: keepRows)
     this.divs[i] = div;
     const d = b.depth - this.baseDepth;
     div.style.setProperty('--d', d);
@@ -486,6 +546,7 @@ export class Outline {
     const b = this.blocks[i];
     const bc = document.createElement('div');
     bc.className = 'bc';
+    bc.from = b.text; // (the words it shows: a row whose words were drawn again in place, keepRows)
     const r = renderBlock(b.text, b.depth);
     // Logseq's background colour: a pale tint of it (app.css, tokens in skins.css); an older note's own
     // colour (Logseq once wrote "#978626"…) as it is, with white words, as Logseq shows it
@@ -502,7 +563,7 @@ export class Outline {
     if (r.priority) pre += `<span class="prio p${r.priority}" title="Priority ${r.priority}">${r.priority}</span>`;
     const html = pre + r.html + datesHtml(r.dates, !r.marker || OPEN.has(r.marker)) + propsHtml(r.props);
     bc.innerHTML = html;
-    if (html.includes(' data-ref="')) this.app.blockRefs?.(bc); // ((block references)): the words of the note they name
+    if (html.includes(' data-ref="')) { bc.noKeep = true; this.app.blockRefs?.(bc); } // ((block references)): the words of the note they name (fetched, so such a row is always drawn again: keepRows)
     // pictures get a corner handle to resize them (dragPicture), unless the note can't be edited
     if (!this.readonly && html.includes('class="pic"')) {
       for (const p of bc.querySelectorAll('.pic')) p.insertAdjacentHTML('beforeend', '<span class="pic-h" title="Drag to change the size (double-click: the usual size)"></span>');
@@ -702,7 +763,7 @@ export class Outline {
       // Logseq): also on the note being typed in, which then moves with the keyboard still up (a press held
       // before moving is choosing words, not a swipe: `t0`)
       const typing = !!e.target.closest('.ed');
-      if (e.touches.length !== 1 || this.readonly || !blk || !(typing || e.target.closest('.bc')) || t.clientX < EDGE || e.target.closest('.fold, .todo, img, .pic-h, pre, .math')) return;
+      if (e.touches.length !== 1 || this.readonly || !blk || !(typing || e.target.closest('.bc')) || t.clientX < EDGE || e.target.closest('.fold, .todo, img, .pic-h, pre, .math, .tbl-wrap')) return;
       sw = { blk, i: +blk.dataset.i, x: t.clientX, y: t.clientY, dx: 0, dy: 0, on: false, typing, t0: Date.now(), sy: scrollY + (this.el.closest('.pane')?.scrollTop ?? 0) }; // (its side's notes)
     }, { passive: true });
     this.el.addEventListener('touchmove', (e) => {

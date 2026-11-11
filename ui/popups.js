@@ -4,7 +4,7 @@
 import { call, today, nowTime } from './api.js';
 import { esc, renderBlock, propsHtml } from './render.js';
 import { createCalendar } from './calendar.js';
-import { h, fadeAway, grow, eatThisClick } from './dom.js';
+import { h, fadeAway, grow, eatThisClick, SLASH_ICON } from './dom.js';
 
 /** A note folded in its page (collapsed:: true on a line after its first; editor.js foldedIn). */
 const COLLAPSED = /\ncollapsed:: true(?=\n|$)/;
@@ -124,6 +124,13 @@ export const SLASH = [
   ['Priority A', '[#A]', 'pa'], ['Priority B', '[#B]', 'pb'], ['Priority C', '[#C]', 'pc'],
 ];
 
+/** A "/" row's icon (dom.js SLASH_ICON): a drawing, or a letter badge for a heading's level and a
+ *  priority; always the same width, so the names line up. For the eye only (the row's name says it). */
+const slashIcon = (id) => {
+  const ic = SLASH_ICON[id];
+  return `<span class="ac-ic${ic?.t ? ' ac-t' : ''}${ic?.b ? ' ac-b' : ''}" aria-hidden="true">${ic?.t ?? ic ?? ''}</span>`;
+};
+
 /** To-do words the "/" list doesn't offer (he asked, Oct 29: only TODO, DOING, DONE and CANCELED there).
  *  Notes that have them still show and work as before, and the command list (Ctrl+Shift+P) keeps them. */
 const NOT_IN_SLASH = new Set(['LATER', 'NOW', 'WAITING']);
@@ -229,7 +236,7 @@ export class Suggest {
     const rank = (label) => { const l = label.toLowerCase(); return l.startsWith(ql) ? 0 : l.split(/\s+/).some((w) => w.startsWith(ql)) ? 1 : 2; };
     const items = SLASH.filter(([label, , , more = '']) => !NOT_IN_SLASH.has(label)).filter(([label, , , more = '']) => !ql || `${label} ${more}`.toLowerCase().includes(ql) || label.toLowerCase().replace(/[^a-z]/g, '').startsWith(ql))
       .sort((a, b) => (ql ? rank(a[0]) - rank(b[0]) : 0))
-      .map(([label, hint, id]) => ({ label, html: `${esc(label)}<span class="hint">${esc(hint)}</span>`, value: id || label }));
+      .map(([label, hint, id]) => ({ label, html: `${slashIcon(id || label)}${esc(label)}<span class="hint">${esc(hint)}</span>`, value: id || label }));
     if (!items.length) return this.close();
     this.show(outline, 'slash', start, q, items);
   }

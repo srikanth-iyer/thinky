@@ -14,6 +14,34 @@ From Build 41 these versions are the app's own: they show in Settings → Update
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 44 · version 0.5.5 (November 2026)
+
+### New
+- Tables in notes. Rows of cells between "|"s, with a line of dashes under the first row (`| Loaf | Water |`, then `|---|---|`), now show as a table instead of as typed. Colons in the dashes line set which way a column lines up (`:--` left, `--:` right, `:-:` centre); a wide table scrolls sideways inside its note. The file is unchanged, so Logseq shows the same table. Find on the page looks in the cells, never at the table's own "|"s.
+
+- The "/" list has a small icon in front of every row (a tick box for the to-do words, a clock for Scheduled, a flag for Deadline, H1 to H6 for headings and so on), so a row is found by its shape as well as its name. On the phone too.
+
+### Changed
+- In the thinky looks, the drawing in the sidebar has room of its own between the lists and Look / Settings. A long Recent list used to run over it; now the list ends above it. With little room the drawing gets smaller (down to 52px) before Recent shows fewer pages, and a window under 520px tall leaves it out.
+- On a phone, while you type, the notes move up into the top bar's strip instead of leaving it empty, and the toolbar above the keyboard shows a whole number of tools (the last one used to show cut in half). Its edge fades softly where more tools are hidden, and scrolling it stops on whole tools.
+- The app's own words and corners follow one short scale: six text sizes for the interface and two for headings (there were 17, many half a pixel apart), five corner roundings (there were 13). Nothing moves much; screens just sit more evenly next to each other. The sidebar's menu and its lists are now the same size. The notes' own text size, titles and each look's own shapes are unchanged.
+
+### Fixed
+- A save is now put on the disk before the page's file is replaced. Before, a power cut or crash in the moment after a save could, rarely, leave that note's file empty or cut short.
+- Renaming a page, merging pages and renaming a property change many files in one go. They now work on 8 files at the same time: each file is still put on the disk before it replaces the old one, but the waits overlap, so a slow disk no longer makes these take seconds.
+- Faint words (the menu's headings, counts, property names, dates) are darker in thinky, Sticker, Automaton and Plain teal, so they read clearly (at least 4.5 to 1 against what they sit on; they were between 3.0 and 4.2). Sticker's overdue dates and Plain teal's highlighted words too. The other looks already met this.
+- On a phone, small things are easier to hit without looking any bigger: a note's dot answers a tap in the margin to its left, a to-do's box a tap just above, below or left of it, and filter buttons, small buttons and the page's icon buttons answer a tap 36 to 40px tall (they are drawn 28 to 34). The menu's rows are a little taller (35px, were 29). Nothing reaches over a note's words, so a tap on its first letters still edits it.
+- Long pages stay quick to edit. Enter, Tab, Backspace at the start of a note and Undo used to draw the whole page again each time, which took 40 to 100 ms on an 850-note page; now only the rows that changed are drawn (about 20 ms, most of it the screen's own next frame).
+- The To-dos list opens faster with thousands of to-dos: it draws the first 150 and the rest as you scroll towards them. Its counts, filter and sort work on all of them as before, and ticking one far down keeps your place.
+- After a long scroll back through the Journals list, typing in today's notes no longer slows down (with 300 days loaded, Enter took 45 ms; now 7 to 10): days far from the screen are left undrawn until you come back near them.
+- Today's "Scheduled & deadline" draws the overdue to-dos only when you unfold them.
+
+### Removed
+- The Azulejo look. If it was your look, thinky shows instead.
+
+### Under the hood
+- `write_atomic_checked` flushes the temp file (`sync_all`) before the rename; a drive that can't flush still saves. `each_file` (app.rs) runs a rename's and a merge's link files, a merge's Undo and `rename_property` on 8 threads when there are 8 files or more (results in order, each file's stamp taken right after its own write); the speed check times a rename across 300 files (`rename_ms`), and its reference for a save is 5 ms now that a save waits for the disk. `SLASH_ICON` (dom.js). `.side-art` (app.css, `--side-art` in skins.css). `App.fitTools`, `html.typing-in`. The scale: `--fs-*` and `--r-*` in skins.css; app.css has no fixed text size or rounding of its own (t26 checks). `Outline.keepRows` (editor.js) keeps the rows whose `rowSig` is unchanged at the start and end of the page. `drawInParts` (views.js) draws long lists a part at a time. Journal days far from the screen get `content-visibility: auto` (`.sheet.day.far`). New UI test t26_build44 measures all of it (contrast of every drawn word in all 12 looks, what answers a tap on a phone, a page after each change against one drawn from scratch).
+
 ## Build 43 · version 0.5.4 (November 2026)
 
 ### New

@@ -6,7 +6,7 @@ import { call, today, nowTime, store, isApp, isAndroid, listen, pageLinkUrl } fr
 import { Outline, EDGE, PIN_H, findAgain, caretAgain, foldedIn, lineLook } from './editor.js';
 import { renderBlock, propsHtml, visibleProps, esc, pagesIn, setPropRules } from './render.js';
 import { Suggest, Preview, menu, confirmBox, promptBox, pickDate, place } from './popups.js';
-import { pagesView, tagsView, propsView, todosView, taskRow, taskClicks, taskDay, byDay, num } from './views.js';
+import { pagesView, tagsView, propsView, todosView, taskRow, taskClicks, taskDay, byDay, num, drawInParts } from './views.js';
 import { h, pageLink, ICON, BRAND, fadeAway, motionOn } from './dom.js';
 import { keyOf } from './calendar.js';
 import { Find } from './find.js';
@@ -35,22 +35,23 @@ export const SKINS = [
   { id: 'stickernight', name: 'Sticker night', dark: true, note: 'Sticker, dimmed for evenings', pair: 'sticker' },
   { id: 'paper', name: 'Paper', note: 'Dot-grid paper, serif writing, highlighter' },
   { id: 'automaton', name: 'Automaton', note: 'Lab notes on a rule 30 pattern' },
-  { id: 'azulejo', name: 'Azulejo', note: 'Cobalt tiles on white' },
 ];
 const SKIN_IDS = new Set(SKINS.map((s) => s.id));
 /** A look's name as HTML: the look named after the app shows the wordmark (his rule: the name is never plain letters). */
 export const lookName = (s) => (s.word ? BRAND.word + (s.after ? ' ' + esc(s.after) : '') : esc(s.name));
 const skinOf = (id) => SKINS.find((s) => s.id === id);
+/** Looks that were taken out open as another (boot.js has the same list for the first paint): Grimoire
+ *  (Build 32) as Calm, Azulejo (Build 44, he asked) as thinky. */
+const REMOVED = { grimoire: 'calm', screenplay: 'plain', azulejo: 'thinky' };
+const kept = (id) => REMOVED[id] || id;
 /** Light / Dark / Match system and the two looks (localStorage lookMode, skinDay, skinNight; boot.js
  *  works out the same before the first paint). Before Build 39 there was one look, `skin`: a night one
  *  meant Dark, else Light, and its family's other half fills the other slot. */
 export function lookState() {
   const mode = store.get('lookMode', '');
-  if (mode && SKIN_IDS.has(store.get('skinDay', '')) && SKIN_IDS.has(store.get('skinNight', ''))) {
-    return { mode, day: store.get('skinDay'), night: store.get('skinNight') };
-  }
-  let old = store.get('skin', 'thinky');
-  old = { grimoire: 'calm', screenplay: 'plain' }[old] || old;
+  const [d, n] = [kept(store.get('skinDay', '')), kept(store.get('skinNight', ''))];
+  if (mode && SKIN_IDS.has(d) && SKIN_IDS.has(n)) return { mode, day: d, night: n };
+  const old = kept(store.get('skin', 'thinky'));
   const o = skinOf(old) || skinOf('thinky');
   const other = skinOf(o.pair) || null;
   const day = o.dark ? (other && !other.dark ? other.id : 'thinky') : o.id;
@@ -477,7 +478,12 @@ class App {
     tb.hidden = !(narrow && (text || (o && (o.cur !== null || o.sel))));
     tb.classList.toggle('tb-text', !!text);
     if (tb.hidden) $('#addnote')?.classList.remove('away'); // (done typing: the "+" is back)
-    $('#topbar')?.classList.toggle('typing', !tb.hidden && !text && !!document.querySelector('textarea.ed')); // (typing in a note: the bar out of the way; not for selected notes)
+    const typing = !tb.hidden && !text && !!document.querySelector('textarea.ed');
+    $('#topbar')?.classList.toggle('typing', typing); // (typing in a note: the bar out of the way; not for selected notes)
+    // Build 44 (he said go): the bar's strip is given to the notes while it's away, so the top of a
+    // small screen isn't left empty above the keyboard (app.css html.typing-in)
+    document.documentElement.classList.toggle('typing-in', typing);
+    if (!tb.hidden) this.fitTools?.(); // (which tools show may have changed: the fades at its edges too)
   }
   /** Press and hold (or right-click) the phone bar's Back or Forward: the places that way in this tab,
    *  nearest first (at most 12), as a browser lists them; picking one goes there in one step. */
@@ -963,6 +969,12 @@ class App {
     // (Go to date: the calendar button in the top strip / phone bar, or g d)
     const list = h('div');
     view.append(list);
+    // Build 44 (a review found Enter in today's notes eight times slower once 300 days had been scrolled
+    // through: the browser went over every day's rows for each change): a day that is off the screen
+    // (on a phone, where the whole page scrolls: more than 1.5 screens away) is marked `far`, and the
+    // browser leaves it undrawn until it comes near again (app.css). Its notes stay in the page as they
+    // are, so find, undo and saving work as before. A new text size measures them again (`textSize`).
+    list.farObs = new IntersectionObserver((es) => { for (const x of es) x.target.classList.toggle('far', !x.isIntersecting); }, { rootMargin: '150% 0px' });
     const more = h('button', 'btn ghost more', 'Show older days');
     view.append(more);
     let end = today();
@@ -1001,6 +1013,7 @@ class App {
     };
     more.onclick = loadBatch;
     const pane = this.paneOf(view);
+    if (pane) { pane.farObs?.disconnect(); pane.farObs = list.farObs; } // (the list before this one is gone)
     await loadBatch();
     if (!more.isConnected || !pane) return; // moved on to another page meanwhile
     // scrolling near the end loads older days by itself (the button stays, just in case).
@@ -1041,6 +1054,7 @@ class App {
     refs.addEventListener('click', (e) => this.linkClick(e));
     sec.append(body, sched, refs);
     list.append(sec);
+    list.farObs?.observe(sec);
     const pv = await call('page', { name: day.name, today: today(), time: nowTime() });
     const pane = list.isConnected && this.paneOf(list);
     if (!pane) return null; // another page opened meanwhile (see journalsView)
@@ -1154,7 +1168,19 @@ class App {
       <div class="sched-body"${folds.box ? ' hidden' : ''}>${groups.filter(([, , g]) => g.length).map(([k, label, g]) => `<div class="sched-grp" data-g="${k}">
         ${k === 'overdue' ? `<h4><button class="disclose" data-f="overdue" aria-expanded="${!folds.overdue}">${label}</button> <span class="n">${g.length}</span></h4>`
           : `<h4>${label} <span class="n">${g.length}</span></h4>`}
-        <div class="sched-list"${k === 'overdue' && folds.overdue ? ' hidden' : ''}>${g.map(taskRow).join('')}</div></div>`).join('')}</div>`;
+        <div class="sched-list"${k === 'overdue' && folds.overdue ? ' hidden' : ''}></div></div>`).join('')}</div>`;
+    // (Build 44) a group's rows are drawn when it first shows (the overdue ones start folded), a long
+    // group a part at a time (views.js drawInParts)
+    const fill = () => {
+      if (box.querySelector('.sched-body').hidden) return;
+      for (const grp of box.querySelectorAll('.sched-grp')) {
+        const list = grp.querySelector('.sched-list');
+        if (list.hidden || list.dataset.drawn) continue;
+        list.dataset.drawn = '1';
+        drawInParts(list, groups.find(([k]) => k === grp.dataset.g)[2], taskRow);
+      }
+    };
+    fill();
     box.addEventListener('click', (e) => {
       const f = e.target.closest('[data-f]');
       if (!f) return;
@@ -1162,6 +1188,7 @@ class App {
       f.setAttribute('aria-expanded', String(open));
       (f.dataset.f === 'box' ? box.querySelector('.sched-body') : f.closest('.sched-grp').querySelector('.sched-list')).hidden = !open;
       store.set('schedFolds', { ...store.get('schedFolds', { box: false, overdue: true }), [f.dataset.f]: !open });
+      fill();
     });
     taskClicks(this, box, () => tasks, () => this.scheduledBox(host, todayName));
     host.replaceChildren(box);
@@ -2233,6 +2260,13 @@ class App {
     s = Math.round(Math.min(1.6, Math.max(0.8, s)) * 20) / 20;
     store.set('textSize', s);
     document.documentElement.style.setProperty('--text-scale', s);
+    // Journals' far days (journalsView) are held at the height they had with the old text size: each is
+    // drawn once more, so the browser notes its new height, and marked far again by its list's watcher
+    for (const d of document.querySelectorAll('.sheet.day.far')) {
+      d.classList.remove('far');
+      const obs = d.parentNode?.farObs;
+      if (obs) { obs.unobserve(d); obs.observe(d); }
+    }
     return s;
   }
   /** Wide mode (Logseq's t w): the notes use the whole width of the window (or of their side)
@@ -2343,6 +2377,7 @@ class App {
       </nav>
       <div id="favs"></div>
       <div class="side-sec" data-sec="recent"><button type="button" class="side-h side-fold" aria-expanded="true">Recent</button><div class="side-list" id="recent"></div></div>
+      <div class="side-art" aria-hidden="true"></div>
       <div class="side-foot">
         <nav class="nav">
           <button type="button" class="nav-btn cmd-btn" data-a="commands" aria-haspopup="dialog">${ICON.cmd}Commands</button>
@@ -2378,9 +2413,12 @@ class App {
     this.textSize(this.textSize());
     this.applyTextStyle();
     // Recent shows only what fits: check again whenever its space changes (window size, the sidebar
-    // shown again, Favourites folded, the update notice appearing…). The section's size doesn't
-    // depend on how many pages it shows, so hiding some can't set this off again.
-    new ResizeObserver(() => this.fitRecent()).observe($('.side-sec[data-sec="recent"]', side));
+    // shown again, Favourites folded, the update notice appearing…). Build 44: the section is as tall
+    // as the pages it shows (the look's drawing has the room under it, app.css .side-art), so the
+    // sidebar, Favourites and the foot are watched too: more room must bring hidden pages back.
+    // (fitRecent ends with the section the size it had when nothing else changed, so it settles.)
+    const fit = new ResizeObserver(() => this.fitRecent());
+    for (const el of [side, $('.side-sec[data-sec="recent"]', side), $('#favs', side), $('.side-foot', side)]) fit.observe(el);
     // Small buttons (the bars, fold headings, a page's star and menu) don't keep the keyboard focus
     // after a click, like a window's own buttons, so Space or Enter afterwards scroll instead of
     // pressing them again; Tab still reaches them. (The message's button, e.g. Undo, neither: the note
@@ -2539,6 +2577,23 @@ class App {
     const POPS = { more: 'menu', date: 'menu', slash: 'listbox' }; // (what each opens, for screen readers)
     const tbBtn = ([k, label], cls = '') => `<button data-t="${k}"${cls ? ` class="${cls}"` : ''}${POPS[k] ? ` aria-haspopup="${POPS[k]}"${k === 'slash' ? '' : ' aria-expanded="false"'}` : ''} aria-label="${label}" title="${label}">${ICON[k]}</button>`;
     tb.innerHTML = `<div class="tb-scroll">${tools.map((t) => tbBtn(t)).join('')}</div>${tbBtn(['done', 'Close keyboard'], 'tb-pin')}`;
+    // Build 44 (he said go: the last tool before "close keyboard" showed cut in half, which looked
+    // like a mistake): a whole number of tools fit. Each is as wide as the row divided by how many
+    // 36px ones fit in it (--tb-w); scrolled, the row stops on whole tools (CSS scroll snap); and an
+    // edge where more are hidden fades softly (.more-l / .more-r), which says "there is more".
+    const row = tb.firstChild;
+    const edges = () => {
+      row.classList.toggle('more-l', row.scrollLeft > 2);
+      row.classList.toggle('more-r', row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
+    };
+    this.fitTools = () => {
+      const w = row.clientWidth;
+      if (!w) return; // (hidden)
+      row.style.setProperty('--tb-w', `${w / Math.max(1, Math.floor(w / 36))}px`);
+      edges();
+    };
+    new ResizeObserver(() => this.fitTools()).observe(row);
+    row.addEventListener('scroll', edges, { passive: true });
     // A button acts when it's tapped (the finger lifted where it went down), not as soon as a finger
     // lands on it: a sideways swipe that starts on a button scrolls the toolbar and presses nothing
     // (moving more than 10px, or the browser taking the touch over for scrolling, cancels it).

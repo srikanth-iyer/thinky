@@ -26,7 +26,7 @@ await btn.click();
 await sleep(150);
 const pop = page.locator('.pop.looks');
 check(await pop.isVisible(), 'clicking it opens the list');
-check(await page.locator('.pop.looks [data-look]').count() === 13, '13 looks listed (Grimoire taken out, thinky and thinky night added)');
+check(await page.locator('.pop.looks [data-look]').count() === 12, '12 looks listed (Grimoire and Azulejo taken out, thinky and thinky night added)');
 check(await page.evaluate(() => document.activeElement?.dataset.look) === 'calm', 'focus starts on the current look');
 const bgs = await page.evaluate(() => [...document.querySelectorAll('.look-sw')].map((e) => getComputedStyle(e).backgroundColor));
 check(new Set(bgs).size >= 6, 'each sample is painted in its own look', bgs.join(' | '));
@@ -35,8 +35,8 @@ check(box.y >= 0 && box.y + box.height <= 900 && box.x >= 0, 'list fits on scree
 await page.screenshot({ path: SHOTS + '/looks-laptop.png' });
 
 // keyboard: down to Night (Build 39: the day looks, then the night looks: Calm → Calm plain → Sticker → Paper →
-// Automaton → Azulejo → thinky night → Plain night → Plain teal → Night), Enter applies, list stays open
-for (let k = 0; k < 9; k++) await page.keyboard.press('ArrowDown');
+// Automaton → thinky night → Plain night → Plain teal → Night; Azulejo went in Build 44), Enter applies, list stays open
+for (let k = 0; k < 8; k++) await page.keyboard.press('ArrowDown');
 await page.keyboard.press('Enter');
 await sleep(100);
 check((await skin()) === 'night' && (await curName()) === 'Night', 'Enter applies the look', await skin());
@@ -47,7 +47,7 @@ check(sent?.look === 'night' && sent.colors.surface === '#2a2f38' && sent.colors
   'the look’s colours are saved for the Windows capture box', JSON.stringify(sent));
 check(await pop.isVisible(), 'list stays open to compare');
 check(await page.locator('.pop.looks [data-look="night"]').getAttribute('aria-pressed') === 'true' && await page.locator('.pop.looks [data-look="stickernight"]').getAttribute('aria-pressed') === 'false', 'tick moves to the new look (in the night group)');
-for (let k = 0; k < 12; k++) await page.keyboard.press('ArrowUp'); // Night, 11th of 13 → up 11 to thinky, the first → (round) Sticker night, the last
+for (let k = 0; k < 11; k++) await page.keyboard.press('ArrowUp'); // Night, 11th of 12 → up 10 to thinky, the first → (round) Sticker night, the last
 check(await page.evaluate(() => document.activeElement?.dataset.look) === 'stickernight', 'arrow keys wrap around');
 await page.keyboard.press('Escape');
 await sleep(100);
@@ -67,7 +67,7 @@ const kept = await page.evaluate(() => localStorage.getItem('skin'));
 check(kept === '"plain"', 'the choice is remembered', kept);
 // Settings still has the big previews
 await page.evaluate(() => { location.hash = '#/settings/look'; }); await sleep(500);
-check(await page.locator('.skin-card').count() === 13 && await page.locator('.skin-card:visible').count() === 8, 'Settings still shows the large previews (Light: the 8 day looks)');
+check(await page.locator('.skin-card').count() === 12 && await page.locator('.skin-card:visible').count() === 7, 'Settings still shows the large previews (Light: the 7 day looks)');
 console.log('link colour and fonts');
 await page.evaluate(() => { location.hash = '#/settings/look'; });
 await sleep(700);

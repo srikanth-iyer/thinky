@@ -241,6 +241,9 @@ for (const phone of [false, true]) {
   check(JSON.stringify(await guess('plainnight')) === JSON.stringify({ mode: 'dark', day: 'plain', night: 'plainnight' }), 'an older Plain night: Dark, Plain by day');
   check(JSON.stringify(await guess('paper')) === JSON.stringify({ mode: 'light', day: 'paper', night: 'thinkynight' }), 'an older Paper (no night of its own): thinky night at night');
   check(JSON.stringify(await guess('grimoire')) === JSON.stringify({ mode: 'light', day: 'calm', night: 'night' }), 'a removed look still opens as Calm');
+  check(JSON.stringify(await guess('azulejo')) === JSON.stringify({ mode: 'light', day: 'thinky', night: 'thinkynight' }), 'Azulejo (taken out in Build 44) opens as thinky');
+  const slots = await page.evaluate(async () => { localStorage.setItem('lookMode', '"system"'); localStorage.setItem('skinDay', '"azulejo"'); localStorage.setItem('skinNight', '"night"'); const r = (await import('/app.js')).lookState(); ['lookMode', 'skinDay', 'skinNight'].forEach((k) => localStorage.removeItem(k)); return r; });
+  check(JSON.stringify(slots) === JSON.stringify({ mode: 'system', day: 'thinky', night: 'night' }), 'a saved day look of Azulejo becomes thinky, the mode and the night look kept', JSON.stringify(slots));
   await page.evaluate(() => localStorage.setItem('skin', '"thinky"'));
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto(BASE + '/?t=' + Date.now() + '#/settings/look');
@@ -364,7 +367,7 @@ for (const phone of [false, true]) {
     const L = ([r, g, b]) => { const f = (c) => c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
     const cr = (x, y) => { const [a, b] = [L(x), L(y)].sort((p, q) => p - q); return (b + 0.05) / (a + 0.05); };
     const out = {};
-    for (const id of ['calm', 'calmplain', 'thinky', 'thinkynight', 'night', 'paper', 'sticker', 'stickernight', 'automaton', 'azulejo', 'plainnight', 'plainteal']) {
+    for (const id of ['calm', 'calmplain', 'thinky', 'thinkynight', 'night', 'paper', 'sticker', 'stickernight', 'automaton', 'plainnight', 'plainteal']) {
       const el = document.createElement('div'); el.dataset.skin = id;
       el.innerHTML = '<i style="background:var(--bullet)"></i><i style="background:var(--sheet-bg)"></i><i style="background:var(--guide)"></i>';
       document.body.append(el);

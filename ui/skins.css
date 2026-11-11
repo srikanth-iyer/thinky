@@ -5,6 +5,26 @@
    Calm, Night, Paper, Sticker and Sticker night come from the first mockups. */
 
 :root, [data-skin] {
+  /* The app's own words and corners (Build 44, he said go): app.css took 17 fixed text sizes, many half
+     a pixel apart, and 13 corner roundings. Now every fixed size in it is one of these steps, and a
+     test keeps it so (t26). Words: six sizes for the interface, two for headings. The notes' own
+     size, titles and the properties box stay each look's (--body-size, --title-size, --props-size);
+     sizes in em follow the words around them. Corners: five roundings and the pill; circles are 50%;
+     buttons, cards, tags and boxes that a look shapes keep their own tokens (--btn-radius…). */
+  --fs-tiny: 11px;  /* badges, a priority's letter */
+  --fs-small: 12px; /* hints, small headings, weekday letters */
+  --fs-sub: 13px;   /* second lines: counts, paths, where a note is; filter buttons */
+  --fs-ui: 14px;    /* the usual: the sidebar, buttons, fields, settings */
+  --fs-read: 15px;  /* lists to choose from: menus, search results, the "/" list */
+  --fs-big: 16px;   /* boxes typed in on a phone, a lead line */
+  --fs-head: 18px;  /* a dialog's heading */
+  --fs-top: 22px;   /* a card's heading */
+  --r-line: 2px;    /* thin lines and bars */
+  --r-s: 4px;       /* small marks: highlighted words, keys, swatches */
+  --r-m: 6px;       /* rows and small buttons */
+  --r-l: 8px;       /* buttons, fields, the sidebar's rows */
+  --r-xl: 12px;     /* things that float or frame: menus, dialogs, cards, banners */
+  --r-pill: 999px;
   /* colours */
   --bg: #F4F6F3; --surface: #FFFFFF; --surface-2: #F7F8F6;
   --ink: #1A2130; --ink-soft: #535D6E; --ink-faint: #656D7C; /* faint words ≥ 4.5:1 on the page and cards (Build 34, he asked; was #8A93A2) */
@@ -49,7 +69,8 @@
   --find-bg: rgba(255, 196, 0, .32); --find-cur-bg: rgba(255, 140, 0, .62);
   /* page */
   --page-image: none; --page-image-size: auto; --side-bg: transparent;
-  --side-image: none; --side-image-size: auto; --side-image-pos: 0 0; --side-image-repeat: repeat; /* a pattern or a picture on the sidebar (also the phone's menu) */
+  --side-image: none; --side-image-size: auto; --side-image-pos: 0 0; --side-image-repeat: repeat; /* a pattern on the sidebar (also the phone's menu) */
+  --side-art: none; --side-art-show: none; /* a drawing low in the sidebar, in room of its own (app.css .side-art): thinky's scribble */
   /* sheets (journal days, page bodies, cards) */
   --sheet-bg: var(--surface); --sheet-image: none; --sheet-image-size: auto;
   --sheet-border: 1.5px solid #C9CFD8; --sheet-radius: 16px;
@@ -197,12 +218,12 @@
   --bullet-strength: 35%; --guide-strength: 63%;
   /* the app's icon in this look */ --logo-tile: #FBEFB3; --logo-ink: #1D1A33; --logo-spark: #FF4B2B;
   --bg: #FDF6E6; --surface: #FFFDF7; --surface-2: #FFF8E8;
-  --ink: #1D1A33; --ink-soft: #4A4566; --ink-faint: #7C7799;
+  --ink: #1D1A33; --ink-soft: #4A4566; --ink-faint: #716C8B; /* ≥ 4.5:1 on the page, cards and menu (Build 44; was #7C7799) */
   --line: #1D1A33; --line-soft: #E4DCC8;
   --accent: #6C4CF0; --accent-tint: #ECE6FF;
   --link: #5A3BE0; --link-line: rgba(90,59,224,.45);
   --tag-bg: #FBEFB3; --tag-ink: #1D1A33; --tag-border: 1.5px solid #1D1A33;
-  --mark-bg: #FBEFB3; --danger: #C8372D; --danger-tint: #FFD6D0;
+  --mark-bg: #FBEFB3; --danger: #B43128; --danger-tint: #FFD6D0; /* (#B43128: an overdue date ≥ 4.5:1 on its tint, Build 44; was #C8372D) */
   --edit-bg: #FFF4D6; --guide-ink: #E4DCC8; --bullet-ink: #1D1A33;
   --sheet-border: 2.5px solid #1D1A33; --sheet-radius: 14px; --sheet-shadow: 4px 4px 0 #1D1A33;
   --font-title: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
@@ -252,7 +273,7 @@
   --bullet-strength: 48%; --guide-strength: 58%;
   /* the app's icon in this look */ --logo-tile: #E1E9FD; --logo-ink: #1E56E6; --logo-spark: #FF4B2B;
   --bg: #F5F5F6; --surface: #FFFFFF; --surface-2: #F2F5FE;
-  --ink: #0F1B3A; --ink-soft: #3B4A6B; --ink-faint: #74819F;
+  --ink: #0F1B3A; --ink-soft: #3B4A6B; --ink-faint: #646F89; /* ≥ 4.5:1 (Build 44; was #74819F) */
   --line: #C7D2EE; --line-soft: #E0E7F7;
   --accent: #1E56E6; --accent-tint: #E1E9FD;
   --link: #1E56E6; --link-line: rgba(30,86,230,.32);
@@ -353,13 +374,13 @@
   --c-note: #7FA8F0; --c-tip: #6CC79A; --c-important: #B79BF2; --c-warning: #E8A65C; --c-caution: #F08A80; --callout-tint: 14%;
   --hl-yellow: #FACC15; --hl-red: #F87171; --hl-pink: #F472B6; --hl-green: #4ADE80; --hl-blue: #60A5FA; --hl-purple: #C084FC; --hl-gray: #9CA3AF; --hl-tint: 24%;
   --bg: #002B36; --surface: #023643; --surface-2: #08404F; --side-bg: #023643;
-  --ink: #A4B5B6; --ink-soft: #8DA2A4; --ink-faint: #6A8A8F;
+  --ink: #A4B5B6; --ink-soft: #9BAFB1; --ink-faint: #92AAAD; /* both ≥ 4.5:1 on the page, the menu and the boxes (Build 44; were #8DA2A4 / #6A8A8F) */
   --line: #0E5263; --line-soft: #0B4A5A;
   --accent: #8EC2C2; --accent-ink: #002B36; --accent-tint: #094B5A;
   --quote-bar: color-mix(in srgb, var(--link) 45%, transparent); --icon-ink: color-mix(in srgb, var(--link) 50%, currentColor);
   --link: #9BD3D4; --link-line: rgba(155,211,212,.4); --link-deco: 0;
   --tag-bg: transparent; --tag-ink: color-mix(in srgb, var(--link) 80%, transparent); --tag-border: 0; --tag-radius: 4px; --tag-pad: 0 2px;
-  --mark-bg: #5A5223; --danger: #F2B8B5; --danger-tint: #4A2A2E;
+  --mark-bg: #4A441E; --danger: #F2B8B5; --danger-tint: #4A2A2E; /* (#4A441E: highlighted words ≥ 4.5:1, Build 44; was #5A5223) */
   --edit-bg: #023643; --guide-ink: #0B4A5A; --bullet-ink: rgba(96,142,145,.8); --bullet-ring: #0F4958;
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
   --sheet-page-end: 0; --sheet-divider: 1px solid #0E5263; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
@@ -376,25 +397,6 @@
   --refgrp-bg: #023643; --refgrp-border: 0; --refgrp-shadow: none; --refgrp-radius: 6px; --refgrp-line: 1px solid #0B4A5A;
 }
 
-/* Azulejo — glazed tiles: cobalt on white, a tiled wall behind the pages, a tile border on each */
-[data-skin="azulejo"] {
-  --bullet-strength: 44%; --guide-strength: 87%;
-  /* the app's icon in this look */ --logo-tile: #FFFFFF; --logo-ink: #1D4FA3; --logo-spark: #FF4B2B;
-  --bg: #F3F6FB; --surface: #FFFFFF; --surface-2: #F4F7FC;
-  --ink: #10203F; --ink-soft: #3E4F70; --ink-faint: #8391AD;
-  --line: #C9D5EA; --line-soft: #E1E8F4;
-  --accent: #1D4FA3; --accent-tint: #E2EAF8;
-  --link: #1D4FA3; --link-line: rgba(29,79,163,.35);
-  --tag-bg: #E2EAF8; --tag-ink: #173F86;
-  --mark-bg: #FCE9A6; --edit-bg: #F2F6FD; --guide-ink: #E1E8F4; --bullet-ink: #1D4FA3;
-  --page-image: url(skins/azulejo-wall.svg); --page-image-size: 48px 48px; --side-bg: rgba(243,246,251,.93);
-  --sheet-border: 1px solid #C9D5EA; --sheet-radius: 4px;
-  --sheet-band: url(skins/azulejo.svg); --sheet-band-h: 24px;
-  --sheet-shadow: 0 1px 3px rgba(16,32,63,.06), 0 6px 16px -4px rgba(16,32,63,.08), 0 18px 36px -16px rgba(16,32,63,.22);
-  --check-border: 1.6px solid #8391AD;
-  --refgrp-radius: 6px;
-}
-
 /* thinky — the logo's own colours (Build 32), laid out like Calm plain (a white page, no cards); once a cream page, near-white cream cards; the
    ink #1D1A2E for words, a deeper red from the spark as the accent (#C2331A: 4.8:1 on the page, white
    words on it 5.5:1; the spark's own #FF4B2B is too light for words), links in a deep ink-blue with a
@@ -402,7 +404,7 @@
 [data-skin="thinky"] {
   --bullet-strength: 75%; --guide-strength: 69%;
   --bg: #FFFFFF; --surface: #FFFFFF; --surface-2: #F8F6F2; --side-bg: #F4F2EE; /* (a hint of the logo's cream in the menu only: he found the cream too creamy) */
-  --ink: #1D1A2E; --ink-soft: #4A4558; --ink-faint: #7A7383;
+  --ink: #1D1A2E; --ink-soft: #4A4558; --ink-faint: #716A79; /* ≥ 4.5:1 on the page, the menu and the boxes (Build 44; was #7A7383) */
   --line: #E3DFD7; --line-soft: #ECE9E3;
   --accent: #C2331A; --accent-ink: #FFFFFF; --accent-tint: #F7E6E0;
   --link: #2E3A87; --link-line: rgba(255,75,43,.55);
@@ -410,7 +412,7 @@
   --mark-bg: #FBE7A8; --danger: #A8261B; --danger-tint: #F9DCD6;
   --edit-bg: #FAF9F6; --guide-ink: #E5E1D9; --bullet-ink: #9A92A0;
   --quote-bar: color-mix(in srgb, var(--accent) 40%, transparent);
-  --side-image: url(skins/thinky-corner.svg); --side-image-size: 132px auto; --side-image-pos: 50% calc(100% - 128px); --side-image-repeat: no-repeat;
+  --side-art: url(skins/thinky-corner.svg); --side-art-show: block;
   /* no cards, as in Calm plain (he asked, Oct 29): the notes sit on the white page, a hairline between days */
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
   --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
@@ -448,7 +450,7 @@
   --mark-bg: #5A4A1C; --danger: #F2B8B5; --danger-tint: #3A2523;
   --edit-bg: #1E1C22; --guide-ink: #2A272F; --bullet-ink: #6F6A76; --bullet-ring: #34313A;
   --quote-bar: color-mix(in srgb, var(--accent) 45%, transparent);
-  --side-image: url(skins/thinky-night-corner.svg); --side-image-size: 132px auto; --side-image-pos: 50% calc(100% - 128px); --side-image-repeat: no-repeat;
+  --side-art: url(skins/thinky-night-corner.svg); --side-art-show: block;
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
   --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
   --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;

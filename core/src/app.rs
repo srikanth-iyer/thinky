@@ -349,7 +349,8 @@ pub fn set_write_hook(f: Option<WriteHook>) {
 /// rename that fails (Google Drive or a virus checker holding the file for a moment) is tried
 /// again for about half a second before the direct write that some synced drives need, each try
 /// checked first too; a file that can't be read just then is waited for within that half second,
-/// and never written over unseen (Ok(false)).
+/// and never written over unseen (Ok(false)). The new text is flushed to the disk before the rename
+/// (`write_flushed`).
 pub fn write_atomic_checked(path: &Path, text: &str, expect: Expect) -> Result<bool, String> {
     static N: AtomicUsize = AtomicUsize::new(0);
     if let Some(dir) = path.parent() {
@@ -359,7 +360,7 @@ pub fn write_atomic_checked(path: &Path, text: &str, expect: Expect) -> Result<b
     let fname = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     // hidden (a leading dot), so other apps and the app's own scan ignore it
     let tmp = path.with_file_name(format!(".{fname}.{}-{}.tmp", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
-    std::fs::write(&tmp, text).map_err(|e| {
+    write_flushed(&tmp, text).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         format!("Couldn't write the page: {e}")
     })?;
@@ -403,8 +404,20 @@ pub fn write_atomic_checked(path: &Path, text: &str, expect: Expect) -> Result<b
         return Ok(false);
     }
     let e = last.map(|e| e.to_string()).unwrap_or_default();
-    std::fs::write(path, text).map_err(|e2| format!("Couldn't save the page: {e} / {e2}"))?;
+    write_flushed(path, text).map_err(|e2| format!("Couldn't save the page: {e} / {e2}"))?;
     Ok(true)
+}
+
+/// Write `text` to `path` and ask the system to put it on the disk before going on (Build 44). Without
+/// this, the rename that follows can reach the disk before the words do: a power cut right then leaves
+/// the note's file empty or cut short. A drive that can't do it (some synced or network drives say so)
+/// still gets the words written, as before: only the flush is skipped, never the save.
+fn write_flushed(path: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut f = std::fs::File::create(path)?;
+    f.write_all(text.as_bytes())?;
+    let _ = f.sync_all();
+    Ok(())
 }
 
 /// What `rewrite` did.
@@ -435,6 +448,54 @@ fn rewrite(path: &Path, what: &str, tries: u32, mut edit: impl FnMut(Option<&str
         }
     }
     Ok(Rewrite::Busy)
+}
+
+/// How many files `each_file` works on at the same time.
+const AT_ONCE: usize = 8;
+
+/// Do `work` for each of `items` (each a file in the notes folder, `rel` gives its path there) and
+/// give the results in the items' order: the actions that change many files in one go (a rename's
+/// or a merge's link files, a property renamed everywhere, a merge's Undo). Each file is still
+/// flushed before it replaces the old one (`write_atomic_checked`), so nothing is less safe; but a
+/// flush is a wait for the disk (under 1 ms on a good laptop disk, 20 ms on a slow one), and waited
+/// for one after another 300 files took seconds. With `AT_ONCE` files or more they are done
+/// `AT_ONCE` at a time, on threads of their own: the waits overlap, and a disk takes the flushes
+/// that reach it together in one go. Fewer files are done here, one by one, as before.
+/// Each result comes with the file's stamp as it was right after its own work (for
+/// `record_written`), so a save made elsewhere a moment later still shows as a change.
+fn each_file<I: Sync, T: Send>(root: &Path, items: &[I], rel: impl Fn(&I) -> &str + Sync, work: impl Fn(&Path, &I) -> T + Sync) -> Vec<(T, Option<std::fs::Metadata>)> {
+    // (each result into its own place, so they come back in the items' order)
+    let out: Vec<Mutex<Option<(T, Option<std::fs::Metadata>)>>> = items.iter().map(|_| Mutex::new(None)).collect();
+    at_once(items.len(), &|i| {
+        let path = root.join(rel(&items[i]));
+        let r = work(&path, &items[i]);
+        *out[i].lock().unwrap_or_else(|p| p.into_inner()) = Some((r, std::fs::metadata(&path).ok()));
+    });
+    out.into_iter().map(|m| m.into_inner().unwrap_or_else(|p| p.into_inner()).expect("every file was worked on")).collect()
+}
+
+/// `job(i)` for every i below `n`: `AT_ONCE` at a time on threads of their own when there are that many
+/// or more, else here, one after another. Written once for every kind of work (`each_file` only wraps
+/// it), so the app's size grows by this little and not by a copy for each action. A job that breaks off
+/// breaks this off too when the threads are done, as it would have one by one.
+fn at_once(n: usize, job: &(dyn Fn(usize) + Sync)) {
+    if n < AT_ONCE {
+        (0..n).for_each(job);
+        return;
+    }
+    let next = AtomicUsize::new(0);
+    std::thread::scope(|s| {
+        for _ in 0..AT_ONCE {
+            s.spawn(|| loop {
+                // (each thread takes the next one nobody has taken yet)
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                if i >= n {
+                    break;
+                }
+                job(i);
+            });
+        }
+    });
 }
 
 /// A settings change that met config.edn being saved elsewhere at each try.
@@ -1227,8 +1288,14 @@ impl App {
     }
 
     fn record_write(&mut self, rel: &str, text: &str) {
+        let md = std::fs::metadata(self.root.join(rel)).ok();
+        self.record_written(rel, text, md);
+    }
+
+    /// `record_write` with the file's stamp as taken right after it was written (`each_file`).
+    fn record_written(&mut self, rel: &str, text: &str, md: Option<std::fs::Metadata>) {
         self.vault.upsert(rel, text);
-        if let Ok(md) = std::fs::metadata(self.root.join(rel)) {
+        if let Some(md) = md {
             let st = stamp_of(&md);
             self.files.insert(rel.to_string(), st);
             // (a save writes a new file under the old name: its creation time is now, the page's isn't)
@@ -1627,6 +1694,13 @@ impl App {
         Some(blocks.into_iter().map(|(depth, text)| DocBlock { depth, text: fill(&text), raw: None, plain: false }).collect())
     }
 
+    /// The files of the pages that link to `name`, each once, in the pages' order, without `but`
+    /// (the page's own file, or a merge's target): what a rename or a merge rewrites.
+    fn link_files(&self, name: &str, but: Option<&str>) -> Vec<String> {
+        let mut seen = HashSet::new();
+        self.vault.linking_pages(name).iter().filter_map(|src| self.vault.path_of_key(src)).filter(|rel| Some(rel.as_str()) != but && seen.insert(rel.clone())).collect()
+    }
+
     /// Rename a page: its file, its `title::` (if any) and every link to it in other files.
     pub fn rename(&mut self, old: &str, new: &str) -> Result<RenameRes, String> {
         let new = clean_name(new)?;
@@ -1662,14 +1736,12 @@ impl App {
         // 1. links in other files
         let mut changed = 0;
         let mut skipped = vec![];
-        for src in self.vault.linking_pages(&info.name) {
-            let Some(rel) = self.vault.path_of_key(&src) else { continue };
-            if Some(&rel) == own_rel.as_ref() {
-                continue;
-            }
-            match link_rewrite(&self.root.join(&rel), &olds, &new, &comma) {
+        let rels = self.link_files(&info.name, own_rel.as_deref());
+        let done = each_file(&self.root, &rels, |r| r.as_str(), |path, _| link_rewrite(path, &olds, &new, &comma));
+        for (rel, (r, md)) in rels.into_iter().zip(done) {
+            match r {
                 Some(Rewrite::Done(_, t)) => {
-                    self.record_write(&rel, &t);
+                    self.record_written(&rel, &t, md);
                     changed += 1;
                 }
                 Some(Rewrite::Left(_)) => {}
@@ -1750,11 +1822,16 @@ impl App {
             return Err(format!("“{}” is a property thinky and Logseq use themselves, so it can't be renamed or merged.", if KEPT.contains(&old.as_str()) { old.clone() } else { new.clone() }));
         }
         let (mut files, mut lines, mut skipped) = (0, 0, vec![]);
-        for rel in self.vault.files_with_property(&old) {
-            let mut k = 0;
-            match rewrite(&self.root.join(&rel), "", 3, |cur| Ok(cur.and_then(|c| rename_prop_in_text(c, &old, &new)).map(|(t, n)| { k = n; t }))) {
+        let rels = self.vault.files_with_property(&old);
+        let done = each_file(&self.root, &rels, |r| r.as_str(), |path, _| {
+            let mut k = 0; // how many lines changed in this file
+            let r = rewrite(path, "", 3, |cur| Ok(cur.and_then(|c| rename_prop_in_text(c, &old, &new)).map(|(t, n)| { k = n; t })));
+            (r, k)
+        });
+        for (rel, ((r, k), md)) in rels.into_iter().zip(done) {
+            match r {
                 Ok(Rewrite::Done(_, t)) => {
-                    self.record_write(&rel, &t);
+                    self.record_written(&rel, &t, md);
                     files += 1;
                     lines += k;
                 }
@@ -1868,13 +1945,14 @@ impl App {
         // links in other files
         let mut skipped = vec![];
         let mut changed = 0;
-        for src in self.vault.linking_pages(&info.name) {
-            let Some(rel) = self.vault.path_of_key(&src).filter(|r| *r != t_rel) else { continue };
+        let rels = self.link_files(&info.name, Some(&t_rel));
+        let done = each_file(&self.root, &rels, |r| r.as_str(), |path, _| link_rewrite(path, &olds, &name, &comma));
+        for (rel, (r, md)) in rels.into_iter().zip(done) {
             // (one that can't be read or written, or keeps changing elsewhere, is listed, and the
             // merge still finishes: its Undo, favourites and the index stay right)
-            match link_rewrite(&self.root.join(&rel), &olds, &name, &comma) {
+            match r {
                 Some(Rewrite::Done(cur, t)) => {
-                    self.record_write(&rel, &t);
+                    self.record_written(&rel, &t, md);
                     files.push((rel, cur, t));
                     changed += 1;
                 }
@@ -1915,9 +1993,10 @@ impl App {
             self.record_write(rel, text);
         }
         let mut failed = vec![];
-        for (rel, before, after) in &u.files {
-            match write_atomic_checked(&self.root.join(rel), before, Expect::Bytes(after.as_bytes())) {
-                Ok(true) => self.record_write(rel, before),
+        let done = each_file(&self.root, &u.files, |f| f.0.as_str(), |path, (_, before, after)| write_atomic_checked(path, before, Expect::Bytes(after.as_bytes())));
+        for ((rel, before, _), (r, md)) in u.files.iter().zip(done) {
+            match r {
+                Ok(true) => self.record_written(rel, before, md),
                 _ => failed.push(self.vault.title_from_path(rel).0),
             }
         }

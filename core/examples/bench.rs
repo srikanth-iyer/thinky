@@ -133,6 +133,7 @@ fn main() {
     // into a safety copy first, then the index cache is written (what start_safety_copy does before
     // the background copy). Only on the sample vault: it changes notes.
     let mut open_changed = 0.0;
+    let (mut rename, mut rename_files, mut one_by_one, mut eight) = (0.0, 0, 0.0, 0.0);
     if generated {
         set_data_dir(base.join("data"));
         app.persist();
@@ -146,7 +147,49 @@ fn main() {
         let mut app = App::open(&root).unwrap();
         app.persist();
         open_changed = ms(t);
+        // renaming a page that 300 files link to: every link file is rewritten, each flushed before
+        // it replaces the old one, 8 at the same time (`each_file` in app.rs). Beside it, what this
+        // disk asks for 300 small flushed writes one after another, and 8 at a time: on a slow disk
+        // (20 ms a flush) the first is 6 seconds.
+        std::fs::write(root.join("pages").join("Hub.md"), "- the hub\n").unwrap();
+        for i in 0..300 {
+            let text = format!("- note {i} that links to [[Hub]]\n{}", "- a note of about forty letters, as notes go\n".repeat(20));
+            std::fs::write(root.join("pages").join(format!("Hub link {i}.md")), text).unwrap();
+        }
+        app.rescan();
+        let t = Instant::now();
+        rename_files = app.rename("Hub", "Hub renamed").map(|r| r.files_changed).unwrap_or(0);
+        rename = ms(t);
+        let scratch = base.join("flush");
+        std::fs::create_dir_all(&scratch).unwrap();
+        let text = "- a note of about forty letters, as notes go\n".repeat(20);
+        let flushed = |i: usize| {
+            use std::io::Write;
+            let (tmp, to) = (scratch.join(format!(".{i}.tmp")), scratch.join(format!("{i}.md")));
+            let mut f = std::fs::File::create(&tmp).unwrap();
+            f.write_all(text.as_bytes()).unwrap();
+            let _ = f.sync_all();
+            std::fs::rename(&tmp, &to).unwrap();
+        };
+        let t = Instant::now();
+        (0..300).for_each(flushed);
+        one_by_one = ms(t);
+        let t = Instant::now();
+        let next = std::sync::atomic::AtomicUsize::new(300);
+        std::thread::scope(|s| {
+            for _ in 0..8 {
+                s.spawn(|| loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if i >= 600 {
+                        break;
+                    }
+                    flushed(i);
+                });
+            }
+        });
+        eight = ms(t);
     }
+    println!("rename a page {rename_files} files link to {rename} ms · 300 small flushed writes on this disk: one after another {one_by_one} ms, 8 at a time {eight} ms");
     println!("{pages} pages; open {open_cold} ms (first time) / {open_warm} ms (with cache) / {open_changed} ms (20 notes changed elsewhere: their earlier texts kept first)");
     println!("all pages {list} ms · linked refs ({refs} pages) {linked} ms · long page ({} blocks) {long_page} ms", pv.doc.blocks.len());
     println!("search: first {search_first} ms (makes the notes' searchable copy) · then ({hits} hits) {search} ms · 3 words in any order ({many} hits) {search_words} ms · with a typo ({typo} hits) {search_typo} ms");
@@ -156,6 +199,6 @@ fn main() {
     println!("save {save} ms · rescan {rescan} ms · JSON for the window ({json_bytes} bytes) {json} ms");
     println!("pictures nothing uses ({} of {}) {pictures} ms · safety copy ({copied} notes, in the background) {safety} ms", pics.unused.len(), pics.pictures);
     println!(
-        "BENCH {{\"open_cold_ms\":{open_cold},\"open_warm_ms\":{open_warm},\"pages_ms\":{list},\"linked_ms\":{linked},\"page_ms\":{long_page},\"search_ms\":{search},\"search_first_ms\":{search_first},\"search_words_ms\":{search_words},\"search_typo_ms\":{search_typo},\"unlinked_ms\":{unlinked},\"todos_ms\":{todos},\"day_unlinked_ms\":{day_unlinked},\"journals_ms\":{journals},\"save_ms\":{save},\"rescan_ms\":{rescan},\"json_ms\":{json},\"pictures_ms\":{pictures},\"safety_copy_ms\":{safety},\"open_changed_ms\":{open_changed}}}"
+        "BENCH {{\"open_cold_ms\":{open_cold},\"open_warm_ms\":{open_warm},\"pages_ms\":{list},\"linked_ms\":{linked},\"page_ms\":{long_page},\"search_ms\":{search},\"search_first_ms\":{search_first},\"search_words_ms\":{search_words},\"search_typo_ms\":{search_typo},\"unlinked_ms\":{unlinked},\"todos_ms\":{todos},\"day_unlinked_ms\":{day_unlinked},\"journals_ms\":{journals},\"save_ms\":{save},\"rescan_ms\":{rescan},\"json_ms\":{json},\"pictures_ms\":{pictures},\"safety_copy_ms\":{safety},\"open_changed_ms\":{open_changed},\"rename_ms\":{rename}}}"
     );
 }

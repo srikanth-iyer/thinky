@@ -14,10 +14,16 @@ const HIDDEN_PROPS = new Set(['id', 'collapsed', 'ls-type', 'hl-type', 'hl-page'
 // :block-hidden-properties (config.edn) hide too. Nothing about any one property is built in.
 let RULES = {};
 let CFG_HIDDEN = new Set();
+let drawRules = 0;
+/** Changes whenever a note may draw differently though its words are the same: the Property display
+ *  rules changed, or the day did (date chips say "Today", "overdue"). The editor keeps a drawn row only
+ *  while this is the same (editor.js rowSig). */
+export const drawStamp = () => drawRules + ':' + today().join('-');
 export const PROP_SHOWS = ['show', 'quiet', 'icon', 'hidden'];
 export const MARK_COLORS = ['purple', 'blue', 'green', 'yellow', 'red', 'pink', 'gray'];
 /** rules: { key: { show, icon, mark } } (keys in small letters); cfgHidden: config.edn's list. */
 export function setPropRules(rules, cfgHidden = []) {
+  drawRules++;
   RULES = {};
   for (const [k, r] of Object.entries(rules && typeof rules === 'object' ? rules : {})) {
     if (!r || typeof r !== 'object') continue;
@@ -333,8 +339,49 @@ function quote(lines) {
   return `<blockquote>${lines.map((l) => inline(l)).join('<br>')}</blockquote>`;
 }
 
+// Markdown tables (Build 44): a row of cells between "|"s, then a line of dashes ("|---|:--:|", its
+// colons say which way a column lines up), then the other rows. Drawn as a table; without the dashes
+// line the rows stay as typed. find.js uses the same two helpers, so it never marks a "|" or the dashes.
+const TROW = /^\s*\|.*\|\s*$/;
+const TDASH = /^\s*\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|\s*$/;
+/** How many lines from line li on are one table (its heading row, the dashes, its rows), else 0. */
+export function tableLines(lines, li) {
+  if (li + 1 >= lines.length || !TROW.test(lines[li]) || !TDASH.test(lines[li + 1])) return 0;
+  let n = 2;
+  while (li + n < lines.length && TROW.test(lines[li + n])) n++;
+  return n;
+}
+/** A row's cells as [start, end) places in its line, each without the spaces around it. A "|" after a
+ *  "\" or inside `code` is part of a cell. */
+export function tableCells(line) {
+  const bars = [];
+  let code = false;
+  for (let k = 0; k < line.length; k++) {
+    const c = line[k];
+    if (c === '\\') { k++; continue; }
+    if (c === '`') code = !code;
+    else if (c === '|' && !code) bars.push(k);
+  }
+  if (code) { bars.length = 0; for (let k = 0; k < line.length; k++) if (line[k] === '|' && line[k - 1] !== '\\') bars.push(k); } // (a lone ` isn't code)
+  const out = [];
+  for (let k = 0; k + 1 < bars.length; k++) {
+    let a = bars[k] + 1, b = bars[k + 1];
+    while (a < b && /\s/.test(line[a])) a++;
+    while (b > a && /\s/.test(line[b - 1])) b--;
+    out.push([a, b]);
+  }
+  return out;
+}
+function table(lines) {
+  const cells = (l) => tableCells(l).map(([a, b]) => l.slice(a, b).replace(/\\\|/g, '|'));
+  const head = cells(lines[0]);
+  const align = cells(lines[1]).map((d) => (d.startsWith(':') && d.endsWith(':') && d.length > 1 ? 'c' : d.endsWith(':') ? 'r' : ''));
+  const row = (c, tag) => '<tr>' + head.map((_, k) => `<${tag}${align[k] ? ` class="ta-${align[k]}"` : ''}>${inline(c[k] ?? '')}</${tag}>`).join('') + '</tr>';
+  return `<div class="tbl-wrap"><table class="tbl"><thead>${row(head, 'th')}</thead><tbody>${lines.slice(2).map((l) => row(cells(l), 'td')).join('')}</tbody></table></div>`;
+}
+
 // Full block: marker, priority, heading, properties, dates, drawers, code fences, display math,
-// #+BEGIN_… blocks, quotes and coloured boxes.
+// #+BEGIN_… blocks, tables, quotes and coloured boxes.
 // Returns { html, marker, priority, props, dates, heading, bg } (props = the visible properties;
 // heading = 1–6 when the first line is a "#" heading, or for Logseq's auto heading (heading:: true:
 // one size smaller than its level, at depth 0 a "##"), else 0; bg = its background-color:: value).
@@ -390,6 +437,8 @@ function drawBlock(text, depth = 0) {
       const st = parseStamp(sd[2]);
       if (st) { dates.push({ kind: sd[1] === 'DEADLINE' ? 'deadline' : 'scheduled', ...st }); continue; }
     }
+    const tn = tableLines(lines, li);
+    if (tn) { body.push({ table: lines.slice(li, li + tn) }); li += tn - 1; continue; }
     const pm = line.match(PROP);
     if (pm) {
       const k = pm[1].toLowerCase();
@@ -420,6 +469,7 @@ function drawBlock(text, depth = 0) {
     if (b.math !== undefined) { html += `<div class="math display">${tex(b.math)}</div>`; return; }
     if (b.special) { html += special(b.special); return; }
     if (b.quote) { html += quote(b.quote); return; }
+    if (b.table) { html += table(b.table); return; }
     let t = b.text;
     if (idx === 0) {
       const mm = t.match(MARKERS);

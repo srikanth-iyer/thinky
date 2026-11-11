@@ -88,6 +88,35 @@ export const ICON = {
   palette: svg('<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1.1-1.6-1.1-2.8 0-1 .8-1.6 1.8-1.6h2.2a3.8 3.8 0 0 0 3.8-3.8c0-4-3.8-7.1-8.5-7.1z"/><circle cx="7.6" cy="11.2" r="1.1"/><circle cx="10" cy="7.5" r="1.1"/><circle cx="14.4" cy="7.5" r="1.1"/>'),
 };
 
+/** The "/" list's icons, by what each row does (popups.js SLASH's ids; Build 44, he said go: every row
+ *  looked the same, so the list was slow to scan). Drawn like the rest (`svg`); a heading's level and a
+ *  priority's letter are the letters themselves (`t`: a small badge, app.css .ac-ic). The phone toolbar's
+ *  icons are used where it has one for the same thing. */
+const box = '<rect x="4" y="4" width="16" height="16" rx="3"/>';
+const cal = '<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>';
+const frame = '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/>';
+export const SLASH_ICON = {
+  TODO: svg(box), DOING: svg(box + '<path d="M8.5 12h7"/>'), LATER: svg(box + '<path d="M12 8.5V12l2.5 1.5"/>'), NOW: svg(box + '<circle cx="12" cy="12" r="2" fill="currentColor"/>'),
+  WAITING: svg(box + '<path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/>', ' stroke-width="2.4"'), DONE: ICON.check, CANCELED: svg(box + '<path d="m9 9 6 6M15 9l-6 6"/>'),
+  sched: svg('<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>'), deadline: svg('<path d="M6 21V4.5M6 5h12l-3 4 3 4H6"/>'), date: ICON.date,
+  today: svg(cal + '<circle cx="12" cy="15" r="1.4" fill="currentColor"/>'), tomorrow: svg(cal + '<path d="M9 15h6M13 13l2 2-2 2"/>'), yesterday: svg(cal + '<path d="M15 15H9M11 13l-2 2 2 2"/>'),
+  time: svg('<circle cx="12" cy="12" r="5.5"/><path d="M12 9.5V12l1.8 1.2M9.6 7 10.2 3.5h3.6l.6 3.5M9.6 17l.6 3.5h3.6l.6-3.5"/>'),
+  link: ICON.link, blockref: svg('<path d="M8 4.5c-3 4.5-3 10.5 0 15M11.5 7.5c-1.6 2.8-1.6 6.2 0 9M16 4.5c3 4.5 3 10.5 0 15M12.5 7.5c1.6 2.8 1.6 6.2 0 9"/>'),
+  weblink: svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
+  tag: ICON.tag, template: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>'),
+  image: ICON.image, imagelink: svg(frame + '<path d="M9.5 14.5l5-5M10.5 9.5h4v4"/>'),
+  upload: svg('<path d="M19 11.5l-7 7a4.2 4.2 0 0 1-6-6L13.5 5a2.8 2.8 0 0 1 4 4L10 16.5a1.4 1.4 0 0 1-2-2L14.5 8"/>'),
+  bold: ICON.bold, italic: ICON.italic, mark: ICON.mark,
+  strike: svg('<path d="M4.5 12h15M16 8c-.5-1.8-2-3-4-3-2.3 0-4 1.2-4 3 0 .8.3 1.4.8 2M8 16c.5 1.8 2 3 4 3 2.3 0 4-1.2 4-3 0-.4-.1-.7-.2-1"/>'),
+  underline: svg('<path d="M7 4.5V11a5 5 0 0 0 10 0V4.5M6 20h12"/>'),
+  code: svg('<path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5"/>'), codeblock: svg(frame + '<path d="m9.5 9.5-2.5 2.5 2.5 2.5M14.5 9.5l2.5 2.5-2.5 2.5"/>'),
+  math: svg('<path d="M17 6.5V4.5H7l5.5 7.5L7 19.5h10v-2"/>'),
+  h1: { t: 'H1' }, h2: { t: 'H2' }, h3: { t: 'H3' }, h4: { t: 'H4' }, h5: { t: 'H5' }, h6: { t: 'H6' },
+  numlist: svg('<path d="M10.5 6.5H20M10.5 12H20M10.5 17.5H20M4.5 5.6 6 4.8V9M4.3 15.2c.4-.9 2.4-.9 2.4.3 0 .9-1.4 1.6-2.4 3h2.6"/>'),
+  numkids: svg('<path d="M5 4.5V12a2 2 0 0 0 2 2h2.5M12.5 9.5H20M12.5 14H20M12.5 18.5H20"/>'),
+  pa: { t: 'A', b: 1 }, pb: { t: 'B', b: 1 }, pc: { t: 'C', b: 1 },
+};
+
 
 /** Animations are on unless the system asks for less motion or Settings → Look turned them off
  * (html[data-motion="off"], boot.js before the first paint). */

@@ -394,6 +394,26 @@ export function taskRow(x) {
     <div class="bc">${label}${prio}${r.html}${datesHtml(r.dates, open)}<div class="where">${pageLink(x.page)}${x.under?.length ? ` <span class="under" title="Linked by the notes it sits under">· under ${x.under.map((n) => pageLink(n)).join(', ')}</span>` : ''}</div></div></div>`;
 }
 
+/** Long lists (Build 44; a review found the To-dos list drawing all 2,290 rows of a big notes folder at
+ *  once): `items` are drawn into `host` a part at a time, `first` of them now and the next part whenever
+ *  the end of what's drawn comes near the screen, so a list of thousands opens as fast as a short one.
+ *  A short list is drawn whole, as before. `done()`: every row is drawn. Returns how many are drawn. */
+export function drawInParts(host, items, html, { first = 150, each = 300, done } = {}) {
+  let at = 0;
+  const tail = h('div', 'more-tail'); // (invisible, over the last screenful of rows: app.css)
+  const obs = new IntersectionObserver((es) => { if (es.some((x) => x.isIntersecting)) step(each); });
+  const step = (n) => {
+    const part = items.slice(at, at + n);
+    at += part.length;
+    tail.insertAdjacentHTML('beforebegin', part.map(html).join(''));
+    obs.disconnect();
+    if (at >= items.length) { tail.remove(); done?.(); } else obs.observe(tail); // (looked at afresh: it may still be near)
+  };
+  host.append(tail);
+  step(Math.max(first, 1));
+  return () => at;
+}
+
 /** Clicks in a list of taskRow()s: the box ticks the to-do off (or back on) in its file, anything
  *  else opens it where it's written. tasks(): the to-dos shown; reload(): after a change. */
 export function taskClicks(app, list, tasks, reload) {
@@ -488,8 +508,11 @@ export async function todosView(app, view) {
     if (opt.panel) findIn.focus({ preventScroll: true });
   };
   findIn.oninput = () => chips.find(findIn.value.trim());
-  const load = async () => { tasks = await call('tasks', { done: ['done', 'canceled'].includes(opt.kind) }); namesOf.clear(); countChips(); paintPanel(); draw(); };
-  const draw = () => {
+  const load = async (keep) => { tasks = await call('tasks', { done: ['done', 'canceled'].includes(opt.kind) }); namesOf.clear(); countChips(); paintPanel(); draw(keep === true); };
+  let drawn = () => 0; // how many rows are on the page (a long list is drawn in parts: drawInParts)
+  /** keep: the same list again after a to-do in it changed: at least as many rows as it showed, so the place stays. */
+  const draw = (keep = false) => {
+    const had = keep ? drawn() : 0;
     const q = input.value.trim().toLowerCase();
     const t = num(today());
     const list = tasks.filter((x) => ofKind(x) && typed(x, q) && chips.passes(names(x)));
@@ -513,9 +536,23 @@ export async function todosView(app, view) {
     }
     const filtering = q || chips.picks.size;
     fbtn.dataset.on = chips.picks.size ? 'true' : 'false';
-    out.innerHTML = groups.filter(([, g]) => g.length).map(([name, g]) => `<section class="sec"><h2 class="sec-h">${name} <span class="n">${g.length}</span></h2>
-      ${g.map((x) => taskRow(x)).join('')}</section>`).join('')
-      || BRAND.empty(filtering && tasks.length ? 'Nothing matches.' : { done: 'No finished to-dos.', canceled: 'No cancelled to-dos.' }[opt.kind] || 'No open to-dos here. Start a block with TODO (or press Ctrl+Enter) to make one.');
+    const secs = groups.filter(([, g]) => g.length);
+    out.replaceChildren();
+    if (!secs.length) { out.innerHTML = BRAND.empty(filtering && tasks.length ? 'Nothing matches.' : { done: 'No finished to-dos.', canceled: 'No cancelled to-dos.' }[opt.kind] || 'No open to-dos here. Start a block with TODO (or press Ctrl+Enter) to make one.'); drawn = () => 0; return; }
+    // one group after the other, each a part at a time (a short list all at once, as before)
+    let before = 0, k = 0, cur = null; // rows of the groups drawn whole; the group being drawn; its count so far
+    drawn = () => before + (cur ? cur() : 0);
+    const next = () => {
+      if (k >= secs.length) return;
+      const [name, g] = secs[k++];
+      const sec = h('section', 'sec');
+      sec.innerHTML = `<h2 class="sec-h">${name} <span class="n">${g.length}</span></h2>`;
+      out.append(sec);
+      let whole = false;
+      const count = drawInParts(sec, g, taskRow, { first: Math.max(150, had - before), done: () => { whole = true; cur = null; before += g.length; next(); } });
+      if (!whole) cur = count;
+    };
+    next();
   };
   tools.onclick = (e) => {
     const o = e.target.closest('[data-sort]');
@@ -536,7 +573,7 @@ export async function todosView(app, view) {
   };
   tools.querySelectorAll('.todo-kinds').forEach(fitChips);
   input.oninput = () => { countChips(); chips.draw(); draw(); };
-  taskClicks(app, out, () => tasks, load);
+  taskClicks(app, out, () => tasks, () => load(true));
   await load();
   if (!matchMedia('(pointer: coarse)').matches) input.focus();
 }

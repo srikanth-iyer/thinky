@@ -146,7 +146,7 @@ const ub = await page.locator('.unlinked .refgrp').first().evaluate((g) => ({ bg
 check(ub.bg === box.bg && ub.shadow === box.shadow && ub.n === '1 note' && ub.link, 'the same box, its count, the Link button', JSON.stringify(ub));
 
 console.log('every look: a box of its own, readable');
-for (const id of ['calm', 'calmplain', 'night', 'paper', 'sticker', 'stickernight', 'automaton', 'plain', 'plainnight', 'plainteal', 'azulejo']) {
+for (const id of ['calm', 'calmplain', 'night', 'paper', 'sticker', 'stickernight', 'automaton', 'plain', 'plainnight', 'plainteal']) {
   await page.evaluate((id) => { document.documentElement.dataset.skin = id; }, id);
   await sleep(60);
   const st = await linked(page).locator('.refgrp').first().evaluate((g) => { const cs = getComputedStyle(g); return { bg: cs.backgroundColor, border: cs.borderTopStyle, ink: getComputedStyle(g.querySelector('.refhit .bc')).color }; });

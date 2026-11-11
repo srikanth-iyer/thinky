@@ -37,7 +37,7 @@ function decode(buf) {
   return { w, h, px: (x, y) => [...out.subarray(y * stride + x * ch, y * stride + x * ch + 3)] };
 }
 
-const LOOKS = ['plain', 'plainnight', 'plainteal', 'calm', 'calmplain', 'night', 'paper', 'sticker', 'stickernight', 'automaton', 'azulejo'];
+const LOOKS = ['plain', 'plainnight', 'plainteal', 'calm', 'calmplain', 'night', 'paper', 'sticker', 'stickernight', 'automaton'];
 
 // ---------- Grimoire taken out: a saved Grimoire opens as Calm, from the first paint ----------
 let { browser, page, errors } = await open();
@@ -51,7 +51,7 @@ check(await page.evaluate(() => [document.documentElement.dataset.skin, localSto
 await page.locator('#side [data-a="looks"]').click();
 await sleep(200);
 const listed = await page.evaluate(() => [...document.querySelectorAll('.pop.looks [data-look]')].map((b) => b.dataset.look));
-check(listed.length === 13 && !listed.includes('grimoire') && LOOKS.every((l) => listed.includes(l)), 'the Look list has 13 looks (thinky and thinky night added), no Grimoire', listed.join(','));
+check(listed.length === 12 && !listed.includes('grimoire') && !listed.includes('azulejo') && LOOKS.every((l) => listed.includes(l)), 'the Look list has 12 looks (thinky and thinky night added), no Grimoire, no Azulejo', listed.join(','));
 await page.keyboard.press('Escape');
 
 const look = async (id, hash = '#/page/Thread%20test') => {

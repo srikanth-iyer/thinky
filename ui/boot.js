@@ -8,7 +8,7 @@ try {
   var skin = get1('skin') || 'thinky'; // (the default look since Build 33, he asked)
   var mode = get1('lookMode'), day = get1('skinDay'), night = get1('skinNight');
   if (mode && day && night) skin = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches) ? night : day;
-  document.documentElement.dataset.skin = { grimoire: 'calm', screenplay: 'plain' }[skin] || skin;
+  document.documentElement.dataset.skin = { grimoire: 'calm', screenplay: 'plain', azulejo: 'thinky' }[skin] || skin;
 } catch (e) {}
 // link colour and fonts picked in Settings (see App.applyTextStyle)
 try {
