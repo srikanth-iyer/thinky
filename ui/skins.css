@@ -5,6 +5,26 @@
    Calm, Night, Paper, Sticker and Sticker night come from the first mockups. */
 
 :root, [data-skin] {
+  /* The app's own words and corners (Build 44, he said go): app.css took 17 fixed text sizes, many half
+     a pixel apart, and 13 corner roundings. Now every fixed size in it is one of these steps, and a
+     test keeps it so (t26). Words: six sizes for the interface, two for headings. The notes' own
+     size, titles and the properties box stay each look's (--body-size, --title-size, --props-size);
+     sizes in em follow the words around them. Corners: five roundings and the pill; circles are 50%;
+     buttons, cards, tags and boxes that a look shapes keep their own tokens (--btn-radius…). */
+  --fs-tiny: 11px;  /* badges, a priority's letter */
+  --fs-small: 12px; /* hints, small headings, weekday letters */
+  --fs-sub: 13px;   /* second lines: counts, paths, where a note is; filter buttons */
+  --fs-ui: 14px;    /* the usual: the sidebar, buttons, fields, settings */
+  --fs-read: 15px;  /* lists to choose from: menus, search results, the "/" list */
+  --fs-big: 16px;   /* boxes typed in on a phone, a lead line */
+  --fs-head: 18px;  /* a dialog's heading */
+  --fs-top: 22px;   /* a card's heading */
+  --r-line: 2px;    /* thin lines and bars */
+  --r-s: 4px;       /* small marks: highlighted words, keys, swatches */
+  --r-m: 6px;       /* rows and small buttons */
+  --r-l: 8px;       /* buttons, fields, the sidebar's rows */
+  --r-xl: 12px;     /* things that float or frame: menus, dialogs, cards, banners */
+  --r-pill: 999px;
   /* colours */
   --bg: #F4F6F3; --surface: #FFFFFF; --surface-2: #F7F8F6;
   --ink: #1A2130; --ink-soft: #535D6E; --ink-faint: #656D7C; /* faint words ≥ 4.5:1 on the page and cards (Build 34, he asked; was #8A93A2) */

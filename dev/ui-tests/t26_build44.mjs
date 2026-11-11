@@ -312,4 +312,116 @@ import fs from 'node:fs';
   check(errors.length === 0, 'no script errors (long lists)', errors.join('\n'));
   await browser.close();
 }
+
+// ---------- Nov 11 (his comments on the review): the "/" list's icons, the sidebar's drawing in room of
+// its own, the phone while typing, and one short scale of text sizes and corners ----------
+{
+  const { browser, page, errors } = await open({ look: 'thinky' });
+  await go(page, '#/page/Table%20page');
+  await page.locator('.outline .blk > .bc').first().click();
+  await page.waitForSelector('textarea.ed');
+  await page.keyboard.press('End');
+  await page.keyboard.type(' /');
+  await page.waitForSelector('#ac li[data-k]');
+  const sl = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#ac li[data-k]')];
+    const ic = (li) => li.querySelector('.ac-ic');
+    return { n: rows.length, none: rows.filter((li) => !ic(li) || !(ic(li).querySelector('svg') || ic(li).textContent.trim())).map((li) => li.textContent),
+      first: rows.filter((li) => li.firstElementChild !== ic(li)).length, hidden: rows.filter((li) => ic(li)?.getAttribute('aria-hidden') !== 'true').length,
+      heights: [...new Set(rows.map((li) => Math.round(li.getBoundingClientRect().height)))], lefts: [...new Set(rows.map((li) => Math.round(ic(li).getBoundingClientRect().left)))],
+      kinds: new Set(rows.map((li) => ic(li).innerHTML)).size };
+  });
+  check(sl.n >= 30 && sl.none.length === 0 && sl.first === 0 && sl.hidden === 0, 'every row of the "/" list starts with an icon (for the eye only: the name says it)', JSON.stringify(sl));
+  check(sl.heights.length === 1 && sl.lefts.length === 1, 'the rows are one height and the icons one column, drawings and letter badges alike', JSON.stringify(sl));
+  check(sl.kinds >= sl.n - 2, 'the icons differ from row to row', `${sl.kinds} of ${sl.n}`);
+  await page.keyboard.press('Enter');
+  check((await page.locator('textarea.ed').inputValue()).startsWith('TODO before'), 'and picking a row works as before', await page.locator('textarea.ed').inputValue());
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Escape');
+  await sleep(1200);
+
+  // the sidebar: a long Recent list never runs over the look's drawing
+  await page.evaluate(() => localStorage.setItem('recent', JSON.stringify(['Sourdough Bread', 'Tasks', 'Table page', 'to read', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen'])));
+  await page.reload();
+  await page.waitForSelector('.sheet .outline');
+  await sleep(500);
+  const side = () => page.evaluate(() => {
+    const r = (q) => { const b = document.querySelector(q).getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), h: Math.round(b.height) }; };
+    const all = [...document.querySelectorAll('#recent a')], shown = all.filter((a) => !a.hidden);
+    const s = document.querySelector('#side');
+    return { art: r('#side .side-art'), foot: r('#side .side-foot'), last: Math.round(shown.at(-1)?.getBoundingClientRect().bottom ?? 0), shown: shown.length, all: all.length,
+      img: getComputedStyle(document.querySelector('#side .side-art')).backgroundImage, behind: getComputedStyle(s).backgroundImage, scroll: s.scrollHeight > s.clientHeight + 1 };
+  });
+  let sd = await side();
+  // (Recent keeps 10 pages)
+  check(sd.all === 10 && sd.shown >= 6 && /thinky-corner/.test(sd.img) && !/thinky-corner/.test(sd.behind), 'the look’s drawing is a part of the sidebar now, not a picture behind its lists', JSON.stringify(sd));
+  check(sd.art.h >= 52 && sd.last <= sd.art.top && sd.art.bottom <= sd.foot.top && !sd.scroll, 'a long Recent list ends above the drawing (at least 52px of it), and the sidebar needs no scroll bar', JSON.stringify(sd));
+  const tall = sd.shown;
+  await page.setViewportSize({ width: 1280, height: 640 });
+  await sleep(400);
+  sd = await side();
+  check(sd.art.h >= 52 && sd.last <= sd.art.top && sd.shown < tall && !sd.scroll, 'a shorter window: Recent shows fewer pages, the drawing stays clear of them', JSON.stringify(sd));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await sleep(400);
+  sd = await side();
+  check(sd.shown === tall, 'more room again brings the hidden pages back', JSON.stringify(sd));
+  await page.evaluate(() => localStorage.setItem('recent', JSON.stringify(['Tasks'])));
+  await page.reload();
+  await page.waitForSelector('.sheet .outline');
+  await sleep(500);
+  sd = await side();
+  check(sd.art.h >= 120 && sd.art.bottom <= sd.foot.top, 'with a short list the drawing has its full size, low in the sidebar', JSON.stringify(sd));
+  await page.setViewportSize({ width: 1280, height: 500 });
+  await sleep(400);
+  check(await page.evaluate(() => getComputedStyle(document.querySelector('#side .side-art')).display) === 'none', 'a window too short for it (under 520px) leaves the drawing out');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => { document.documentElement.dataset.skin = 'calm'; });
+  check(await page.evaluate(() => getComputedStyle(document.querySelector('#side .side-art')).display) === 'none', 'a look without a drawing has no room set aside for one');
+
+  // one short scale: no fixed text size or corner in app.css outside the named steps
+  const css = await page.evaluate(async () => (await (await fetch('/app.css')).text()).replace(/\/\*[\s\S]*?\*\//g, ''));
+  const sizes = [...css.matchAll(/font-size:\s*([\d.]+px)/g)].map((m) => m[1]);
+  const shorthand = [...css.matchAll(/font:\s*(?:\d{3}\s+)?[\d.]+px/g)].map((m) => m[0]);
+  const corners = [...css.matchAll(/border-radius:\s*([^;}]+)/g)].map((m) => m[1]).filter((v) => /\dpx/.test(v));
+  check(sizes.join() === '34px' && shorthand.length === 0, 'app.css has no fixed text size of its own, only the scale’s steps (but the look samples’ title)', JSON.stringify({ sizes, shorthand }));
+  check(corners.length === 0, 'and no corner rounding of its own', JSON.stringify(corners.slice(0, 8)));
+  const steps = await page.evaluate(() => { const cs = getComputedStyle(document.documentElement); return ['tiny', 'small', 'sub', 'ui', 'read', 'big', 'head', 'top'].map((k) => cs.getPropertyValue('--fs-' + k).trim()).concat(['line', 's', 'm', 'l', 'xl', 'pill'].map((k) => cs.getPropertyValue('--r-' + k).trim())); });
+  check(steps.join() === '11px,12px,13px,14px,15px,16px,18px,22px,2px,4px,6px,8px,12px,999px', 'the steps: eight text sizes, five roundings and the pill', steps.join());
+  check(errors.length === 0, 'no script errors (icons, sidebar, scale)', errors.join('\n'));
+  await browser.close();
+}
+{
+  // a small phone while typing
+  const { browser, page, errors } = await open({ viewport: { width: 320, height: 520 }, touch: true, look: 'thinky' });
+  const top = () => page.evaluate(() => Math.round(document.querySelector('.sheet.day .page-title').getBoundingClientRect().top));
+  const tools = () => page.evaluate(() => {
+    const row = document.querySelector('#toolbar .tb-scroll'), rr = row.getBoundingClientRect();
+    const bs = [...row.children].map((b) => b.getBoundingClientRect()).filter((b) => b.width);
+    return { w: +bs[0].width.toFixed(1), whole: bs.filter((b) => b.left >= rr.left - 0.6 && b.right <= rr.right + 0.6).length, cut: bs.filter((b) => (b.left < rr.right - 0.6 && b.right > rr.right + 0.6) || (b.left < rr.left - 0.6 && b.right > rr.left + 0.6)).length,
+      moreR: row.classList.contains('more-r'), moreL: row.classList.contains('more-l'), mask: getComputedStyle(row).maskImage || getComputedStyle(row).webkitMaskImage, pin: !!document.querySelector('#toolbar .tb-pin')?.getBoundingClientRect().width };
+  });
+  const bar = await page.evaluate(() => Math.round(document.querySelector('#topbar').getBoundingClientRect().height));
+  const t0 = await top();
+  await page.locator('.sheet.day .outline .blk > .bc').first().tap({ position: { x: 14, y: 10 } });
+  await page.waitForSelector('textarea.ed');
+  await sleep(500);
+  const t1 = await top();
+  check(bar >= 40 && t1 === t0 - bar, 'while typing, the notes move up into the top bar’s strip (it isn’t left empty)', JSON.stringify({ t0, t1, bar }));
+  let tb = await tools();
+  check(tb.cut === 0 && tb.whole >= 6 && tb.w >= 36 && tb.pin, 'the toolbar shows a whole number of tools, none cut in half, “close keyboard” at its end', JSON.stringify(tb));
+  check(tb.moreR && !tb.moreL && /gradient/.test(tb.mask), 'its edge fades where more tools are hidden', JSON.stringify(tb));
+  await page.evaluate(() => document.querySelector('#toolbar .tb-scroll').scrollBy({ left: 130 }));
+  await sleep(600);
+  tb = await tools();
+  check(tb.cut === 0 && tb.moreL && tb.moreR, 'scrolled, it stops on whole tools, both edges faded', JSON.stringify(tb));
+  await page.evaluate(() => document.querySelector('#toolbar .tb-scroll').scrollBy({ left: 2000 }));
+  await sleep(600);
+  tb = await tools();
+  check(tb.cut === 0 && tb.moreL && !tb.moreR, 'at its end, only the left edge fades', JSON.stringify(tb));
+  await page.keyboard.press('Escape');
+  await sleep(500);
+  check(await top() === t0, 'typing done: the bar and the notes are back where they were', String(await top()));
+  check(errors.length === 0, 'no script errors (typing on a phone)', errors.join('\n'));
+  await browser.close();
+}
 process.exit(failures() ? 1 : 0);
