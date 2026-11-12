@@ -246,6 +246,14 @@ if [ -n "$SOCK" ]; then
   # 7c. the journal widget draws notes as the app does (Build 46): a note's formatting, put through a
   #     real row's RemoteViews by the test-build-only LeanAndroid.testWidgetText(), in the Plain look
   #     7b ended on, against that look's link colour
+  #     (a small picture in the notes folder for the picture note: the test pushes it, it isn't in the sample)
+  python3 -c "
+import struct, zlib
+def chunk(t, d): return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+raw = b''.join(b'\x00' + bytes([40, 120, 200] * 48) for _ in range(24))
+open('/tmp/dot.png', 'wb').write(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 48, 24, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
+"
+  run adb push /tmp/dot.png /sdcard/vault/assets/dot.png
   WTEXT=$($CDP eval "(() => { const t = (n) => JSON.parse(window.LeanAndroid.testWidgetText(n)); const p = document.createElement('i'); p.style.color = 'var(--link)'; document.body.append(p); const link = '#' + (getComputedStyle(p).color.match(/[0-9.]+/g) || []).slice(0, 3).map((x) => Math.round(+x).toString(16).padStart(2, '0')).join(''); p.remove(); return JSON.stringify({ link, a: t('TODO **bold** and *it* ~~gone~~ ==lit== \`code\` [[Sourdough Bread]] #baking [site](https://example.com) \$x^2\$'), b: t('DONE finished [[Tasks]]'), c: t('## A heading'), d: t('A picture ![dot](../assets/dot.png)'), e: t('CANCELED dropped'), f: t('a link ![away](https://example.com/x.png) here') }); })()" | tr -d '\r')
   log "widget text: $WTEXT"
 
