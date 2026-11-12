@@ -46,7 +46,20 @@ const ARTICLE = `<!doctype html><html><head><meta charset="utf-8"><title>How Bre
 <p id="p3">Reviewers flagged #1 issue with [[brackets]] and key:: value pairs.</p>
 <p id="p4">The last paragraph says something worth keeping for later.</p>
 </article></body></html>`;
-const server = http.createServer((req, res) => { res.setHeader('content-type', 'text/html'); res.end(ARTICLE); });
+// (1.1.1) an article whose spacing differs from the notes' copies: "hypothesis (opens a new tab)" on
+// the page, two paragraphs touching with no space between them
+const SPACING = `<!doctype html><html><head><meta charset="utf-8"><title>Spacing</title></head><body><article>
+<p>The “modified fighting” hypothesis <a href="#x">(opens a new tab)</a>, which says righties win.</p><p>First half ends here.</p><p>Second half starts here.</p>
+<p>A passage captured into the journal only, not yet filed.</p>
+<p>Short bit.</p>
+</article></body></html>`;
+// (1.1.1) an article whose words arrive a second after the page has loaded (as many news sites do)
+const LATE = `<!doctype html><html><head><meta charset="utf-8"><title>Late</title></head><body><article id="a"></article>
+<script>setTimeout(() => { document.getElementById('a').innerHTML = '<p>These words arrive after the page has loaded.</p>'; }, 1000);</script></body></html>`;
+const server = http.createServer((req, res) => {
+  res.setHeader('content-type', 'text/html');
+  res.end(req.url.startsWith('/spacing/') ? SPACING : req.url.startsWith('/late/') ? LATE : ARTICLE);
+});
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const URL0 = `http://127.0.0.1:${server.address().port}/how-bread-rises/?utm_source=twitter`;
 
@@ -166,6 +179,60 @@ await other.goto(URL0.replace('how-bread-rises/', 'another-article/'));
 await sleep(1500);
 check(await other.evaluate(() => !document.getElementById('lean-outliner-style') && !CSS.highlights.get('lean-outliner-kept')), 'a page that isn’t one of his articles is left alone');
 await other.close();
+
+// (1.1.1) passages spaced differently from the page, a quick capture's time, and a quick capture
+// still waiting in the journal: all marked
+const SP = URL0.replace(/how-bread-rises\/.*$/, 'spacing/');
+fs.writeFileSync(VAULT + '/pages/Spacing.md', `source:: [Spacing](${SP})\n\n- [[July 30th, 2026]]\n\t- **22:26** The “modified fighting” hypothesis(opens a new tab), which says righties win. [↗](${SP}#:~:text=The)\n\t- First half ends here. Second half starts here.\n\t- Short  bit.\n`);
+fs.writeFileSync(VAULT + `/Diary/${title}.md`, `- **10:00** [[quick capture]]: #inbox A passage captured into the journal only, not yet filed. [Spacing](${SP}#:~:text=A%20passage)\n`);
+await sw.evaluate(() => articles(true));
+const sp = await ctx.newPage();
+await sp.goto(SP);
+await sp.waitForFunction(() => (CSS.highlights.get('lean-outliner-kept')?.size || 0) >= 4, null, { timeout: 15000 }).catch(() => {});
+const marked = await sp.evaluate(() => [...(CSS.highlights.get('lean-outliner-kept') || [])].map((r) => r.toString()));
+check(marked.some((t) => t.startsWith('The “modified fighting” hypothesis (opens a new tab), which says righties win.')), 'a capture’s time doesn’t stop a passage being found, nor a missing space', JSON.stringify(marked));
+check(marked.some((t) => t === 'First half ends here.Second half starts here.'), 'a passage across two paragraphs that touch on the page', JSON.stringify(marked));
+check(marked.some((t) => t === 'A passage captured into the journal only, not yet filed.'), 'a quick capture still in the journal is marked too', JSON.stringify(marked));
+check(marked.some((t) => t === 'Short bit.'), 'a short passage is found with its spaces squeezed', JSON.stringify(marked));
+check(marked.length === 4, 'four passages marked', JSON.stringify(marked));
+await sp.screenshot({ path: SHOTS + '/t16_spacing.png', clip: { x: 0, y: 0, width: 640, height: 160 } });
+await sp.close();
+// a short passage isn't looked for without its spaces (too likely to turn up inside other words)
+const loose = await sw.evaluate(async (id) => run(id, () => window.__leanOutliner.paintKept([{ plain: 'Doughn eeds' }, { plain: 'Dough needs warm airbefore it rises' }])), tabId);
+check(loose === 1, 'only longer passages are matched without their spaces', loose);
+// words that arrive after the page has loaded: looked for again a moment later
+const LT = URL0.replace(/how-bread-rises\/.*$/, 'late/');
+fs.writeFileSync(VAULT + '/pages/Late.md', `source:: [Late](${LT})\n\n- These words arrive after the page has loaded.\n`);
+await sw.evaluate(() => articles(true));
+const lt = await ctx.newPage();
+await lt.goto(LT);
+await lt.waitForFunction(() => (CSS.highlights.get('lean-outliner-kept')?.size || 0) === 1, null, { timeout: 10000 }).catch(() => {});
+check(await lt.evaluate(() => CSS.highlights.get('lean-outliner-kept')?.size || 0) === 1, 'words that arrive late are marked once they’re there');
+await lt.close();
+
+// (1.1.1) "Send the selected text…" with nothing selected: nothing is sent, and the box greys it out
+fs.rmSync(VAULT + `/Diary/${title}.md`, { force: true });
+await page.evaluate(() => getSelection().removeAllRanges());
+const none = await sw.evaluate(async (id) => toJournal(await chrome.tabs.get(id)), tabId);
+check(!none.ok && /Select some text on the page first/.test(none.error), 'nothing selected: says to select text first', JSON.stringify(none));
+check(!fs.existsSync(VAULT + `/Diary/${title}.md`), 'and nothing goes to the journal');
+await box.reload();
+await box.waitForSelector('#title');
+await box.waitForFunction(() => document.getElementById('journal').disabled, null, { timeout: 5000 }).catch(() => {});
+check(await box.isDisabled('#journal'), 'the box greys out “Send the selected text…” with nothing selected');
+await select('#p4');
+await box.reload();
+await box.waitForSelector('#title');
+await box.waitForFunction(() => !document.getElementById('journal').disabled, null, { timeout: 5000 }).catch(() => {});
+check(!(await box.isDisabled('#journal')), 'and offers it once text is selected');
+// (1.1.1) the setting sits behind the gear
+check(await box.isHidden('#settings'), 'the settings start folded away');
+await box.click('#gear');
+check(await box.isVisible('#again'), 'the gear shows “Show my highlights again”');
+check(await box.getAttribute('#gear', 'aria-expanded') === 'true', 'and says it is open');
+await box.screenshot({ path: SHOTS + '/t16_box_settings.png' });
+await box.click('#gear');
+check(await box.isHidden('#settings'), 'a second click folds it away');
 
 // one passage straight to today's journal
 await select('#p4');

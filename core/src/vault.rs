@@ -852,6 +852,18 @@ impl Vault {
         v
     }
 
+    /// Where quick captures wait: every journal day's notes (oldest day first), then those of the
+    /// page `also` (the quick capture page, when captures go there; "" for none); each page's notes
+    /// in file order, as (page name, note text). For the browser extension's "highlights already in
+    /// the notes" (clip.rs), which looks for quick captures not yet filed onto their article's page.
+    pub fn capture_notes(&self, also: &str) -> Vec<(&str, &str)> {
+        let also = if also.trim().is_empty() { None } else { self.pages.get(&self.resolve(also)) };
+        let mut days: Vec<&Page> = self.pages.values().filter(|p| p.journal.is_some()).collect();
+        days.sort_by_key(|p| p.journal);
+        days.extend(also.filter(|p| p.journal.is_none()));
+        days.into_iter().flat_map(|p| p.parsed.blocks.iter().map(move |b| (p.name.as_str(), b.text.as_str()))).collect()
+    }
+
     /// Every to-do in the vault (open ones only unless `done`).
     pub fn tasks(&self, done: bool) -> Vec<TaskHit> {
         let mut out = vec![];

@@ -6,7 +6,16 @@
 <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header><img src="icons/32.png" alt="" width="20" height="20"><b>thinky</b></header>
+  <header><img src="icons/32.png" alt="" width="20" height="20"><b>thinky</b>
+    <button id="gear" class="gear" title="Settings" aria-label="Settings" aria-expanded="false" aria-controls="settings"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.2 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
+  </header>
+  <section id="settings" class="settings" hidden>
+    <div class="again">
+      <label><input type="checkbox" id="again"> Show my highlights again on pages I’ve highlighted</label>
+      <p class="hint" id="again-hint">When you come back to an article, the passages already in your notes are marked on it. Your browser asks to let the extension see the pages you open: it checks each address against your articles, marks only those, and sends nothing anywhere but thinky.</p>
+      <a class="link" href="https://srikanth-iyer.github.io/thinky/highlights.html" target="_blank" rel="noopener">How highlights work</a>
+    </div>
+  </section>
   <main>
     <label class="lbl" for="title">Page in your notes</label>
     <input id="title" spellcheck="false" placeholder="The article’s title">
@@ -22,11 +31,6 @@
       <ol id="kept-list"></ol>
     </details>
     <button id="journal" class="link">Send the selected text to today’s journal</button>
-    <div class="again">
-      <label><input type="checkbox" id="again"> Show my highlights again on pages I’ve highlighted</label>
-      <p class="hint" id="again-hint">When you come back to an article, the passages already in your notes are marked on it. Your browser asks to let the extension see the pages you open: it checks each address against your articles, marks only those, and sends nothing anywhere but thinky.</p>
-      <a class="link" href="https://srikanth-iyer.github.io/thinky/highlights.html" target="_blank" rel="noopener">How highlights work</a>
-    </div>
   </main>
   <script src="popup.js"></script>
 </body>

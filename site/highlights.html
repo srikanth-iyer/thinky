@@ -32,7 +32,7 @@
 
 <h2>3. Send them to your notes</h2>
 <p>Click the extension's button (or press <code>Alt+Shift+L</code>), check the page name, then click <strong>Send</strong>. They go to a page of their own for that article, under today's date, each with a small <strong>↗</strong> link back to its spot in the article. A passage already on the page isn't added twice.</p>
-<p>One passage straight into today's journal instead: right-click → <strong>Send to today's journal</strong>, or <code>Alt+Shift+J</code>.</p>
+<p>One passage straight into today's journal instead: select it, then right-click → <strong>Send to today's journal</strong>, or <code>Alt+Shift+J</code>. With nothing selected, nothing is sent: the extension asks you to select some text first.</p>
 
 <h2>4. See them again</h2>
 <div class="pair">
@@ -40,7 +40,7 @@
 <figure><img src="shots/highlights-box.png" alt="The extension's box listing three highlights already in How Bread Rises" loading="lazy"><figcaption>The box lists them too.</figcaption></figure>
 </div>
 <p><strong>Once:</strong> open the extension's box on an article. The passages your notes already hold for it are marked on the page and listed under <em>“N highlights already in …”</em>.</p>
-<p><strong>Every time you come back:</strong> in the box, tick <strong>Show my highlights again on pages I've highlighted</strong>. The browser asks once to let the extension see the pages you open. From then on, opening one of your articles marks its passages by itself. Untick it to stop; the permission is given back.</p>
+<p><strong>Every time you come back:</strong> in the box, click the gear at the top right and tick <strong>Show my highlights again on pages I've highlighted</strong> (you only do this once; it stays on). The browser asks once to let the extension see the pages you open. From then on, opening one of your articles marks its passages by itself. Untick it to stop; the permission is given back.</p>
 <div class="note">
 <p>What the extension does with that permission: it compares each page's address with the list of articles in your notes, on your computer. On a page that isn't one of them it does nothing at all. It sends nothing anywhere except to thinky on the same computer.</p>
 </div>
@@ -52,7 +52,9 @@
 <h2>Good to know</h2>
 <ul>
 <li>A passage is found again by its words. If the article's words changed since, or the passage is a formula (kept as TeX), it's listed but not marked.</li>
-<li>Pages you filed by hand count too, as long as the page has the article's address in its <code>source::</code> property.</li>
+<li>Pages you filed by hand count too, as long as the page has the article's address in its <code>source::</code> property. Passages that start with a quick capture's time (<code>**22:19** …</code>) are found without it.</li>
+<li>Quick captures still waiting in your journal count too: a passage sent with <strong>Send to today's journal</strong> (or shared from your phone) is marked before you file it, as long as its note has the article's link.</li>
+<li>A passage whose spacing differs a little from the article's (a missing space, two paragraphs run together) is still found.</li>
 <li>Nothing is changed in your notes by seeing highlights again: it only reads them.</li>
 </ul>
 </main>

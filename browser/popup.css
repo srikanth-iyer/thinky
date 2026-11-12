@@ -27,7 +27,10 @@ button.link { border: 0; background: none; padding: 0; color: var(--accent); fon
 #kept summary { cursor: pointer; color: var(--faint); font-size: 12px; }
 #kept-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 200px; overflow-y: auto; }
 #kept-list li { padding: 4px 0 4px 8px; border-left: 3px solid #e0b000; margin-bottom: 4px; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.again { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+button.link:disabled { color: var(--faint); text-decoration: none; cursor: default; }
+.gear { margin-left: auto; border: 0; background: none; color: var(--faint); cursor: pointer; padding: 4px; border-radius: 6px; line-height: 0; }
+.gear:hover, .gear[aria-expanded="true"] { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.settings { padding: 10px 14px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 3%, transparent); }
 .again label { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
 .again input { margin: 2px 0 0; accent-color: var(--accent); }
 .again .hint { margin: 4px 0 6px 24px; font-size: 12px; }

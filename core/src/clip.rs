@@ -412,6 +412,13 @@ pub fn article_urls(app: &App) -> Vec<String> {
         .filter(|u| u.starts_with("https://") || u.starts_with("http://"))
         .map(|u| normalize_url(&u))
         .collect();
+    // and the articles of quick captures still waiting in the journal
+    let template = &app.vault.config.capture_text;
+    for (_, note) in app.vault.capture_notes(&capture_page(app)) {
+        if capture_rest(template, note).is_some() {
+            v.extend(web_addresses(note).iter().map(|u| normalize_url(u)));
+        }
+    }
     v.sort();
     v.dedup();
     v.truncate(MAX_ARTICLES);
@@ -464,7 +471,204 @@ pub fn kept_highlights(app: &App, url: &str) -> Kept {
             }
         }
     }
+    // (he asked, Nov 12: "is it possible to check the quick captures on the journal as well?")
+    // Quick captures not yet filed onto the article's page: a journal note written the capture way
+    // (`capture_rest`) that links to this article. Its words, without the capture's own parts.
+    let template = &app.vault.config.capture_text;
+    for (day, note) in app.vault.capture_notes(&capture_page(app)) {
+        let Some(rest) = capture_rest(template, note) else { continue };
+        let Some(spot) = web_addresses(note).into_iter().find(|u| normalize_url(u) == want) else { continue };
+        let (plain, link) = plain_words(rest, &want);
+        if plain.chars().count() < 3 || !seen.insert(plain.to_lowercase()) {
+            continue;
+        }
+        if out.page.is_empty() {
+            out.page = day.to_string();
+        }
+        let link = if link.is_empty() && spot.contains("#:~:text=") { spot } else { link };
+        out.highlights.push(KeptHighlight { plain, link });
+        if out.highlights.len() >= MAX_KEPT {
+            return out;
+        }
+    }
     out
+}
+
+/// The page quick captures go to when they don't go to today's journal ("" when they do).
+fn capture_page(app: &App) -> String {
+    let c = &app.vault.config;
+    if c.capture_today { String::new() } else { c.capture_page.clone() }
+}
+
+/// A journal note written by quick capture: its words after the capture's own beginning, or None
+/// when it isn't one. The beginning is the quick capture template's part before `{text}` (his own:
+/// "**{time}** [[quick capture]]: #inbox "), with any time and date in it; when the template has
+/// changed since, a beginning of only a bold time, page links ("[[quick capture]]") and tags
+/// ("#inbox"), with a ":" after them, also counts.
+pub fn capture_rest<'a>(template: &str, note: &'a str) -> Option<&'a str> {
+    if let Some(rest) = template_rest(template, note) {
+        return Some(rest);
+    }
+    // the fallback: at least one page link and the rest of that beginning
+    let mut s = note.trim_start();
+    let mut links = 0;
+    loop {
+        let t = s.trim_start();
+        let t = t.strip_prefix(':').unwrap_or(t).trim_start();
+        if let Some(inner) = t.strip_prefix("[[") {
+            match inner.find("]]") {
+                Some(e) if !inner[..e].contains('[') => {
+                    links += 1;
+                    s = &inner[e + 2..];
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        if t.starts_with("**") {
+            let after = strip_capture_time(t);
+            let after = if after.len() == t.len() { strip_capture_time_colon(t) } else { after };
+            if after.len() < t.len() {
+                s = after;
+                continue;
+            }
+        }
+        if let Some(tag) = t.strip_prefix('#') {
+            let n = tag.find(|c: char| c.is_whitespace() || c == ':').unwrap_or(tag.len());
+            if n > 0 && !tag.starts_with('[') {
+                s = &tag[n..];
+                continue;
+            }
+        }
+        s = t;
+        break;
+    }
+    (links > 0).then_some(s)
+}
+
+/// "**17:50**: words" (the default template's "[[quick capture]] **{time}**: {text}") → "words".
+fn strip_capture_time_colon(t: &str) -> &str {
+    let Some(i) = t.find("**:") else { return t };
+    let fixed = format!("{} {}", &t[..i + 2], &t[i + 3..]);
+    let r = strip_capture_time(&fixed);
+    if r.len() == fixed.len() {
+        return t;
+    }
+    // the same words, found again in `t`
+    &t[t.len() - r.len()..]
+}
+
+/// The template's beginning (before `{text}`) matched against the note: literal parts as written,
+/// `{time}` as digits and colons (and "am"/"pm"), `{date}` as anything up to the next literal part.
+fn template_rest<'a>(template: &str, note: &'a str) -> Option<&'a str> {
+    let head = &template[..template.find("{text}")?];
+    let mut s = note.trim_start();
+    let mut rest = head.trim_start();
+    while !rest.is_empty() {
+        if let Some(r) = rest.strip_prefix("{time}") {
+            let n = s.find(|c: char| !(c.is_ascii_digit() || c == ':')).unwrap_or(s.len());
+            if n == 0 {
+                return None;
+            }
+            s = &s[n..];
+            for ampm in [" am", " pm", " AM", " PM", "am", "pm", "AM", "PM"] {
+                if let Some(t) = s.strip_prefix(ampm) {
+                    s = t;
+                    break;
+                }
+            }
+            rest = r;
+        } else if let Some(r) = rest.strip_prefix("{date}") {
+            let lit_end = r.find('{').unwrap_or(r.len());
+            let lit = &r[..lit_end];
+            if lit.trim().is_empty() {
+                return None;
+            }
+            let at = s.find(lit)?;
+            s = &s[at..];
+            rest = r;
+        } else if rest.starts_with("{url}") {
+            return None;
+        } else {
+            let n = rest[1..].find('{').map_or(rest.len(), |k| k + 1);
+            let lit = &rest[..n];
+            // spaces in the template stand for any spaces in the note
+            let want = lit.trim_end();
+            s = s.strip_prefix(want)?;
+            if lit.len() > want.len() {
+                if !(s.is_empty() || s.starts_with(char::is_whitespace)) {
+                    return None;
+                }
+                s = s.trim_start();
+            }
+            rest = &rest[n..];
+        }
+    }
+    Some(s.trim_start())
+}
+
+/// The web addresses in a note: Markdown links' and bare ones, as written (a text fragment kept).
+pub fn web_addresses(note: &str) -> Vec<String> {
+    let mut out = vec![];
+    let mut rest = note;
+    while let Some(i) = rest.find("http") {
+        let tail = &rest[i..];
+        if !(tail.starts_with("https://") || tail.starts_with("http://")) {
+            rest = &tail[4..];
+            continue;
+        }
+        let inside_link = rest[..i].ends_with("](");
+        // a link's address ends at its own ")" (it may hold "(…)" pairs, as text fragments do)
+        let mut depth = 0i32;
+        let mut end = tail.len();
+        for (k, c) in tail.char_indices() {
+            match c {
+                c if c.is_whitespace() => {
+                    end = k;
+                    break;
+                }
+                '(' => depth += 1,
+                ')' if depth == 0 => {
+                    end = k;
+                    break;
+                }
+                ')' => depth -= 1,
+                ']' | '>' | '"' if !inside_link => {
+                    end = k;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        let u = tail[..end].trim_end_matches(['.', ',', ';']);
+        out.push(u.to_string());
+        rest = &tail[end..];
+    }
+    out
+}
+
+/// A note's text without a quick capture's bold time at its start: "**22:19** words" → "words"
+/// (also "**9:05**", "**22:19:05**", and "**22:19**" with nothing after it → ""). Anything else is
+/// handed back as it is.
+fn strip_capture_time(t: &str) -> &str {
+    let s = t.trim_start();
+    let Some(rest) = s.strip_prefix("**") else { return t };
+    let Some(end) = rest.find("**") else { return t };
+    let time = &rest[..end];
+    let parts: Vec<&str> = time.split(':').collect();
+    let ok = (parts.len() == 2 || parts.len() == 3)
+        && (1..=2).contains(&parts[0].len())
+        && parts[1..].iter().all(|p| p.len() == 2)
+        && parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit()));
+    if !ok {
+        return t;
+    }
+    let after = &rest[end + 2..];
+    // only when the time stands alone: "**22:19**" followed by a space or nothing
+    if !(after.is_empty() || after.starts_with(char::is_whitespace)) {
+        return t;
+    }
+    after.trim_start()
 }
 
 /// A note's words as a web page shows them: no property lines, invisible spaces, Markdown marks or
@@ -478,6 +682,9 @@ fn plain_words(note: &str, want: &str) -> (String, String) {
     let body: Vec<&str> = note.lines().filter(|l| !is_prop(l)).collect();
     // (invisible spaces go last: "[\u{200b}[words]\u{200b}]" is words in brackets on the page, not a link)
     let mut t = body.join(" ");
+    // a quick capture's time at the start ("**22:19** words", the capture template's {time}) isn't
+    // on the web page, so it goes; time-like words without the bold ("10:30 the bell rang") stay
+    t = strip_capture_time(&t).to_string();
     let mut link = String::new();
     if let Some(i) = t.rfind(" [↗](") {
         if t.trim_end().ends_with(')') {
