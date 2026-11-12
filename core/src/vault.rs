@@ -610,14 +610,22 @@ impl Vault {
     /// Notes (and pages) with property `prop` (any property when it's empty, then a value is needed)
     /// whose value contains `value` (any value when none), page by page A to Z.
     pub fn with_property(&self, prop: &str, value: Option<&str>) -> Vec<RefGroup> {
+        self.with_property_as(prop, value, false)
+    }
+
+    /// The same, with `exact`: only notes where one of the property's values (a comma list split, as
+    /// `prop_values` counts them) is `value`, capitals aside (Build 46: a property page's value
+    /// buttons, so "book" isn't also "ebook").
+    pub fn with_property_as(&self, prop: &str, value: Option<&str>, exact: bool) -> Vec<RefGroup> {
         let pk = prop.to_lowercase();
         let val = value.map(|v| v.to_lowercase());
+        let has = |v: &str, x: &str| if exact { crate::parse::split_items(v).iter().any(|i| i.to_lowercase() == x) } else { v.to_lowercase().contains(x) };
         // no key: any property whose value has the words (the Properties list's search; never every property)
         if pk.is_empty() && val.as_deref().map_or(true, |v| v.trim().is_empty()) {
             return vec![];
         }
         let matches = |props: &[(String, String)]| {
-            props.iter().any(|(k, v)| (pk.is_empty() || k == &pk) && val.as_ref().map_or(true, |x| v.to_lowercase().contains(x)))
+            props.iter().any(|(k, v)| (pk.is_empty() || k == &pk) && val.as_ref().map_or(true, |x| has(v, x)))
         };
         let mut groups: Vec<RefGroup> = vec![];
         for p in self.pages.values() {

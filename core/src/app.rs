@@ -2600,7 +2600,7 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
         "prop_values" => to_value(app.vault.prop_values(&s("key"))),
         "with_property" => {
             let val = s("value");
-            to_value(app.vault.with_property(&s("key"), (!val.is_empty()).then_some(val.as_str())))
+            to_value(app.vault.with_property_as(&s("key"), (!val.is_empty()).then_some(val.as_str()), b("exact")))
         }
         "tasks" => to_value(app.tasks(b("done"))),
         "unlinked" => {

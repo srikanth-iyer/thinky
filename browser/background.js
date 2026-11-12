@@ -13,7 +13,8 @@ function articleKey(url) {
     const u = new URL(url);
     u.hash = '';
     for (const k of [...u.searchParams.keys()]) if (TRACKING.test(k)) u.searchParams.delete(k);
-    const host = u.hostname.toLowerCase().replace(/^www\./, '');
+    // (its port too, but not the usual one, as the app writes it)
+    const host = u.host.toLowerCase().replace(/^www\./, '').replace(/:(80|443)$/, '');
     const q = u.searchParams.toString();
     return `https://${host}${u.pathname.replace(/\/+$/, '')}${q ? '?' + q : ''}`;
   } catch (e) {
@@ -104,6 +105,10 @@ async function sendAll(tab, title) {
     await putList(key, null);
     await badge(tab.id, 0);
     await run(tab.id, () => window.__leanOutliner.clear()).catch(() => {});
+    // they're in his notes now: the article is on the list, and its passages marked as kept
+    await articles(true);
+    const k = await kept(info.url);
+    if (!k.error) await markKept(tab.id, k.highlights);
   }
   return res;
 }
@@ -140,6 +145,60 @@ async function talk(msg) {
     return { ok: false, error: 'Couldn’t reach thinky: ' + m };
   }
 }
+
+// ------------------------------------------------------------ highlights already in his notes
+// (Build 46) thinky tells which articles have a page in the notes ("articles": their addresses)
+// and, for one article, the passages on it ("kept"). Asking starts thinky's program for a moment,
+// so the list of articles is kept here and asked for again at most every 10 minutes; a page is
+// asked about only when its address is on that list.
+// "Show my highlights again" (off until turned on in the box, which asks Edge for the "all
+// websites" permission then): each page he opens whose article is on the list gets its kept
+// passages marked. Without it, opening the box on a page marks them there.
+const ARTICLES_FOR = 10 * 60 * 1000;
+async function opts() {
+  return (await chrome.storage.local.get('opts')).opts || { showAgain: false };
+}
+async function setOpts(o) {
+  await chrome.storage.local.set({ opts: { ...(await opts()), ...o } });
+}
+async function articles(fresh) {
+  const got = (await chrome.storage.local.get('articles')).articles;
+  if (!fresh && got && Date.now() - got.at < ARTICLES_FOR) return new Set(got.urls);
+  const r = await talk({ cmd: 'articles' });
+  // (when thinky can't answer, the old list is kept and not asked for again for 10 minutes either)
+  const urls = r.ok ? r.urls || [] : got ? got.urls : [];
+  await chrome.storage.local.set({ articles: { at: Date.now(), urls } });
+  return new Set(urls);
+}
+// the passages of the article at `url` in his notes: {page, highlights: [{plain, link}]}, or {error}
+async function kept(url) {
+  const r = await talk({ cmd: 'kept', url });
+  return r.ok ? { page: r.page || '', highlights: r.highlights || [] } : { error: r.error };
+}
+async function hasAllSites() {
+  try { return await chrome.permissions.contains({ origins: ['<all_urls>'] }); } catch (e) { return false; }
+}
+// mark both lists on a page: his kept-here ones and the ones in his notes
+async function markKept(tabId, items) {
+  return run(tabId, (its) => window.__leanOutliner.paintKept(its), [items]).catch(() => 0);
+}
+
+chrome.tabs.onUpdated.addListener(async (tabId, change, tab) => {
+  if (change.status !== 'complete' || !/^https?:/.test(tab.url || '')) return;
+  if (!(await opts()).showAgain || !(await hasAllSites())) return;
+  const key = articleKey(tab.url);
+  const mine = await getList(key);
+  const known = (await articles()).has(key);
+  if (!known && !mine) return; // (most pages: nothing to ask, nothing put into the page)
+  if (mine) {
+    await run(tabId, (its) => window.__leanOutliner.paint(its), [mine.items]).catch(() => {});
+    await badge(tabId, mine.items.length);
+  }
+  if (known) {
+    const k = await kept(tab.url);
+    if (!k.error && k.highlights.length) await markKept(tabId, k.highlights);
+  }
+});
 
 // ------------------------------------------------------------ menus, keys, the popup's requests
 chrome.runtime.onInstalled.addListener(() => {
@@ -181,6 +240,22 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
   (async () => {
     const tab = await chrome.tabs.get(m.tabId);
     if (m.do === 'send') return reply(await sendAll(tab, m.title));
+    if (m.do === 'opts') {
+      if (m.set) await setOpts(m.set);
+      return reply({ ...(await opts()), allSites: await hasAllSites() });
+    }
+    if (m.do === 'kept') {
+      // this page's passages already in his notes, marked on it (the box opened is his say-so)
+      let info;
+      try {
+        info = await run(tab.id, () => window.__leanOutliner.pageInfo());
+      } catch (e) {
+        return reply({ error: CANT });
+      }
+      const k = await kept(info.url);
+      if (!k.error) await markKept(tab.id, k.highlights);
+      return reply(k);
+    }
     if (m.do === 'journal') return reply(await toJournal(tab));
     let info;
     try {

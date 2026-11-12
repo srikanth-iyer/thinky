@@ -375,6 +375,163 @@ fn add_under_day(blocks: &mut Vec<DocBlock>, day: &str, notes: &[String]) -> usi
     n
 }
 
+// ---------------------------------------------------------------- highlights already in the notes
+// (Build 46, he asked: "Can't I just also see what is already highlighted?") The extension marks
+// again, on the article itself, the passages his notes already hold for it, and the phone's share
+// pop-up lists them. Read only: nothing here writes.
+
+/// One passage already in the notes: its plain words (as the page shows them, to be found again)
+/// and the link to its spot, when the note has one.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct KeptHighlight {
+    pub plain: String,
+    pub link: String,
+}
+
+/// The article's page in the notes ("" when there's none) and the passages on it, in its order.
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+pub struct Kept {
+    pub page: String,
+    pub highlights: Vec<KeptHighlight>,
+}
+
+/// The most passages handed back for one article.
+pub const MAX_KEPT: usize = 500;
+/// The most article addresses handed back (the extension keeps the list to know, without asking
+/// thinky on every page he opens, which pages have highlights).
+pub const MAX_ARTICLES: usize = 20_000;
+
+/// Every article the notes have a page for (a `source::` web address), as `normalize_url` writes
+/// them, sorted, each once.
+pub fn article_urls(app: &App) -> Vec<String> {
+    let mut v: Vec<String> = app
+        .vault
+        .pages_with_page_prop("source")
+        .into_iter()
+        .filter_map(|(_, v)| source_url(&v))
+        .filter(|u| u.starts_with("https://") || u.starts_with("http://"))
+        .map(|u| normalize_url(&u))
+        .collect();
+    v.sort();
+    v.dedup();
+    v.truncate(MAX_ARTICLES);
+    v
+}
+
+/// The passages kept for the article at `url`: the notes on each page whose `source::` is that
+/// article (the page made by `file_clip`, or one he filed by hand), except date bullets, and each
+/// as plain words. Pages that can't be read are passed over.
+pub fn kept_highlights(app: &App, url: &str) -> Kept {
+    let want = normalize_url(url);
+    let mut out = Kept::default();
+    if !(want.starts_with("https://") || want.starts_with("http://")) {
+        return out;
+    }
+    let mut pages: Vec<String> = app
+        .vault
+        .pages_with_page_prop("source")
+        .into_iter()
+        .filter(|(_, v)| source_url(v).is_some_and(|u| normalize_url(&u) == want))
+        .map(|(n, _)| n)
+        .collect();
+    pages.sort_by_key(|n| n.to_lowercase());
+    let mut seen = std::collections::HashSet::new();
+    for name in pages {
+        let t = match app.page_target(&name) {
+            Ok(t) if t.exists && !t.journal => t,
+            _ => continue,
+        };
+        let text = match std::fs::read_to_string(app.root.join(&t.rel)) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if out.page.is_empty() {
+            out.page = t.name.clone();
+        }
+        for b in split_doc(&text).blocks {
+            let line = b.text.trim();
+            // a date bullet ("[[November 12th, 2026]]") holds passages; it isn't one
+            if line.starts_with("[[") && line.ends_with("]]") && !line[2..line.len() - 2].contains("]]") {
+                continue;
+            }
+            let (plain, link) = plain_words(&b.text, &want);
+            if plain.chars().count() < 3 || !seen.insert(plain.to_lowercase()) {
+                continue;
+            }
+            out.highlights.push(KeptHighlight { plain, link });
+            if out.highlights.len() >= MAX_KEPT {
+                return out;
+            }
+        }
+    }
+    out
+}
+
+/// A note's words as a web page shows them: no property lines, invisible spaces, Markdown marks or
+/// pictures; a link as its words, except one to the article itself (a hand-filed note's "from
+/// [Title](address)"), which goes; the " [↗](spot)" link given back on its own.
+fn plain_words(note: &str, want: &str) -> (String, String) {
+    let is_prop = |l: &str| {
+        let l = l.trim();
+        l.split_once(":: ").or_else(|| l.strip_suffix("::").map(|k| (k, ""))).is_some_and(|(k, _)| !k.is_empty() && k.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'))
+    };
+    let body: Vec<&str> = note.lines().filter(|l| !is_prop(l)).collect();
+    // (invisible spaces go last: "[\u{200b}[words]\u{200b}]" is words in brackets on the page, not a link)
+    let mut t = body.join(" ");
+    let mut link = String::new();
+    if let Some(i) = t.rfind(" [↗](") {
+        if t.trim_end().ends_with(')') {
+            let l = t[i + " [↗](".len()..].trim_end();
+            link = l[..l.len() - 1].to_string();
+            if !(link.starts_with("https://") || link.starts_with("http://")) {
+                link.clear();
+            }
+            t.truncate(i);
+        }
+    }
+    // links and pictures, from the left: ![..](..) goes, [words](address) → words (or nothing,
+    // when the address is the article's), [[page]] → page
+    let mut out = String::new();
+    let mut rest = t.as_str();
+    while let Some(i) = rest.find('[') {
+        let pic = i > 0 && rest[..i].ends_with('!');
+        out.push_str(&rest[..if pic { i - 1 } else { i }]);
+        let r = &rest[i..];
+        if let Some(inner) = r.strip_prefix("[[") {
+            if let Some(e) = inner.find("]]") {
+                out.push_str(&inner[..e]);
+                rest = &inner[e + 2..];
+                continue;
+            }
+        }
+        // [words](address): the first "]" after the "[" is followed by "(", and a ")" closes it
+        if let Some(close) = r[1..].find(['[', ']']).map(|k| k + 1).filter(|&k| r[k..].starts_with("](")) {
+            if let Some(end) = r[close..].find(')') {
+                let words = &r[1..close];
+                let addr = &r[close + 2..close + end];
+                if !pic && !(addr.starts_with("http") && normalize_url(addr) == want) {
+                    out.push_str(words);
+                }
+                rest = &r[close + end + 1..];
+                continue;
+            }
+        }
+        out.push('[');
+        rest = &r[1..];
+    }
+    out.push_str(rest);
+    let out = out.replace('\u{200b}', "").replace("**", "").replace("__", "").replace("==", "").replace("^^", "").replace("~~", "").replace(['*', '`'], "");
+    let mut words = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    // a quote's "> " and a dangling " from" (a hand-filed note's "words from [Title](address)")
+    if let Some(w) = words.strip_prefix("> ") {
+        words = w.to_string();
+    }
+    if let Some(w) = words.strip_suffix(" from") {
+        words = w.to_string();
+    }
+    (words.trim().to_string(), link)
+}
+
 // ---------------------------------------------------------------- talking to the extension
 
 /// The name the browser knows the receiver by (its native messaging host), and the only extensions
@@ -441,6 +598,8 @@ pub fn message_bytes(v: &serde_json::Value) -> Vec<u8> {
 ///   {"cmd":"hello"}                                   → {ok, folder}
 ///   {"cmd":"clip", url, title, site, highlights:[{text, link}]}  → {ok, page, rel, added, skipped, new_page}
 ///   {"cmd":"journal", text, url, title, site}         → {ok, rel}  (the usual quick capture)
+///   {"cmd":"articles"}                                → {ok, urls}  (every article with a page)
+///   {"cmd":"kept", url}                               → {ok, page, highlights:[{plain, link}]}
 /// Errors: {ok: false, error: words for him}.
 pub fn answer(msg: &serde_json::Value, root: Result<std::path::PathBuf, String>, today: Date, time: &str) -> serde_json::Value {
     use serde_json::json;
@@ -461,6 +620,14 @@ pub fn answer(msg: &serde_json::Value, root: Result<std::path::PathBuf, String>,
                 let text = guard(&defuse(&s("text")));
                 let rel = crate::capture::capture_to_usual(&root, &text, &link, false, today, time)?;
                 Ok(json!({ "rel": rel }))
+            }
+            "articles" => {
+                let app = App::open_read_only(&root)?;
+                Ok(json!({ "urls": article_urls(&app) }))
+            }
+            "kept" => {
+                let app = App::open_read_only(&root)?;
+                Ok(serde_json::to_value(kept_highlights(&app, &s("url"))).unwrap_or_default())
             }
             other => Err(format!("Unknown request “{other}”.")),
         }

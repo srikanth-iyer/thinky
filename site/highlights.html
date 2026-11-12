@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>thinky highlights: how they work</title>
+<meta name="description" content="Highlight passages in Edge or Chrome, send them to your thinky notes, and see them again on the article and on your phone.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+<header class="top"><img src="icon.svg" alt=""><h1>Highlights</h1></header>
+<p class="sub">Mark passages as you read, keep them in your notes, see them again when you come back.</p>
+
+<h2>What you need</h2>
+<ul>
+<li><strong>thinky on a Windows computer</strong>, with your notes folder open in it at least once.</li>
+<li><strong>Edge or Chrome</strong> on that computer, with the <em>thinky highlights</em> extension: <a href="https://microsoftedge.microsoft.com/addons/detail/cpdmmmcipjfebaemgdnbamipolboaokn">for Edge</a>, <a href="https://chromewebstore.google.com/detail/ggainimehhgjmblabbjkiemfhhlhcgnk">for Chrome</a>.</li>
+</ul>
+
+<h2>1. Connect thinky and the browser (once)</h2>
+<ol>
+<li>In thinky, open <strong>Settings → Capture</strong> and click <strong>Set up</strong> under <em>Highlights from your browser</em>. This tells Edge and Chrome where thinky is on your computer.</li>
+<li>Click <strong>Get it for Edge</strong> or <strong>Get it for Chrome</strong> and add the extension.</li>
+<li>Click the puzzle-piece button next to the address bar and pin <strong>thinky highlights</strong>, so its button stays in view.</li>
+</ol>
+
+<h2>2. Highlight as you read</h2>
+<p>Select a passage, then right-click → <strong>Highlight for thinky</strong>, or press <code>Ctrl+Shift+H</code>. It turns yellow. Highlight as many as you like; they wait in the browser until you send them.</p>
+<figure><img src="shots/highlights-new.png" alt="An article with three passages marked in yellow" loading="lazy"><figcaption>New highlights, not sent yet: yellow.</figcaption></figure>
+
+<h2>3. Send them to your notes</h2>
+<p>Click the extension's button (or press <code>Alt+Shift+L</code>), check the page name, then click <strong>Send</strong>. They go to a page of their own for that article, under today's date, each with a small <strong>↗</strong> link back to its spot in the article. A passage already on the page isn't added twice.</p>
+<p>One passage straight into today's journal instead: right-click → <strong>Send to today's journal</strong>, or <code>Alt+Shift+J</code>.</p>
+
+<h2>4. See them again</h2>
+<div class="pair">
+<figure><img src="shots/highlights-page.png" alt="The article with two passages in a pale yellow, underlined" loading="lazy"><figcaption>Back on the article: the passages already in your notes, pale yellow and underlined.</figcaption></figure>
+<figure><img src="shots/highlights-box.png" alt="The extension's box listing three highlights already in How Bread Rises" loading="lazy"><figcaption>The box lists them too.</figcaption></figure>
+</div>
+<p><strong>Once:</strong> open the extension's box on an article. The passages your notes already hold for it are marked on the page and listed under <em>“N highlights already in …”</em>.</p>
+<p><strong>Every time you come back:</strong> in the box, tick <strong>Show my highlights again on pages I've highlighted</strong>. The browser asks once to let the extension see the pages you open. From then on, opening one of your articles marks its passages by itself. Untick it to stop; the permission is given back.</p>
+<div class="note">
+<p>What the extension does with that permission: it compares each page's address with the list of articles in your notes, on your computer. On a page that isn't one of them it does nothing at all. It sends nothing anywhere except to thinky on the same computer.</p>
+</div>
+
+<h2>On your phone</h2>
+<p>Nothing to set up. In your phone's browser, use <strong>Share → Add to journal</strong> (thinky) on an article as usual. If your notes already have passages from it, the box lists them under what you're adding, so you can see what you kept before. Tap the list to see all of them.</p>
+<p class="small">Phone browsers can't run this extension (Chrome on Android has no extensions, and Edge on Android offers only a short list of its own), so the marks on the article itself are a computer thing.</p>
+
+<h2>Good to know</h2>
+<ul>
+<li>A passage is found again by its words. If the article's words changed since, or the passage is a formula (kept as TeX), it's listed but not marked.</li>
+<li>Pages you filed by hand count too, as long as the page has the article's address in its <code>source::</code> property.</li>
+<li>Nothing is changed in your notes by seeing highlights again: it only reads them.</li>
+</ul>
+</main>
+<footer>
+<p><a href="./">Home</a> · <a href="highlights.html">Highlights</a> · <a href="changelog.html">Changelog</a> · <a href="privacy.html">Privacy</a> · <a href="code-signing.html">Code signing policy</a> · <a href="https://github.com/srikanth-iyer/thinky">Source</a></p>
+</footer>
+</body>
+</html>

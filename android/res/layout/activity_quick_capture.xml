@@ -62,6 +62,22 @@
             android:maxLines="1"
             android:textSize="12sp"
             android:visibility="gone" />
+        <!-- a shared web page's passages already in the notes (Build 46): a heading and the first few,
+             a tap shows them all; hidden when there are none -->
+        <TextView
+            android:id="@+id/qc_kept"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:ellipsize="end"
+            android:maxLines="7"
+            android:paddingStart="10dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="8dp"
+            android:lineSpacingExtra="2dp"
+            android:textSize="13sp"
+            android:visibility="gone" />
         <!-- the words: no box of its own (the card is the box), one line to start -->
         <EditText
             android:id="@+id/qc_input"

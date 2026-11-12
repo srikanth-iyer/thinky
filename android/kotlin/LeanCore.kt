@@ -71,6 +71,15 @@ object LeanCore {
     return r.optString("page")
   }
 
+  /** The passages of the web page at `url` already in the notes (Build 46; read only): the page's name
+   *  ("" when the notes have no page for it) and each passage's plain words, in the page's order. */
+  fun kept(ctx: Context, url: String): Pair<String, List<String>> {
+    val r = call(base(ctx).put("cmd", "kept").put("url", url))
+    val a = r.optJSONArray("highlights")
+    val words = (0 until (a?.length() ?: 0)).map { a!!.getJSONObject(it).optString("plain") }.filter { it.isNotBlank() }
+    return r.optString("page") to words
+  }
+
   /** Typed or shared words → a note in the quick capture template. Returns the file written. */
   fun addText(ctx: Context, text: String): String = call(base(ctx).put("text", text)).optString("rel")
 

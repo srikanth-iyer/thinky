@@ -15,13 +15,20 @@
     if (document.getElementById(NAME + '-style')) return;
     const s = document.createElement('style');
     s.id = NAME + '-style';
-    s.textContent = `::highlight(${NAME}) { background-color: #ffe27a; color: #1a1a1a; }`;
+    // (yellow: kept here, not sent yet; a paler yellow with a line under it: already in his notes)
+    s.textContent = `::highlight(${NAME}) { background-color: #ffe27a; color: #1a1a1a; }
+::highlight(${NAME}-kept) { background-color: #fff3b0; color: #1a1a1a; text-decoration: underline 2px #e0b000; text-underline-offset: 3px; }`;
     (document.head || document.documentElement).append(s);
   }
+  const keptRanges = []; // passages already in his notes (from thinky), marked more softly
   function repaint() {
     if (!window.CSS || !CSS.highlights) return;
     style();
     CSS.highlights.set(NAME, new Highlight(...ranges.values()));
+    // a passage both kept here and in the notes shows as kept here
+    const mine = [...ranges.values()];
+    const over = (a) => mine.some((b) => a.compareBoundaryPoints(Range.END_TO_START, b) < 0 && a.compareBoundaryPoints(Range.START_TO_END, b) > 0);
+    CSS.highlights.set(NAME + '-kept', new Highlight(...keptRanges.filter((r) => !over(r))));
   }
 
   // ------------------------------------------------------------ the article
@@ -217,6 +224,18 @@
       }
       repaint();
       return shown;
+    },
+    // Mark the passages his notes already hold for this article (plain words, from thinky); returns
+    // how many were found on the page.
+    paintKept(items) {
+      keptRanges.length = 0;
+      const tm = textMap();
+      for (const it of items || []) {
+        const r = find(it.plain, tm, 0);
+        if (r) keptRanges.push(r);
+      }
+      repaint();
+      return keptRanges.length;
     },
     clear() { ranges.clear(); repaint(); },
     // A small message in the page's corner.

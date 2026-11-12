@@ -536,10 +536,24 @@ function lookCard(app) {
   }
   paint();
   const size = h('div', 'size-row');
-  size.innerHTML = `<label>Text size <input type="range" min="0.8" max="1.6" step="0.05" value="${app.textSize()}"> <span class="v">${Math.round(app.textSize() * 100)}%</span></label>
-    <span class="note">On the laptop also Ctrl + and Ctrl −.</span>`;
-  const r = $('input', size);
-  r.oninput = () => { $('.v', size).textContent = Math.round(app.textSize(Number(r.value)) * 100) + '%'; };
+  // Build 46 (he asked, Nov 11: the whole screen changed size while the slider was being dragged, so
+  // it moved under the finger): while dragging only the sample line shows the new size; letting go
+  // (or − / +) sets it everywhere
+  size.innerHTML = `<label>Text size <button type="button" class="btn ghost small sz-step" data-d="-1" aria-label="Smaller text">−</button><input type="range" min="0.8" max="1.6" step="0.05" value="${app.textSize()}" aria-label="Text size"><button type="button" class="btn ghost small sz-step" data-d="1" aria-label="Larger text">+</button> <span class="v">${Math.round(app.textSize() * 100)}%</span></label>
+    <span class="note">On the laptop also Ctrl + and Ctrl −.</span>
+    <div class="size-sample" aria-hidden="true"><span class="ss-dot"></span>A note at this size.</div>`;
+  const r = $('input', size), szSample = $('.size-sample', size);
+  const sayPct = (v) => { $('.v', size).textContent = Math.round(v * 100) + '%'; };
+  const preview = () => { sayPct(Number(r.value)); szSample.style.zoom = String(Number(r.value) / app.textSize()); };
+  const apply = () => { r.value = String(app.textSize(Number(r.value))); sayPct(Number(r.value)); szSample.style.zoom = ''; };
+  r.oninput = preview;
+  r.onchange = apply; // (let go of the slider, or its arrow keys)
+  size.onclick = (e) => {
+    const b = e.target.closest('.sz-step');
+    if (!b) return;
+    r.value = String(Math.round((Number(r.value) + 0.05 * Number(b.dataset.d)) * 20) / 20);
+    apply();
+  };
   sc.append(size);
   // wide mode (also t w, and a page's ⋯ menu): notes use the whole width instead of a reading width
   if (!isAndroid) {
@@ -696,6 +710,8 @@ const STORES = {
   edge: 'https://microsoftedge.microsoft.com/addons/detail/cpdmmmcipjfebaemgdnbamipolboaokn',
   chrome: 'https://chromewebstore.google.com/detail/ggainimehhgjmblabbjkiemfhhlhcgnk',
 };
+// the website's how-to page (site/highlights.html), also linked from the extension's box and store page
+const HOWTO = 'https://srikanth-iyer.github.io/thinky/highlights.html';
 function browserCard(app) {
   const card = h('div', 'card');
   card.innerHTML = `<h2>Highlights from your browser</h2>
@@ -704,7 +720,10 @@ function browserCard(app) {
       <li>Highlight: select text, then right-click → <b>Highlight for thinky</b>, or press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd>.</li>
       <li>Send: click the extension’s button next to the address bar (or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd>), then <b>Send</b>.</li>
       <li>One passage to today’s journal: right-click → <b>Send to today’s journal</b>, or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>.</li>
+      <li class="again-how">See them again: open the extension’s box on an article and the passages already in your notes are marked on it (a paler yellow, underlined) and listed. To have them marked whenever you come back, tick <b>Show my highlights again on pages I’ve highlighted</b> in the box (the browser asks once to let it see the pages you open).</li>
+      <li>On your phone: share an article to ${BRAND.word} (Share → <b>Add to journal</b>) and the box lists the passages your notes already have from it.</li>
     </ul>
+    <p class="note"><button class="btn ghost small" data-a="howto">How highlights work, step by step</button></p>
     <p class="note keys-how">These are the keys of a new setup (an extension set up before Build 34 keeps <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd> for Highlight). To see or change them, open <code class="ext-keys">edge://extensions/shortcuts</code> in Edge <button class="btn ghost small" data-a="copykeys">Copy address</button> or <code class="ext-keys-chrome">chrome://extensions/shortcuts</code> in Chrome <button class="btn ghost small" data-a="copykeyschrome">Copy address</button> (a browser doesn’t let a page open these for you).</p>
     <p class="note ext-state" role="status" hidden></p>
     <div class="btn-row"><button class="btn" data-a="setup">Set up</button></div>
@@ -739,6 +758,7 @@ function browserCard(app) {
   const copy = async (t) => { try { await navigator.clipboard.writeText(t); app.toast('Copied', 1200); } catch { app.toast('Couldn’t copy'); } };
   $('[data-a="edge"]', card).onclick = () => app.openUrl(STORES.edge);
   $('[data-a="chrome"]', card).onclick = () => app.openUrl(STORES.chrome);
+  $('[data-a="howto"]', card).onclick = () => app.openUrl(HOWTO);
   $('[data-a="copyext"]', card).onclick = () => copy('edge://extensions');
   $('[data-a="copykeys"]', card).onclick = () => copy('edge://extensions/shortcuts');
   $('[data-a="copykeyschrome"]', card).onclick = () => copy('chrome://extensions/shortcuts');

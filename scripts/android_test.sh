@@ -170,6 +170,20 @@ sleep 4; shot 09b-selected
 SELECTED=$(adb shell "cat '/sdcard/vault/Diary/$TODAY.md' '/sdcard/vault/pages/quick capture.md' 2>/dev/null" | tr -d '\r' | grep 'Selected words' || true)
 log "the selected words: $SELECTED"
 
+# 5c. a web page shared whose passages are already in the notes (Build 46): the pop-up lists them,
+#     read only (nothing is added: closed with Back)
+printf 'source:: [How Bread Rises · Kitchen Weekly](https://www.kitchenweekly.org/how-bread-rises/)\n\n- [[October 29th, 2026]]\n\t- Dough needs **warm air** before it rises. [↗](https://www.kitchenweekly.org/how-bread-rises/#:~:text=Dough)\n\t- The second passage worth keeping.\n' > /tmp/bread.md
+run adb push /tmp/bread.md "/sdcard/vault/pages/How Bread Rises.md"
+run adb shell am start -n "$PKG/.QuickCaptureActivity" -a android.intent.action.SEND -t text/plain --es android.intent.extra.SUBJECT "'How Bread Rises'" --es android.intent.extra.TEXT "'https://kitchenweekly.org/how-bread-rises?utm_source=share'"
+sleep 5; shot 09c-share-kept
+adb shell uiautomator dump /sdcard/qc-kept.xml >/dev/null 2>&1; adb shell cat /sdcard/qc-kept.xml > $OUT/qc-kept.xml
+KEPT=$(grep -o 'text="[^"]*" resource-id="[^"]*qc_kept"' $OUT/qc-kept.xml | head -1)
+log "the pop-up's kept passages: $KEPT"
+for i in 1 2 3; do
+  adb shell dumpsys activity activities | tr -d '\r' | grep -m1 'topResumedActivity' | grep -q QuickCaptureActivity || break
+  adb shell input keyevent KEYCODE_BACK; sleep 1
+done
+
 # 6. share a picture: copied into assets/ and linked; then shown in the app
 python3 -c "
 import struct, zlib
@@ -499,6 +513,7 @@ result "typing on the phone was saved" "dev '/sdcard/vault/Diary/$TODAY.md' | gr
 result "the + button adds a note to today, the keyboard up, and what's typed is saved" "[ '$PLUSKB' = 'mInputShown=true' ] && dev '/sdcard/vault/Diary/$TODAY.md' | grep -q '^- from the plus'"
 result "a page with linked references opened" "grep -q '\"title\": \"Sourdough Bread\"' $OUT/log.txt"
 result "text shared from another app was added" "{ dev '/sdcard/vault/Diary/$TODAY.md'; dev '/sdcard/vault/pages/quick capture.md'; } | grep -q 'Shared from another app'"
+result "a shared web page lists its passages already in the notes" "grep -q '2 highlights already in “How Bread Rises”' $OUT/qc-kept.xml && grep -q 'Dough needs warm air before it rises\.' $OUT/qc-kept.xml && grep -q 'The second passage worth keeping' $OUT/qc-kept.xml"
 result "a shared picture was saved and linked" "adb shell ls /sdcard/vault/assets | grep -q . && { dev '/sdcard/vault/Diary/$TODAY.md'; dev '/sdcard/vault/pages/quick capture.md'; } | grep -q 'assets/'"
 result "the picture shows in the app" "grep -q '\"loaded\": true' $OUT/log.txt"
 adb exec-out cat '/sdcard/vault/pages/quick capture.md' > $OUT/quick-capture.md 2>/dev/null

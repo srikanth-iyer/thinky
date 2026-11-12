@@ -119,7 +119,12 @@ check(text.includes('#:~:text=Dough%20needs%20warm%20air,a%202024%20guide%20show
 check(text.includes('\t- Reviewers flagged #​1 issue with [​[brackets]​] and key:​: value pairs.'), 'tag, link and property look-alikes stay words', text);
 check(!text.includes('x^2'), 'the removed one isn’t there');
 check(await page.evaluate(() => CSS.highlights.get('lean-outliner')?.size || 0) === 0, 'sent: the marks go');
-check(await sw.evaluate(async () => Object.keys(await chrome.storage.local.get(null)).length) === 0, 'and the list is cleared');
+check(await sw.evaluate(async () => Object.keys(await chrome.storage.local.get(null)).filter((k) => k.startsWith('a:')).length) === 0, 'and the list is cleared');
+// (Build 46) now in the notes: marked softly as kept, and listed in the box
+check(await page.evaluate(() => CSS.highlights.get('lean-outliner-kept')?.size || 0) === 2, 'the sent passages are marked as already in the notes');
+await box.waitForSelector('#kept:not([hidden])', { timeout: 15000 }).catch(() => {});
+check(await box.locator('#kept summary').textContent().catch(() => '') === '2 highlights already in “How Bread Rises”', 'the box lists the passages already in the notes', await box.locator('#kept summary').textContent().catch(() => ''));
+check(!(await box.isChecked('#again')), '“Show my highlights again” starts off');
 
 // maths: its TeX
 await page.evaluate(() => {
@@ -134,6 +139,33 @@ check(r2.ok && r2.added === 1 && !r2.new_page, 'a second batch the same day join
 const text2 = fs.readFileSync(file, 'utf8');
 check(text2.includes('\t- $x^2 + 1$ in the [↗]('), 'a formula keeps its TeX (a selection starting inside it takes it whole)', text2);
 check(text2.split(`[[${title}]]`).length === 2, 'one date bullet for the day', text2);
+
+// (Build 46) coming back: with "Show my highlights again" off, a reload marks nothing until the box opens
+await page.reload();
+await sleep(1500);
+check(await page.evaluate(() => !CSS.highlights.get('lean-outliner-kept')), 'off: coming back marks nothing by itself');
+// on (the test's copy already has the "all websites" permission Edge would ask for)
+await sw.evaluate(() => setOpts({ showAgain: true }));
+await page.reload();
+// (two of the three: the third is a formula, kept as its TeX, which the page draws as maths)
+await page.waitForFunction(() => (CSS.highlights.get('lean-outliner-kept')?.size || 0) === 2, null, { timeout: 15000 }).catch(() => {});
+const nk = await page.evaluate(() => CSS.highlights.get('lean-outliner-kept')?.size || 0);
+check(nk === 2, 'on: coming back to the article marks its passages in the notes', nk);
+await page.screenshot({ path: SHOTS + '/t16_kept.png', clip: { x: 0, y: 0, width: 560, height: 140 } });
+await box.reload();
+await box.waitForSelector('#kept:not([hidden])', { timeout: 15000 }).catch(() => {});
+check(await box.isChecked('#again'), 'the box shows the switch on');
+check(await box.locator('#kept-list li').count() === 3, 'and lists the three', await box.locator('#kept-list li').count());
+check((await box.locator('#kept-list li').first().textContent()).startsWith('Dough needs warm air before it rises, as a 2024 guide showed.'), 'as plain words', await box.locator('#kept-list li').first().textContent());
+await box.screenshot({ path: SHOTS + '/t16_box_kept.png' });
+await box.evaluate(() => { document.getElementById('kept').open = true; });
+await box.screenshot({ path: SHOTS + '/t16_box_kept_open.png' });
+// a page that isn't one of his articles: nothing is put into it
+const other = await ctx.newPage();
+await other.goto(URL0.replace('how-bread-rises/', 'another-article/'));
+await sleep(1500);
+check(await other.evaluate(() => !document.getElementById('lean-outliner-style') && !CSS.highlights.get('lean-outliner-kept')), 'a page that isn’t one of his articles is left alone');
+await other.close();
 
 // one passage straight to today's journal
 await select('#p4');

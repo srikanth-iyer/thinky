@@ -755,6 +755,10 @@ a.tag .hash { display: var(--hash); }
 /* (room around the buttons, so a keyboard focus ring isn't cut off by the sideways scrolling) */
 .chips { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-width: none; padding: 4px; margin: -3px -4px; }
 .chips::-webkit-scrollbar { display: none; }
+/* a property page's values (Build 46): buttons that wrap, each with its count */
+.prop-vals { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; }
+.prop-vals .chip .n { margin-left: 3px; opacity: .7; font-variant-numeric: tabular-nums; }
+.prop-vals .chip.more { border-style: dashed; }
 .set-tabs-wrap { position: relative; margin: 0 0 18px; } /* Settings: one tab per kind of setting (settings.js) */
 .set-tabs-wrap .tab-arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 1; width: 28px; height: 28px; padding: 0;
   border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--ink); font-size: var(--fs-head); line-height: 1;
@@ -1207,7 +1211,11 @@ html.welcome #topbar:not(.has-winctl) { display: none; }
 .skin-card .label b { display: block; font-size: var(--fs-read); }
 .skin-card .label span { font-size: var(--fs-sub); color: var(--ink-soft); }
 .size-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 14px; font-size: var(--fs-ui); }
-.size-row input { vertical-align: middle; width: 180px; accent-color: var(--accent); }
+.size-row input { vertical-align: middle; width: 180px; accent-color: var(--accent); margin: 0 6px; }
+.size-row .sz-step { min-width: 30px; padding: 0 8px; font-size: var(--fs-read); line-height: 1; vertical-align: middle; }
+/* the sample line: the size being chosen, before it's set (zoom: the new size over the current one) */
+.size-sample { flex: 1 0 100%; font-size: var(--body-size, 16px); color: var(--ink); padding: 6px 0; transform-origin: left top; }
+.size-sample .ss-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--bullet); margin: 0 10px 0 4px; vertical-align: middle; }
 .card .wide-row { display: flex; margin-top: 12px; font-size: var(--fs-ui); color: var(--ink); } /* Settings → Look: wide mode */
 .wide-row input { accent-color: var(--accent); }
 /* link colour and fonts (Settings > Look) */

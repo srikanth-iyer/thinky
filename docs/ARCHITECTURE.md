@@ -274,6 +274,10 @@ Browser highlights (Build 32) go through the browser extension and its native ho
 links: no web page can add a note. The host answers only our extension: loaded unpacked, or (Build 35)
 installed from the Edge Add-ons store or the Chrome Web Store, each with its own id (`clip::EXTENSION_IDS`;
 Settings' store buttons use the same ids, `STORES` in `ui/settings.js`).
+Since Build 46 the host also answers two read-only questions, `articles` (every article with a page)
+and `kept` (one article's passages, `clip::kept_highlights`), so the extension marks a page's passages
+already in the notes; the phone's share pop-up asks `kept` through `LeanCore.kept` → `android_capture.rs`.
+The extension asks for its "all websites" permission only when "Show my highlights again" is turned on.
 
 ---
 
@@ -293,6 +297,8 @@ Other pairs that must match:
 - `look.txt`: written from `lookColors` (app.js) via `save_look`, read by `core/src/capture_box.rs`.
 
 Also mirrored: `search.rs` `fold` ↔ `ui/search.js`.
+- **The same article, however its address is written:** `clip::normalize_url` (Rust) ↔ `browser/background.js`
+  `articleKey` (the extension compares page addresses with the app's list of articles).
 - **Making web words inert:** `clip::defuse`/`guard` (Rust) ↔ `browser/page.js` `safe`; the picture
   path rule `app::asset_file` ↔ `ui/api.js` `assetUrl` / render.js `image` (CLAUDE.md, "Where outside
   input gets in").

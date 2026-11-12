@@ -209,6 +209,10 @@ fn tags_and_properties() {
     assert_eq!(s.len(), 2);
     let d = v.with_property("status", Some("DONE"));
     assert_eq!(d.len(), 1);
+    // a value button: that value exactly (Build 46); words inside a value only when typed
+    assert_eq!(v.with_property_as("status", Some("done"), true).len(), 1);
+    assert_eq!(v.with_property_as("status", Some("DON"), true).len(), 0);
+    assert_eq!(v.with_property_as("status", Some("DON"), false).len(), 1);
     // plain property values do not become pages (Logseq 0.8.9+ default)
     assert!(v.linked_refs("active").is_empty());
     let info = v.page_info("SB");

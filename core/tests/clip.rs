@@ -273,3 +273,59 @@ fn web_words_stay_words() {
     assert!(!e["error"].as_str().unwrap().contains("D:\\"), "{e}");
     let _ = std::fs::remove_dir_all(&v);
 }
+
+// ---------------------------------------------------------------- highlights already in the notes
+
+#[test]
+fn passages_already_kept_come_back_as_plain_words() {
+    use outline_core::clip::{answer, article_urls, kept_highlights};
+    use serde_json::json;
+    let v = vault("kept");
+    let mut app = open(&v);
+    // filed by the extension: bold, a link, a tag look-alike and a formula
+    file_clip(
+        &mut app,
+        &weekly(vec![
+            hl("Dough needs **warm air**, as [a guide](https://example.org/g) showed.", "https://www.kitchenweekly.org/how-bread-rises-20261020/#:~:text=Dough"),
+            hl("Reviewers flagged #1 issue with [[brackets]] and key:: value pairs.", ""),
+        ]),
+        TODAY,
+    )
+    .unwrap();
+    // and one he filed by hand from his phone (the same article, written another way), with his own
+    // comment and a picture
+    put(
+        &v,
+        "pages/Bread notes.md",
+        "source:: https://kitchenweekly.org/how-bread-rises-20261020?utm_source=x\n\n- [[October 30th, 2026]]\n\t- *Yeast* likes sugar from [How Bread Rises · Kitchen Weekly](https://kitchenweekly.org/how-bread-rises-20261020)\n\t- ![crumb](../assets/crumb.png)\n\t- ok\n",
+    );
+    put(&v, "pages/Other.md", "source:: [Else](https://q.org/else)\n\n- Not this one.\n");
+    app.rescan();
+    let k = kept_highlights(&app, "http://kitchenweekly.org/how-bread-rises-20261020/#top");
+    assert_eq!(k.page, "Bread notes");
+    let plain: Vec<&str> = k.highlights.iter().map(|h| h.plain.as_str()).collect();
+    assert_eq!(
+        plain,
+        [
+            "Yeast likes sugar",
+            "Dough needs warm air, as a guide showed.",
+            "Reviewers flagged #1 issue with [[brackets]] and key:: value pairs.",
+        ],
+        "{k:?}"
+    );
+    assert_eq!(k.highlights[1].link, "https://www.kitchenweekly.org/how-bread-rises-20261020/#:~:text=Dough");
+    assert_eq!(k.highlights[0].link, "");
+    // an article with no page, and something that isn't a web address
+    assert_eq!(kept_highlights(&app, "https://q.org/none"), Default::default());
+    assert_eq!(kept_highlights(&app, "file:///etc/passwd"), Default::default());
+    // every article that has a page, each once, written the same way
+    assert_eq!(article_urls(&app), ["https://kitchenweekly.org/how-bread-rises-20261020", "https://q.org/else"]);
+    // through the extension's messages
+    let a = answer(&json!({"cmd": "articles"}), Ok(v.clone()), TODAY, "");
+    assert_eq!(a["urls"], json!(["https://kitchenweekly.org/how-bread-rises-20261020", "https://q.org/else"]), "{a}");
+    let a = answer(&json!({"cmd": "kept", "url": "https://q.org/else"}), Ok(v.clone()), TODAY, "");
+    assert_eq!(a, json!({"ok": true, "page": "Other", "highlights": [{"plain": "Not this one.", "link": ""}]}));
+    // read only: nothing written
+    assert!(!get(&v, "pages/Bread notes.md").contains("\u{200b}"));
+    let _ = std::fs::remove_dir_all(&v);
+}

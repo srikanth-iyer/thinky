@@ -132,6 +132,13 @@ class QuickCaptureActivity : AppCompatActivity() {
       } else {
         input.setText(shared)
         input.setSelection(input.text.length)
+        // a web page: its passages already in the notes, under the words (he asked, Nov 12: "Can't I
+        // just also see what is already highlighted?"); read only, off the screen's thread
+        val address = webAddress(bodyUrl)
+        if (address.isNotEmpty()) Thread {
+          val k = try { LeanCore.kept(applicationContext, address) } catch (e: Throwable) { null }
+          runOnUiThread { if (!isFinishing && k != null) showKept(k.first, k.second) }
+        }.start()
       }
     }
     addState()
@@ -139,6 +146,39 @@ class QuickCaptureActivity : AppCompatActivity() {
       input.requestFocus()
       window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
     }
+  }
+
+  /** The web address in what was shared: a bare one, or the address of a "[words](address)" link. */
+  private fun webAddress(u: String): String {
+    val a = if (u.startsWith("[") && u.endsWith(")") && u.contains("](")) u.substring(u.lastIndexOf("](") + 2, u.length - 1) else u
+    return if (a.startsWith("https://") || a.startsWith("http://")) a else ""
+  }
+
+  /** "2 highlights already in “Page”", then each passage with a bar in the accent; the first few
+   *  only until it's tapped. */
+  private fun showKept(page: String, passages: List<String>) {
+    if (page.isEmpty() || passages.isEmpty()) return
+    val v = findViewById<TextView>(R.id.qc_kept)
+    val ink = Journal.color(this, "c_ink", 0xFF1D1A2E.toInt())
+    val faint = Journal.color(this, "c_faint", 0xFF7A7383.toInt())
+    val sb = android.text.SpannableStringBuilder()
+    val n = passages.size
+    sb.append(if (n == 1) "1 highlight already in “$page”" else "$n highlights already in “$page”")
+    sb.setSpan(android.text.style.ForegroundColorSpan(faint), 0, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    sb.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), 0, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    for (p in passages) {
+      sb.append("\n")
+      val at = sb.length
+      sb.append(p)
+      sb.setSpan(android.text.style.QuoteSpan(accentColor), at, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+    v.text = sb
+    v.setTextColor(ink)
+    val dp = resources.displayMetrics.density
+    v.background = GradientDrawable().apply { setColor(Journal.mix(Journal.color(this@QuickCaptureActivity, "c_bg", 0xFFFFFFFF.toInt()), ink, 0.05)); cornerRadius = 12 * dp }
+    v.visibility = View.VISIBLE
+    // a tap shows them all, again the first few
+    v.setOnClickListener { v.maxLines = if (v.maxLines == 7) Int.MAX_VALUE else 7 }
   }
 
   /** The colours of the app's look: card, text, text box and buttons. */

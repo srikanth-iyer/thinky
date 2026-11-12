@@ -51,6 +51,43 @@ function show(r) {
   $('send').textContent = n ? `Send ${n} highlight${n === 1 ? '' : 's'}` : 'Send';
 }
 
+// this page's passages already in his notes (asked of thinky; the page marks them too)
+async function showKept() {
+  const k = await ask({ do: 'kept' });
+  const box = $('kept');
+  const items = (k && !k.error && k.highlights) || [];
+  box.hidden = !items.length;
+  if (!items.length) return;
+  const n = items.length;
+  $('kept-h').textContent = `${n} highlight${n === 1 ? '' : 's'} already in “${k.page}”`;
+  const list = $('kept-list');
+  list.textContent = '';
+  for (const h of items) {
+    const li = document.createElement('li');
+    li.textContent = h.plain;
+    list.append(li);
+  }
+}
+
+// "Show my highlights again": turning it on asks Edge for the "all websites" permission (it has to
+// be asked from a click); turning it off gives it back
+async function showAgain() {
+  const o = await ask({ do: 'opts' });
+  $('again').checked = !!(o.showAgain && o.allSites);
+}
+$('again').addEventListener('change', async (e) => {
+  if (e.target.checked) {
+    let ok = false;
+    try { ok = await chrome.permissions.request({ origins: ['<all_urls>'] }); } catch (err) { ok = false; }
+    await ask({ do: 'opts', set: { showAgain: ok } });
+    if (!ok) say('Edge didn’t allow it, so it stays off.', true);
+  } else {
+    await ask({ do: 'opts', set: { showAgain: false } });
+    try { await chrome.permissions.remove({ origins: ['<all_urls>'] }); } catch (err) { /* (kept by the test's copy) */ }
+  }
+  await showAgain();
+});
+
 $('title').addEventListener('change', async () => {
   const t = $('title').value.trim();
   if (t) await ask({ do: 'title', title: t });
@@ -63,6 +100,7 @@ $('send').onclick = async () => {
   if (r.ok) {
     say(added(r));
     show(await ask({ do: 'list' }));
+    showKept();
   } else {
     say(r.error || 'Something went wrong.', true);
     $('send').disabled = false;
@@ -87,6 +125,8 @@ $('journal').onclick = async () => {
   if (!tab) return say('No page open.', true);
   tabId = tab.id;
   show(await ask({ do: 'list' }));
+  showAgain();
+  showKept();
 })();
 
 // the Highlight key as Edge has it now (set at edge://extensions/shortcuts; a setup from before

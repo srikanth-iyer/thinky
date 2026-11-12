@@ -4,7 +4,7 @@
 import { call, today, store } from './api.js';
 import { renderBlock, datesHtml, esc, whenText, pagesIn, PROP_SHOWS, MARK_COLORS, builtinHidden } from './render.js';
 import { h, pageLink, ICON, BRAND, plural } from './dom.js';
-import { promptBox } from './popups.js';
+import { promptBox, menu } from './popups.js';
 import { makeChips } from './chips.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -326,15 +326,37 @@ export async function propsView(app, view, key) {
   const input = h('input', 'filter');
   input.type = 'search';
   input.placeholder = `Only where ${key} contains…`;
+  // Build 46 (he asked, Nov 11: "show all values, like a Logseq query"): each value it has, with how
+  // many notes use it, as buttons; one picked = only those notes (that value exactly), again = all
+  const vals = h('div', 'prop-vals');
   const out = h('div');
-  view.append(input, out);
+  view.append(input, vals, out);
+  let pick = '', all = false;
+  const values = await call('prop_values', { key }).catch(() => []);
+  const MANY = 30;
+  const drawVals = () => {
+    vals.hidden = values.length < 2;
+    const shown = all ? values : values.slice(0, MANY);
+    vals.innerHTML = shown.map(([v, n]) => `<button type="button" class="chip" data-v="${esc(v)}" aria-pressed="${v.toLowerCase() === pick.toLowerCase()}">${esc(v)} <span class="n">${n}</span></button>`).join('')
+      + (values.length > shown.length ? `<button type="button" class="chip more" data-more>${values.length - shown.length} more</button>` : '');
+  };
   const draw = async () => {
-    const groups = await call('with_property', { key, value: input.value.trim() });
+    const groups = await call('with_property', pick ? { key, value: pick, exact: true } : { key, value: input.value.trim() });
     const n = groups.reduce((s, g) => s + g.hits.length, 0);
     out.replaceChildren(h('p', 'note', `${plural(n, 'match', 'matches')} in ${plural(groups.length, 'page')}`), app.groupsEl(groups));
   };
+  vals.onclick = (e) => {
+    const b = e.target.closest('.chip');
+    if (!b) return;
+    if (b.dataset.more !== undefined) { all = true; drawVals(); return; }
+    pick = pick.toLowerCase() === b.dataset.v.toLowerCase() ? '' : b.dataset.v;
+    if (pick) input.value = '';
+    drawVals();
+    draw();
+  };
+  drawVals();
   let t;
-  input.oninput = () => { clearTimeout(t); t = setTimeout(draw, 200); };
+  input.oninput = () => { clearTimeout(t); if (pick) { pick = ''; drawVals(); } t = setTimeout(draw, 200); };
   view.addEventListener('click', (e) => app.linkClick(e));
   await draw();
 }
@@ -416,26 +438,76 @@ export function drawInParts(host, items, html, { first = 150, each = 300, done }
 
 /** Clicks in a list of taskRow()s: the box ticks the to-do off (or back on) in its file, anything
  *  else opens it where it's written. tasks(): the to-dos shown; reload(): after a change. */
+// a to-do's word at the start of its note (task.rs's markers)
+const MARKER = /^(TODO|DOING|DONE|LATER|NOW|WAITING|WAIT|CANCELED|CANCELLED)\b/;
+const HOLD_MS = 450; // a press this long on a phone = right-click (as a dot's)
 export function taskClicks(app, list, tasks, reload) {
+  const find = (it) => tasks().find((t) => t.page === it.dataset.page && String(t.line) === it.dataset.line);
+  // write a to-do's new words into its file, then show the change
+  const put = async (x, text, open) => {
+    try {
+      const res = await call('save_block', { name: x.page, line: x.line, base: x.text, text });
+      if (!res.ok) { app.toast('That to-do changed somewhere else; refreshed the list.'); await reload(); return; }
+      if (/^(TODO|LATER) /.test(text) && open) app.toast('Repeating to-do: moved to its next date', 2200);
+      app.widgetTasksSoon?.();
+      await app.reloadPage?.(x.page); // the same page open below (Journals) shows the tick too
+      await reload();
+    } catch (err) { app.toast(String(err)); }
+  };
+  // Build 46 (he asked, Nov 12): right-click, press and hold, or Shift+F10 on the tick box → every state
+  // (his workflow's words; Done as ticking does, so a repeating to-do moves to its next date)
+  const states = (x, at) => {
+    const now = app.workflow() === 'now';
+    const words = now ? [['LATER', 'Later'], ['NOW', 'Now'], ['WAITING', 'Waiting'], ['DONE', 'Done'], ['CANCELED', 'Cancelled']]
+      : [['TODO', 'To do'], ['DOING', 'Doing'], ['WAITING', 'Waiting'], ['DONE', 'Done'], ['CANCELED', 'Cancelled']];
+    const cur = x.marker === 'CANCELLED' ? 'CANCELED' : x.marker === 'WAIT' ? 'WAITING' : x.marker;
+    menu(at, [{ head: 'Set to' }, ...words.map(([w, label]) => ({
+      label, on: cur === w,
+      run: async () => {
+        if (w === cur) return;
+        const text = w === 'DONE' ? await call('task_done', { text: x.text, today: today() }) : x.text.replace(MARKER, w);
+        await put(x, text, w === 'DONE');
+      },
+    }))]);
+  };
+  list.addEventListener('contextmenu', (e) => {
+    const box = e.target.closest('input.todo');
+    const it = box?.closest('.todo-item');
+    const x = it && find(it);
+    if (!x) return;
+    e.preventDefault();
+    if (held === box) return; // (a finger's hold opened it already; the phone's own long press follows)
+    states(x, box);
+  });
+  list.addEventListener('keydown', (e) => {
+    if (!e.target.matches?.('input.todo') || !(e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) return;
+    const x = find(e.target.closest('.todo-item'));
+    if (!x) return;
+    e.preventDefault();
+    states(x, e.target);
+  });
+  let hold = null, held = null;
+  list.addEventListener('pointerdown', (e) => {
+    const box = e.target.closest?.('input.todo');
+    if (!box || e.pointerType === 'mouse') return;
+    clearTimeout(hold);
+    hold = setTimeout(() => { const x = find(box.closest('.todo-item')); if (x) { held = box; states(x, box); } }, HOLD_MS);
+  });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) list.addEventListener(ev, () => clearTimeout(hold));
   list.addEventListener('click', async (e) => {
     const it = e.target.closest('.todo-item');
     if (!it) return;
+    if (held && e.target === held) { e.preventDefault(); held = null; return; } // (the hold opened the menu: no tick)
+    held = null;
     const a = e.target.closest('a');
     if (a) { e.preventDefault(); if (a.dataset.page) app.go('page', a.dataset.page); else if (a.getAttribute('href') && a.getAttribute('href') !== '#') app.openUrl(a.getAttribute('href')); return; }
-    const x = tasks().find((t) => t.page === it.dataset.page && String(t.line) === it.dataset.line);
+    const x = find(it);
     if (!x) return;
     if (e.target.classList.contains('todo')) {
       e.preventDefault();
       const open = !closed(x);
       const text = open ? await call('task_done', { text: x.text, today: today() }) : x.text.replace(/^(DONE|CANCELED|CANCELLED)/, app.workflow() === 'now' ? 'LATER' : 'TODO');
-      try {
-        const res = await call('save_block', { name: x.page, line: x.line, base: x.text, text });
-        if (!res.ok) { app.toast('That to-do changed somewhere else; refreshed the list.'); await reload(); return; }
-        if (/^(TODO|LATER) /.test(text) && open) app.toast('Repeating to-do: moved to its next date', 2200);
-        app.widgetTasksSoon?.();
-        await app.reloadPage?.(x.page); // the same page open below (Journals) shows the tick too
-        await reload();
-      } catch (err) { app.toast(String(err)); }
+      await put(x, text, open);
       return;
     }
     app.go('page', x.page, { line: x.line });

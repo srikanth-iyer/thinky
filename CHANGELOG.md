@@ -16,7 +16,16 @@ went up. Build 40 and older still update to it (each release keeps a signature f
 
 ## Build 46 · version 0.5.7 (November 2026)
 
+### New
+- See your highlights again. In Edge or Chrome, open the thinky highlights extension's box on an article and the passages your notes already hold from it are marked on the page (a paler yellow, underlined) and listed in the box. To have them marked every time you come back to one of your articles, tick "Show my highlights again on pages I've highlighted" in the box; the browser asks once to let the extension see the pages you open. It compares each address with your articles on your computer and leaves every other page alone. Off until you turn it on. Pages you filed by hand count too, when their `source::` is the article's address.
+- On the phone, sharing an article to thinky (Share → Add to journal) lists the passages your notes already have from it, under what you're adding. Tap the list to see them all. Nothing to set up.
+- A how-to page on the website explains highlights step by step, with pictures (srikanth-iyer.github.io/thinky/highlights.html); Settings → Capture and the extension's box link to it.
+- To-dos: right-click a to-do's tick box (on a phone, press and hold it) for every state: To do, Doing, Waiting, Done, Cancelled (Later and Now with the NOW workflow). Done works as ticking does, so a repeating to-do moves to its next date.
+- The note menu (right-click a dot, or hold it on a phone) has "Number its sub-notes" and "More commands…", which opens the whole "/" list for that note.
+- A property's page shows every value it has, with how many notes use each, as buttons. Pick one to see only the notes with that value (exactly that value: "book" doesn't also bring "ebook"); pick it again to see all.
+
 ### Changed
+- Settings → Look → Text size: dragging the slider no longer changes the whole screen under your finger. While you drag, a sample line shows the size; letting go sets it everywhere. New − and + buttons change it one step at a time.
 - The journal widget on the phone's home screen draws your notes as the app does: bold, italics, strike-through, highlights and code; headings a size bigger; page links, tags and web links in the look's link colour; DOING, NOW and WAITING as a word in the look's accent. To-dos have a drawn box as in the app (open, ticked, or crossed out when cancelled), a done one struck through and faded, and other notes the app's dot. A note's first picture from your notes folder shows as a small picture under its words (up to six in the widget at once, turned the way the camera held it); a picture from the web keeps its name. A formula shows its text: the home screen can't draw formulas in a widget.
 
 ### Fixed
@@ -24,6 +33,8 @@ went up. Build 40 and older still update to it (each release keeps a signature f
 
 ### Under the hood
 - The phone test checks how the widget draws a formatted note (step 7c, through a real widget row), and a new test checks both picture lists on a phone and a laptop (t28_build46).
+- The app answers two new read-only questions from the extension: which articles have a page in the notes, and the passages of one article (core `clip::article_urls`, `kept_highlights`); the phone's pop-up asks the second through the app's own code too. The extension (version 1.1.0) asks for the "all websites" permission only when the switch is turned on, and gives it back when it's turned off. Tested in a real Chromium (t16_browser), in core tests and on the phone emulator (step 5c).
+- t28_build46 also checks the to-do states menu (mouse and finger), the note menu's two new rows, a property's value buttons and the text size control.
 
 ## Build 45 · version 0.5.6 (November 2026)
 

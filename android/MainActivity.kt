@@ -414,7 +414,9 @@ class MainActivity : TauriActivity() {
       val done = java.util.concurrent.CountDownLatch(1)
       runOnUiThread {
         try {
-          val ctx = this@MainActivity
+          // (the app's own context, not this screen's: AppCompat swaps a screen's ImageView for its own
+          // AppCompatImageView, which RemoteViews refuses; the home screen inflates the plain one)
+          val ctx = applicationContext
           // the same row the list makes (Journal.row), and what it was made from (Journal.drawn)
           val ink = Journal.ink(ctx)
           val d = Journal.drawn(note, ink) { Journal.thumb(ctx, it) != null }
@@ -450,7 +452,9 @@ class MainActivity : TauriActivity() {
       val done = java.util.concurrent.CountDownLatch(1)
       runOnUiThread {
         try {
-          val ctx = this@MainActivity
+          // (the app's own context, not this screen's: AppCompat swaps a screen's ImageView for its own
+          // AppCompatImageView, which RemoteViews refuses; the home screen inflates the plain one)
+          val ctx = applicationContext
           fun hex(c: Int) = String.format(java.util.Locale.US, "#%06x", c and 0xFFFFFF)
           val parent = android.widget.FrameLayout(ctx)
           val rv = android.widget.RemoteViews(packageName, R.layout.widget_journal)

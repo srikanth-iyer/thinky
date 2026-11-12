@@ -1204,10 +1204,19 @@ export class Outline {
     if (hid.length) items.push({ id: 'hidden', label: 'Show hidden properties', hint: String(hid.length) });
     if (rw) {
       items.push('-', { id: 'number', label: 'Numbered list', checked: tops.some((j) => NUMBERED.test(this.textOf(j))) });
+      // Build 46 (he asked, Nov 12: the "/" menu's choices in the dot's menu too): its sub-notes numbered,
+      // and the whole "/" list for this note
+      if (!inSel && this.hasKids(i)) {
+        const ks = [];
+        for (let j = i + 1; j < this.subtreeEnd(i); j = this.subtreeEnd(j)) ks.push(j);
+        items.push({ id: 'numkids', label: 'Number its sub-notes', checked: ks.some((j) => NUMBERED.test(this.textOf(j))) });
+      }
       items.push({ id: 'todo', label: 'Next to-do state', hint: `${now || 'none'} → ${this.nextMarker(now) || 'none'}` });
+      if (!inSel) items.push({ id: 'slash', label: 'More commands…', hint: '/' });
       let kids = false;
       for (let j = lo; j < hi && !kids; j++) kids = this.hasKids(j);
       if (kids) items.push('-', { id: 'expand', label: 'Expand all' }, { id: 'collapse', label: 'Collapse all' });
+
     }
     const head = t0.split('\n')[0].replace(MARKERS, '').trimStart().match(/^(#{1,6})\s/);
     const blocks = this.blocks, changes = this.changes; // (if the page changes while it's open, nothing is done)
@@ -1259,6 +1268,11 @@ export class Outline {
         return;
       }
       case 'todo': if (inSel) this.cycleTodoSel(); else this.cycleTodo(i); return;
+      case 'numkids': this.numberList(true, i); return;
+      case 'slash': // the "/" list, as if "/" were typed at the end of this note
+        this.edit(i, 'end', true);
+        if (this.cur === i) this.openCommands();
+        return;
       case 'expand': case 'collapse': {
         const fold = v === 'collapse';
         const js = [];
@@ -2299,8 +2313,7 @@ export class Outline {
 
   /** Number list / Number children (the / menu), as Logseq toggles them: this note, or its sub-notes
    *  one level down (one numbered already: all of them go back to dots). */
-  numberList(kids) {
-    const i = this.cur;
+  numberList(kids, i = this.cur) {
     if (i === null) return;
     let js = [i];
     if (kids) {

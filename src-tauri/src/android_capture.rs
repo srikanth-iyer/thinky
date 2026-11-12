@@ -9,8 +9,10 @@
 //! in  {cache, data, vault, y, m, d, time, text, plain?} for words (plain: words selected in another
 //!     app, kept as plain words), or {…, name, typeExt} + the picture's
 //!     bytes, or {…, link} for a picture copied by an earlier try (not copied twice), or
-//!     {…, cmd: "where"} for where notes go;
-//! out {ok: true, rel} ({ok: true, today, page} for "where") or {ok: false, error, link?}
+//!     {…, cmd: "where"} for where notes go, or {…, cmd: "kept", url} for the passages of that web
+//!     page already in the notes;
+//! out {ok: true, rel} ({ok: true, today, page} for "where", {ok: true, page, highlights:
+//!     [{plain, link}]} for "kept") or {ok: false, error, link?}
 //!     (`link`: the Markdown of a picture already copied).
 //! The JNI name follows the Kotlin class: package com.srikanth.leanoutliner (checked by
 //! scripts/android_overlay.py), object `LeanCore`, method `capture`. Only that function is
@@ -82,6 +84,16 @@ pub fn capture(a: &Value, bytes: Option<&[u8]>) -> Value {
                 json!({ "ok": true, "today": journal, "page": page })
             }
             Err(e) => json!({ "ok": false, "error": format!("Couldn't read logseq/config.edn ({e}).") }),
+        };
+    }
+    if s("cmd") == "kept" {
+        // a shared web page's passages already in the notes (Build 46): read only
+        return match outline_core::app::App::open_read_only(&root) {
+            Ok(app) => {
+                let k = outline_core::clip::kept_highlights(&app, &s("url"));
+                json!({ "ok": true, "page": k.page, "highlights": k.highlights })
+            }
+            Err(e) => json!({ "ok": false, "error": e }),
         };
     }
     let res = match bytes {
@@ -210,6 +222,17 @@ mod tests {
         assert_eq!(capture(&args(&v, json!({ "cmd": "where" })), None)["page"], "October 28th, 2026");
         assert_eq!(capture(&args(&v, json!({ "text": "hi" })), None), json!({ "ok": true, "rel": "journals/2026_10_28.md" }));
         assert_eq!(capture(&args(&v, json!({ "text": "  " })), None)["ok"], false);
+        let _ = std::fs::remove_dir_all(&v);
+    }
+
+    #[test]
+    fn a_shared_page_s_kept_passages() {
+        let v = vault("kept", "");
+        std::fs::write(v.join("pages/Bread.md"), "source:: [Bread · KW](https://kw.org/bread)\n\n- [[October 28th, 2026]]\n\t- Dough **rises** slowly. [↗](https://kw.org/bread#:~:text=Dough)\n").unwrap();
+        let r = capture(&args(&v, json!({ "cmd": "kept", "url": "https://www.kw.org/bread/?utm_source=x" })), None);
+        assert_eq!(r, json!({ "ok": true, "page": "Bread", "highlights": [{ "plain": "Dough rises slowly.", "link": "https://kw.org/bread#:~:text=Dough" }] }));
+        let r = capture(&args(&v, json!({ "cmd": "kept", "url": "https://kw.org/other" })), None);
+        assert_eq!(r, json!({ "ok": true, "page": "", "highlights": [] }));
         let _ = std::fs::remove_dir_all(&v);
     }
 

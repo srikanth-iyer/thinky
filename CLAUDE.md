@@ -475,6 +475,35 @@ sent a screenshot): "Pictures nothing uses" rows are a grid in a narrow list (`.
 520px: the name across, size and "Where was it used?" on the line under it, the size lined up with the name);
 the missing pictures' file names under their page from the left (`.missing-box .rows .meta` a line of its own).
 The edge swipe that opens the phone's menu stays as it is (he asked, Nov 12).
+Also Build 46 (he asked, Nov 12: "Can't I just also see what is already highlighted?"; he said yes to all, and
+"anyone can use this feature… we need a way to show them how"): highlights shown again, read only. Core clip.rs
+`article_urls(app)` (every page's `source::` address, `normalize_url`, sorted, ≤20,000) and `kept_highlights(app,
+url)` → `Kept {page, highlights: [{plain, link}]}` (the notes of each page whose `source::` is that article, date
+bullets `[[…]]` left out; `plain_words`: property lines, pictures, Markdown marks and invisible spaces go, links as
+their words except one to the article itself, the ` [↗](…)` link handed back; ≤500, each once); native messages
+`articles` and `kept` (`answer`, `App::open_read_only`; tests/clip.rs `passages_already_kept_come_back_as_plain_words`).
+The extension (browser/, version 1.1.0): `optional_host_permissions: <all_urls>`; page.js `paintKept` (a second CSS
+highlight `lean-outliner-kept`, paler yellow, underlined; a passage kept here too shows as kept here); background.js
+`articles(fresh)` (storage `articles` {at, urls}, asked again after 10 min or a send; kept on a failed answer, so a
+browser without thinky isn't asked on every page), `kept(url)`, `opts` (storage `opts.showAgain`), `tabs.onUpdated`
+(only with the switch on and the permission held: a page whose `articleKey` is on the list, or has highlights kept
+here, gets page.js and its marks; any other page nothing); `articleKey` keeps a port other than 80/443 (as core's
+`normalize_url`); popup: `#kept` (a `<details>` listing them, after `do: 'kept'`, which also marks the page) and
+`#again` (the switch: `chrome.permissions.request` on the click, `remove` when turned off), a link to the how-to page.
+Phone: android_capture.rs `cmd: "kept"`, `LeanCore.kept`, QuickCaptureActivity `webAddress`/`showKept` (`qc_kept`
+under the words: "N highlights already in “Page”", each with a QuoteSpan in the accent; 7 lines, a tap shows all);
+android_test.sh step 5c. Settings → Capture's browser card says how (`.again-how`, `HOWTO`); website
+`site/highlights.html` (pictures from t16_browser's shots in site/shots/highlights-*.png; in sitemap.xml, linked from
+index and the changelog; privacy.html says what the switch does). The store copies change only when he uploads the
+new zip (browser/ without `key`; the new permission means a new review).
+Also Build 46 (his #claude notes, Nov 11–12; t28_build46): the To-dos list's tick box: right-click, Shift+F10 or a
+450 ms hold (`taskClicks` `states`: a `{head}` "Set to" menu with `on` radios, his workflow's words; Done through
+`task_done`; the phone's own long-press contextmenu after a hold is ignored, `held`). Note menu: "Number its sub-notes"
+(`numkids` → `numberList(true, i)`) when the note has some, "More commands…" (`slash`: edits the note at its end and
+`openCommands`). A property's page: `.prop-vals` buttons from `prop_values` (value + count, 30 then "N more"); one
+picked → `with_property` with `exact` (core `with_property_as`: one of the comma-split values equals it). Settings →
+Look → Text size: `input` only moves the number and the sample line (`.size-sample`, `zoom` = new over current), `change`
+(let go, arrow keys) and the − / + buttons (`.sz-step`) call `app.textSize`.
 The to-do words' colours stay as they are (his decision, Nov 11). In every look `.mk` takes the look's accent, so
 LATER, DOING and WAITING look alike, and in thinky like overdue. A preview for all 12 looks proposed grey (`--ink-soft`)
 for LATER/WAITING and the look's link colour for DOING/NOW; he didn't like that solution and said to keep it as it is.

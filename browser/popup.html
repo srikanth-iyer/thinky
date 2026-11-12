@@ -17,7 +17,16 @@
       <button id="clear" class="ghost" hidden>Clear</button>
     </div>
     <p id="status" role="status"></p>
+    <details id="kept" hidden>
+      <summary id="kept-h"></summary>
+      <ol id="kept-list"></ol>
+    </details>
     <button id="journal" class="link">Send the selected text to today’s journal</button>
+    <div class="again">
+      <label><input type="checkbox" id="again"> Show my highlights again on pages I’ve highlighted</label>
+      <p class="hint" id="again-hint">When you come back to an article, the passages already in your notes are marked on it. Your browser asks to let the extension see the pages you open: it checks each address against your articles, marks only those, and sends nothing anywhere but thinky.</p>
+      <a class="link" href="https://srikanth-iyer.github.io/thinky/highlights.html" target="_blank" rel="noopener">How highlights work</a>
+    </div>
   </main>
   <script src="popup.js"></script>
 </body>
