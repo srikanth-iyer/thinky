@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- the journal widget's open to-do box (Build 46): a rounded square, drawn in white; the widget tints it
+     with the look's faint colour, as the app's empty tick box -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp" android:height="16dp" android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.5"
+        android:pathData="M4,1.75h8a2.25,2.25 0 0 1 2.25,2.25v8a2.25,2.25 0 0 1 -2.25,2.25h-8a2.25,2.25 0 0 1 -2.25,-2.25v-8a2.25,2.25 0 0 1 2.25,-2.25z" />
+</vector>

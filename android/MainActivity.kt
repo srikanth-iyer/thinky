@@ -354,6 +354,8 @@ class MainActivity : TauriActivity() {
       Journal.refresh(this@MainActivity)
     }
     @JavascriptInterface fun refreshWidget() { Journal.refresh(this@MainActivity) }
+    /** The look's link and highlight colours, for the journal widget's notes (Build 46). */
+    @JavascriptInterface fun setWidgetText(link: String, mark: String) { Journal.saveTextColors(this@MainActivity, link, mark) }
     @JavascriptInterface fun setWidgetColors(bg: String, ink: String, faint: String, accent: String) {
       Journal.saveColors(this@MainActivity, bg, ink, faint, accent)
       Journal.refresh(this@MainActivity)
@@ -402,6 +404,46 @@ class MainActivity : TauriActivity() {
      *  factory, QuickAddWidget.paint), applied to real views here: JSON of "#rrggbb" for the journal
      *  widget's background, title, "+", empty line and first row, and the one-tap "+" drawn (its
      *  circle beside the plus, and the plus). "{}" in a release. */
+    /** Test builds only (the emulator test, step 7c): a note as the journal widget draws it: a real row
+     *  (Journal.row) made and applied here: its words, each piece of formatting as [kind, start, end]
+     *  (bold, italic, strike, mark, mono, size, colour #rrggbb), its to-do box (none, open, done,
+     *  cancelled) and its small picture's width in pixels (0: none). "{}" in a release. */
+    @JavascriptInterface fun testWidgetText(note: String): String {
+      if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return "{}"
+      val out = JSONObject()
+      val done = java.util.concurrent.CountDownLatch(1)
+      runOnUiThread {
+        try {
+          val ctx = this@MainActivity
+          // the same row the list makes (Journal.row), and what it was made from (Journal.drawn)
+          val ink = Journal.ink(ctx)
+          val d = Journal.drawn(note, ink) { Journal.thumb(ctx, it) != null }
+          out.put("box", listOf("none", "open", "done", "cancelled")[d.box])
+          val v = Journal.row(ctx, Journal.Item(0, note), ink, HashMap()) { true }.apply(ctx, android.widget.FrameLayout(ctx))
+          val pic = v.findViewById<android.widget.ImageView>(R.id.item_pic)
+          out.put("picture", if (pic.visibility == View.VISIBLE) (pic.drawable?.intrinsicWidth ?: 0) else 0)
+          val text = v.findViewById<android.widget.TextView>(R.id.item_text).text
+          out.put("text", text.toString())
+          val spans = org.json.JSONArray()
+          if (text is android.text.Spanned) for (sp in text.getSpans(0, text.length, Any::class.java)) {
+            val kind = when (sp) {
+              is android.text.style.StyleSpan -> if (sp.style == android.graphics.Typeface.BOLD) "bold" else "italic"
+              is android.text.style.StrikethroughSpan -> "strike"
+              is android.text.style.BackgroundColorSpan -> "mark"
+              is android.text.style.TypefaceSpan -> "mono"
+              is android.text.style.RelativeSizeSpan -> "size"
+              is android.text.style.ForegroundColorSpan -> String.format(java.util.Locale.US, "#%06x", sp.foregroundColor and 0xFFFFFF)
+              else -> continue
+            }
+            spans.put(org.json.JSONArray().put(kind).put(text.getSpanStart(sp)).put(text.getSpanEnd(sp)))
+          }
+          out.put("spans", spans)
+        } catch (e: Exception) { out.put("error", e.toString()) }
+        done.countDown()
+      }
+      done.await(5, java.util.concurrent.TimeUnit.SECONDS)
+      return out.toString()
+    }
     @JavascriptInterface fun testWidgetColors(): String {
       if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return "{}"
       val out = JSONObject()
@@ -423,7 +465,7 @@ class MainActivity : TauriActivity() {
           f.onDataSetChanged()
           val items = Journal.items(ctx)
           val i = items.indexOfFirst { it.kind == Journal.NOTE }
-          if (i >= 0) out.put("row", hex((f.getViewAt(i).apply(ctx, parent) as android.widget.TextView).currentTextColor))
+          if (i >= 0) out.put("row", hex(f.getViewAt(i).apply(ctx, parent).findViewById<android.widget.TextView>(R.id.item_text).currentTextColor))
           out.put("rows", items.size)
           val q = android.widget.RemoteViews(packageName, R.layout.widget_quick_add)
           QuickAddWidget.paint(ctx, q)

@@ -10,7 +10,9 @@ const LOOKS = ['plain', 'plainnight', 'plainteal', 'calm', 'calmplain', 'night',
 const { browser, page, errors } = await open();
 await page.addInitScript(() => {
   window.__widget = [];
+  window.__text = [];
   const known = {
+    setWidgetText: (...a) => window.__text.push(a),
     hasAllFilesAccess: () => true,
     setWidgetColors: (...a) => window.__widget.push(a),
     takeShortcut: () => null,
@@ -35,6 +37,20 @@ for (const id of LOOKS) {
   if (JSON.stringify(got) !== JSON.stringify(want) || !got.every((c) => /^#[0-9a-f]{6}$/.test(c))) { all = false; bad.push([id, got, want]); }
 }
 check(all, `every look change hands over that look’s colours, as #rrggbb (${LOOKS.length} looks)`, JSON.stringify(bad));
+// Build 46: the journal widget draws notes as the app does, so it also gets the look's link and
+// highlight colours (setWidgetText, before setWidgetColors, which redraws it)
+const text = await page.evaluate(async (looks) => {
+  const out = [];
+  for (const id of looks) {
+    window.__text.length = 0;
+    window.leanApp.setSkin(id);
+    const c = getComputedStyle(document.documentElement);
+    out.push({ id, got: window.__text.at(-1), link: c.getPropertyValue('--link').trim().toLowerCase() });
+  }
+  return out;
+}, LOOKS);
+check(text.every((x) => x.got?.length === 2 && x.got.every((c) => /^#[0-9a-f]{6}$/.test(c)) && (!/^#[0-9a-f]{6}$/.test(x.link) || x.got[0] === x.link)),
+  `every look hands over its link and highlight colours too (${LOOKS.length} looks)`, JSON.stringify(text));
 const teal = await page.evaluate(() => { window.leanApp.setSkin('plainteal'); return window.__widget.at(-1); });
 check(JSON.stringify(teal) === JSON.stringify(['#023643', '#a4b5b6', '#92aaad', '#8ec2c2']), 'Plain teal: Logseq’s dark blue-green', JSON.stringify(teal));
 // a colour Android couldn't read as written: handed over as the colour seen

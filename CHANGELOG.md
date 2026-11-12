@@ -14,6 +14,17 @@ From Build 41 these versions are the app's own: they show in Settings → Update
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 46 · version 0.5.7 (November 2026)
+
+### Changed
+- The journal widget on the phone's home screen draws your notes as the app does: bold, italics, strike-through, highlights and code; headings a size bigger; page links, tags and web links in the look's link colour; DOING, NOW and WAITING as a word in the look's accent. To-dos have a drawn box as in the app (open, ticked, or crossed out when cancelled), a done one struck through and faded, and other notes the app's dot. A note's first picture from your notes folder shows as a small picture under its words (up to six in the widget at once, turned the way the camera held it); a picture from the web keeps its name. A formula shows its text: the home screen can't draw formulas in a widget.
+
+### Fixed
+- Settings → Notes → Check this folder on a phone: in "Pictures nothing uses", a long file name got so little room that it stood one letter per line. The name now has the row's width, with its size and "Where was it used?" on the line under it. The missing pictures' file names are listed from the left under their page, instead of right-aligned in ragged pieces.
+
+### Under the hood
+- The phone test checks how the widget draws a formatted note (step 7c, through a real widget row), and a new test checks both picture lists on a phone and a laptop (t28_build46).
+
 ## Build 45 · version 0.5.6 (November 2026)
 
 ### Fixed

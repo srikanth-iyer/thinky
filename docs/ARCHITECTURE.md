@@ -173,7 +173,7 @@ paths). Other localStorage keys: `tabs`, `updateCheck`, `skin`, `sideW`, `splitA
 | File | Job |
 |---|---|
 | `MainActivity.kt` | Window insets, all-files permission, the **`window.LeanAndroid` bridge** (widget config/colours/tasks, bar colours, print, keyboard, shortcuts, updates), app-icon shortcuts, `leanoutliner://` links |
-| `kotlin/JournalWidget.kt` | Today's-journal widget, the round "+" widget, and `Journal` (reads today's journal for the widget; the pop-up adds notes through the app's own Rust code, `LeanCore.kt` → `src-tauri/src/android_capture.rs`) |
+| `kotlin/JournalWidget.kt` | Today's-journal widget (notes drawn with their formatting, to-do boxes and small pictures, `Journal.row`), the round "+" widget, and `Journal` (reads today's journal for the widget; the pop-up adds notes through the app's own Rust code, `LeanCore.kt` → `src-tauri/src/android_capture.rs`) |
 | `kotlin/QuickCaptureActivity.kt` | The "Add to journal" pop-up (widgets' "+", share sheet, tile) |
 | `kotlin/AddNoteTile.kt` | Quick Settings tile |
 | `res/` | Widget layouts and info XML, drawables, the pop-up's layout |

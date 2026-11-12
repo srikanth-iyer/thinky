@@ -340,7 +340,7 @@ jobs:
         group:
           - t13_tabs_safety t7_layout t16_refs t2_blocks t16_looks2 smoke t16_feedback t16_widget t24_build41 t25_build43
           - t15_drag t20_build36 t16_logo t16_phone t16_looks t16_gaps t16_browser t22_build38 t23_build39
-          - t15_edit t14_history t16_start t9_journals t16_reftools t16_brand t16_alias t16_safety t27_build45
+          - t15_edit t14_history t16_start t9_journals t16_reftools t16_brand t16_alias t16_safety t27_build45 t28_build46
           - t14_blockmenu t11_reading t15_pages t12_pictures t13_update t19_build34 t6_looks t16_find t26_build44
           - t5_long t8_phone t15_nav t15_looks t15_search t10_safety t10_shortcuts t16_settings
           - t4_sync t13_tabs t3_pages t21_build37 t14_refs t1_editing t17_refedit t18_security

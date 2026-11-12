@@ -469,6 +469,12 @@ script measured, on every screen (laptop and phone, six looks), each heading's l
 under and above. Measured and left as they are: a 15px section heading 5.5–7.5px above its filter box or first
 reference box (in proportion); a pop-up's head row 0–3px above its first row (his pick, Build 41); the search box's
 small group headings.
+Build 46 (0.5.7; his #claude requests of Nov 11–12; tested by t28_build46, t16_widget, android_test.sh 7c): the
+journal widget draws notes as the app does (below, "Android extras"). Settings → Check this folder on a phone (he
+sent a screenshot): "Pictures nothing uses" rows are a grid in a narrow list (`.pics` `container-type`, under
+520px: the name across, size and "Where was it used?" on the line under it, the size lined up with the name);
+the missing pictures' file names under their page from the left (`.missing-box .rows .meta` a line of its own).
+The edge swipe that opens the phone's menu stays as it is (he asked, Nov 12).
 The to-do words' colours stay as they are (his decision, Nov 11). In every look `.mk` takes the look's accent, so
 LATER, DOING and WAITING look alike, and in thinky like overdue. A preview for all 12 looks proposed grey (`--ink-soft`)
 for LATER/WAITING and the look's link colour for DOING/NOW; he didn't like that solution and said to keep it as it is.
@@ -1595,8 +1601,19 @@ window can't be sent to another page.
 
 ## Android extras
 Home-screen widgets in `android/kotlin/JournalWidget.kt`: today's journal (to-dos due *today* only, under
-"DUE TODAY", then the day's notes; Markdown cleaned to plain words: links show their name or a short
-address) and `QuickAddWidget`, a 1x1 round "+" in the look's accent colour. QuickCaptureActivity (both
+"DUE TODAY", then the day's notes; since Build 46 drawn as the app draws them, `Journal.styled`: bold,
+italics, strike, highlight on the look's `--mark-bg`, code and $TeX$ in a fixed-width font, headings a size up,
+page links, #tags and web links in the look's `--link` (sent by `setWidgetText`, before `setWidgetColors`), a
+to-do word as a box (done/cancelled struck through and faded; DOING/NOW/WAITING a bold word in the accent);
+a ((reference)) "…"; he asked for the app's graphics too (Nov 12): each row (`Journal.row`, layout widget_item:
+`item_mark` + `item_text` + `item_pic`) has its to-do box as a drawing (`Journal.drawn` → `box`;
+drawable/widget_box_open|done|cancel, the dot widget_dot, white and tinted by `setColorFilter`: open and
+cancelled in the faint colour, ticked in the accent with the tick cut out) and the note's first picture in
+assets/ as a small copy (`Journal.thumb`: ≤160×72 dp, sampled while decoding, EXIF-turned; `assetName`: a
+plain name right in assets/ only, as app::asset_file; web pictures keep their name), at most `THUMBS` = 6 in
+the list (Android allows a widget's pictures about one screenful of memory); formulas stay their TeX: the home
+screen draws widgets from text, pictures and lists only (RemoteViews); checked by android_test.sh 7c,
+`LeanAndroid.testWidgetText(note)` → words, spans, box, picture width) and `QuickAddWidget`, a 1x1 round "+" in the look's accent colour. QuickCaptureActivity (both
 widgets' "+" and the share sheet's "Add to journal", text or pictures, Logseq quick-capture format;
 always shown, nothing added until Add): since Build 39 a compact card near the bottom in the look's colours
 (he picked "A · compact composer"): a small "Add to <page>" line with the 16dp logo, the words with no box of

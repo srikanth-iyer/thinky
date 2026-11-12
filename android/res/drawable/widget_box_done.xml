@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- a ticked to-do box (Build 46): a filled rounded square with the tick cut out of it (even-odd), so the
+     widget's own background shows through the tick; tinted with the look's accent, as the app's tick box -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp" android:height="16dp" android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+        android:pathData="M4,1h8a3,3 0 0 1 3,3v8a3,3 0 0 1 -3,3h-8a3,3 0 0 1 -3,-3v-8a3,3 0 0 1 3,-3z M3.8,8.3 L5.1,7 L7,8.9 L10.9,5 L12.2,6.3 L7,11.5 z" />
+</vector>

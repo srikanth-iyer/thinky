@@ -66,7 +66,7 @@ export function shownLook(st = lookState()) {
 /** The current look's colours for the Windows "Add to journal" box and the Android widgets, as #rrggbb: each token painted
  *  on a 1-pixel canvas over the box's background, so any CSS colour (see-through ones too) comes
  *  out as the colour seen. The names are the CSS tokens (outline_core::capture_box::COLOR_KEYS). */
-function lookColors() {
+function lookColors(extra = []) {
   const probe = document.createElement('i');
   probe.style.display = 'none';
   document.body.append(probe);
@@ -80,7 +80,7 @@ function lookColors() {
     return '#' + [...g.getImageData(0, 0, 1, 1).data.slice(0, 3)].map((c) => c.toString(16).padStart(2, '0')).join('');
   };
   const out = { surface: paint('surface', '#ffffff') };
-  for (const t of ['surface-2', 'ink', 'ink-soft', 'ink-faint', 'accent', 'accent-ink', 'line', 'line-soft', 'danger']) out[t] = paint(t, out.surface);
+  for (const t of ['surface-2', 'ink', 'ink-soft', 'ink-faint', 'accent', 'accent-ink', 'line', 'line-soft', 'danger', ...extra]) out[t] = paint(t, out.surface);
   probe.remove();
   return out;
 }
@@ -2182,7 +2182,10 @@ class App {
     // look change; as #rrggbb, the colours as seen, which Android always reads: a look may use any
     // CSS colour, e.g. rgb() or color-mix(), and Android would fall back to its defaults for those)
     if (window.LeanAndroid?.setWidgetColors) {
-      const c = lookColors();
+      const c = lookColors(['link', 'mark-bg']);
+      // Build 46: the journal widget draws notes as the app does, links in the look's link colour and
+      // highlights on its highlight colour (sent first: setWidgetColors redraws the widget)
+      window.LeanAndroid.setWidgetText?.(c.link, c['mark-bg']);
       window.LeanAndroid.setWidgetColors(c.surface, c.ink, c['ink-faint'], c.accent);
     }
     // and so do the phone's status bar (clock, battery) and navigation bar: the page's colour,

@@ -10,6 +10,20 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.graphics.Typeface
+import android.media.ExifInterface
+import android.view.View
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
+import android.text.style.StrikethroughSpan
+import android.text.style.StyleSpan
+import android.text.style.TypefaceSpan
 import android.util.TypedValue
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
@@ -60,6 +74,23 @@ object Journal {
       .apply()
   }
   fun color(ctx: Context, key: String, def: Int) = prefs(ctx).getInt(key, def)
+
+  /** The look's link and highlight colours, for notes drawn as the app draws them (Build 46). */
+  fun saveTextColors(ctx: Context, link: String, mark: String) {
+    fun parse(c: String) = try { android.graphics.Color.parseColor(c.trim()) } catch (e: Exception) { null }
+    val e = prefs(ctx).edit()
+    parse(link)?.let { e.putInt("c_link", it) }
+    parse(mark)?.let { e.putInt("c_mark", it) }
+    e.apply()
+  }
+
+  /** The colours a row is drawn in. */
+  data class Ink(val ink: Int, val faint: Int, val accent: Int, val link: Int, val mark: Int)
+  fun ink(ctx: Context): Ink {
+    val accent = color(ctx, "c_accent", 0xFFC2331A.toInt())
+    return Ink(color(ctx, "c_ink", 0xFF1D1A2E.toInt()), color(ctx, "c_faint", 0xFF7A7383.toInt()), accent,
+      color(ctx, "c_link", accent), color(ctx, "c_mark", 0x66FFE066))
+  }
 
   fun vault(ctx: Context): File? = prefs(ctx).getString("vault", null)?.let { File(it) }
 
@@ -189,13 +220,13 @@ object Journal {
         val day = "${c.get(Calendar.YEAR)}-${c.get(Calendar.MONTH) + 1}-${c.get(Calendar.DAY_OF_MONTH)}"
         if (o.optString("day") == day) o.optJSONArray("tasks") ?: JSONArray() else JSONArray()
       } else JSONArray(raw)
-      (0 until arr.length()).map { clean(arr.getJSONObject(it).optString("text")) }.filter { it.isNotEmpty() }
+      (0 until arr.length()).map { arr.getJSONObject(it).optString("text").trim() }.filter { clean(it).isNotEmpty() }
     } catch (e: Exception) { emptyList() }
     val notes = notes(ctx)
     val out = mutableListOf<Item>()
     if (tasks.isNotEmpty()) {
       out.add(Item(0, "DUE TODAY", HEADER))
-      tasks.forEach { out.add(Item(0, if (it.startsWith("☐")) it else "☐ $it", TASK)) }
+      tasks.forEach { out.add(Item(0, if (MARKER.containsMatchIn(it)) it else "TODO $it", TASK)) }
       if (notes.isNotEmpty()) out.add(Item(0, "NOTES", HEADER))
     }
     return out + notes
@@ -220,15 +251,196 @@ object Journal {
       val fence = rest.removePrefix("- ").trimStart().startsWith("```")
       val isBullet = rest.startsWith("- ") || rest.startsWith("* ") || rest.startsWith("+ ") || rest == "-"
       if (!inFence && isBullet) {
-        out.add(Item(depth, clean(rest.substring(1).trim())))
+        out.add(Item(depth, rest.substring(1).trim()))
         started = true
       } else if (!inFence && t.isNotEmpty() && !PROP.containsMatchIn(t) && !t.startsWith("SCHEDULED:") && !t.startsWith("DEADLINE:")) {
-        if (!started) { out.add(Item(0, clean(t))); started = true }  // text written outside Logseq
-        else if (out.isNotEmpty()) { val last = out.last(); last.text = (last.text + " " + clean(t)).trim() }
+        if (!started) { out.add(Item(0, t)); started = true }  // text written outside Logseq
+        else if (out.isNotEmpty() && !BLOCK_MARK.containsMatchIn(t)) { val last = out.last(); last.text = (last.text + " " + t).trim() }
       }
       if (fence) inFence = !inFence
     }
-    return out.filter { it.text.isNotEmpty() }
+    return out.filter { clean(it.text).isNotEmpty() }
+  }
+
+  /** A note as the app shows it, as far as a home-screen widget can draw it (Build 46, he asked: "render
+   *  my note blocks like it is in the app"): **bold**, *italics*, ~~struck~~, ==highlighted== / ^^…^^,
+   *  `code`, headings a size up, page links, #tags and web links in the look's link colour, a to-do word
+   *  as a box (a done or cancelled one struck through and faded, as in the app; DOING, NOW, WAITING kept
+   *  as a word in the accent). The widget is drawn by the home screen from a few simple parts (text,
+   *  pictures, lists), so a picture shows its name, a formula its TeX and a ((reference)) "…". */
+  class Drawn(val text: CharSequence, val box: Int, val picture: String?)
+  const val BOX_NONE = 0
+  const val BOX_OPEN = 1
+  const val BOX_DONE = 2
+  const val BOX_CANCEL = 3
+
+  /** The same, with the to-do box as a drawing (`box`, Build 46: he asked for the app's graphics, not ☐)
+   *  and the note's first picture in the notes folder that `showPicture` takes (it makes the small copy the
+   *  row shows): that picture's name is left out of the words, as the app shows the picture, not its link. */
+  fun drawn(s: String, c: Ink, showPicture: (String) -> Boolean = { false }): Drawn {
+    var box = BOX_NONE
+    var shown: String? = null
+    val text = styled(s, c, { box = it }) { addr -> if (shown == null && assetName(addr) != null && showPicture(addr)) { shown = addr; true } else false }
+    return Drawn(text, box, shown)
+  }
+
+  fun styled(s: String, c: Ink): CharSequence = styled(s, c, null, null)
+
+  private fun styled(s: String, c: Ink, boxOut: ((Int) -> Unit)?, picture: ((String) -> Boolean)?): CharSequence {
+    val out = SpannableStringBuilder()
+    if (BLOCK_MARK.containsMatchIn(s.trim())) return out
+    var t = s.trim().replace(Regex("^>\\s?"), "").replace(Regex("^\\[!\\w+\\][+-]?\\s*"), "").replace(Regex("\\s+"), " ")
+    var done = false
+    MARKER.find(t)?.let { m ->
+      val w = m.groupValues[1].uppercase()
+      done = w == "DONE" || w.startsWith("CANCEL")
+      if (boxOut != null) boxOut(if (w == "DONE") BOX_DONE else if (done) BOX_CANCEL else BOX_OPEN)
+      else out.append(if (w == "DONE") "☑ " else if (done) "✕ " else "☐ ")
+      if (w in setOf("DOING", "NOW", "WAITING", "WAIT", "IN-PROGRESS", "STARTED")) {
+        val a = out.length
+        out.append(w).append(' ')
+        out.setSpan(ForegroundColorSpan(c.accent), a, a + w.length, EX)
+        out.setSpan(StyleSpan(Typeface.BOLD), a, a + w.length, EX)
+      }
+      t = t.substring(m.range.last + 1)
+    }
+    t = t.replace(Regex("^\\[#([ABCabc])\\]\\s?"), "")
+    val body = out.length
+    var head = 0
+    Regex("^(#{1,6})\\s+").find(t)?.let { head = it.groupValues[1].length; t = t.substring(it.range.last + 1) }
+    inline(t, out, c, picture)
+    while (out.isNotEmpty() && out[out.length - 1] == ' ') out.delete(out.length - 1, out.length) // (a picture left out at the end)
+    if (head > 0) {
+      out.setSpan(StyleSpan(Typeface.BOLD), body, out.length, EX)
+      out.setSpan(RelativeSizeSpan(floatArrayOf(1.3f, 1.2f, 1.1f, 1.05f, 1f, 1f)[head - 1]), body, out.length, EX)
+    }
+    if (done && out.length > body) { // (set last, so the faded colour wins over a link's)
+      out.setSpan(StrikethroughSpan(), body, out.length, EX)
+      out.setSpan(ForegroundColorSpan(c.faint), body, out.length, EX)
+    }
+    return out
+  }
+
+  private val EX = Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+  private val MARKER = Regex("^(TODO|LATER|NOW|DOING|WAITING|WAIT|IN-PROGRESS|STARTED|DONE|CANCELED|CANCELLED) ")
+  private val PAGE = Regex("#?\\[\\[([^\\]]*)\\]\\]")
+  private val TAG = Regex("(?<![\\w#/])#([^\\s#.,;:!?()\\[\\]{}\"']+)")
+  private val CODE = Regex("`([^`]+)`")
+  private val MATH = Regex("\\$([^$\\s](?:[^$]*[^$\\s])?)\\$")
+  // the paired marks, the longer first: (pattern, what it draws)
+  private val PAIRS = listOf("\\*\\*" to "b", "__" to "b", "~~" to "s", "==" to "m", "\\^\\^" to "m", "\\*" to "i", "_" to "i")
+    .map { (m, k) -> Regex((if (m == "_") "(?<!\\w)" else "") + "$m(\\S(?:.*?\\S)??)$m" + (if (m == "_") "(?!\\w)" else "")) to k }
+
+  private val PIECES by lazy { listOf("macro" to MACRO, "picture" to MD_IMG, "link" to MD_LINK, "page" to PAGE, "ref" to BLOCK_REF,
+    "code" to CODE, "math" to MATH, "web" to WEB, "tag" to TAG) }
+
+  /** The words of a note with their formatting, into `out`: the earliest piece first, then what follows. */
+  private fun inline(text: String, out: SpannableStringBuilder, c: Ink, picture: ((String) -> Boolean)? = null) {
+    var t = text
+    while (t.isNotEmpty()) {
+      // every kind of piece, the one starting first wins (at the same place, the order of this list)
+      val found = PIECES.mapNotNull { (k, r) -> r.find(t)?.let { k to it } } + PAIRS.mapNotNull { (r, k) -> r.find(t)?.let { k to it } }
+      val (kind, m) = found.minByOrNull { it.second.range.first } ?: run { out.append(t); return }
+      out.append(t, 0, m.range.first)
+      val a = out.length
+      fun colour(col: Int) { if (out.length > a) out.setSpan(ForegroundColorSpan(col), a, out.length, EX) }
+      when (kind) {
+        "macro" -> { WEB.find(m.groupValues[1])?.value?.let { out.append(shortUrl(it)); colour(c.link) } }
+        "picture" -> if (picture?.invoke(m.groupValues[2]) != true) { out.append(m.groupValues[1].ifBlank { m.groupValues[2].substringAfterLast('/') }); colour(c.faint) }
+        "link" -> { val label = m.groupValues[1]; out.append(if (label.isBlank() || WEB.matches(label)) shortUrl(m.groupValues[2]) else label); colour(c.link) }
+        "page" -> { out.append((if (m.value.startsWith("#")) "#" else "") + m.groupValues[1]); colour(c.link) }
+        "ref" -> { out.append("…"); colour(c.faint) }
+        "code", "math" -> { out.append(m.groupValues[1]); if (out.length > a) out.setSpan(TypefaceSpan("monospace"), a, out.length, EX) }
+        "web" -> { out.append(shortUrl(m.value)); colour(c.link) }
+        "tag" -> { out.append(m.value); colour(c.link) }
+        else -> { // a pair of marks: what's inside may have its own formatting
+          inline(m.groupValues[1], out, c, picture)
+          if (out.length > a) out.setSpan(when (kind) {
+            "b" -> StyleSpan(Typeface.BOLD); "i" -> StyleSpan(Typeface.ITALIC); "s" -> StrikethroughSpan(); else -> BackgroundColorSpan(c.mark)
+          }, a, out.length, EX)
+        }
+      }
+      t = t.substring(m.range.last + 1)
+    }
+  }
+
+  /** A picture's file name in the notes folder's assets/ as the address gives it, or null: only a plain
+   *  name right in assets/ (no folder, "..", leading dot or web address), as the app's own rule for
+   *  pictures (app::asset_file); "%20" and the like decoded. */
+  fun assetName(address: String): String? {
+    val a = address.trim().substringBefore('?').substringBefore('#')
+    if (a.contains("://")) return null
+    val i = a.lastIndexOf("assets/")
+    if (i < 0 || (i > 0 && a[i - 1] != '/')) return null
+    val name = try { java.net.URLDecoder.decode(a.substring(i + 7).replace("+", "%2B"), "UTF-8") } catch (e: Exception) { return null }
+    if (name.isEmpty() || name.startsWith(".") || name.any { it == '/' || it == '\\' || it == '\u0000' }) return null
+    return name
+  }
+
+  /** A small copy of a picture in the notes folder for a widget row (Build 46, he asked for pictures in
+   *  the widget): at most 160 x 72 dp, decoded at about that size and turned as the camera held it.
+   *  Android lets a widget's pictures together take about one screenful of memory, so the list keeps
+   *  only a few (Factory, THUMBS). Null when it isn't a picture this phone can read. */
+  fun thumb(ctx: Context, address: String): Bitmap? {
+    val name = assetName(address) ?: return null
+    val f = File(File(vault(ctx) ?: return null, "assets"), name)
+    if (!f.isFile) return null
+    return try {
+      val dp = ctx.resources.displayMetrics.density
+      val maxW = (160 * dp).toInt()
+      val maxH = (72 * dp).toInt()
+      val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+      BitmapFactory.decodeFile(f.path, o)
+      if (o.outWidth <= 0 || o.outHeight <= 0) return null
+      var sample = 1
+      while (o.outWidth / (sample * 2) >= maxW && o.outHeight / (sample * 2) >= maxH) sample *= 2
+      var b = BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+      val turn = try {
+        when (ExifInterface(f.path).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+          ExifInterface.ORIENTATION_ROTATE_90 -> 90f; ExifInterface.ORIENTATION_ROTATE_180 -> 180f; ExifInterface.ORIENTATION_ROTATE_270 -> 270f; else -> 0f
+        }
+      } catch (e: Exception) { 0f }
+      if (turn != 0f) b = Bitmap.createBitmap(b, 0, 0, b.width, b.height, Matrix().apply { postRotate(turn) }, true)
+      val k = minOf(maxW.toFloat() / b.width, maxH.toFloat() / b.height, 1f)
+      if (k < 1f) Bitmap.createScaledBitmap(b, maxOf(1, (b.width * k).toInt()), maxOf(1, (b.height * k).toInt()), true) else b
+    } catch (e: Throwable) { null } // (a picture too big for memory, or broken: the row shows its name)
+  }
+
+  /** One row of the journal widget: a small heading, or a note with its dot or to-do box (drawn), its
+   *  words with their formatting and a small picture. `thumbs`: the pictures made so far (by address);
+   *  `room`: whether another may be made. Used by the list and by the emulator test (testWidgetText). */
+  fun row(ctx: Context, item: Item, c: Ink, thumbs: MutableMap<String, Bitmap?>, room: () -> Boolean): RemoteViews {
+    val rv = RemoteViews(ctx.packageName, R.layout.widget_item)
+    val dp = ctx.resources.displayMetrics.density
+    if (item.kind == HEADER) { // "DUE TODAY", "NOTES": small and pale, no dot
+      rv.setViewVisibility(R.id.item_mark, View.GONE)
+      rv.setTextViewText(R.id.item_text, item.text)
+      rv.setTextColor(R.id.item_text, c.faint)
+      rv.setTextViewTextSize(R.id.item_text, TypedValue.COMPLEX_UNIT_SP, 11f)
+      rv.setViewPadding(R.id.item_root, 0, ((if (item.depth < 0) 0 else 10) * dp).toInt(), 0, (2 * dp).toInt())
+    } else {
+      val d = drawn(item.text, c) { addr ->
+        if (addr !in thumbs && room()) thumbs[addr] = thumb(ctx, addr)
+        thumbs[addr] != null
+      }
+      val (mark, tint) = when (d.box) {
+        BOX_OPEN -> R.drawable.widget_box_open to c.faint
+        BOX_DONE -> R.drawable.widget_box_done to c.accent
+        BOX_CANCEL -> R.drawable.widget_box_cancel to c.faint
+        else -> R.drawable.widget_dot to c.faint
+      }
+      rv.setImageViewResource(R.id.item_mark, mark)
+      rv.setInt(R.id.item_mark, "setColorFilter", tint)
+      rv.setTextViewText(R.id.item_text, d.text)
+      rv.setViewVisibility(R.id.item_text, if (d.text.isEmpty()) View.GONE else View.VISIBLE)
+      rv.setTextColor(R.id.item_text, c.ink)
+      rv.setTextViewTextSize(R.id.item_text, TypedValue.COMPLEX_UNIT_SP, 14f)
+      val pic = d.picture?.let { thumbs[it] }
+      if (pic != null) { rv.setImageViewBitmap(R.id.item_pic, pic); rv.setViewVisibility(R.id.item_pic, View.VISIBLE) }
+      rv.setViewPadding(R.id.item_root, (item.depth * 16 * dp).toInt(), (3 * dp).toInt(), 0, (3 * dp).toInt())
+    }
+    rv.setOnClickFillInIntent(R.id.item_root, Intent())
+    return rv
   }
 
   /** Text colour that reads on top of colour c: white on dark colours, near-black on light ones. */
@@ -366,35 +578,29 @@ class JournalWidgetService : RemoteViewsService() {
   override fun onGetViewFactory(intent: Intent): RemoteViewsFactory = Factory(applicationContext)
 
   class Factory(private val ctx: Context) : RemoteViewsFactory {
+    /** At most this many small pictures in the list at once: each is up to 160 x 72 dp, so six stay far
+     *  inside the memory Android allows a widget's pictures (about one screenful). */
+    private val THUMBS = 6
     private var items: List<Journal.Item> = emptyList()
     private var ink = 0xFF1D1A2E.toInt()
     private var faint = 0xFF7A7383.toInt()
+    private var colours: Journal.Ink? = null
+    private val thumbs = HashMap<String, Bitmap?>() // small pictures made for the rows, by address
     override fun onCreate() {}
     override fun onDataSetChanged() {
       items = try { Journal.items(ctx) } catch (e: Exception) { emptyList() }
       ink = Journal.color(ctx, "c_ink", ink)
       faint = Journal.color(ctx, "c_faint", faint)
+      colours = Journal.ink(ctx)
+      thumbs.clear() // (made again as the rows are drawn: a picture may have changed)
     }
     override fun onDestroy() {}
     override fun getCount(): Int = items.size
     override fun getViewAt(position: Int): RemoteViews {
-      val rv = RemoteViews(ctx.packageName, R.layout.widget_item)
-      val item = items.getOrNull(position) ?: return rv
-      val dp = ctx.resources.displayMetrics.density
-      if (item.kind == Journal.HEADER) { // "DUE TODAY", "NOTES": small and pale
-        rv.setTextViewText(R.id.item_text, item.text)
-        rv.setTextColor(R.id.item_text, faint)
-        rv.setTextViewTextSize(R.id.item_text, TypedValue.COMPLEX_UNIT_SP, 11f)
-        rv.setViewPadding(R.id.item_text, 0, ((if (position == 0) 0 else 10) * dp).toInt(), 0, (2 * dp).toInt())
-      } else {
-        val box = item.text.startsWith("☐") || item.text.startsWith("☑") || item.text.startsWith("✕")
-        rv.setTextViewText(R.id.item_text, if (item.kind == Journal.TASK || box) item.text else "•  " + item.text)
-        rv.setTextColor(R.id.item_text, ink)
-        rv.setTextViewTextSize(R.id.item_text, TypedValue.COMPLEX_UNIT_SP, 14f)
-        rv.setViewPadding(R.id.item_text, (item.depth * 16 * dp).toInt(), (3 * dp).toInt(), 0, (3 * dp).toInt())
-      }
-      rv.setOnClickFillInIntent(R.id.item_text, Intent())
-      return rv
+      val item = items.getOrNull(position) ?: return RemoteViews(ctx.packageName, R.layout.widget_item)
+      // the first heading sits at the top (depth -1 marks it: no space above)
+      val shown = if (item.kind == Journal.HEADER && position == 0) Journal.Item(-1, item.text, item.kind) else item
+      return Journal.row(ctx, shown, colours ?: Journal.ink(ctx), thumbs) { thumbs.size < THUMBS }
     }
     override fun getLoadingView(): RemoteViews? = null
     override fun getViewTypeCount(): Int = 1

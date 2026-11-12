@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- a cancelled to-do (Build 46): the open box with a cross; tinted with the look's faint colour -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp" android:height="16dp" android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.5"
+        android:pathData="M4,1.75h8a2.25,2.25 0 0 1 2.25,2.25v8a2.25,2.25 0 0 1 -2.25,2.25h-8a2.25,2.25 0 0 1 -2.25,-2.25v-8a2.25,2.25 0 0 1 2.25,-2.25z" />
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.6" android:strokeLineCap="round"
+        android:pathData="M5.5,5.5L10.5,10.5M10.5,5.5L5.5,10.5" />
+</vector>

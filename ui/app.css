@@ -1418,6 +1418,18 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 .pics li:last-child { border-bottom: 0; }
 .pics li { flex-wrap: wrap; }
 .pics .pic-older { flex: none; }
+/* A narrow list (a phone; Build 46, he sent a picture: a long name got 17px and stood one letter per
+   line, squeezed by the size and "Where was it used?"): the name has the row's width, and the size and
+   the button go on a line of their own under it, the size lined up with the name. */
+.pics { container-type: inline-size; }
+@container (max-width: 520px) {
+  .pics li { display: grid; grid-template-columns: auto 1fr auto; column-gap: 10px; row-gap: 0; }
+  .pics .pic-tick { grid-row: 1 / 3; }
+  .pics .pic-open { grid-column: 2 / 4; }
+  .pics .meta { grid-column: 2; align-self: center; padding-left: 54px; } /* (the picture 40px + 10px + 4px) */
+  .pics .pic-older { grid-column: 3; margin-bottom: 4px; }
+  .pics .pic-ctx { grid-column: 1 / -1; }
+}
 .pics .pic-ctx { flex: 0 0 100%; padding: 4px 4px 8px 34px; }
 .pics .pic-ctx .note { margin: 4px 0; font-size: var(--fs-ui); }
 .pics .pc-list { list-style: none; margin: 0; padding: 0; }
@@ -1775,7 +1787,9 @@ html[data-motion="off"] .fading { display: none !important; }
 
 /* Settings → Check this folder → Missing pictures (Build 36): the files under each page's name */
 .missing-box .rows a { flex-wrap: wrap; }
-.missing-box .rows .meta { white-space: normal; overflow-wrap: anywhere; text-align: right; margin-left: auto; font-family: var(--mono, monospace); font-size: var(--fs-small); }
+/* the missing files under their page's name, one a line from the left (Build 46: right-aligned, a long
+   name broke into ragged pieces on a phone) */
+.missing-box .rows .meta { flex: 1 0 100%; white-space: normal; overflow-wrap: anywhere; text-align: left; margin: 0; font-family: var(--mono, monospace); font-size: var(--fs-small); }
 /* Settings → Look → Property display (Build 37) */
 .prop-display .prop-rules li { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .prop-display .pr-k { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; }
