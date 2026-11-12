@@ -147,31 +147,54 @@
     });
     let n;
     let space = true;
+    // and the same words with no spaces at all, for passages whose spacing differs from the page's
+    // (a note's "hypothesis(opens" where the page has "hypothesis (opens", or two paragraphs that
+    // touch with no space between them on the page)
+    let bare = '';
+    const bmap = [];
     while ((n = w.nextNode())) {
       nodes.push(n);
       const v = n.nodeValue;
       for (let i = 0; i < v.length; i++) {
         const sp = /\s/.test(v[i]);
+        if (!sp) { bare += v[i]; bmap.push([n, i]); }
         if (sp && space) continue;
         flat += sp ? ' ' : v[i];
         map.push([n, i]);
         space = sp;
       }
     }
-    return { flat, map };
+    return { flat, map, bare, bmap };
   }
   const squeeze = (s) => s.replace(/\s+/g, ' ').trim();
+  // Where `q` is in `text`: the place nearest `near` (a passage that shows up twice), or -1.
+  function nearest(text, q, near) {
+    let at = -1, best = Infinity;
+    for (let i = text.indexOf(q); i >= 0; i = text.indexOf(q, i + 1)) {
+      const d = Math.abs(i - near);
+      if (d < best) { best = d; at = i; }
+    }
+    return at;
+  }
+  // The shortest passage found without its spaces (fewer letters could turn up inside other words).
+  const BARE_MIN = 12;
   function find(plain, tm, near) {
     const q = squeeze(plain);
     if (!q) return null;
-    let at = -1, best = Infinity;
-    for (let i = tm.flat.indexOf(q); i >= 0; i = tm.flat.indexOf(q, i + 1)) {
-      const d = Math.abs(i - (near || 0));
-      if (d < best) { best = d; at = i; }
+    let at = nearest(tm.flat, q, near || 0);
+    let map = tm.map, len = q.length;
+    if (at < 0) {
+      // spaced differently from the page: compare the letters alone
+      const b = q.replace(/\s+/g, '');
+      if (b.length < BARE_MIN) return null;
+      // (`near` counts squeezed letters; the spaces-free text is a little shorter, close enough)
+      at = nearest(tm.bare, b, near || 0);
+      if (at < 0) return null;
+      map = tm.bmap;
+      len = b.length;
     }
-    if (at < 0) return null;
-    const [sn, so] = tm.map[at];
-    const [en, eo] = tm.map[at + q.length - 1];
+    const [sn, so] = map[at];
+    const [en, eo] = map[at + len - 1];
     const r = document.createRange();
     r.setStart(sn, so);
     r.setEnd(en, eo + 1);
@@ -202,6 +225,11 @@
       try { before.setEnd(r.startContainer, r.startOffset); } catch (e) { /* outside body */ }
       const pos = squeeze(before.toString()).length;
       return { plain, text: md(r.cloneContents()) || safe(plain), pos, link: fragment(pageInfo().url, plain), range: r };
+    },
+    // Is any text selected on the page? (the box offers "Send the selected text…" only then)
+    hasSelection() {
+      const sel = getSelection();
+      return !!(sel && !sel.isCollapsed && sel.toString().trim());
     },
     // Highlight the selection: marked yellow, returned for the extension to keep.
     highlight() {

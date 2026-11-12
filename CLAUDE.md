@@ -490,6 +490,20 @@ browser without thinky isn't asked on every page), `kept(url)`, `opts` (storage 
 here, gets page.js and its marks; any other page nothing); `articleKey` keeps a port other than 80/443 (as core's
 `normalize_url`); popup: `#kept` (a `<details>` listing them, after `do: 'kept'`, which also marks the page) and
 `#again` (the switch: `chrome.permissions.request` on the click, `remove` when turned off), a link to the how-to page.
+Build 47 / extension 1.1.1: `plain_words` drops a leading bold capture time (`strip_capture_time`: `**H:MM**`/`**HH:MM:SS**`
+then a space or nothing; bold that runs on, or a time without bold, stays). Quick captures waiting count as kept:
+`Vault::capture_notes(also)` (every journal note, oldest day first, then the quick capture page when
+`:quick-capture-options {:insert-today? false}`), `capture_rest(template, note)` (the text template's part before `{text}`
+matched: literals as written, `{time}` digits/colons/am-pm, `{date}` up to the next literal; fallback: bold time, `[[page]]`
+links (at least one), `#tags` and `:`), `web_addresses` (Markdown and bare; a link's address ends at its own `)`, text
+fragments' `(…)` kept); a capture note linking to the article adds its address to `article_urls` and its words to
+`kept_highlights` (after the pages; `page` = the journal day when the article has no page; `link` = its `#:~:text=` address).
+page.js `textMap` also builds `bare`/`bmap` (no whitespace): `find` tries the squeezed text, then (≥ `BARE_MIN` = 12
+letters) the bare one; `hasSelection()`. background.js: `toJournal` refuses with `NOTHING_SELECTED` (no bare link to
+the journal any more) and refreshes `articles(true)` after a send; `tabs.onUpdated` asks `kept` once and paints at
+`PAINT_AGAIN` = 0, +2 s, +4 s until all are found (stops if the tab left the article); the popup's `list` reply's `info`
+has `selected`; `articleKey` keeps the query as written (less tracking parts), as core's `normalize_url`. popup: the
+switch sits in `#settings`, shown by `#gear` (`aria-expanded`); `#journal` disabled with nothing selected.
 Phone: android_capture.rs `cmd: "kept"`, `LeanCore.kept`, QuickCaptureActivity `webAddress`/`showKept` (`qc_kept`
 under the words: "N highlights already in “Page”", each with a QuoteSpan in the accent; 7 lines, a tap shows all);
 android_test.sh step 5c. Settings → Capture's browser card says how (`.again-how`, `HOWTO`); website

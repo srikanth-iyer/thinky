@@ -329,3 +329,151 @@ fn passages_already_kept_come_back_as_plain_words() {
     assert!(!get(&v, "pages/Bread notes.md").contains("\u{200b}"));
     let _ = std::fs::remove_dir_all(&v);
 }
+
+// (found Nov 12, 2026, on "Why Am I Left-Handed?": every passage there was a quick capture filed by
+// hand, "**22:19** words [↗](spot)", and the time went to the extension with the words, so none of
+// them could be found on the page)
+#[test]
+fn a_quick_captures_time_is_not_part_of_the_passage() {
+    use outline_core::clip::{answer, kept_highlights};
+    use serde_json::json;
+    let v = vault("kept-time");
+    put(
+        &v,
+        "pages/Why Am I Left-Handed%3F.md",
+        concat!(
+            "author:: [[Natalie Wolchover]]\n",
+            "source:: [Why Am I Left-Handed? - Quanta Magazine](https://www.quantamagazine.org/why-am-i-left-handed-20260713/)\n",
+            "tags:: [[quick capture]]\n\n",
+            "- [[July 30th, 2026]]\n",
+            "\t- **22:19** Why are 90% of people right-handed? [↗](https://www.quantamagazine.org/why-am-i-left-handed-20260713/#:~:text=Why%20are)\n",
+            // the older form: "[Link](spot)" to the article itself, which goes
+            "\t- **22:23** microtubules unfolds in a way that functionally “leans right.” [Link](https://www.quantamagazine.org/why-am-i-left-handed-20260713/#:~:text=microtubules)\n",
+            // a single-digit hour and seconds
+            "\t- **9:05:41** Only humans exhibit an extreme population-wide bias. [↗](https://www.quantamagazine.org/why-am-i-left-handed-20260713/#:~:text=Only)\n",
+            // a time stamp alone holds no passage
+            "\t- **22:24**\n",
+            // a passage that itself starts with a time, not in bold, stays whole
+            "\t- 10:30 is when the trial started. [↗](https://www.quantamagazine.org/why-am-i-left-handed-20260713/#:~:text=10%3A30)\n",
+            // bold words that aren't a time stay (their marks go, as before)
+            "\t- **Crucially**, left-handers aren’t mirror-image people.\n",
+            // bold that runs on after the time isn't a capture's time
+            "\t- **22:25 sharp** was the start.\n",
+        ),
+    );
+    let app = open(&v);
+    let k = kept_highlights(&app, "https://quantamagazine.org/why-am-i-left-handed-20260713");
+    assert_eq!(k.page, "Why Am I Left-Handed?");
+    let plain: Vec<&str> = k.highlights.iter().map(|h| h.plain.as_str()).collect();
+    assert_eq!(
+        plain,
+        [
+            "Why are 90% of people right-handed?",
+            "microtubules unfolds in a way that functionally “leans right.”",
+            "Only humans exhibit an extreme population-wide bias.",
+            "10:30 is when the trial started.",
+            "Crucially, left-handers aren’t mirror-image people.",
+            "22:25 sharp was the start.",
+        ],
+        "{k:?}"
+    );
+    assert_eq!(k.highlights[0].link, "https://www.quantamagazine.org/why-am-i-left-handed-20260713/#:~:text=Why%20are");
+    // and the same through the extension's message
+    let a = answer(&json!({"cmd": "kept", "url": "https://www.quantamagazine.org/why-am-i-left-handed-20260713/"}), Ok(v.clone()), TODAY, "");
+    assert_eq!(a["highlights"][0]["plain"], "Why are 90% of people right-handed?", "{a}");
+    let _ = std::fs::remove_dir_all(&v);
+}
+
+// (he asked Nov 12, 2026: "is it possible to check the quick captures on the journal as well?")
+// Quick captures still in the journal count too, when they link to the article.
+#[test]
+fn quick_captures_waiting_in_the_journal_count_as_kept() {
+    use outline_core::clip::{answer, article_urls, capture_rest, kept_highlights, web_addresses};
+    use serde_json::json;
+    const HIS: &str = "**{time}** [[quick capture]]: #inbox {text} {url}";
+    const DEFAULT: &str = "[[quick capture]] **{time}**: {text} from {url}";
+    // the capture's own beginning, found from the template
+    assert_eq!(capture_rest(HIS, "**17:50** [[quick capture]]: #inbox Some words here [T](https://a.org/x)"), Some("Some words here [T](https://a.org/x)"));
+    assert_eq!(capture_rest(DEFAULT, "[[quick capture]] **9:05 pm**: Some words from https://a.org/x"), Some("Some words from https://a.org/x"));
+    assert_eq!(capture_rest("[[{date}]] {time} - {text}", "[[November 12th, 2026]] 10:03 - Words https://a.org"), Some("Words https://a.org"));
+    // a template changed since: the old beginning still counts
+    assert_eq!(capture_rest(DEFAULT, "**17:50** [[quick capture]]: #inbox Old words"), Some("Old words"));
+    assert_eq!(capture_rest(HIS, "[[quick capture]] **17:50**: Older words"), Some("Older words"));
+    // ordinary notes aren't captures
+    assert_eq!(capture_rest(HIS, "Reading [this](https://a.org/x) later"), None);
+    assert_eq!(capture_rest(HIS, "**Bold** start, no link"), None);
+    assert_eq!(capture_rest(HIS, "#inbox only a tag"), None, "a page link is needed in the fallback");
+    // addresses, with a text fragment's own brackets kept
+    assert_eq!(
+        web_addresses("w [T · S](https://a.org/p/#:~:text=so%20weak%20(and%20more)%20that) and https://b.org/q."),
+        ["https://a.org/p/#:~:text=so%20weak%20(and%20more)%20that", "https://b.org/q"]
+    );
+
+    let v = vault("kept-journal");
+    std::fs::write(v.join("logseq/config.edn"), "{:journal/page-title-format \"MMMM do, yyyy\"\n :journal/file-name-format \"MMMM do, yyyy\"\n :journals-directory \"Diary\"\n :quick-capture-templates {:text \"**{time}** [[quick capture]]: #inbox {text} {url}\"}}\n").unwrap();
+    let art = "https://www.quantamagazine.org/why-am-i-left-handed-20260713/";
+    // one passage already filed on the article's page
+    put(&v, "pages/Why Am I Left-Handed%3F.md", &format!("source:: [Why Am I Left-Handed?]({art})\n\n- [[July 30th, 2026]]\n\t- **22:19** Why are 90% of people right-handed? [↗]({art}#:~:text=Why)\n"));
+    put(
+        &v,
+        "Diary/November 11th, 2026.md",
+        &format!(concat!(
+            "- **08:10** [[quick capture]]: #inbox Crucially, left-handers aren’t mirror-image people. [Why Am I Left-Handed? · Quanta Magazine]({}#:~:text=Crucially)\n",
+            // the article's link alone (sent with nothing selected): no passage
+            "- **08:11** [[quick capture]]: #inbox [Why Am I Left-Handed? · Quanta Magazine]({})\n",
+            // the same passage as the page's: listed once
+            "- **08:12** [[quick capture]]: #inbox Why are 90% of people right-handed? [Q]({}#:~:text=Why)\n",
+            // his own note about the article, not a capture
+            "- Must finish [the handedness piece]({})\n",
+            // a capture from another article
+            "- **08:13** [[quick capture]]: #inbox Unrelated words here [X](https://other.org/a#:~:text=Unrelated)\n",
+        ), art, art, art, art),
+    );
+    put(&v, "Diary/November 12th, 2026.md", &format!("- **17:50** [[quick capture]]: #inbox Only humans exhibit an extreme population-wide bias. [Q]({art}?utm_source=share#:~:text=Only)\n"));
+    let mut app = open(&v);
+    let k = kept_highlights(&app, art);
+    assert_eq!(k.page, "Why Am I Left-Handed?", "the article's page is named when there is one");
+    let plain: Vec<&str> = k.highlights.iter().map(|h| h.plain.as_str()).collect();
+    assert_eq!(
+        plain,
+        ["Why are 90% of people right-handed?", "Crucially, left-handers aren’t mirror-image people.", "Only humans exhibit an extreme population-wide bias."],
+        "{k:?}"
+    );
+    assert_eq!(k.highlights[1].link, format!("{art}#:~:text=Crucially"), "a journal capture's link to its spot");
+    // the articles list includes ones only captured in the journal
+    put(&v, "Diary/November 10th, 2026.md", "- **07:00** [[quick capture]]: #inbox A passage from a new article [N](https://news.example/story?id=7#:~:text=A)\n");
+    app.rescan();
+    let urls = article_urls(&app);
+    assert!(urls.contains(&"https://news.example/story?id=7".to_string()), "{urls:?}");
+    assert!(urls.contains(&"https://quantamagazine.org/why-am-i-left-handed-20260713".to_string()), "{urls:?}");
+    // with no page for the article, the journal day is named
+    let n = kept_highlights(&app, "https://news.example/story?id=7");
+    assert_eq!((n.page.as_str(), n.highlights.len()), ("November 10th, 2026", 1), "{n:?}");
+    assert_eq!(n.highlights[0].plain, "A passage from a new article");
+
+    // end to end: the extension's "send to journal", then the passage comes back for that article
+    // (captures set to go to today's journal, as his are)
+    let w = vault("kept-journal-e2e");
+    std::fs::write(w.join("logseq/config.edn"), "{:journal/page-title-format \"MMMM do, yyyy\"\n :journal/file-name-format \"MMMM do, yyyy\"\n :journals-directory \"Diary\"\n :quick-capture-options {:insert-today? true}}\n").unwrap();
+    let r = answer(
+        &json!({"cmd": "journal", "text": "Dough needs warm air", "url": "https://kitchenweekly.org/bread/#:~:text=Dough%20needs%20warm%20air", "title": "How Bread Rises | Kitchen Weekly", "site": "Kitchen Weekly"}),
+        Ok(w.clone()),
+        TODAY,
+        "10:03",
+    );
+    assert_eq!(r["ok"], true, "{r}");
+    let a = answer(&json!({"cmd": "articles"}), Ok(w.clone()), TODAY, "");
+    assert!(a["urls"].as_array().unwrap().contains(&json!("https://kitchenweekly.org/bread")), "{a}");
+    let a = answer(&json!({"cmd": "kept", "url": "https://www.kitchenweekly.org/bread/"}), Ok(w.clone()), TODAY, "");
+    assert_eq!(a["highlights"][0]["plain"], "Dough needs warm air", "{a}");
+    assert!(std::fs::read_dir(w.join("Diary")).unwrap().count() == 1, "it went to the journal");
+    // captures set to go to a page of their own ("quick capture", the usual setting): found there too
+    let q = vault("kept-capture-page");
+    let r = answer(&json!({"cmd": "journal", "text": "Crumb needs time", "url": "https://kitchenweekly.org/crumb#:~:text=Crumb", "title": "Crumb", "site": ""}), Ok(q.clone()), TODAY, "10:04");
+    assert_eq!(r["rel"], "pages/quick capture.md", "{r}");
+    let a = answer(&json!({"cmd": "kept", "url": "https://kitchenweekly.org/crumb"}), Ok(q.clone()), TODAY, "");
+    assert_eq!((a["page"].as_str(), a["highlights"][0]["plain"].as_str()), (Some("quick capture"), Some("Crumb needs time")), "{a}");
+    let _ = std::fs::remove_dir_all(&v);
+    let _ = std::fs::remove_dir_all(&w);
+    let _ = std::fs::remove_dir_all(&q);
+}

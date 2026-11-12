@@ -14,6 +14,26 @@ From Build 41 these versions are the app's own: they show in Settings → Update
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 47 · version 0.5.8 (November 2026)
+
+### New
+- Seeing your highlights again now includes quick captures still waiting in your journal: a passage you sent with the extension's "Send to today's journal" (or shared from your phone) is marked on the article, and listed in the extension's box and the phone's share pop-up, before you file it onto the article's page. Captures sent to the quick capture page (when they don't go to today's journal) count too.
+
+### Fixed
+- Passages that start with a quick capture's time (`**22:19** …`, as filed quick captures do) were never marked again on their article: the time was looked for on the page along with the words. It's left out now.
+
+### Browser extension 1.1.1 (from the Edge and Chrome stores once they approve it)
+- "Send the selected text to today's journal" with nothing selected no longer sends the article's bare link to your journal: it says to select some text first, and the box greys the link out until text is selected.
+- "Show my highlights again" moved behind a gear at the top right of the box: it's set once and stays on, so it no longer takes room every time the box opens.
+- A passage is found on the article even when its spacing differs a little from the page's (a missing space, two paragraphs that touch with no space between them on the page).
+- Articles whose words appear a moment after the page loads (many news sites) get their passages marked: what wasn't found is looked for again after 2 and 6 seconds.
+- A sent journal passage counts as kept at once (the extension asks thinky again instead of waiting up to 10 minutes).
+- Addresses with encoded characters in their query (`?q=a%20b`) match their page in your notes.
+- The "isn't set up yet" message names the right setting: Settings → Capture → "Highlights from your browser".
+
+### Under the hood
+- Core: `clip::capture_rest` (a quick capture's own beginning, from the `:quick-capture-templates` text template, with a fallback for an older template), `clip::web_addresses`, `Vault::capture_notes`, and `strip_capture_time` in `plain_words`. Tests: tests/clip.rs `a_quick_captures_time_is_not_part_of_the_passage`, `quick_captures_waiting_in_the_journal_count_as_kept` (including the extension's journal message end to end). t16_browser checks spacing, a capture's time, a journal capture, late words, the journal link with nothing selected and the gear (52 checks).
+
 ## Build 46 · version 0.5.7 (November 2026)
 
 ### New

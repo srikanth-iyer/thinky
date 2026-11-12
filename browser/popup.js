@@ -28,6 +28,10 @@ function show(r) {
     $('journal').hidden = true;
     return;
   }
+  // "Send the selected text…" only with text selected on the page
+  const sel = !!(r.info && r.info.selected);
+  $('journal').disabled = !sel;
+  $('journal').title = sel ? '' : 'Select some text on the page first';
   if (document.activeElement !== $('title')) $('title').value = r.title || '';
   const list = $('list');
   list.textContent = '';
@@ -110,6 +114,13 @@ $('send').onclick = async () => {
 $('clear').onclick = async () => {
   show(await ask({ do: 'clear' }));
   say('Cleared.');
+};
+
+// the settings (behind the gear: set once, so they don't take room in the box every time)
+$('gear').onclick = () => {
+  const open = $('settings').hidden;
+  $('settings').hidden = !open;
+  $('gear').setAttribute('aria-expanded', String(open));
 };
 
 $('journal').onclick = async () => {

@@ -12,10 +12,11 @@ function articleKey(url) {
   try {
     const u = new URL(url);
     u.hash = '';
-    for (const k of [...u.searchParams.keys()]) if (TRACKING.test(k)) u.searchParams.delete(k);
+    // the query as written, less tracking parts (not searchParams.toString(), which rewrites
+    // "%20" as "+" and so on: the app keeps them as written, outline_core::clip::normalize_url)
+    const q = u.search.replace(/^\?/, '').split('&').filter((p) => p && !TRACKING.test(p.split('=')[0])).join('&');
     // (its port too, but not the usual one, as the app writes it)
     const host = u.host.toLowerCase().replace(/^www\./, '').replace(/:(80|443)$/, '');
-    const q = u.searchParams.toString();
     return `https://${host}${u.pathname.replace(/\/+$/, '')}${q ? '?' + q : ''}`;
   } catch (e) {
     return url;
@@ -126,13 +127,21 @@ async function toJournal(tab) {
     return { error: CANT };
   }
   const { info, s } = got;
-  const res = await talk({ cmd: 'journal', text: s ? s.text : '', url: s ? s.link : info.url, title: info.title, site: info.site });
+  // (nothing selected: nothing is sent; before 1.1.1 the article's bare link went to the journal)
+  if (!s) {
+    await toast(tab.id, NOTHING_SELECTED, true);
+    return { ok: false, error: NOTHING_SELECTED };
+  }
+  const res = await talk({ cmd: 'journal', text: s.text, url: s.link, title: info.title, site: info.site });
   await toast(tab.id, res.ok ? 'Added to your journal' : res.error, !res.ok);
+  // (1.1.1) a capture waiting in the journal counts as kept: the article is on the list now
+  if (res.ok) await articles(true);
   return res;
 }
 
+const NOTHING_SELECTED = 'Select some text on the page first, then send it to your journal.';
 const CANT = 'Highlights can’t be made on this page: Edge doesn’t let extensions into some pages (PDFs, Edge’s own pages, the add-ons store).';
-const NOT_SET_UP = 'thinky isn’t set up for the browser yet. In thinky, open Settings → Capture and click “Set up” under “Browser extension”.';
+const NOT_SET_UP = 'thinky isn’t set up for the browser yet. In thinky, open Settings → Capture and click “Set up” under “Highlights from your browser”.';
 
 // One message to thinky and its answer; {ok: false, error} when it can't be reached.
 async function talk(msg) {
@@ -190,15 +199,25 @@ chrome.tabs.onUpdated.addListener(async (tabId, change, tab) => {
   const mine = await getList(key);
   const known = (await articles()).has(key);
   if (!known && !mine) return; // (most pages: nothing to ask, nothing put into the page)
-  if (mine) {
-    await run(tabId, (its) => window.__leanOutliner.paint(its), [mine.items]).catch(() => {});
-    await badge(tabId, mine.items.length);
-  }
-  if (known) {
-    const k = await kept(tab.url);
-    if (!k.error && k.highlights.length) await markKept(tabId, k.highlights);
+  const theirs = known ? await kept(tab.url) : null;
+  const notes = theirs && !theirs.error ? theirs.highlights : [];
+  if (mine) await badge(tabId, mine.items.length);
+  // Many sites put the article's words in a moment after the page says it has loaded, or draw it
+  // again once (news sites, Substack, Medium…): what wasn't found is looked for again a little later.
+  for (const wait of PAINT_AGAIN) {
+    if (wait) {
+      await new Promise((r) => setTimeout(r, wait));
+      // (he went to another page meanwhile: stop)
+      const now = await chrome.tabs.get(tabId).catch(() => null);
+      if (!now || articleKey(now.url || '') !== key) return;
+    }
+    const a = mine ? await run(tabId, (its) => window.__leanOutliner.paint(its), [mine.items]).catch(() => 0) : 0;
+    const b = notes.length ? await markKept(tabId, notes) : 0;
+    if ((!mine || a >= mine.items.length) && b >= notes.length) return;
   }
 });
+// when to look for a page's passages: at once, then 2 and 6 seconds later if some weren't found
+const PAINT_AGAIN = [0, 2000, 4000];
 
 // ------------------------------------------------------------ menus, keys, the popup's requests
 chrome.runtime.onInstalled.addListener(() => {
@@ -259,7 +278,7 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
     if (m.do === 'journal') return reply(await toJournal(tab));
     let info;
     try {
-      info = await run(tab.id, () => window.__leanOutliner.pageInfo());
+      info = await run(tab.id, () => ({ ...window.__leanOutliner.pageInfo(), selected: window.__leanOutliner.hasSelection() }));
     } catch (e) {
       return reply({ error: CANT });
     }
