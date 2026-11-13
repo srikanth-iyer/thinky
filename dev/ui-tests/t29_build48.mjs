@@ -82,6 +82,7 @@ await page.waitForSelector('.keys-card');
 const groups = await page.locator('.keys-fixed tr.kg th').allTextContents();
 check(groups.join('|') === 'Editing|Selecting|While typing', 'the fixed keys: a table in three groups', groups.join('|'));
 check(!(await page.locator('.keys-card').textContent()).includes('Also:'), 'no long "Also:" sentence any more');
+check((await page.locator('tr[data-a="sidebar/open-today-page"] .kk').textContent()).trim() === 'none', 'an action with no key of its own says "none", not "turned off"');
 await page.locator('tr[data-a="go/todos"] .k-change').click();
 await page.waitForSelector('tr.k-rec .k-wait');
 await page.keyboard.press('Control+Alt+o');

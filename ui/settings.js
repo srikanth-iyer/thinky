@@ -1196,7 +1196,8 @@ function keysCard(app) {
   const card = h('div', 'card keys-card');
   const set = new Map((app.summary?.config?.shortcuts || []).map(([a, k]) => [a, k]));
   const keysOf = (a) => (app.keyMap[a] || []);
-  const cell = (a) => (keysOf(a).length ? keysOf(a).map(keyHtml).join(' <span class="or">or</span> ') : '<span class="note">turned off</span>');
+  // (no keys: "turned off" when config.edn turned it off, "none" when it has no key to begin with)
+  const cell = (a) => (keysOf(a).length ? keysOf(a).map(keyHtml).join(' <span class="or">or</span> ') : `<span class="note">${set.has(a) ? 'turned off' : 'none'}</span>`);
   const row = ([label, a]) => `<tr data-a="${esc(a)}"><td>${esc(label)}</td><td class="kk">${cell(a)}${set.has(a) ? ' <span class="mine" title="Set in logseq/config.edn">changed</span>' : ''}</td>
     <td class="kc"><button type="button" class="btn ghost small k-change" aria-label="Change the keys for ${esc(label)}">Change</button></td></tr>`;
   const groups = (list, fn, cols) => list.map(([g, rows]) => `<tbody><tr class="kg"><th colspan="${cols}" scope="colgroup">${esc(g)}</th></tr>${rows.map(fn).join('')}</tbody>`).join('');

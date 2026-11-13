@@ -115,7 +115,7 @@ for (const phone of [false, true]) {
 }
 for (const phone of [false, true]) {
   const page = await start({ phone, hash: '#/settings/about' });
-  await page.waitForSelector('.fb');
+  await page.waitForSelector('.set-tabs [data-tab="about"][aria-selected="true"]');
   const marks = () => page.evaluate(() => {
     const after = (sel) => { const e = document.querySelector(sel); return e ? getComputedStyle(e, '::after').backgroundColor : null; };
     return { settings: after('#side .nav a[data-view="settings"]'), about: after('.set-tabs [data-tab="about"]'), menu: after('#topbar [data-a="menu"]') };
@@ -126,6 +126,9 @@ for (const phone of [false, true]) {
   const m = await marks();
   check(m.settings === RED && m.about === RED && m.menu === RED, `${phone ? 'phone' : 'laptop'}: a newer version: a small spark on Settings, the About tab (and the phone's menu button)`, JSON.stringify(m));
   await page.evaluate(() => { window.open = () => null; }); // (the browser isn't really opened)
+  // (Send feedback is under Help since Build 48)
+  await page.evaluate(() => document.querySelector('.set-tabs [data-tab="help"]').click());
+  await page.waitForSelector('.fb');
   await page.fill('.fb-msg', 'hello');
   await page.click('.fb [data-a="send"]');
   await page.waitForFunction(() => /Opened/.test(document.querySelector('.fb-out').textContent));
