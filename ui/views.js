@@ -364,7 +364,7 @@ export async function propsView(app, view, key) {
 // ---------------------------------------------------------------------------
 const SHOW_SAY = { show: 'Show', quiet: 'Quiet', icon: 'Icon', hidden: 'Hidden' };
 /** How this property shows on notes (Build 43, he asked Nov 10: on its own page too, not only in
- *  Settings → Writing → Property display). The same saved rule (logseq/thinky.json "propertyDisplay"),
+ *  Settings → Look → Property display, Build 48). The same saved rule (logseq/thinky.json "propertyDisplay"),
  *  so a change in either place is the other's too; read fresh before each save. */
 function propShowRow(app, key) {
   const row = h('div', 'prop-show-row');
@@ -380,7 +380,7 @@ function propShowRow(app, key) {
       <select class="pr-show" aria-label="How ${esc(key)} shows">${PROP_SHOWS.map((v) => `<option value="${v}"${v === show ? ' selected' : ''}>${SHOW_SAY[v]}</option>`).join('')}</select>
       <input class="pr-icon" value="${esc(x.icon || '●')}" maxlength="2" aria-label="The icon for ${esc(key)}" title="The icon (a character or emoji)"${show === 'icon' ? '' : ' hidden'}>
       <select class="pr-mark" aria-label="A mark on notes with ${esc(key)}"><option value="">No mark</option>${MARK_COLORS.map((c) => `<option value="${c}"${c === x.mark ? ' selected' : ''}>${cap(c)} mark</option>`).join('')}</select>
-      <a class="psr-more small" href="#/settings/writing" title="Every property’s rule, with examples">All properties…</a>`;
+      <a class="psr-more small" href="#/settings/look" title="Every property’s rule, with examples">All properties…</a>`;
   };
   row.addEventListener('change', async () => {
     const r = { ...(app.folderSettings?.propertyDisplay || {}) };

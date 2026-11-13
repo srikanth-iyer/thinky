@@ -528,6 +528,27 @@ Seen in the review, not changed (his call): the page properties box and the list
 line starting "- " in a note becomes a sub-note when read again; a page name over ~250 bytes says "File name too long …
 Google Drive"; numbered lines inside a note show as typed; Automaton's To-dos list on a phone sits on the pattern;
 WebView2 on Windows holds ~200 MB private (the app itself 27 MB) and its profile folder 86 MB.
+Build 48 (0.5.9; his #claude requests of Nov 13; tested by t29_build48, core tests/features.rs `shortcuts_change_in_place`,
+tests/pictures.rs `links_to_files_in_assets_in_one_note`): one-press keys with Ctrl or Alt (`RUN_ACTIONS` in app.js: every action
+`runAction` does) run from app.js `onKey` with nothing typed in, and with notes selected (editor.js `onSelKey` takes fold all and
+Ctrl+↑/↓ itself; the rest falls through to the app's). Selected notes: ← folds, → unfolds (`foldSel` on `selTops`, one Undo
+step; a note with nothing to fold: nothing, his pick); `editor/collapse-block-children` / `expand-block-children` (Logseq's
+`mod+up` / `mod+down`): the note typed in (`foldNotes`), the selection, else every note (`foldAll`). Key helpers (`parseChord`,
+`evChord`, `same`, `chordText`, `sameKey`) live in keys.js. Settings tabs (`SETTINGS_TABS`, his pick): About (version, updates,
+What's new) · Notes · Safety · Look (+ Property display) · Typing & keys (`typing`: spelling + the laptop's keys; the old
+`writing`/`keys` addresses open it) · Capture · Help (Send feedback, Problems log). `keysCard`: `KEY_ROWS` in groups Go / Notes /
+Window, each with Change (`recordKeys`: a press with Ctrl/Alt or an F-key, or two plain presses within 2 s = a sequence; Esc
+cancels; `FIXED_KEYS` refused; keys another action has → confirm, that action gives them up first) → core `set_shortcut`
+(`App::set_shortcut`, `edn::set_entry`: one `:shortcuts` entry set or taken out in place; keys as Logseq writes them, none =
+`false`, Back to default = the entry taken out) → `App.takeShortcuts`; the fixed keys (`FIXED`) a table in groups Editing /
+Selecting / While typing (the editing keys stay fixed, his pick). Check this folder: `show` draws `.chk-part`s (Read, Saving,
+Worth a look, Longest pages / Most linked as `.chk-rank` side by side, Files in assets = `missingBox` + `picturesBox` with h4
+headings); `okLine` puts every ✓ in a column; missing files say "files" with `fileKind` (picture by pictures.rs' 13 types, PDF,
+other). "Show attachments on this page" (page ⋯ menu, command list): `ui/attach.js` `Attachments` (`App.showAttachments`,
+`App.attach`): core `asset_links` (pictures.rs `asset_links`, also `missing_pictures`' rule) per note of the active side's
+outlines, rows `.att-hit`/`.att-cur` repainted after `render`/`drawMore` (`paint`, by block object), `#attbar` fixed at the
+bottom, ↑/↓ (app.js `onKey`, nothing selected) step and reveal a hidden one as find does (`unreveal`), Esc / `closeTop` /
+`draw` / tab changes close it.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 
@@ -836,7 +857,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   `SLASH` and `Outline.command`, `openHistory`, settings' `TABS`, `SKINS`), never copies of them; each
   shows its key from `app.keyMap` (`key`: an action name) or fixed keys (`keys`), `keyHtml` draws
   them; groups Editing / Selected notes / Page / Go / Window / Look; `more` = only when typed for) · `views.js` (All pages, tags, props, to-dos; no Calendar tab, the maintainer removed it) · `welcome.js` (the
-  welcome screen, below "Starting fresh") · `settings.js` (tabs Updates & about / Notes / Safety / Look / Writing / Capture since Build 40, at `#/settings/<tab>`;
+  welcome screen, below "Starting fresh") · `settings.js` (tabs About / Notes / Safety / Look / Typing & keys / Capture / Help since Build 48 (Build 40's six before), at `#/settings/<tab>`;
   About's `feedbackCard`: "Send feedback" opens a new issue on the public GitHub repo in the browser
   (`feedbackUrl`: the first line as the title, the message, then only "thinky <version> · <system>";
   `FEEDBACK_URL`), through `App.openUrl`. The app sends nothing itself; no email box, no problems log.

@@ -2311,6 +2311,45 @@ impl App {
         Ok(self.vault.config.favorites.clone())
     }
 
+    /// Change one action's keys in config.edn's `:shortcuts` (Build 48, Settings → Typing & keys →
+    /// Change): `Some(keys)` sets them (`"key"`, or `["a" "b"]` for more than one, as Logseq writes
+    /// them; none = `false`, which Logseq reads as turned off), `None` takes the action's entry out
+    /// (back to the app's default). Only that entry's text changes; the rest of the file stays byte for
+    /// byte. Returns the shortcuts as the file now has them.
+    pub fn set_shortcut(&mut self, action: &str, keys: Option<&[String]>) -> Result<Vec<(String, Vec<String>)>, String> {
+        let ok = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "-/_.?!*".contains(c));
+        if !ok(action) || !action.contains('/') {
+            return Err(format!("“{action}” isn’t an action’s name."));
+        }
+        let value = keys.map(|ks| {
+            let ks: Vec<&str> = ks.iter().map(|k| k.trim()).filter(|k| !k.is_empty()).collect();
+            match ks.as_slice() {
+                [] => "false".to_string(),
+                [one] => crate::edn::quote(one),
+                many => format!("[{}]", many.iter().map(|k| crate::edn::quote(k)).collect::<Vec<_>>().join(" ")),
+            }
+        });
+        let path = self.root.join("logseq").join("config.edn");
+        let edit = |cur: Option<&str>| -> Result<Option<String>, String> {
+            let text = cur.unwrap_or("{}\n");
+            let out = crate::edn::set_entry(text, "shortcuts", action, value.as_deref()).ok_or("Couldn't understand logseq/config.edn, so it wasn't changed.")?;
+            if crate::edn::parse(&out).is_none() {
+                return Err("The change would break config.edn, so it wasn't saved.".into());
+            }
+            Ok((out != text).then_some(out))
+        };
+        match rewrite(&path, "logseq/config.edn", 2, edit)? {
+            Rewrite::Done(_, text) => {
+                self.config_stamp = config_stamp(&self.root); // (its own change: nothing for a rescan)
+                self.vault.config.shortcuts = Config::from_edn(&text).shortcuts;
+            }
+            // nothing to change: already so
+            Rewrite::Left(cur) => self.vault.config.shortcuts = Config::from_edn(cur.as_deref().unwrap_or("{}")).shortcuts,
+            Rewrite::Busy => return Err(CONFIG_BUSY.into()),
+        }
+        Ok(self.vault.config.shortcuts.clone())
+    }
+
     /// Change the quick capture templates and options in config.edn.
     pub fn set_capture(&mut self, text: &str, media: &str, today: bool, page: &str) -> Result<(), String> {
         let page = if page.trim().is_empty() { "quick capture" } else { page.trim() };
@@ -2645,6 +2684,14 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
             let names: Vec<String> = serde_json::from_value(args.get("names").cloned().unwrap_or(Value::Null)).map_err(|e| e.to_string())?;
             to_value(app.reorder_favorites(&names)?)
         }
+        "set_shortcut" => {
+            // keys: a list (an empty one turns it off), or null / missing: back to the default
+            let keys: Option<Vec<String>> = match args.get("keys") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(serde_json::from_value(v.clone()).map_err(|e| e.to_string())?),
+            };
+            to_value(app.set_shortcut(&s("action"), keys.as_deref())?)
+        }
         "set_capture" => {
             app.set_capture(&s("text"), &s("media"), b("today"), &s("page"))?;
             to_value(app.summary())
@@ -2667,6 +2714,11 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
             to_value(app.clash(&s("name"), &doc("doc")?, &doc("base")?, args.get("path").and_then(Value::as_str))?)
         }
         // pictures nothing uses → the bin (pictures.rs); safety copies (safety.rs)
+        // Build 48: "Show attachments on this page": the files in assets/ each text links to
+        "asset_links" => {
+            let texts: Vec<String> = serde_json::from_value(args.get("texts").cloned().unwrap_or(Value::Null)).map_err(|e| e.to_string())?;
+            to_value(texts.iter().map(|t| pictures::asset_links(t)).collect::<Vec<_>>())
+        }
         "bin_pictures" => {
             let paths: Vec<String> = serde_json::from_value(args.get("paths").cloned().unwrap_or(Value::Null)).map_err(|e| e.to_string())?;
             to_value(app.bin_pictures(&paths)?)

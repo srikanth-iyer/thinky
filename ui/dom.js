@@ -194,4 +194,6 @@ export function fadeAway(el, cls = '', anim = null) {
 }
 
 /** Settings' tabs (settings.js; also the command list's "Settings: …" commands). */
-export const SETTINGS_TABS = [['about', 'Updates & about'], ['notes', 'Notes'], ['safety', 'Safety'], ['look', 'Look'], ['writing', 'Writing'], ['capture', 'Capture']];
+// (Build 48, his pick of Nov 13: About and Help apart, Property display under Look, Writing became
+// Typing & keys; the old #/settings/writing and #/settings/keys open Typing & keys)
+export const SETTINGS_TABS = [['about', 'About'], ['notes', 'Notes'], ['safety', 'Safety'], ['look', 'Look'], ['typing', 'Typing & keys'], ['capture', 'Capture'], ['help', 'Help']];

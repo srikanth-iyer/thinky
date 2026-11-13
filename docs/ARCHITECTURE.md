@@ -149,9 +149,10 @@ never) and when the app pushes new data; everything else runs only when opened.
 | `search.js`, `commands.js` | Ctrl+K search and the Ctrl+Shift+P command list |
 | `popups.js` | Suggestions, `/` menu, date picker, menus, dialogs, hover preview |
 | `views.js` | All pages, tags, properties, to-dos |
-| `settings.js` | Settings tabs (Notes, Look, Capture incl. the Edge extension's set-up + shortcut key, Shortcuts, About/update) |
+| `settings.js` | Settings tabs (About/update, Notes, Safety, Look incl. Property display, Typing & keys incl. changing shortcuts in config.edn, Capture incl. the Edge extension's set-up + shortcut key, Help) |
 | `clash.js`, `history.js` | Clash screen · page History |
-| `find.js`, `paste.js`, `export.js`, `move.js`, `filedrop.js` | Find/replace · rich paste · copy page as text · move notes between pages · files dropped from Explorer |
+| `find.js`, `attach.js`, `paste.js`, `export.js`, `move.js`, `filedrop.js` | Find/replace · Show attachments on this page (Build 48) · rich paste · copy page as text · move notes between pages · files dropped from Explorer |
+| `keys.js` | Key notation (Logseq's "mod+shift+up", "g j") against key presses; keycaps for the command list and Settings |
 | `calendar.js`, `dom.js` | Month grid · small DOM helpers and icons |
 | `skins.css`, `app.css` | Looks are only token values in `skins.css`; `app.css` reads tokens and never names a look |
 | `fonts.css`, `fonts/`, `skins/` | Bundled fonts (Inter since Build 31, Plex, Newsreader, Bricolage) · looks' background images |

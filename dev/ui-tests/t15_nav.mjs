@@ -215,7 +215,7 @@ await pickMenu('Back to reading width');
 await sleep(200);
 check((await box('#main .view')).w === 760 && await page.evaluate(() => localStorage.getItem('wide')) === 'false', '…and off again');
 await go(page, '#/settings/keys');
-check((await page.locator('table.keys').textContent()).includes('Wide mode'), 'Settings → Shortcuts lists it');
+check((await page.locator('table.keys-change').textContent()).includes('Wide mode'), 'Settings → Shortcuts lists it');
 
 // --------------------------------------------------------------------------------------------
 console.log('favourites in another order: drag one');

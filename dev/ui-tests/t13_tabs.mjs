@@ -502,7 +502,7 @@ check(await page.locator('#histbar').isHidden() && await page.locator('#main2').
 await page.locator('.title-row [data-a="more"]').tap();
 await sleep(200);
 const items = await page.locator('.pop.menu button').allTextContents();
-check(items.join('|') === 'Add properties|Rename…|Find on this page|History…|Copy page as text…|Copy link|Print or save as PDF|Delete page…', 'the page menu is as it was (no tab items)', items.join('|'));
+check(items.join('|') === 'Add properties|Rename…|Find on this page|Show attachments on this page|History…|Copy page as text…|Copy link|Print or save as PDF|Delete page…', 'the page menu is as it was (no tab items)', items.join('|'));
 await page.evaluate(() => window.leanApp.onBack());
 await page.keyboard.press('Control+t');
 await sleep(400);

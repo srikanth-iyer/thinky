@@ -219,6 +219,7 @@ export class Tabs {
     this.app.find.undo = null;
     this.act = pi;
     this.app.find.close();
+    this.app.attach?.close();
     this.sync();
     this.layout();
     this.app.here();
@@ -292,6 +293,7 @@ export class Tabs {
     if (off !== null && a.isConnected) { const s = this.app.scroller(); s.by(a.getBoundingClientRect().top - s.top - off); }
     q.watch?.(); // the journals' "older days" watcher: maybe another scroller now
     this.app.find.close();
+    this.app.attach?.close();
   }
   /** Another notes folder was opened: the tabs were the other folder's pages. One side with one tab
    *  on place (the caller draws it; App.leaveAll saved and stopped what was shown first). */
@@ -340,6 +342,7 @@ export class Tabs {
     }
     this.act = this.panes.indexOf(dst);
     this.app.find.close();
+    this.app.attach?.close();
     this.changed();
     this.app.draw(dst);
   }

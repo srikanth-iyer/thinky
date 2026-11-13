@@ -409,3 +409,14 @@ fn missing_pictures_edge_cases() {
     assert_eq!(files, vec!["html-gone.png", "report.docx", "sub/gone.png"], "{:?}", r.missing_pictures);
     let _ = std::fs::remove_dir_all(&v);
 }
+
+#[test]
+fn links_to_files_in_assets_in_one_note() {
+    // Build 48: "Show attachments on this page" asks which files each note links to, by the same
+    // rule as the missing-files check
+    use outline_core::app::pictures::asset_links;
+    let t = "see ![a](../assets/a%20b.png) and [Book (2003).pdf](../assets/Book (2003).pdf)\n\tthen `../assets/code.png` and https://x.org/../assets/web.png\n![a](../assets/a%20b.png) {{pdf ../assets/doc.pdf}}";
+    assert_eq!(asset_links(t), vec!["a b.png", "Book (2003).pdf", "doc.pdf"]);
+    assert!(asset_links("no files here, just [[assets]]").is_empty());
+    assert_eq!(asset_links("![x](../../assets/sub/x.jpg)"), vec!["sub/x.jpg"]);
+}

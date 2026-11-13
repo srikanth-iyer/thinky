@@ -198,7 +198,7 @@ await go(page, '#/settings');
 await page.locator('[data-a="check"]').click();
 await page.waitForSelector('.missing-box', { timeout: 6000 });
 const miss = await page.locator('.missing-box').textContent();
-check(/Missing pictures/.test(miss) && /Shots/.test(miss) && /never-synced\.jpg/.test(miss) && !/dot\.png/.test(miss), 'Shots and its missing picture listed (not one that’s there)', miss);
+check(/Missing files/.test(miss) && /Shots/.test(miss) && /never-synced\.jpg/.test(miss) && !/dot\.png/.test(miss), 'Shots and its missing picture listed (not one that’s there)', miss);
 check(!(await page.locator('.missing-box').textContent()).includes('Pictures nothing uses'), 'its own box, apart from the unused pictures');
 await page.screenshot({ path: SHOTS + '/b36-missing.png', fullPage: true });
 await page.locator('.missing-box a[data-page="Shots"]').click();

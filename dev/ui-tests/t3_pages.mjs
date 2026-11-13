@@ -334,7 +334,7 @@ console.log('settings: tabs, quick capture format, check, problems');
 await go(page, '#/settings');
 await sleep(400);
 const tabs = await page.locator('.set-tabs [data-tab]').allTextContents();
-check(tabs.join('|') === 'Updates & about|Notes|Safety|Look|Writing|Capture', 'Settings has tabs (Build 40)', tabs.join('|'));
+check(tabs.join('|') === 'About|Notes|Safety|Look|Typing & keys|Capture|Help', 'Settings has tabs (Build 48: About and Help apart, Typing & keys)', tabs.join('|'));
 check(await page.locator('.set-tabs [aria-selected="true"]').textContent() === 'Safety' && await page.locator('.bin').first().isVisible() && !(await page.locator('[data-a="check"]').isVisible()) && !(await page.locator('.skin-card').count()),
   'it opens on the tab used last (Safety, for the bin above), showing only that');
 await page.locator('.set-tabs [data-tab="capture"]').click();
@@ -355,15 +355,15 @@ await page.locator('[data-a="check"]').click();
 await sleep(800);
 check((await page.locator('.check-out').textContent()).includes('Longest pages'), 'folder check reports', await page.locator('.check-out').textContent());
 // two tabs picked in quick succession (the first still being built): only the last one shows
-await page.evaluate(() => { document.querySelector('.set-tabs [data-tab="about"]').click(); document.querySelector('.set-tabs [data-tab="writing"]').click(); });
+await page.evaluate(() => { document.querySelector('.set-tabs [data-tab="about"]').click(); document.querySelector('.set-tabs [data-tab="typing"]').click(); });
 await sleep(600);
 const shownPanels = await page.locator(".set-panel:not([hidden])").evaluateAll((ps) => ps.map((p) => p.id));
-check(shownPanels.join() === "sp-writing" && decodeURIComponent(await page.evaluate(() => location.hash)) === '#/settings/writing', "quick clicks: only the last tab shows", shownPanels.join() + ' ' + await page.evaluate(() => location.hash));
+check(shownPanels.join() === "sp-typing" && decodeURIComponent(await page.evaluate(() => location.hash)) === '#/settings/typing', "quick clicks: only the last tab shows", shownPanels.join() + ' ' + await page.evaluate(() => location.hash));
 // Settings in the sidebar while already in Settings: no extra step for Back
 const steps = await page.evaluate(() => history.length);
 await page.locator('#side a[data-view="settings"]').click();
 await sleep(400);
-check(await page.evaluate(() => history.length) === steps && decodeURIComponent(await page.evaluate(() => location.hash)) === '#/settings/writing', 'Settings again: stays put, no extra Back step');
+check(await page.evaluate(() => history.length) === steps && decodeURIComponent(await page.evaluate(() => location.hash)) === '#/settings/typing', 'Settings again: stays put, no extra Back step');
 check(await page.locator('#update').getAttribute('href') === '#/settings/about', '"A newer version is ready" opens About (where the update is)');
 
 console.log('hover preview');

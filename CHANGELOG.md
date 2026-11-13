@@ -10,9 +10,30 @@ big changes, the last for small ones (back to 0 when the middle one goes up). Un
 0.1.<build>; the versions in these headings were given afterwards, by what each build changed: 0.1 the first
 working outliner (Builds 1–22), 0.2 safety, tabs, updates and references (23–28), 0.3 the Logseq feel (29–31),
 0.4 thinky's name, brand and public releases (32–38), 0.5 day and night looks and the quieter phone (39 on).
-From Build 41 these versions are the app's own: they show in Settings → Updates & about and in each release's
+From Build 41 these versions are the app's own: they show in Settings → About and in each release's
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
+
+## Build 48 · version 0.5.9 (November 2026)
+
+### New
+- Change your keyboard shortcuts in Settings → Typing & keys. Each shortcut has a **Change** button: press it, then the new keys (with Ctrl or Alt, like Ctrl+Alt+O, or two keys one after the other, like g then j). If another action already uses those keys, thinky says which one and asks before taking them over. **Back to default** and **Turn off** are there too. The keys are saved in `logseq/config.edn` (`:shortcuts`), the same place Logseq reads, so both apps use the same keys. The basic editing keys (Enter, Tab, Ctrl+Z and so on) stay as they are.
+- "Show attachments on this page", in a page's ⋯ menu (and the command list). Every note that links to a file in `assets` (a picture, a PDF, any file) is highlighted, a small bar at the bottom says how many, and ↑ / ↓ (or the bar's arrows) step from one to the next. One inside a folded note is shown while you're on it and folded again after; nothing in the file changes. Esc, the bar's × or the menu item again clear it.
+- With notes selected (press Esc while typing), ← folds the selected note and → unfolds it, like folders in a file list. A note with nothing to fold stays as it is.
+- Ctrl+↑ and Ctrl+↓ fold and unfold, as in Logseq: the note you're typing in, the selected notes, or with neither, every note on the page.
+
+### Fixed
+- Shortcuts with Ctrl or Alt set in `logseq/config.edn` (for example Ctrl+Alt+T for fold or unfold all) did nothing unless you were typing in a note. They now work anywhere, and with notes selected.
+- Settings → Notes → Check this folder said "pictures" for every missing file, though it checks every kind of file a note links to. It now says "files", the heading is "Missing files", and each missing file says whether it's a picture, a PDF or another kind of file.
+
+### Changed
+- Check this folder's report is easier to read: short labelled parts (Read, Saving, Longest pages, Most linked, Files in assets), the longest and most linked pages as lists with their numbers on the right (a click opens the page), every ✓ lined up in one column, and the note about pictures from the last 3 days in smaller grey text on its own line.
+- Settings → Typing & keys → Keyboard shortcuts: the shortcuts in three groups (Go, Notes, Window), and the fixed keys, which were one long sentence, as a table in three groups (Editing, Selecting, While typing).
+- Settings' tabs are now About, Notes, Safety, Look, Typing & keys, Capture and Help. Property display moved to Look (it decides how notes look); Writing became Typing & keys (spelling and the keyboard shortcuts); Updates & about became About (the version, updates and What's new), and Send feedback and the problems log have a Help tab of their own.
+
+### Under the hood
+- Core: `pictures::asset_links` (the files in `assets` one note links to, the rule Check this folder's missing files already used, now shared with "Show attachments"; a link inside a `{{pdf …}}` macro now ends at its braces), the `asset_links` command, `App::set_shortcut` and `edn::set_entry` (one entry of a map in config.edn set or taken out in place, every other byte kept, a new one lined up under the others with the file's own line ends). Tests: tests/features.rs `shortcuts_change_in_place`, tests/pictures.rs `links_to_files_in_assets_in_one_note`.
+- The page: `ui/attach.js` (loaded on first use), the key helpers moved from app.js to keys.js (`parseChord`, `evChord`, `same`, and the new `chordText`, `sameKey`). New UI test t29_build48 (the keys, folding, Change, the tabs, attachments, the report); tests that named the old tabs and headings follow them.
 
 ## Build 47 · version 0.5.8 (November 2026)
 

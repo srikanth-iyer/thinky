@@ -10,6 +10,7 @@ import { h, ICON, BRAND, plural, SETTINGS_TABS, motionOn } from './dom.js';
 import { promptBox, confirmBox } from './popups.js';
 import { SKINS, accessCard, lookName, lookState } from './app.js';
 import { fitChips } from './views.js';
+import { keyHtml, chordText, sameKey } from './keys.js';
 import { madeBy, showBinPage } from './history.js';
 import { VERSION } from './version.js';
 import { BUILD } from './build.js';
@@ -28,29 +29,33 @@ export async function settingsView(app, view, want = null) {
 
   const platform = isApp ? await call('platform').catch(() => '') : '';
   if (!view.isConnected) return;
-  // Build 40 (he asked: some tabs mixed things): Updates & about first (he goes there often), then Notes
-  // (the folder), Safety (bin, safety copies, backups), Look, Writing (spelling, property display,
-  // the laptop's keys; Shortcuts was a tab of its own) and Capture
+  // Build 40 (he asked: some tabs mixed things): About first (he goes there often: the version and
+  // updates), then Notes (the folder), Safety (bin, safety copies, backups), Look, Typing & keys and
+  // Capture. Build 48 (his pick, Nov 13): Property display moved to Look (it's how notes look), Writing
+  // became Typing & keys (spelling, the laptop's keys), and Send feedback and the problems log went to
+  // a Help tab of their own, last
   const parts = {
-    about: async () => [await aboutCard(app), feedbackCard(app), problemsCard()],
+    about: async () => [await aboutCard(app)],
     notes: async () => [folderCard(app)],
     safety: async () => [binCard(app), safetyCard(app), ...(isAndroid ? [] : [backupCard(app)])],
-    look: async () => [lookCard(app)],
-    writing: async () => [writingCard(), propDisplayCard(app), ...(isAndroid ? [] : [keysCard(app)])],
+    look: async () => [lookCard(app), ...(app.vaultOpen ? [propDisplayCard(app)] : [])],
+    typing: async () => [writingCard(), ...(isAndroid ? [] : [keysCard(app)])],
     capture: async () => [captureCard(app), ...(platform === 'windows' ? [browserCard(app), windowsCard(app)] : [])],
+    help: async () => [feedbackCard(app), problemsCard()],
   };
-  // (Safety, Writing and Capture once a notes folder is open)
-  const tabs = TABS.filter(([id]) => app.vaultOpen || !['safety', 'writing', 'capture'].includes(id));
-  if (want === 'keys') want = 'writing'; // (the old Shortcuts tab's address)
-  // a newer build waiting: Settings opens on Updates (unless a tab was asked for)
+  // (Safety, Typing & keys and Capture once a notes folder is open)
+  const tabs = TABS.filter(([id]) => app.vaultOpen || !['safety', 'typing', 'capture'].includes(id));
+  const OLD = { keys: 'typing', writing: 'typing' }; // (older tabs' addresses)
+  if (OLD[want]) want = OLD[want];
+  // a newer build waiting: Settings opens on About (unless a tab was asked for)
   let cur = want || (document.documentElement.classList.contains('has-update') ? 'about' : store.get('settingsTab', 'notes'));
-  if (cur === 'keys') cur = 'writing';
+  if (OLD[cur]) cur = OLD[cur];
   if (!app.vaultOpen || !tabs.some(([id]) => id === cur)) cur = want && tabs.some(([id]) => id === want) ? want : 'notes';
   const bar = h('div', 'chips set-tabs');
   bar.setAttribute('role', 'tablist');
   bar.setAttribute('aria-label', 'Settings');
   const sfx = free('st-notes').slice(8); // (Settings open on both sides: ids of its own)
-  bar.innerHTML = tabs.map(([id, label]) => `<button class="chip" role="tab" id="st-${id}${sfx}" data-tab="${id}" aria-controls="sp-${id}${sfx}">${label}</button>`).join('');
+  bar.innerHTML = tabs.map(([id, label]) => `<button class="chip" role="tab" id="st-${id}${sfx}" data-tab="${id}" aria-controls="sp-${id}${sfx}">${esc(label)}</button>`).join('');
   view.append(tabArrows(bar));
   fitChips(bar); // a hint (the end fades) if they still don't all fit
   const panels = {};
@@ -119,30 +124,40 @@ function folderCard(app) {
   // when it was made, until "Check again" or another notes folder (app.lastCheck, this run only)
   const show = (r, at) => {
     const list = (items) => `<div class="path">${items.map(esc).join('<br>')}</div>`;
-    let html = `<p class="note">${r.files} files read in ${r.load_ms} ms.</p>`;
+    // Build 48 (he asked: easier to read): the report in short labelled parts, lists one item a line,
+    // every ✓ in a column of its own so the ticks line up (okLine)
+    const part = (title, body, cls = '') => `<section class="chk-part${cls}"><h3>${title}</h3>${body}</section>`;
     // (one or many: "1 file looks…", "2 files look…")
     const count = (items, one, many) => (items.length === 1 ? `1 ${one}` : `${items.length} ${many}`);
-    html += r.roundtrip_failures.length
+    let html = part('Read', `<p class="chk-line">${plural(r.files, 'file')} read in ${r.load_ms} ms.</p>`);
+    html += part('Saving', r.roundtrip_failures.length
       ? `<p class="err"><b>${count(r.roundtrip_failures, 'file would', 'files would')} be reformatted if saved untouched:</b></p>${list(r.roundtrip_failures)}`
-      : '<p class="note">✓ Every file can be opened and saved without being reformatted.</p>';
+      : okLine('Every file can be opened and saved without being reformatted.'));
+    let look = '';
     // Build 43 (he asked): each copy can be compared with its page and merged (clash.js openCopyMerge)
-    if (r.conflict_copies.length) html += `<p class="note"><b>${count(r.conflict_copies, 'file looks like a copy', 'files look like copies')} made by a sync conflict</b> (e.g. “Page (1).md” next to “Page.md”). <b>Compare and merge</b> shows ${r.conflict_copies.length === 1 ? 'it' : 'each'} side by side with its page, so you can keep what you need; the copy then goes to the bin:</p>
+    if (r.conflict_copies.length) look += `<p class="note"><b>${count(r.conflict_copies, 'file looks like a copy', 'files look like copies')} made by a sync conflict</b> (e.g. “Page (1).md” next to “Page.md”). <b>Compare and merge</b> shows ${r.conflict_copies.length === 1 ? 'it' : 'each'} side by side with its page, so you can keep what you need; the copy then goes to the bin:</p>
       <ul class="rows conflict-copies">${r.conflict_copies.map((f) => `<li><code>${esc(f)}</code><button type="button" class="btn ghost small cc-merge" data-copy="${esc(f)}">Compare and merge…</button></li>`).join('')}</ul>`;
     // Build 38 (he asked): two pages at the same place under a page and its alias, both listed there
-    if (r.alias_clashes?.length) html += `<p class="note"><b>${count(r.alias_clashes, 'pair of pages sits', 'pairs of pages sit')} at the same place under a page and its alias.</b> Both show under the page; renaming one to the other’s name merges them:</p>${list(r.alias_clashes.map(([page, names]) => `${page}: ${names.join(' and ')}`))}`;
-    if (r.duplicates.length) html += `<p class="note"><b>${count(r.duplicates, 'page name belongs', 'page names belong')} to more than one file.</b> The first file is the one shown:</p>${list(r.duplicates.map(([n, files]) => `${n}: ${files.join(', ')}`))}`;
-    if (r.non_utf8.length) html += `<p class="note"><b>${count(r.non_utf8, 'file isn’t', 'files aren’t')} plain text</b> (shown read-only, never changed):</p>${list(r.non_utf8)}`;
-    html += `<p class="note">Longest pages: ${r.biggest.map(([n, b]) => `${esc(n)} (${b} blocks)`).join(', ')}.<br>Most linked: ${r.most_linked.map(([n, c]) => `${esc(n)} (${c})`).join(', ')}.</p>`;
+    if (r.alias_clashes?.length) look += `<p class="note"><b>${count(r.alias_clashes, 'pair of pages sits', 'pairs of pages sit')} at the same place under a page and its alias.</b> Both show under the page; renaming one to the other’s name merges them:</p>${list(r.alias_clashes.map(([page, names]) => `${page}: ${names.join(' and ')}`))}`;
+    if (r.duplicates.length) look += `<p class="note"><b>${count(r.duplicates, 'page name belongs', 'page names belong')} to more than one file.</b> The first file is the one shown:</p>${list(r.duplicates.map(([n, files]) => `${n}: ${files.join(', ')}`))}`;
+    if (r.non_utf8.length) look += `<p class="note"><b>${count(r.non_utf8, 'file isn’t', 'files aren’t')} plain text</b> (shown read-only, never changed):</p>${list(r.non_utf8)}`;
+    if (look) html += part('Worth a look', look);
+    // one page a line, its number on the right; a click opens it
+    const rank = (items, unit) => `<ol class="chk-rank">${items.map(([n, c]) => `<li><a href="#" data-page="${esc(n)}">${esc(n)}</a><span class="n">${unit(c)}</span></li>`).join('')}</ol>`;
+    if (r.biggest.length) html += part('Longest pages', rank(r.biggest, (b) => plural(b, 'block')), ' chk-half');
+    if (r.most_linked.length) html += part('Most linked', rank(r.most_linked, (c) => plural(c, 'link')), ' chk-half');
     const when = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    out.innerHTML = `<p class="note check-when">Checked at ${esc(when)}. <b>Check again</b> to see changes since.</p>` + html;
+    out.innerHTML = `<p class="note check-when">Checked at ${esc(when)}. <b>Check again</b> to see changes since.</p><div class="chk-parts">${html}</div>`;
+    out.querySelector('.chk-parts').addEventListener('click', (e) => { if (e.target.closest('.chk-rank a')) app.linkClick(e); });
     out.querySelectorAll('.cc-merge').forEach((b) => { b.onclick = () => import('./clash.js').then((m) => m.openCopyMerge(app, b.dataset.copy)); });
     // a copy that went to the bin: its row goes (and from the kept report, for coming back)
     app.copyMerged = (rel) => {
       out.querySelector(`.cc-merge[data-copy="${CSS.escape(rel)}"]`)?.closest('li')?.remove();
       r.conflict_copies = r.conflict_copies.filter((f) => f !== rel);
     };
-    out.append(missingBox(app, r));
-    out.append(picturesBox(app, r));
+    const files = h('section', 'chk-part chk-files', '<h3>Files in <code>assets</code></h3>');
+    files.append(missingBox(app, r), picturesBox(app, r));
+    out.querySelector('.chk-parts').append(files);
   };
   if (chk && app.lastCheck?.vault === path) {
     show(app.lastCheck.r, app.lastCheck.at);
@@ -173,6 +188,17 @@ function free(base, taken = (id) => document.getElementById(id)) {
   return k === 1 ? base : `${base}-${k}`;
 }
 
+/** A line of "Check this folder" that says all is well: the ✓ in a column of its own, so the ticks of
+ *  every part line up (Build 48); sub: a smaller grey line under it (the 3-day note). */
+const okLine = (words, sub = '') => `<p class="chk-ok"><span class="tick" aria-hidden="true">✓</span><span>${words}${sub ? `<span class="chk-sub">${sub}</span>` : ''}</span></p>`;
+/** What kind of file a link names (Build 48, he asked: they aren't all pictures): the same picture
+ *  types as core/src/app/pictures.rs `PICTURES`. */
+const PICTURE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif', 'heic', 'heif', 'tif', 'tiff', 'ico']);
+export function fileKind(name) {
+  const ext = /\.([a-z0-9]{1,10})(?:[#?].*)?$/i.exec(String(name))?.[1]?.toLowerCase() ?? '';
+  return PICTURE_EXT.has(ext) ? 'picture' : ext === 'pdf' ? 'PDF' : 'other';
+}
+
 /** Part of "Check this folder": the pictures in assets/ that nothing uses, each with a tick box (all
  *  ticked), and a button that moves the ticked ones to the bin (the app checks each one again first,
  *  see core/src/app/pictures.rs). Pictures from the last 3 days aren't listed: a note using one may
@@ -182,15 +208,18 @@ function free(base, taken = (id) => document.getElementById(id)) {
 function missingBox(app, r) {
   const box = h('div', 'missing-box');
   const miss = r.missing_pictures || [];
+  // Build 48 (he asked): every kind of file a note links to is checked, so the words say "files", and
+  // each missing one says its kind (picture, PDF, other)
   if (!miss.length) {
-    box.innerHTML = '<p class="note">✓ Every picture a note links to is in <code>assets</code>.</p>';
+    box.innerHTML = okLine('Every file a note links to is in <code>assets</code>.');
     return box;
   }
   const by = new Map();
   for (const [page, file] of miss) by.set(page, [...(by.get(page) || []), file]);
-  box.innerHTML = `<h3>Missing pictures</h3>
-    <p class="note">${miss.length === 1 ? 'A note links to a picture that isn’t' : `Notes link to ${miss.length} pictures that aren’t`} in <code>assets</code> on this device. A picture added on another device may still be syncing (check your sync app there), or it never got here.</p>
-    <ul class="rows">${[...by].map(([page, files]) => `<li><a href="#" data-page="${esc(page)}">${esc(page)}<span class="meta">${files.map(esc).join('<br>')}</span></a></li>`).join('')}</ul>`;
+  const fileRow = (f) => { const k = fileKind(f); return `<span class="mf"><span class="kind" data-kind="${k === 'PDF' ? 'pdf' : k}">${k}</span>${esc(f)}</span>`; };
+  box.innerHTML = `<h4>Missing files</h4>
+    <p class="note">${miss.length === 1 ? 'A note links to a file that isn’t' : `Notes link to ${miss.length} files that aren’t`} in <code>assets</code> on this device. A file added on another device may still be syncing (check your sync app there), or it never got here.</p>
+    <ul class="rows">${[...by].map(([page, files]) => `<li><a href="#" data-page="${esc(page)}">${esc(page)}<span class="meta">${files.map(fileRow).join('')}</span></a></li>`).join('')}</ul>`;
   box.addEventListener('click', (e) => { if (!e.target.closest('.bk-restore')) app.linkClick(e); });
   // Build 37: with backups on, each missing picture is looked for in them, with a Restore button
   const bk = app.backupPrefs?.();
@@ -230,19 +259,19 @@ function picturesBox(app, r) {
   const pics = r.unused_pictures;
   const recent = r.pictures_recent || 0;
   const checked = r.pictures - recent;
-  const newer = recent ? ` ${recent === 1 ? 'One picture was' : `${recent} pictures were`} added in the last 3 days, so ${recent === 1 ? 'it was' : 'they were'} left out of this check: a new picture can arrive before the note that uses it.` : '';
+  const newer = recent ? `${recent === 1 ? 'One picture was' : `${recent} pictures were`} added in the last 3 days, so ${recent === 1 ? 'it was' : 'they were'} left out of this check: a new picture can arrive before the note that uses it.` : '';
   if (!r.pictures) return box;
   if (!checked) {
     box.innerHTML = `<p class="note">The ${plural(recent, 'picture')} in <code>assets</code> ${recent === 1 ? 'was' : 'were'} added in the last 3 days, so ${recent === 1 ? 'it isn’t' : 'they aren’t'} checked yet (a note using ${recent === 1 ? 'it' : 'them'} may still be on its way).</p>`;
     return box;
   }
   if (!pics.length) {
-    box.innerHTML = `<p class="note">✓ Nothing to clean up: each of the ${plural(checked, 'picture')} in <code>assets</code> is used by a note.${newer}</p>`;
+    box.innerHTML = okLine(`Nothing to clean up: each of the ${plural(checked, 'picture')} in <code>assets</code> is used by a note.`, newer);
     return box;
   }
   const n = pics.length;
-  box.innerHTML = `<h3>Pictures nothing uses</h3>
-    <p class="note">${n} of the ${plural(checked, 'picture')} in <code>assets</code> ${n === 1 ? 'isn’t' : 'aren’t'} used by any note, whiteboard or setting: ${fileSize(r.unused_pictures_bytes)} in total.${newer}</p>
+  box.innerHTML = `<h4>Pictures nothing uses</h4>
+    <p class="note">${n} of the ${plural(checked, 'picture')} in <code>assets</code> ${n === 1 ? 'isn’t' : 'aren’t'} used by any note, whiteboard or setting: ${fileSize(r.unused_pictures_bytes)} in total.${newer ? `<span class="chk-sub">${newer}</span>` : ''}</p>
     <ul class="pics">${pics.map(([p, b]) => { const nm = esc(p.replace(/^assets\//i, '')); return `<li><label class="pic-tick"><input type="checkbox" checked data-p="${esc(p)}" aria-label="Move ${nm} to the bin"></label><button class="pic-open" type="button" data-src="${esc(assetUrl(p.split('/').map(encodeURIComponent).join('/')))}" title="See this picture"><span class="th"><img src="${esc(assetUrl(p.split('/').map(encodeURIComponent).join('/')))}" alt="" loading="lazy"></span><span class="nm">${nm}</span></button><span class="meta">${fileSize(b)}</span><button class="btn ghost small pic-older" type="button" data-p="${esc(p)}" aria-expanded="false">Where was it used?</button></li>`; }).join('')}</ul>
     <div class="btn-row"><button class="btn ghost" data-a="bin-pics"></button></div>`;
   // pictures this window can't show (HEIC, TIFF…) keep a plain square
@@ -313,7 +342,7 @@ function picturesBox(app, r) {
       r.unused_pictures = r.unused_pictures.filter(([p]) => !moved.has(p));
       r.unused_pictures_bytes = r.unused_pictures.reduce((n, [, b]) => n + b, 0);
       const left = res.skipped.length;
-      box.innerHTML = `<h3>Pictures nothing uses</h3><p class="note">✓ Moved ${plural(m, 'picture')} to the bin (<code>logseq/.recycle</code>).</p>
+      box.innerHTML = `<h4>Pictures nothing uses</h4><p class="note">✓ Moved ${plural(m, 'picture')} to the bin (<code>logseq/.recycle</code>).</p>
         ${left ? `<p class="note"><b>${left} stayed where ${left === 1 ? 'it was' : 'they were'}:</b></p>${list(res.skipped.map(([p, why]) => `${p}: ${why}`))}` : ''}`;
       app.toast(`Moved ${plural(m, 'picture')} to the bin.`);
       app.binChanged?.();
@@ -898,7 +927,7 @@ function tabArrows(bar) {
  *  spelling. Nothing leaves the device. */
 function writingCard() {
   const card = h('div', 'card writing');
-  card.innerHTML = '<h2>Writing</h2>';
+  card.innerHTML = '<h2>Spelling</h2>';
   const spell = h('label', 'toggle spell-row', `<input type="checkbox"${store.get('spellcheck', true) ? ' checked' : ''}> Check spelling as I type ${matchMedia('(pointer: coarse)').matches ? '(your keyboard suggests the right word)' : '(right-click an underlined word for suggestions)'}`);
   $('input', spell).onchange = (e) => {
     store.set('spellcheck', e.target.checked);
@@ -1138,19 +1167,132 @@ function safetyCard(app) {
   return card;
 }
 
+// Settings → Typing & keys → Keyboard shortcuts (laptop). Build 48 (his requests of Nov 13): the keys
+// that can change, in groups, each with a Change button (press the new keys; a warning when another
+// action already has them; saved in logseq/config.edn :shortcuts, where Logseq reads them too, with
+// "Back to default" and "Turn off"), then the fixed keys as a table in groups (they were one long
+// sentence). The fixed editing keys stay fixed (his pick).
+const KEY_ROWS = [
+  ['Go', [['Search', 'go/search'], ['Command list', 'command-palette/toggle'], ['Journals', 'go/journals'], ['Today’s journal', 'sidebar/open-today-page'], ['All pages', 'go/all-pages'], ['To-dos', 'go/todos'],
+    ['Go to a date', 'go/date'], ['Next journal day', 'go/next-journal'], ['Previous journal day', 'go/prev-journal'], ['Back', 'go/backward'], ['Forward', 'go/forward']]],
+  ['Notes', [['Find on the page', 'go/search-in-page'], ['Find and replace', 'go/replace-in-page'], ['Fold or unfold all', 'editor/toggle-open-blocks'], ['Fold a note', 'editor/collapse-block-children'], ['Unfold a note', 'editor/expand-block-children'],
+    ['Move a note up', 'editor/move-block-up'], ['Move a note down', 'editor/move-block-down'], ['Highlight', 'editor/highlight'],
+    ['Select the words, then the note, then its parent', 'editor/select-parent'], ['Select every note on the page', 'editor/select-all-blocks']]],
+  ['Window', [['Hide or show the sidebar', 'ui/toggle-left-sidebar'], ['Wide mode (notes use the whole width)', 'ui/toggle-wide-mode'], ['Bigger text', 'ui/text-bigger'], ['Smaller text', 'ui/text-smaller'],
+    ['Text back to 100%', 'ui/text-reset'], ['Refresh (the notes as their files are now)', 'ui/refresh']]],
+];
+// keys that always do one thing (editor.js, tabs.js, the browser's own): never given to an action
+const FIXED = [
+  ['Editing', [['Enter', 'New note'], ['Shift+Enter', 'New line in the note'], ['Tab / Shift+Tab', 'Indent / outdent'], ['Ctrl+Enter', 'To-do, then Done, then Cancelled'],
+    ['Ctrl+Z / Ctrl+Y', 'Undo / redo'], ['Ctrl+B / Ctrl+I', 'Bold / italics'], ['Ctrl+Shift+V', 'Paste as plain words']]],
+  ['Selecting', [['Esc', 'Select the note'], ['Shift+↑ / Shift+↓', 'Select more notes'], ['← / →', 'Fold / unfold the selected notes'], ['Ctrl+C / Ctrl+X', 'Copy / cut them'], ['Delete', 'Delete them']]],
+  ['While typing', [['/', 'Commands'], ['[[', 'Link to a page'], ['((', 'Block reference'], ['#', 'Tag'], ['::', 'Property']]],
+];
+const FIXED_KEYS = ['enter', 'shift+enter', 'tab', 'shift+tab', 'mod+enter', 'mod+z', 'mod+y', 'mod+shift+z', 'mod+b', 'mod+i', 'mod+shift+v', 'mod+c', 'mod+x', 'mod+v',
+  'esc', 'delete', 'backspace', 'up', 'down', 'left', 'right', 'shift+up', 'shift+down', 'mod+t', 'mod+w', 'mod+tab', 'mod+shift+tab', 'mod+pageup', 'mod+pagedown'];
+const keyLabel = (action) => KEY_ROWS.flatMap(([, rows]) => rows).find(([, a]) => a === action)?.[0] ?? action;
+
 function keysCard(app) {
-  const card = h('div', 'card');
-  const nice = (k) => k.replace(/mod/g, 'Ctrl').replace(/open-square-bracket/, '[').replace(/close-square-bracket/, ']').replace(/backslash/, '\\').replace(/\+/g, ' + ').replace(/\b([a-z])\b/g, (m) => m.toUpperCase());
-  const rows = [
-    ['Search', 'go/search'], ['Journals', 'go/journals'], ['All pages', 'go/all-pages'], ['To-dos', 'go/todos'],
-    ['Go to a date', 'go/date'], ['Next / previous journal day', 'go/next-journal'], ['Back', 'go/backward'], ['Forward', 'go/forward'],
-    ['Hide or show the sidebar', 'ui/toggle-left-sidebar'], ['Wide mode (notes use the whole width)', 'ui/toggle-wide-mode'], ['Move a block up', 'editor/move-block-up'], ['Move a block down', 'editor/move-block-down'],
-    ['Fold or unfold all', 'editor/toggle-open-blocks'], ['Highlight', 'editor/highlight'], ['Bigger / smaller text', 'ui/text-bigger'], ['Refresh (the notes as their files are now)', 'ui/refresh'],
-    ['Select the words, then the note, then its parent', 'editor/select-parent'], ['Select every note on the page', 'editor/select-all-blocks'],
-  ];
-  card.innerHTML = `<h2>Keyboard shortcuts</h2><p class="note">Also: Enter new block · Shift+Enter new line · Tab / Shift+Tab indent · Ctrl+Enter to-do · Esc select block (then Shift+↑↓ to select more) · Ctrl+Z undo · / commands · [[ link · (( block reference · # tag · :: property · Ctrl+Shift+V paste as plain words. Change these in <code>logseq/config.edn</code> (<code>:shortcuts</code>), like in Logseq.</p>
-    <table class="keys">${rows.map(([label, a]) => `<tr><td>${label}</td><td>${(app.keyMap[a] || []).map((k) => `<kbd>${esc(nice(k))}</kbd>`).join(' or ') || '<span class="note">none</span>'}</td></tr>`).join('')}</table>`;
+  const card = h('div', 'card keys-card');
+  const set = new Map((app.summary?.config?.shortcuts || []).map(([a, k]) => [a, k]));
+  const keysOf = (a) => (app.keyMap[a] || []);
+  const cell = (a) => (keysOf(a).length ? keysOf(a).map(keyHtml).join(' <span class="or">or</span> ') : '<span class="note">turned off</span>');
+  const row = ([label, a]) => `<tr data-a="${esc(a)}"><td>${esc(label)}</td><td class="kk">${cell(a)}${set.has(a) ? ' <span class="mine" title="Set in logseq/config.edn">changed</span>' : ''}</td>
+    <td class="kc"><button type="button" class="btn ghost small k-change" aria-label="Change the keys for ${esc(label)}">Change</button></td></tr>`;
+  const groups = (list, fn, cols) => list.map(([g, rows]) => `<tbody><tr class="kg"><th colspan="${cols}" scope="colgroup">${esc(g)}</th></tr>${rows.map(fn).join('')}</tbody>`).join('');
+  card.innerHTML = `<h2>Keyboard shortcuts</h2>
+    <p class="note">Change a shortcut: press <b>Change</b>, then the new keys (with Ctrl or Alt, or two keys one after the other like <kbd>g</kbd> <kbd>j</kbd>). It’s saved in <code>logseq/config.edn</code> (<code>:shortcuts</code>), so Logseq uses the same keys.</p>
+    <table class="keys keys-change">${groups(KEY_ROWS, row, 3)}</table>
+    <h3 class="keys-h">Fixed keys</h3>
+    <table class="keys keys-fixed">${groups(FIXED, ([k, what]) => `<tr><td>${esc(what)}</td><td class="kk">${k.split(' / ').map((x) => x.split(' ').map((y) => `<kbd>${esc(y)}</kbd>`).join(' ')).join(' / ')}</td></tr>`, 2)}</table>`;
+  card.addEventListener('click', (e) => {
+    const b = e.target.closest('.k-change');
+    if (b) recordKeys(app, card, b.closest('tr'));
+  });
   return card;
+}
+
+/** Change one action's keys: the row waits for a key press (Esc: cancel), offers Back to default and
+ *  Turn off, warns when the keys belong to another action (yes: that one gives them up) and refuses
+ *  fixed keys; then saves (core set_shortcut) and draws the card again. */
+function recordKeys(app, card, tr) {
+  card.querySelector('.k-rec')?.cancel?.();
+  const a = tr.dataset.a;
+  const label = keyLabel(a);
+  const kk = tr.querySelector('.kk'), kc = tr.querySelector('.kc');
+  const was = [kk.innerHTML, kc.innerHTML];
+  tr.classList.add('k-rec');
+  kk.innerHTML = '<span class="k-wait" role="status">Press the new keys… <span class="note">(Esc: cancel)</span></span>';
+  const isDefault = !(app.summary?.config?.shortcuts || []).some(([x]) => x === a);
+  kc.innerHTML = `<span class="k-acts"><button type="button" class="btn ghost small" data-k="default"${isDefault ? ' disabled' : ''}>Back to default</button><button type="button" class="btn ghost small" data-k="off">Turn off</button><button type="button" class="btn ghost small" data-k="cancel">Cancel</button></span>`;
+  let first = null, firstT = 0;
+  const done = () => {
+    document.removeEventListener('keydown', onKey, true);
+    tr.classList.remove('k-rec');
+    tr.cancel = null;
+  };
+  const cancel = () => { done(); [kk.innerHTML, kc.innerHTML] = was; };
+  tr.cancel = cancel;
+  const save = async (keys) => {
+    done();
+    kk.innerHTML = '<span class="note">Saving…</span>';
+    try {
+      // another action had these keys and he said yes: it gives them up first
+      if (keys?.length) {
+        for (const [other, oks] of Object.entries(app.keyMap)) {
+          if (other === a || !oks.some((k) => sameKey(k, keys[0]))) continue;
+          const left = oks.filter((k) => !sameKey(k, keys[0]));
+          app.takeShortcuts(await call('set_shortcut', { action: other, keys: left }));
+        }
+      }
+      app.takeShortcuts(await call('set_shortcut', { action: a, keys }));
+      app.toast(keys === null ? `${label}: back to its usual keys` : keys.length ? `${label}: saved` : `${label}: turned off`, 2000);
+    } catch (err) { app.toast(said(err), 6000); }
+    card.replaceWith(keysCard(app));
+  };
+  const take = async (k) => {
+    // the same as now: nothing to do
+    if (keysOf().some((x) => sameKey(x, k))) { cancel(); return; }
+    if (FIXED_KEYS.some((f) => sameKey(f, k))) {
+      kk.innerHTML = `<span class="err">${keyHtml(k)} always does its own job (see Fixed keys). Press other keys, or Esc.</span>`;
+      document.addEventListener('keydown', onKey, true);
+      return;
+    }
+    const other = Object.entries(app.keyMap).find(([x, ks]) => x !== a && ks.some((y) => sameKey(y, k)));
+    if (other) {
+      document.removeEventListener('keydown', onKey, true);
+      const ok = await confirmBox({ title: 'These keys are taken', body: `${keyHtml(k)} is already used for <b>${esc(keyLabel(other[0]))}</b>. Use ${keyHtml(k)} for <b>${esc(label)}</b> instead? ${esc(keyLabel(other[0]))} then loses these keys.`, ok: 'Use them here' });
+      if (!ok) { cancel(); return; }
+    }
+    save([k]);
+  };
+  const keysOf = () => app.keyMap[a] || [];
+  const onKey = (e) => {
+    if (e.isComposing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+    if (e.key === 'Escape' && plain && !e.shiftKey) { cancel(); return; }
+    const c = chordText(e);
+    if (!c) return; // (Ctrl, Shift or Alt alone: wait for the key)
+    // a key without Ctrl or Alt (and not F1–F12): the first of two, like "g j"
+    const fkey = /^f\d{1,2}$/.test(c.split('+').pop());
+    if (plain && !fkey) {
+      if (first && Date.now() - firstT < 2000) { const k = `${first} ${c}`; first = null; document.removeEventListener('keydown', onKey, true); take(k); return; }
+      first = c; firstT = Date.now();
+      kk.innerHTML = `<span class="k-wait" role="status">${keyHtml(c)} then… <span class="note">(the second key; Esc: cancel)</span></span>`;
+      return;
+    }
+    document.removeEventListener('keydown', onKey, true);
+    take(c);
+  };
+  document.addEventListener('keydown', onKey, true);
+  kc.querySelector('.k-acts').addEventListener('click', (e) => {
+    const k = e.target.closest('[data-k]')?.dataset.k;
+    if (k === 'cancel') cancel();
+    if (k === 'default') save(null);
+    if (k === 'off') save([]);
+  });
 }
 
 // "Send feedback": opens a new issue on the public GitHub repo in the browser, with the words

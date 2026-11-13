@@ -20,6 +20,30 @@ export const keyHtml = (k) => (k ? k.trim().split(/\s+/).map((c) => `<kbd>${esc(
 export const keyOf = (app, action) => (app.keyMap[action] || [])[0] || '';
 
 // ---------------------------------------------------------------------------
+// Logseq's key notation ("mod+shift+up", "g j") against key presses (app.js onKey and keyIs; Settings'
+// Change button records a press the same way, Build 48: they lived in app.js).
+const KEYNAME = { arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right', '[': 'open-square-bracket', ']': 'close-square-bracket', '\\': 'backslash', ' ': 'space', '+': 'plus', escape: 'esc' };
+export const parseChord = (s) => {
+  const parts = s.toLowerCase().split('+').filter(Boolean);
+  if (s.endsWith('++')) parts.push('plus');
+  const key = parts.pop();
+  return { key, mod: parts.includes('mod') || parts.includes('ctrl') || parts.includes('meta'), shift: parts.includes('shift'), alt: parts.includes('alt') };
+};
+export const evChord = (e) => ({ key: KEYNAME[e.key.toLowerCase()] ?? e.key.toLowerCase(), mod: e.ctrlKey || e.metaKey, shift: e.shiftKey, alt: e.altKey });
+export const same = (a, b) => a.key === b.key && a.mod === b.mod && a.shift === b.shift && a.alt === b.alt;
+/** A key press in Logseq's notation, as config.edn keeps it ("mod+alt+t"); '' for a modifier alone. */
+export function chordText(e) {
+  const c = evChord(e);
+  if (['control', 'shift', 'alt', 'meta', 'altgraph', 'os', 'dead', 'unidentified', 'process'].includes(c.key)) return '';
+  return [c.mod && 'mod', c.alt && 'alt', c.shift && 'shift', c.key].filter(Boolean).join('+');
+}
+/** Do two keys (Logseq's notation; a sequence "g j" is one key) mean the same presses? */
+export function sameKey(a, b) {
+  const x = a.trim().split(/\s+/).map(parseChord), y = b.trim().split(/\s+/).map(parseChord);
+  return x.length === y.length && x.every((c, n) => same(c, y[n]));
+}
+
+// ---------------------------------------------------------------------------
 /** The note being edited when the box opened (it stops when the box takes the keyboard), to edit it
  *  again before an editing command runs, or after the box is closed with Esc: {o, i, s, e, text}. */
 export function editingNow(app) {

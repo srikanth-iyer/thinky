@@ -403,6 +403,7 @@ export class Outline {
     this.endPlus();
     this.pinned = null; // notes moved: the pinned ones are worked out again
     this.app.pinSoon?.();
+    if (this.app.attach?.on) this.app.attach.paint(this); // (attachments shown: their rows lit again)
   }
   /** Everything a drawn row is made from, as one text (blockEl, viewEl): while it's the same, the row
    *  can stay as it is. Selected and hidden aren't in it: `keepRows` sets those on a kept row. */
@@ -469,6 +470,7 @@ export class Outline {
     this.el.append(frag);
     this.drawn = stop;
     if (this.drawn < this.end) this.chunkT = setTimeout(() => this.drawMore(1500), 0);
+    if (this.app.attach?.on) this.app.attach.paint(this);
   }
   /** Numbered notes (logseq.order-list-type:: number) → {n, mark}, worked out as Logseq does: n counts
    *  the numbered notes just before it at its level (a plain note between starts again at 1); a
@@ -1552,6 +1554,9 @@ export class Outline {
     if (this.app.keyIs(e, 'editor/move-block-down')) { e.preventDefault(); this.move(i, 1); return; }
     if (this.app.keyIs(e, 'editor/highlight')) { e.preventDefault(); this.wrap('^^', '^^'); return; }
     if (this.app.keyIs(e, 'editor/toggle-open-blocks')) { e.preventDefault(); this.toggleAll(); return; }
+    // Ctrl+↑ / Ctrl+↓ (Logseq's): fold or unfold the note being typed in (Build 48)
+    if (this.app.keyIs(e, 'editor/collapse-block-children')) { e.preventDefault(); this.foldNotes([i], true); return; }
+    if (this.app.keyIs(e, 'editor/expand-block-children')) { e.preventDefault(); this.foldNotes([i], false); return; }
     if (mod && !e.altKey && !e.shiftKey && k === 'b') { e.preventDefault(); this.wrap('**', '**'); return; }
     if (mod && !e.altKey && !e.shiftKey && k === 'i') { e.preventDefault(); this.wrap('*', '*'); return; }
     if (e.key === 'Enter' && mod) { e.preventDefault(); this.cycleTodo(); return; }
@@ -1779,6 +1784,13 @@ export class Outline {
     if (mod && k === 'y') { this.app.redo(this); return true; }
     if (this.app.keyIs(e, 'editor/move-block-up')) { this.move(lo, -1); return true; }
     if (this.app.keyIs(e, 'editor/move-block-down')) { this.move(lo, 1); return true; }
+    // Build 48 (he asked): the shortcuts set in config.edn work with notes selected too; fold all and
+    // Ctrl+↑ / Ctrl+↓ act on these notes, ← folds and → unfolds them (as in a file tree; a note with
+    // nothing to fold: nothing happens, his pick); the app's other one-press keys run (app.js onKey)
+    if (this.app.keyIs(e, 'editor/toggle-open-blocks')) { this.toggleAll(); return true; }
+    if (this.app.keyIs(e, 'editor/collapse-block-children')) { this.foldSel(true); return true; }
+    if (this.app.keyIs(e, 'editor/expand-block-children')) { this.foldSel(false); return true; }
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !mod && !e.altKey && !e.shiftKey) { this.foldSel(e.key === 'ArrowLeft'); return true; }
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !mod && !e.altKey) {
       const dir = e.key === 'ArrowUp' ? -1 : 1;
       if (e.shiftKey) this.extendBy(dir);
@@ -2499,6 +2511,43 @@ export class Outline {
     this.render();
     this.markDirty();
     if (editing !== null && !this.hiddenSet().has(editing)) this.edit(editing);
+  }
+
+  /** Fold (or unfold) notes js: each one that has sub-notes and isn't that way already; one Undo
+   *  step, the note being typed in stays open. false when there was nothing to change. */
+  foldNotes(js, fold) {
+    const ks = js.filter((j) => j !== this.root && j >= this.start && j < this.end && this.hasKids(j) && this.isCollapsed(j) !== fold);
+    if (!ks.length) return false;
+    return this.changeTexts(ks, fold ? folded : unfolded, true);
+  }
+  /** The selected notes shown, without those inside another selected one (← / →, Ctrl+↑ / Ctrl+↓). */
+  selTops() {
+    if (!this.sel) return [];
+    const lo = Math.min(this.sel.a, this.sel.b), hi = Math.max(this.sel.a, this.sel.b), hid = this.hiddenSet(), out = [];
+    for (let j = lo, end = -1; j <= hi; j++) {
+      if (hid.has(j) || j < end) continue;
+      out.push(j);
+      end = this.subtreeEnd(j);
+    }
+    return out;
+  }
+  /** Fold or unfold the selected notes; the selection stays on them (not on sub-notes now hidden). */
+  foldSel(fold) {
+    const tops = this.selTops();
+    if (!this.foldNotes(tops, fold) || !this.sel) return;
+    const hid = this.hiddenSet();
+    if (hid.has(this.sel.a) || hid.has(this.sel.b)) {
+      const up = this.sel.b < this.sel.a;
+      this.sel = up ? { a: tops[tops.length - 1], b: tops[0] } : { a: tops[0], b: tops[tops.length - 1] };
+    }
+    this.paintSel();
+  }
+  /** Ctrl+↑ / Ctrl+↓ with nothing selected or typed in: every note on the page folded / unfolded. */
+  foldAll(fold) {
+    const js = [];
+    for (let i = this.start; i < this.end; i++) js.push(i);
+    this.stopEdit();
+    this.foldNotes(js, fold);
   }
 
   /** Fold everything that has children, or unfold all if anything is folded. */

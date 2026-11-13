@@ -52,7 +52,7 @@ await go(page, '#/page/Marta%20Pell');
 await page.locator('.title-row [data-a="more"]').click();
 await sleep(150);
 const items = await page.locator('.pop.menu button').allTextContents();
-check(items.join('|') === 'Add properties|Rename…|Find on this page|History…|Copy page as text…|Copy link|Open in a new tab|Open to the side|t wWide mode: use the whole width|Print or save as PDF|Delete page…', 'History… after Find on this page', items.join('|'));
+check(items.join('|') === 'Add properties|Rename…|Find on this page|Show attachments on this page|History…|Copy page as text…|Copy link|Open in a new tab|Open to the side|t wWide mode: use the whole width|Print or save as PDF|Delete page…', 'History… after Find on this page (and Show attachments, Build 48)', items.join('|'));
 await page.keyboard.press('Escape');
 await openHistory();
 check(await page.locator('.hist').isVisible() && (await page.locator('#hv-title').textContent()) === 'History of “Marta Pell”', 'a panel opens: “History of “Marta Pell””');

@@ -7,12 +7,12 @@ const { browser, page, errors } = await open();
 const posted = [];
 await page.route(/^https?:\/\/(?!127\.0\.0\.1)/, (route) => { posted.push(route.request().url()); return route.abort(); });
 
-console.log('Settings › About shows the feedback box');
-await go(page, '#/settings/about');
+console.log('Settings › Help shows the feedback box (Build 48: its own tab)');
+await go(page, '#/settings/help');
 await page.waitForSelector('.fb .fb-msg');
 await page.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(String(u)); return null; }; });
 const order = await page.evaluate(() => [...document.querySelectorAll('.set-panel:not([hidden]) .card > h2')].map((x) => x.textContent.trim()).join('|'));
-check(/^About[^|]*\|Send feedback\|Problems log$/.test(order), 'Updates & about: the version and updates first, then Send feedback (Build 40)', order);
+check(order === 'Send feedback|Problems log', 'Help: Send feedback, then the problems log (Build 48; About keeps the version and updates)', order);
 check(!(await page.$('.fb .fb-mail')) && !(await page.$('.fb .fb-log')), 'no email box, no problems-log tick: nothing personal is added');
 
 console.log('an empty message opens nothing');

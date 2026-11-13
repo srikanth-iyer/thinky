@@ -52,10 +52,10 @@ export function commandList(app, ed) {
     add('Go', 'search', 'Search', null, { key: 'go/search', also: 'find' });
     add('Go', 'random', 'Open a random page', () => app.randomPage());
   }
-  // the Settings tabs (as settings.js shows them: Safety, Writing and Capture with a folder open)
-  const SET_ALSO = { notes: 'folder check', safety: 'bin deleted safety copies backups restore', look: 'theme colours fonts text size dark night', writing: 'spelling spell check property display keyboard shortcuts keys', capture: 'quick capture share', about: 'version update updates problems log feedback' };
+  // the Settings tabs (as settings.js shows them: Safety, Typing & keys and Capture with a folder open)
+  const SET_ALSO = { notes: 'folder check attachments missing files', safety: 'bin deleted safety copies backups restore', look: 'theme colours fonts text size dark night property display', typing: 'writing spelling spell check keyboard shortcuts keys change', capture: 'quick capture share', about: 'version update updates what’s new', help: 'problems log feedback bug' };
   for (const [id, label] of TABS) {
-    if (!open && ['safety', 'writing', 'capture'].includes(id)) continue;
+    if (!open && ['safety', 'typing', 'capture'].includes(id)) continue;
     add('Go', 'settings-' + id, `Settings: ${label}`, () => app.go('settings', id), { also: 'preferences options ' + (SET_ALSO[id] || '') });
   }
 
@@ -87,6 +87,9 @@ export function commandList(app, ed) {
     add('Page', 'find', 'Find on this page', () => app.find.open(), { key: 'go/search-in-page' });
     add('Page', 'replace', 'Find and replace on this page', () => app.find.open(true), { key: 'go/replace-in-page' });
     add('Page', 'fold-all', 'Fold or unfold all notes', () => app.runAction('editor/toggle-open-blocks'), { key: 'editor/toggle-open-blocks', also: 'collapse expand' });
+    add('Page', 'fold-every', 'Fold every note', () => app.runAction('editor/collapse-block-children'), { key: 'editor/collapse-block-children', also: 'collapse' });
+    add('Page', 'unfold-every', 'Unfold every note', () => app.runAction('editor/expand-block-children'), { key: 'editor/expand-block-children', also: 'expand open' });
+    add('Page', 'attachments', 'Show attachments on this page', () => app.showAttachments(), { also: 'files assets pictures pdf' });
   }
 
   // ----- the note being edited, or the notes selected -----

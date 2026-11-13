@@ -785,3 +785,52 @@ fn folder_settings_stay_inside_the_notes_folder() {
         assert_eq!(outline_core::inside_folder(bad.to_string()), None, "{bad}");
     }
 }
+
+#[test]
+fn shortcuts_change_in_place() {
+    // Build 48 (Settings → Typing & keys → Change): only the action's entry changes, the rest of
+    // config.edn byte for byte; a new entry lines up under the others, with the file's line ends
+    let text = ";; keys\r\n{:a 1\r\n :shortcuts {:editor/toggle-open-blocks \"alt+ctrl+t\" ; mine\r\n             :go/journals \"g j\"}\r\n :b 2}\r\n";
+    let set = edn::set_entry(text, "shortcuts", "go/todos", Some("\"mod+alt+o\"")).unwrap();
+    assert_eq!(set, ";; keys\r\n{:a 1\r\n :shortcuts {:editor/toggle-open-blocks \"alt+ctrl+t\" ; mine\r\n             :go/journals \"g j\"\r\n             :go/todos \"mod+alt+o\"}\r\n :b 2}\r\n");
+    // changed in place, comment kept
+    let ch = edn::set_entry(text, "shortcuts", "editor/toggle-open-blocks", Some("[\"t o\" \"alt+t\"]")).unwrap();
+    assert_eq!(ch, text.replace("\"alt+ctrl+t\"", "[\"t o\" \"alt+t\"]"));
+    assert_eq!(Config::from_edn(&ch).shortcuts[0], ("editor/toggle-open-blocks".to_string(), vec!["t o".to_string(), "alt+t".to_string()]));
+    // taken out: the last one with the room before it; the first with the room after it
+    assert_eq!(edn::set_entry(text, "shortcuts", "go/journals", None).unwrap(), ";; keys\r\n{:a 1\r\n :shortcuts {:editor/toggle-open-blocks \"alt+ctrl+t\"}\r\n :b 2}\r\n");
+    assert_eq!(edn::set_entry(text, "shortcuts", "editor/toggle-open-blocks", None).unwrap(), ";; keys\r\n{:a 1\r\n :shortcuts {:go/journals \"g j\"}\r\n :b 2}\r\n");
+    // not there: nothing changes
+    assert_eq!(edn::set_entry(text, "shortcuts", "go/todos", None).unwrap(), text);
+    // no :shortcuts yet, an empty one, one on its own line, nil
+    assert_eq!(edn::set_entry("{:a 1}", "shortcuts", "go/todos", Some("false")).unwrap(), "{:a 1\n :shortcuts {:go/todos false}}");
+    assert_eq!(edn::set_entry("{:shortcuts {}}", "shortcuts", "go/todos", Some("false")).unwrap(), "{:shortcuts {:go/todos false}}");
+    assert_eq!(edn::set_entry("{:shortcuts {:x \"y\"}}", "shortcuts", "go/todos", Some("false")).unwrap(), "{:shortcuts {:x \"y\"\n             :go/todos false}}");
+    assert_eq!(edn::set_entry("{:shortcuts nil}", "shortcuts", "go/todos", Some("false")).unwrap(), "{:shortcuts {:go/todos false}}");
+    assert!(edn::set_entry("{:shortcuts [1]}", "shortcuts", "go/todos", Some("false")).is_none());
+
+    // through the app: the keys as Logseq writes them; none = false (turned off); None = the default
+    let v = tmp_vault("shortcuts");
+    let cfg = ";; mine\n{:meta/version 1\n :shortcuts {:editor/toggle-open-blocks \"alt+ctrl+t\"}\n :hidden []}\n";
+    std::fs::write(v.join("logseq/config.edn"), cfg).unwrap();
+    let mut app = App::open(&v).unwrap();
+    let keys = |k: &[&str]| k.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let sc = app.set_shortcut("go/todos", Some(&keys(&["mod+alt+o"]))).unwrap();
+    assert!(sc.contains(&("go/todos".to_string(), keys(&["mod+alt+o"]))));
+    app.set_shortcut("go/all-pages", Some(&[])).unwrap();
+    let sc = app.set_shortcut("editor/toggle-open-blocks", None).unwrap();
+    assert_eq!(sc, vec![("go/todos".to_string(), keys(&["mod+alt+o"])), ("go/all-pages".to_string(), vec![])]);
+    assert_eq!(
+        std::fs::read_to_string(v.join("logseq/config.edn")).unwrap(),
+        ";; mine\n{:meta/version 1\n :shortcuts {:go/todos \"mod+alt+o\"\n             :go/all-pages false}\n :hidden []}\n"
+    );
+    // the same again: the file isn't written
+    let before = std::fs::metadata(v.join("logseq/config.edn")).unwrap().modified().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    app.set_shortcut("go/all-pages", Some(&[])).unwrap();
+    app.set_shortcut("editor/toggle-open-blocks", None).unwrap();
+    assert_eq!(std::fs::metadata(v.join("logseq/config.edn")).unwrap().modified().unwrap(), before);
+    // not an action's name: refused, nothing written
+    assert!(app.set_shortcut("x} :evil", Some(&keys(&["a"]))).is_err());
+    assert!(app.set_shortcut("noslash", Some(&keys(&["a"]))).is_err());
+}

@@ -17,7 +17,7 @@ for (const [device, opts] of [['phone', { viewport: { width: 390, height: 800 },
   console.log(`${device}: Check this folder's lists`);
   await go(page, '#/settings/notes');
   await page.locator('[data-a="check"]').click();
-  await page.waitForSelector('.pics-box h3', { timeout: 8000 });
+  await page.waitForSelector('.pics-box h4', { timeout: 8000 });
   await sleep(300);
   const m = await page.evaluate(() => {
     const row = [...document.querySelectorAll('.pics li')].find((li) => li.querySelector('.nm').textContent.startsWith('Screenshot'));

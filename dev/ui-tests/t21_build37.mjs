@@ -114,7 +114,7 @@ await page.waitForSelector('.outline .blk');
 const note = (t) => page.locator('.outline .blk', { has: page.locator(':scope > .bc', { hasText: t }) }).first();
 check(await note('a note from Claude').locator('.prop .pk', { hasText: 'by' }).count() === 1, 'by:: shows as usual at first');
 check(await note('a secret one').locator('.prop').count() === 0, 'config.edn’s :block-hidden-properties hides secret::');
-await go(page, '#/settings/writing');
+await go(page, '#/settings/look');
 await page.waitForSelector('.prop-display');
 await page.locator('.prop-new').fill('by::');
 await page.locator('.prop-add button').click();
@@ -139,14 +139,14 @@ check(await n2.getAttribute('data-mark') === 'purple' && await note('my own note
 const n3 = note('another one');
 check(await n3.locator('.prop .pk', { hasText: 'source' }).count() === 1, 'other properties still show as usual');
 // Quiet, then Hidden
-await go(page, '#/settings/writing');
+await go(page, '#/settings/look');
 await page.waitForSelector('.prop-display li[data-k="by"]');
 await page.locator('.prop-rules li[data-k="by"] .pr-show').selectOption('quiet');
 await sleep(400);
 await go(page, '#/page/Claude notes');
 await page.waitForSelector('.outline .blk');
 check(await note('a note from Claude').locator('.prop.prop-quiet').count() === 1, 'Quiet: a smaller, lighter row');
-await go(page, '#/settings/writing');
+await go(page, '#/settings/look');
 await page.waitForSelector('.prop-display li[data-k="by"]');
 await page.locator('.prop-rules li[data-k="by"] .pr-show').selectOption('hidden');
 await sleep(400);
@@ -159,7 +159,7 @@ check(await page.locator('.note-menu .nm-item', { hasText: 'Show hidden properti
 await page.keyboard.press('Escape');
 check(read('pages/Claude notes.md').includes('  by:: claude'), 'the note itself is unchanged');
 // remove the rule: back to usual
-await go(page, '#/settings/writing');
+await go(page, '#/settings/look');
 await page.waitForSelector('.prop-display li[data-k="by"]');
 await page.locator('.prop-rules li[data-k="by"] .pr-del').click();
 await sleep(400);

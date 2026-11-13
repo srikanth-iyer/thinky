@@ -360,6 +360,70 @@ pub fn reorder_items(text: &str, key: &str, order: &[usize]) -> Option<String> {
     Some(out)
 }
 
+/// Set (`Some(value)`, EDN text) or take out (`None`) the entry `:key` of the map at top-level
+/// `map_key` (Build 48: `:shortcuts`, from Settings → Typing & keys). A new entry goes after the
+/// map's last one, on a line of its own lined up with it when the map has one entry per line, else
+/// after a space; taking one out takes the spaces before it too (the first one: those after it), so
+/// the others keep their places. A missing map is added (`set_path`). Everything else, comments and
+/// the order included, stays byte for byte. None if the file isn't readable EDN or `map_key` holds
+/// something other than a map (nothing to take out: the text as it is).
+pub fn set_entry(text: &str, map_key: &str, key: &str, value: Option<&str>) -> Option<String> {
+    let root = parse(text)?;
+    let Some(map) = root.get(map_key) else {
+        return match value {
+            Some(v) => set_path(text, &[map_key, key], v),
+            None => Some(text.to_string()),
+        };
+    };
+    let Edn::Map(pairs) = &map.v else {
+        return match value {
+            Some(v) if matches!(map.v, Edn::Nil) => set_path(text, &[map_key], &format!("{{:{key} {v}}}")),
+            Some(_) => None,
+            None => Some(text.to_string()),
+        };
+    };
+    let at = pairs.iter().position(|(k, _)| matches!(&k.v, Edn::Kw(x) if x == key));
+    match (at, value) {
+        (Some(k), Some(v)) => {
+            let n = &pairs[k].1;
+            Some(format!("{}{}{}", &text[..n.start], v, &text[n.end..]))
+        }
+        (Some(k), None) => {
+            let (from, to) = if k > 0 {
+                (pairs[k - 1].1.end, pairs[k].1.end)
+            } else if pairs.len() > 1 {
+                (pairs[0].0.start, pairs[1].0.start)
+            } else {
+                (pairs[0].0.start, pairs[0].1.end)
+            };
+            Some(format!("{}{}", &text[..from], &text[to..]))
+        }
+        (None, None) => Some(text.to_string()),
+        (None, Some(v)) => {
+            let entry = format!(":{key} {v}");
+            let Some((_, last)) = pairs.last() else {
+                // an empty map: inside its braces
+                return Some(format!("{}{}{}", &text[..map.start + 1], entry, &text[map.start + 1..]));
+            };
+            // the room before the last entry, if it starts a line: the same room before the new one
+            let first = &pairs[pairs.len() - 1].0;
+            let line_start = text[..first.start].rfind('\n').map_or(0, |i| i + 1);
+            let lead = &text[line_start..first.start];
+            let nl = if text.contains("\r\n") { "\r\n" } else { "\n" }; // (the file's own line ends)
+            let sep = if text[map.start..first.start].contains('\n') && lead.chars().all(|c| c == ' ' || c == '\t') {
+                format!("{nl}{lead}")
+            } else if pairs.len() == 1 && text[map.start..first.start].chars().all(|c| c == '{' || c == ' ') {
+                // one entry on the map's own line ("{:a b"): line the new one up under it
+                let col = text[line_start..first.start].chars().count();
+                format!("{nl}{}", " ".repeat(col))
+            } else {
+                " ".to_string()
+            };
+            Some(format!("{}{}{}{}", &text[..last.end], sep, entry, &text[last.end..]))
+        }
+    }
+}
+
 fn nested(path: &[&str], value: &str) -> String {
     match path.split_first() {
         None => value.to_string(),

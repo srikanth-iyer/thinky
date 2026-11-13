@@ -27,7 +27,7 @@ fs.mkdirSync(VAULT + '/logseq/bak/pages/Sourdough Bread', { recursive: true });
 write('logseq/bak/pages/Sourdough Bread/2026-05-31T10_00_00.000Z.Desktop.md', '- Mix, fold, rest, shape\n\t- the crumb ![crumb](../assets/unused.png)\n');
 await go(page, '#/settings');
 await page.locator('[data-a="check"]').click();
-await page.waitForSelector('.pics-box h3', { timeout: 5000 });
+await page.waitForSelector('.pics-box h4', { timeout: 5000 });
 const names = await page.locator('.pics .nm').allTextContents();
 check(names.join(',') === 'Screenshot (2).png,keep.png,photo_2024.png,unused.png', 'lists only the pictures nothing uses (not the one in a page, the one on a whiteboard, the PDF or the one from the last 3 days)', names.join(','));
 const said = await page.locator('.pics-box').textContent();

@@ -263,7 +263,7 @@ const tabRow = await page.evaluate(() => {
   const sel = r.querySelector('[aria-selected="true"]').getBoundingClientRect();
   return { tabs: cs.map((c) => c.textContent).join('|'), oneLine: new Set(cs.map((c) => Math.round(c.getBoundingClientRect().top))).size === 1, scrolls: r.scrollWidth > r.clientWidth, chosenInView: sel.left >= box.left - 0.5 && sel.right <= box.right + 0.5 };
 });
-check(tabRow.tabs === 'Updates & about|Notes|Safety|Look|Writing|Capture' && tabRow.oneLine && tabRow.scrolls && tabRow.chosenInView, 'phone Settings, 320px: the six tabs on one line that scrolls, the chosen one (Capture, the last) in view', JSON.stringify(tabRow));
+check(tabRow.tabs === 'About|Notes|Safety|Look|Typing & keys|Capture|Help' && tabRow.oneLine && tabRow.scrolls && tabRow.chosenInView, 'phone Settings, 320px: the seven tabs on one line that scrolls, the chosen one (Capture) in view', JSON.stringify(tabRow));
 await page.setViewportSize({ width: 393, height: 851 });
 await page.evaluate(() => { location.hash = '#/todos'; });
 await sleep(600);

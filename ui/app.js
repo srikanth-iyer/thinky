@@ -15,6 +15,7 @@ import { Tabs, placeOf, parsePlace, sideNav } from './tabs.js';
 const settingsView = (...a) => import('./settings.js').then((m) => m.settingsView(...a));
 const openHistory = (...a) => import('./history.js').then((m) => m.openHistory(...a));
 import { SearchBox } from './search.js';
+import { parseChord, evChord, same } from './keys.js';
 import { initFileDrop } from './filedrop.js';
 import { makeChips } from './chips.js';
 import { releaseVersion, higherVersion } from './version.js';
@@ -256,11 +257,15 @@ const ymd = (dt) => [dt.getFullYear(), dt.getMonth() + 1, dt.getDate()];
 // ---------------------------------------------------------------------------
 // Keyboard shortcuts, in Logseq's notation ("mod+shift+up", "g j"). Logseq's
 // :shortcuts in config.edn override these for the same action names.
-const DEFAULT_KEYS = {
+export const DEFAULT_KEYS = {
   'editor/move-block-up': ['alt+shift+up', 'mod+shift+up'],
   'editor/move-block-down': ['alt+shift+down', 'mod+shift+down'],
   'editor/highlight': [],
   'editor/toggle-open-blocks': ['t o'],
+  // Build 48 (he asked, as in Logseq): fold / unfold the note being typed in or the selected notes
+  // (nothing selected: every note on the page)
+  'editor/collapse-block-children': ['mod+up'],
+  'editor/expand-block-children': ['mod+down'],
   'editor/select-parent': ['mod+a'], // (editing: the words first, then the note; then its parent…)
   'editor/select-all-blocks': ['mod+shift+a'],
   'go/search': ['mod+k'],
@@ -283,15 +288,11 @@ const DEFAULT_KEYS = {
   'ui/text-reset': ['mod+0'],
   'ui/refresh': ['mod+r', 'f5', 'mod+shift+r'], // (Build 36: re-read the pages shown, not the whole window)
 };
-const KEYNAME = { arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right', '[': 'open-square-bracket', ']': 'close-square-bracket', '\\': 'backslash', ' ': 'space', '+': 'plus', escape: 'esc' };
-const parseChord = (s) => {
-  const parts = s.toLowerCase().split('+').filter(Boolean);
-  if (s.endsWith('++')) parts.push('plus');
-  const key = parts.pop();
-  return { key, mod: parts.includes('mod') || parts.includes('ctrl') || parts.includes('meta'), shift: parts.includes('shift'), alt: parts.includes('alt') };
-};
-const evChord = (e) => ({ key: KEYNAME[e.key.toLowerCase()] ?? e.key.toLowerCase(), mod: e.ctrlKey || e.metaKey, shift: e.shiftKey, alt: e.altKey });
-const same = (a, b) => a.key === b.key && a.mod === b.mod && a.shift === b.shift && a.alt === b.alt;
+// The actions runAction does (one-press keys with Ctrl or Alt run them anywhere, Build 48: the keys
+// set in config.edn did nothing unless a note was being typed in)
+const RUN_ACTIONS = ['go/journals', 'go/all-pages', 'go/todos', 'go/date', 'go/next-journal', 'go/prev-journal',
+  'sidebar/open-today-page', 'ui/toggle-left-sidebar', 'ui/toggle-wide-mode', 'editor/toggle-open-blocks',
+  'editor/collapse-block-children', 'editor/expand-block-children', 'ui/text-bigger', 'ui/text-smaller', 'ui/text-reset', 'ui/refresh'];
 
 // ---------------------------------------------------------------------------
 class App {
@@ -897,6 +898,7 @@ class App {
       this.ac.close();
       this.closeLooks?.();
       this.find.close();
+      this.attach?.close();
       this.find.undo = null; // a replace's Undo belongs to the page it was made on
       this.preview.hide();
     }
@@ -1889,6 +1891,8 @@ class App {
     if (propsBox?.edit && !propsBox.has) items.push({ label: 'Add properties', run: () => propsBox.edit() });
     if (!pv.info.journal) items.push({ label: 'Rename…', run: () => this.renamePage(pv.info.name) });
     items.push({ label: 'Find on this page', run: () => this.find.open() });
+    // Build 48 (he asked): the notes that link to files in assets, lit, with a count (attach.js)
+    if (outline) items.push({ label: this.attach?.on ? 'Hide attachments' : 'Show attachments on this page', run: () => this.showAttachments() });
     // its earlier versions: backups and safety copies (history.js)
     if (outline) items.push({ label: 'History…', run: () => openHistory(this, outline) });
     // as text, OPML or HTML, to the clipboard or a file (export.js, loaded when first used)
@@ -1910,6 +1914,12 @@ class App {
     items.push({ label: 'Print or save as PDF', run: () => this.printPage() });
     if (pv.info.exists) items.push({ label: 'Delete page…', danger: true, run: async () => { if (await this.deletePages([pv.info.name])) this.go('journals'); } });
     menu(btn, items);
+  }
+
+  /** "Show attachments on this page" (attach.js, loaded the first time); again: they're cleared. */
+  async showAttachments() {
+    if (!this.attach) { const { Attachments } = await import('./attach.js'); this.attach ??= new Attachments(this); }
+    await this.attach.toggle();
   }
 
   /** True (and says so) while a page waits for his choice on the clash screen: renaming or deleting
@@ -2754,6 +2764,8 @@ class App {
     if (act('ui/toggle-left-sidebar') && (!typing || e.ctrlKey || e.metaKey)) { e.preventDefault(); this.toggleSidebar(); return; }
     if (act('go/journals') && (!typing || e.ctrlKey || e.metaKey)) { e.preventDefault(); this.go('journals'); return; }
     if (typing) return;
+    // attachments shown (attach.js): ↑ / ↓ step between them, Esc clears them (not with notes selected)
+    if (this.attach?.on && !this.pane.outlines.some((x) => x.sel) && this.attach.key(e)) { e.preventDefault(); return; }
     // blocks selected: arrows, Tab, Delete, copy… act on them
     const o = this.pane.outlines.find((x) => x.sel && this.shows(x)); // (the active side's: keys act there)
     if (o && o.onSelKey(e)) { e.preventDefault(); return; }
@@ -2769,6 +2781,11 @@ class App {
       const last = this.active || this.pane.outlines[0];
       if (last) { e.preventDefault(); e.shiftKey ? this.redo(last) : this.undo(last); }
       return;
+    }
+    // one-press shortcuts with Ctrl or Alt (Ctrl+Alt+T…), with nothing being typed in (Build 48)
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      const name = RUN_ACTIONS.find((a) => act(a));
+      if (name) { e.preventDefault(); this.runAction(name); return; }
     }
     // Page Down, Space, arrows, Home / End (also with Ctrl): scroll the notes
     if (SCROLL_KEYS.has(e.key) && !e.altKey && !e.metaKey && (!e.ctrlKey || e.key === 'Home' || e.key === 'End')) {
@@ -2857,6 +2874,8 @@ class App {
       'ui/toggle-left-sidebar': () => this.toggleSidebar(),
       'ui/toggle-wide-mode': () => this.setWide(),
       'editor/toggle-open-blocks': () => this.mainOutline()?.toggleAll(),
+      'editor/collapse-block-children': () => this.mainOutline()?.foldAll(true),
+      'editor/expand-block-children': () => this.mainOutline()?.foldAll(false),
       'ui/text-bigger': () => this.toast(`Text size ${Math.round(this.textSize(this.textSize() + 0.05) * 100)}%`, 900),
       'ui/text-smaller': () => this.toast(`Text size ${Math.round(this.textSize(this.textSize() - 0.05) * 100)}%`, 900),
       'ui/text-reset': () => { this.textSize(1); this.toast('Text size 100%', 900); },
@@ -3242,6 +3261,7 @@ class App {
     if (!$('#search').hidden) { this.closeSearch(); return true; }
     if (this.ac.isOpen) { this.ac.close(); return true; }
     if (this.find.isOpen) { this.find.close(); return true; }
+    if (this.attach?.on) { this.attach.close(); return true; }
     if (document.body.classList.contains('drawer')) { document.body.classList.remove('drawer'); return true; }
     const wlBack = $('.welcome .wl-back'); // (the welcome screen's folder picker: back to its first step)
     if (wlBack) { wlBack.click(); return true; }
@@ -3382,11 +3402,17 @@ class App {
     s.today = await call('journal_name', { date: today() });
     this.summary = s;
     const c = s.config;
-    this.keyMap = { ...DEFAULT_KEYS };
-    for (const [action, keys] of c.shortcuts || []) this.keyMap[action] = keys;
+    this.takeShortcuts(c.shortcuts);
     window.LeanAndroid?.setWidgetConfig?.(s.root, c.journals_dir, c.journal_file_format, c.journal_title_format);
     this.sendCaptureConfig();
     await this.loadFolderSettings();
+  }
+
+  /** The keys: the app's defaults, then config.edn's :shortcuts over them (an empty list = turned off). */
+  takeShortcuts(list) {
+    this.keyMap = { ...DEFAULT_KEYS };
+    for (const [action, keys] of list || []) this.keyMap[action] = keys;
+    if (this.summary?.config) this.summary.config.shortcuts = list || [];
   }
 
   /** Settings kept in the notes folder (Build 37: logseq/thinky.json): Property display's rules, with

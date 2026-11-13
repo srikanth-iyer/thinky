@@ -232,12 +232,20 @@ check(await page.locator('.pop.menu').count() === 0, 'a second tap on ⋯ closes
 await more.tap();
 await sleep(300);
 const before = await page.evaluate(() => location.hash);
-await page.locator('.outline a', { hasText: 'Rosa Penhallow' }).first().tap();
+// (a link the menu doesn't cover: since Build 48 the menu is a row longer)
+const outside = await page.evaluate(() => {
+  const m = document.querySelector('.pop.menu').getBoundingClientRect();
+  const a = [...document.querySelectorAll('#main a.pl, #main a[data-page]')].find((x) => { const r = x.getBoundingClientRect(); const off = r.bottom < m.top - 4 || r.top > m.bottom + 4 || r.right < m.left - 4 || r.left > m.right + 4; return r.height && off && r.top > 50 && r.bottom < innerHeight; });
+  if (!a) return null;
+  const r = a.getBoundingClientRect();
+  return { x: r.left + Math.min(r.width / 2, 20), y: r.top + r.height / 2, name: a.dataset.page };
+});
+await page.touchscreen.tap(outside.x, outside.y);
 await sleep(600);
 check(await page.locator('.pop.menu').count() === 0 && await page.evaluate(() => location.hash) === before, 'with the menu open, a tap on a link only closes the menu', await page.evaluate(() => location.hash));
-await page.locator('.outline a', { hasText: 'Rosa Penhallow' }).first().tap();
+await page.touchscreen.tap(outside.x, outside.y);
 await sleep(600);
-check(decodeURIComponent(await page.evaluate(() => location.hash)).includes('Rosa Penhallow'), 'the next tap on it opens it');
+check(decodeURIComponent(await page.evaluate(() => location.hash)).includes(outside.name), 'the next tap on it opens it');
 await more.tap();
 await sleep(300);
 await page.locator('.pop.menu button', { hasText: 'Find on this page' }).tap();

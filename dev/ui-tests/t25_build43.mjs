@@ -49,7 +49,7 @@ import { open, check, failures, sleep, go } from './lib.mjs';
   await sleep(400);
   check(rule(await saved())?.mark === 'blue', 'a mark too');
   // Settings shows the same rule, and a change there shows on the property's page
-  await go(page, '#/settings/writing');
+  await go(page, '#/settings/look');
   await page.waitForSelector('.prop-rules li[data-k="status"]');
   check(await page.inputValue('.prop-rules li[data-k="status"] .pr-show') === 'quiet', 'Settings shows the rule chosen on the page');
   await page.selectOption('.prop-rules li[data-k="status"] .pr-show', 'hidden');

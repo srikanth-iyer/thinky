@@ -343,7 +343,7 @@ jobs:
           - t15_edit t14_history t16_start t9_journals t16_reftools t16_brand t16_alias t16_safety t27_build45 t28_build46
           - t14_blockmenu t11_reading t15_pages t12_pictures t13_update t19_build34 t6_looks t16_find t26_build44
           - t5_long t8_phone t15_nav t15_looks t15_search t10_safety t10_shortcuts t16_settings
-          - t4_sync t13_tabs t3_pages t21_build37 t14_refs t1_editing t17_refedit t18_security
+          - t4_sync t13_tabs t3_pages t21_build37 t14_refs t1_editing t17_refedit t18_security t29_build48
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
