@@ -10,6 +10,15 @@ fs.mkdirSync(SHOTS, { recursive: true });
 export const read = (rel) => fs.readFileSync(VAULT + '/' + rel, 'utf8');
 export const write = (rel, t) => fs.writeFileSync(VAULT + '/' + rel, t);
 export const exists = (rel) => fs.existsSync(VAULT + '/' + rel);
+/** The file's text once ok(text) is true, or after ms its text as it is (slow machines save later). */
+export async function readWhen(rel, ok, ms = 5000) {
+  const until = Date.now() + ms;
+  for (;;) {
+    const t = exists(rel) ? read(rel) : '';
+    if (ok(t) || Date.now() > until) return t;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
 let fails = 0;
 export function check(cond, msg, extra = '') {
   if (cond) console.log('  ok  ' + msg);

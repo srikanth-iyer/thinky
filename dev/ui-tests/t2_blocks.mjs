@@ -1,5 +1,5 @@
 // Selecting blocks, moving them, zooming in, pasting outlines, pictures.
-import { open, read, write, check, failures, sleep, go, editBlock, VAULT } from './lib.mjs';
+import { open, read, readWhen, write, check, failures, sleep, go, editBlock, VAULT } from './lib.mjs';
 import fs from 'node:fs';
 const { browser, page, errors } = await open();
 
@@ -113,16 +113,14 @@ await page.mouse.move(boxA.x + 9.5, boxA.y + boxA.height / 2);
 await sleep(150);
 check(await page.locator('.thread-hl').count() === 1, 'the thread line lights up under the pointer');
 await page.mouse.click(boxA.x + 9.5, boxA.y + boxA.height / 2);
-await sleep(900);
-let tf = read('pages/Thread.md');
+let tf = await readWhen('pages/Thread.md', (t) => (t.match(/collapsed:: true/g) || []).length === 3);
 check((tf.match(/collapsed:: true/g) || []).length === 3 && !/- top\n\s*collapsed/.test(tf), 'everything under "top" folded, "top" itself stays open', tf);
 check(!(await page.locator('.bc', { hasText: /^a1$/ }).isVisible()) && await page.locator('.bc', { hasText: /^b$/ }).isVisible(), 'children stay visible, deeper blocks hide');
 // a1 is hidden now: click the same line beside "b"'s child row instead... b1 is hidden too, so use the empty strip left of "b" at the line
 const rowB = page.locator('.blk', { has: page.locator(':scope > .bc', { hasText: /^b$/ }) }).first();
 const boxB = await rowB.boundingBox();
 await page.mouse.click(boxB.x + 6, boxB.y + boxB.height / 2);
-await sleep(900);
-tf = read('pages/Thread.md');
+tf = await readWhen('pages/Thread.md', (t) => !t.includes('collapsed:: true'));
 check(!tf.includes('collapsed:: true') && await page.locator('.bc', { hasText: /^a2$/ }).isVisible(), 'clicking again unfolds it all', tf);
 
 console.log(errors.length ? 'script errors:\n' + errors.join('\n') : 'no script errors');

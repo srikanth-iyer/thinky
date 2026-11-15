@@ -8,7 +8,7 @@
 // untouched notes are proved byte for byte the same.
 import { chromium } from '/opt/npm-tools/node_modules/playwright/index.mjs';
 import fs from 'node:fs';
-import { open, read, write, exists, check, failures, sleep, go, editBlock, SHOTS, BASE, VAULT } from './lib.mjs';
+import { open, read, readWhen, write, exists, check, failures, sleep, go, editBlock, SHOTS, BASE, VAULT } from './lib.mjs';
 
 const ID = '6528aaaa-bbbb-4ccc-8ddd-eeeeffff6666'; // (Notes on Pell's "A block with an id", make_vault.py)
 const PELL = read('pages/Notes on Pell.md');
@@ -239,7 +239,9 @@ await sleep(600);
 const lid = (await val()).match(/\(\(([0-9a-f-]{36})\)\)/)?.[1];
 await page.keyboard.press('Escape');
 await settle();
-check(!!lid && read('pages/Commands.md') === `- local target note\n  id:: ${lid}\n- refer ((${lid}))\n`, 'its id:: is added on this page and saved with it', read('pages/Commands.md'));
+const cmdWant = `- local target note\n  id:: ${lid}\n- refer ((${lid}))\n`;
+const cmdFile = await readWhen('pages/Commands.md', (t) => t === cmdWant);
+check(!!lid && cmdFile === cmdWant, 'its id:: is added on this page and saved with it', cmdFile);
 await page.keyboard.press('Escape');
 
 console.log('block references never rewrite another note or file (review)');
