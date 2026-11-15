@@ -482,7 +482,8 @@ export function menu(anchor, items, opts = {}) {
   // together); {on: true/false}: one of several, shown as a round radio dot (● the one in use)
   const grouped = items.some((it) => it?.head);
   const box = h('ul', 'pop menu' + (grouped ? ' grouped' : '') + (opts.cls ? ' ' + opts.cls : ''));
-  box.innerHTML = items.map((it, k) => it === '-' ? '<li class="nm-sep" role="separator"></li>' : it.head ? `<li class="m-head" role="presentation">${esc(it.head)}</li>` : `<li><button type="button" data-k="${k}" class="${[it.danger ? 'danger' : '', it.on !== undefined ? 'm-radio' : ''].join(' ').trim()}"${it.on !== undefined ? ` role="menuitemradio" aria-checked="${!!it.on}"` : ''}>${it.hint ? `<span class="mhint">${esc(it.hint)}</span>` : ''}${esc(it.label)}</button></li>`).join('');
+  // {icon}: a small drawing before the words (Build 49: the page ⋯ menu, like the phone's side menu)
+  box.innerHTML = items.map((it, k) => it === '-' ? '<li class="nm-sep" role="separator"></li>' : it.head ? `<li class="m-head" role="presentation">${esc(it.head)}</li>` : `<li><button type="button" data-k="${k}" class="${[it.danger ? 'danger' : '', it.on !== undefined ? 'm-radio' : '', it.icon ? 'm-icon' : ''].join(' ').trim()}"${it.on !== undefined ? ` role="menuitemradio" aria-checked="${!!it.on}"` : ''}>${it.hint ? `<span class="mhint">${esc(it.hint)}</span>` : ''}${it.icon ? `<span class="m-ic" aria-hidden="true">${it.icon}</span><span class="m-l">${esc(it.label)}</span>` : esc(it.label)}</button></li>`).join('');
   if (opts.keep) box.addEventListener('pointerdown', (e) => e.preventDefault());
   document.body.append(box);
   let shut = false;

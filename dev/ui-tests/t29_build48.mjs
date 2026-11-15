@@ -10,7 +10,7 @@ import { open, check, failures, sleep, go, editBlock, read, write, VAULT, SHOTS 
 
 // his own key for fold all, as in his logseq/config.edn
 write('logseq/config.edn', read('logseq/config.edn').replace(':editor/highlight "ctrl+h"}', ':editor/highlight "ctrl+h" :editor/toggle-open-blocks "alt+ctrl+t"}'));
-write('pages/Fold test.md', '- Parent A\n\t- child A1\n\t- child A2\n- Parent B\n\t- child B1\n- Leaf C\n');
+write('pages/Fold test.md', '- Parent A\n\t- child A1\n\t\t- grand A1a\n\t- child A2\n- Parent B\n\t- child B1\n- Leaf C\n');
 write('pages/Attach test.md', '- Plan\n\t- see ![p](../assets/dot.png)\n\t- the paper [paper.pdf](../assets/paper.pdf)\n- Folded\n  collapsed:: true\n\t- inside: [notes](../assets/gone%20notes.txt)\n- no files here, just `../assets/code.png`\n');
 write('pages/Missing kinds.md', '- ![x](../assets/lost.png) and [doc](../assets/lost.pdf)\n- [z](../assets/lost.zip)\n');
 const later = Math.floor(Date.now() / 1000) + 4 * 86400; // (pictures from the last 3 days aren't judged)
@@ -25,37 +25,55 @@ await page.waitForSelector('.outline .blk');
 await page.mouse.click(5, 450); // (nothing focused, nothing typed in)
 await page.keyboard.press('Control+Alt+t');
 await sleep(300);
-check(await folded() === 2, 'both notes with sub-notes fold', await folded());
+check(await folded() === 3, 'every note with sub-notes folds', await folded());
 check(await saved(/Parent A\n\s+collapsed:: true[\s\S]*Parent B\n\s+collapsed:: true/), 'and it is saved in the file', read('pages/Fold test.md'));
 await page.keyboard.press('Control+Alt+t');
 await sleep(300);
 check(await folded() === 0, 'again: everything opens', await folded());
 
-console.log('← / → with a note selected');
+// Build 49 (his pick, Nov 14): ← / → on selected notes start typing in them, as in Logseq
+console.log('← / → with notes selected: typing in the first / last one');
+const selText = () => page.evaluate(() => [...document.querySelectorAll('.outline .blk.sel:not([hidden]) > .bc')].map((b) => b.textContent.trim()).join('|'));
+const caret = () => page.evaluate(() => { const t = document.querySelector('textarea.ed'); return t ? [t.value, t.selectionStart] : null; });
+await sleep(1200); // (the unfolding saved)
+const before = read('pages/Fold test.md');
 await editBlock(page, 'Parent A');
 await page.keyboard.press('Escape');
 await sleep(150);
-const selText = () => page.evaluate(() => [...document.querySelectorAll('.outline .blk.sel:not([hidden]) > .bc')].map((b) => b.textContent.trim()).join('|'));
 check((await selText()).startsWith('Parent A'), 'Parent A is selected', await selText());
-await page.keyboard.press('ArrowLeft');
-await sleep(250);
-check(await folded() === 1 && await page.locator('.outline .blk.collapsed > .bc', { hasText: 'Parent A' }).count() === 1, '← folds it', await folded());
-check(await selText() === 'Parent A', 'and it stays selected (not its hidden sub-notes)', await selText());
 await page.keyboard.press('ArrowRight');
-await sleep(250);
-check(await folded() === 0, '→ unfolds it');
-await page.keyboard.press('ArrowLeft');
 await sleep(200);
-await page.keyboard.press('Control+Alt+t');
-await sleep(250);
-check(await folded() === 0, 'Ctrl+Alt+T with notes selected: fold all works there too (one was folded, so all open)', await folded());
-await page.keyboard.press('Escape');
-await editBlock(page, 'Leaf C');
+let c = await caret();
+check(c && c[0] === 'Parent A' && c[1] === c[0].length, '→: typing in it, the cursor at its end', JSON.stringify(c));
 await page.keyboard.press('Escape');
 await sleep(150);
 await page.keyboard.press('ArrowLeft');
 await sleep(200);
-check(await folded() === 0 && await selText() === 'Leaf C', '← on a note with nothing to fold: nothing happens (his pick)', await selText());
+c = await caret();
+check(c && c[0] === 'Parent A' && c[1] === 0, '←: typing in it, the cursor at its start', JSON.stringify(c));
+await page.keyboard.press('Escape');
+await sleep(150);
+await page.keyboard.press('Shift+ArrowDown');
+await page.keyboard.press('Shift+ArrowDown');
+await sleep(150);
+await page.keyboard.press('ArrowRight');
+await sleep(200);
+c = await caret();
+check(c && c[0] === 'grand A1a', 'several picked (Parent A, child A1, grand A1a): → types in the last one picked', JSON.stringify(c));
+await page.keyboard.press('Escape');
+await page.keyboard.press('Escape');
+await sleep(300);
+check(await folded() === 0 && read('pages/Fold test.md') === before, 'nothing folded, the file unchanged', JSON.stringify([before, read('pages/Fold test.md')]));
+
+console.log('fold all with a sub-note selected: the selection moves to what shows (Build 49)');
+await editBlock(page, 'child B1');
+await page.keyboard.press('Escape');
+await sleep(150);
+await page.keyboard.press('Control+Alt+t');
+await sleep(300);
+check(await folded() === 3 && await selText() === 'Parent B', 'everything folds and Parent B is selected, not its hidden sub-note', await selText());
+await page.keyboard.press('Control+Alt+t');
+await sleep(300);
 await page.keyboard.press('Escape');
 
 console.log('Ctrl+↑ / Ctrl+↓ (Logseq’s fold and unfold)');
@@ -69,12 +87,20 @@ check(await folded() === 0, 'Ctrl+↓ unfolds it');
 await page.keyboard.press('Escape');
 await page.keyboard.press('Escape');
 await page.mouse.click(5, 450);
+// Build 49 (his pick): one level a press, as Logseq's collapse! / expand!
+const foldedNames = () => page.evaluate(() => [...document.querySelectorAll('.outline .blk.collapsed > .bc')].map((b) => b.textContent.trim()).join('|'));
 await page.keyboard.press('Control+ArrowUp');
 await sleep(250);
-check(await folded() === 2, 'nothing typed in or selected: every note on the page folds', await folded());
+check(await foldedNames() === 'child A1', 'nothing selected: the deepest open level folds first (child A1)', await foldedNames());
+await page.keyboard.press('Control+ArrowUp');
+await sleep(250);
+check(await folded() === 3, 'again: the next level up (Parent A, Parent B)', await foldedNames());
 await page.keyboard.press('Control+ArrowDown');
 await sleep(250);
-check(await folded() === 0, 'and Ctrl+↓ opens them all');
+check(await foldedNames() === 'child A1', 'Ctrl+↓: the top level opens first, child A1 stays folded', await foldedNames());
+await page.keyboard.press('Control+ArrowDown');
+await sleep(250);
+check(await folded() === 0, 'and Ctrl+↓ again opens it');
 
 console.log('another one-press key from Settings works anywhere: To-dos on Ctrl+Alt+O');
 await go(page, '#/settings/typing');
@@ -134,6 +160,110 @@ await sleep(800);
 check(/:ui\/toggle-wide-mode false/.test(read('logseq/config.edn')), 'Turn off writes false (Logseq’s way)', read('logseq/config.edn'));
 await page.screenshot({ path: SHOTS + '/t29_keys.png', fullPage: true });
 
+// Build 49: the recorder stops listening the moment its row leaves the screen (three reviewers found
+// keys typed later in a note were eaten and saved as a shortcut)
+console.log('Change, then leave without pressing keys');
+const cfgBefore = read('logseq/config.edn');
+await page.locator('tr[data-a="go/date"] .k-change').click();
+await page.waitForSelector('tr.k-rec .k-wait');
+await go(page, '#/page/' + encodeURIComponent('Fold test'));
+await editBlock(page, 'Leaf C');
+await page.keyboard.press('End');
+await page.keyboard.type(' xy');
+await sleep(300);
+check((await page.locator('textarea.ed').inputValue()) === 'Leaf C xy', 'keys typed in a note afterwards reach the note', await page.locator('textarea.ed').inputValue());
+await page.keyboard.press('Escape');
+await page.keyboard.press('Escape');
+await sleep(800);
+check(read('logseq/config.edn') === cfgBefore, 'and nothing was saved as a shortcut', read('logseq/config.edn'));
+write('pages/Fold test.md', read('pages/Fold test.md').replace('Leaf C xy', 'Leaf C'));
+await go(page, '#/settings/typing');
+await page.waitForSelector('.keys-card');
+await page.locator('tr[data-a="go/date"] .k-change').click();
+await page.waitForSelector('tr.k-rec .k-wait');
+await page.locator('.set-tabs [data-tab="look"]').click();
+await sleep(300);
+await page.keyboard.press('Control+k');
+await sleep(400);
+check(await page.locator('#search').isVisible() && read('logseq/config.edn') === cfgBefore, 'another Settings tab: Ctrl+K opens search, nothing saved');
+await page.keyboard.press('Escape');
+await sleep(200);
+
+console.log('Change by keyboard alone: Tab reaches the row’s buttons');
+await page.locator('.set-tabs [data-tab="typing"]').click();
+await page.waitForSelector('.keys-card');
+await page.locator('tr[data-a="go/date"] .k-change').focus();
+await page.keyboard.press('Enter');
+await page.waitForSelector('tr.k-rec .k-wait');
+await page.keyboard.press('Tab');
+await sleep(100);
+const focused = () => page.evaluate(() => document.activeElement?.textContent?.trim());
+check(await focused() === 'Turn off', 'Tab: the first button that can be pressed (Turn off)', await focused());
+await page.keyboard.press('Enter');
+await page.waitForSelector('tr[data-a="go/date"] .mine', { timeout: 4000 });
+check(/:go\/date false/.test(read('logseq/config.edn')), 'Enter on it: turned off', read('logseq/config.edn'));
+check(await page.evaluate(() => document.activeElement?.closest('tr')?.dataset.a) === 'go/date' && await focused() === 'Change', 'the keyboard is back on its Change button');
+await page.keyboard.press('Enter');
+await page.waitForSelector('tr.k-rec .k-wait');
+await page.keyboard.press('Tab');
+check(await focused() === 'Back to default', 'now Back to default can be reached', await focused());
+await page.keyboard.press('Enter');
+await sleep(800);
+check(!/go\/date/.test(read('logseq/config.edn')), 'and it takes the entry out', read('logseq/config.edn'));
+
+console.log('an F-key works as a shortcut (Build 49)');
+await page.locator('tr[data-a="go/all-pages"] .k-change').click();
+await page.waitForSelector('tr.k-rec .k-wait');
+await page.keyboard.press('F6');
+await page.waitForSelector('tr[data-a="go/all-pages"] .mine', { timeout: 4000 });
+check(/:go\/all-pages "f6"/.test(read('logseq/config.edn')), 'F6 saved', read('logseq/config.edn'));
+await go(page, '#/journals');
+await page.mouse.click(5, 450);
+await page.keyboard.press('F6');
+await sleep(500);
+check(await page.evaluate(() => location.hash) === '#/pages', 'pressing F6 opens All pages', await page.evaluate(() => location.hash));
+await go(page, '#/settings/typing');
+await page.waitForSelector('.keys-card');
+await page.locator('tr[data-a="go/all-pages"] .k-change').click();
+await page.locator('tr.k-rec [data-k="default"]').click();
+await sleep(800);
+
+console.log('keys that would not work are refused (Build 49, each checked by a reviewer)');
+const tryKeys = async (action, press) => {
+  await page.locator(`tr[data-a="${action}"] .k-change`).click();
+  await page.waitForSelector('tr.k-rec .k-wait');
+  for (const k of press) { await page.keyboard.press(k); await sleep(80); }
+  await sleep(300);
+  const said = await page.locator(`tr[data-a="${action}"] .kk`).textContent();
+  await page.keyboard.press('Escape');
+  await sleep(150);
+  return said;
+};
+const cfg0 = read('logseq/config.edn');
+check(/work for going places/.test(await tryKeys('go/search', ['q', 's'])), 'a two-key shortcut for Search (which only one-press keys reach): refused');
+check(/always does its own job/.test(await tryKeys('go/next-journal', ['Enter', 'Enter'])), 'Enter then Enter: refused (a fixed key)');
+check(/always does its own job/.test(await tryKeys('ui/toggle-left-sidebar', ['Shift+F10'])), 'Shift+F10 (the note menu): refused');
+check(/scroll the page|always does its own job/.test(await tryKeys('go/date', ['g', 'ArrowDown'])), 'a two-key shortcut ending in an arrow: refused');
+check(/scroll the page/.test(await tryKeys('go/date', ['g', 'End'])), 'one ending in End (which scrolls): refused, saying why');
+check(/kept for Move a note up/.test(await tryKeys('ui/text-reset', ['Alt+Shift+ArrowUp'])), 'Alt+Shift+↑ (moves favourites): kept for Move a note up');
+check(read('logseq/config.edn') === cfg0, 'nothing saved by any of these');
+// Shift with a sign is written as Logseq writes it, and Logseq's way works in thinky
+await page.locator('tr[data-a="go/all-pages"] .k-change').click();
+await page.waitForSelector('tr.k-rec .k-wait');
+await page.keyboard.press('Control+Shift+Slash');
+await page.waitForSelector('tr[data-a="go/all-pages"] .mine', { timeout: 4000 });
+check(/:go\/all-pages "mod\+shift\+\/"/.test(read('logseq/config.edn')), 'Ctrl+Shift+/ saved as Logseq writes it ("mod+shift+/", not "?")', read('logseq/config.edn'));
+await go(page, '#/journals');
+await page.mouse.click(5, 450);
+await page.keyboard.press('Control+Shift+Slash');
+await sleep(500);
+check(await page.evaluate(() => location.hash) === '#/pages', 'and pressing it opens All pages', await page.evaluate(() => location.hash));
+await go(page, '#/settings/typing');
+await page.waitForSelector('.keys-card');
+await page.locator('tr[data-a="go/all-pages"] .k-change').click();
+await page.locator('tr.k-rec [data-k="default"]').click();
+await sleep(800);
+
 console.log('Settings tabs (his pick: About and Help apart, Property display under Look)');
 const tabs = await page.locator('.set-tabs [data-tab]').allTextContents();
 check(tabs.join('|') === 'About|Notes|Safety|Look|Typing & keys|Capture|Help', 'About, Notes, Safety, Look, Typing & keys, Capture, Help', tabs.join('|'));
@@ -150,8 +280,11 @@ check(await page.locator('.set-panel:not([hidden]) .card > h2').allTextContents(
 console.log('Show attachments on this page');
 await go(page, '#/page/' + encodeURIComponent('Attach test'));
 await page.waitForSelector('.outline .blk');
-const before = read('pages/Attach test.md');
+const attBefore = read('pages/Attach test.md');
 await page.locator('.title-row [data-a="more"]').click();
+// Build 49 (his note of Nov 14): the page menu's rows have icons, like the phone's side menu
+const noIcon = await page.evaluate(() => [...document.querySelectorAll('.pop.menu li > button')].filter((b) => !b.querySelector('.m-ic svg')).map((b) => b.textContent.trim()));
+check(noIcon.length === 0, 'every row of the page ⋯ menu has an icon', noIcon.join('|'));
 await page.locator('.pop.menu button', { hasText: 'Show attachments on this page' }).click();
 await page.waitForSelector('#attbar:not([hidden])');
 const bar = () => page.locator('#attbar').textContent();
@@ -166,10 +299,21 @@ check(/3 of 3/.test(await bar()) && await inFold.count() === 1 && await inFold.i
 await page.keyboard.press('ArrowDown');
 await sleep(200);
 check(/1 of 3/.test(await bar()) && !(await page.locator('.blk', { hasText: 'inside' }).isVisible()), '↓ again: back to the first, the folded note folded again');
+// Build 49: a link typed while they're shown is counted a moment later
+await editBlock(page, 'no files here');
+await page.keyboard.press('End');
+await page.keyboard.type(' [n](../assets/new.pdf)');
+await page.keyboard.press('Escape');
+await sleep(900);
+check(/4 notes with 4 attachments/.test(await bar()) && await page.locator('.blk.att-hit').count() === 4, 'a link added meanwhile: counted and lit', await bar());
+await page.keyboard.press('Escape'); // (the selected note let go)
+await sleep(150);
 await page.keyboard.press('Escape');
 await sleep(200);
 check(await page.locator('#attbar').isHidden() && await page.locator('.blk.att-hit').count() === 0, 'Esc clears it');
-check(read('pages/Attach test.md') === before, 'the file is unchanged (nothing unfolded in it)');
+check(await page.locator('.outline .blk[title]').count() === 0, 'and the file names on the notes go too (Build 49)', await page.locator('.outline .blk[title]').count());
+check(read('pages/Attach test.md').includes('../assets/new.pdf') && read('pages/Attach test.md').includes('collapsed:: true'), 'the file has only the typed link changed (still folded)');
+write('pages/Attach test.md', attBefore);
 
 console.log('Check this folder: files, their kinds, labelled parts, the ticks lined up');
 await page.route('**/api/check', (route) => route.continue({ headers: { ...route.request().headers(), 'x-test-now': String(later) } }));
@@ -197,4 +341,27 @@ await page.screenshot({ path: SHOTS + '/t29_check.png', fullPage: true });
 
 check(!errors.length, 'no script errors', errors.join(' | '));
 await browser.close();
+
+// Build 49 (three reviewers found it): on a phone the bar sits above the "+" and above the toolbar
+console.log('phone: the attachments bar out of the way');
+write('pages/Attach test.md', attBefore);
+const ph = await open({ viewport: { width: 390, height: 800 }, touch: true });
+await go(ph.page, '#/page/' + encodeURIComponent('Attach test'));
+await ph.page.waitForSelector('.outline .blk');
+await ph.page.locator('.title-row [data-a="more"]').tap();
+await ph.page.locator('.pop.menu button', { hasText: 'Show attachments on this page' }).tap();
+await ph.page.waitForSelector('#attbar:not([hidden])');
+const box = (sel) => ph.page.locator(sel).boundingBox();
+const add = await box('#addnote');
+let ab = await box('#attbar');
+check(!add || ab.y + ab.height <= add.y, 'above the "+"', JSON.stringify([ab, add]));
+await ph.page.locator('.outline .blk .bc', { hasText: 'no files here' }).tap();
+await ph.page.waitForSelector('#toolbar:not([hidden])');
+await sleep(300);
+ab = await box('#attbar');
+const tb = await box('#toolbar');
+check(ab.y + ab.height <= tb.y, 'above the editing toolbar while typing', JSON.stringify([ab, tb]));
+await ph.page.screenshot({ path: SHOTS + '/t29_phone_attach.png' });
+check(!ph.errors.length, 'phone: no script errors', ph.errors.join(' | '));
+await ph.browser.close();
 process.exit(failures() ? 1 : 0);

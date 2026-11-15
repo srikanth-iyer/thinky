@@ -234,11 +234,19 @@ await sleep(300);
 const before = await page.evaluate(() => location.hash);
 // (a link the menu doesn't cover: since Build 48 the menu is a row longer)
 const outside = await page.evaluate(() => {
+  // (a point on a link that the menu doesn't cover: the menu grew in Builds 48 and 49)
   const m = document.querySelector('.pop.menu').getBoundingClientRect();
-  const a = [...document.querySelectorAll('#main a.pl, #main a[data-page]')].find((x) => { const r = x.getBoundingClientRect(); const off = r.bottom < m.top - 4 || r.top > m.bottom + 4 || r.right < m.left - 4 || r.left > m.right + 4; return r.height && off && r.top > 50 && r.bottom < innerHeight; });
-  if (!a) return null;
-  const r = a.getBoundingClientRect();
-  return { x: r.left + Math.min(r.width / 2, 20), y: r.top + r.height / 2, name: a.dataset.page };
+  const inMenu = (x, y) => x >= m.left - 4 && x <= m.right + 4 && y >= m.top - 4 && y <= m.bottom + 4;
+  for (const a of document.querySelectorAll('#main a.pl, #main a[data-page]')) {
+    for (const r of a.getClientRects()) {
+      if (!r.height || r.top < 50 || r.bottom > innerHeight) continue;
+      const y = r.top + r.height / 2;
+      for (const x of [r.left + 4, r.left + r.width / 2, r.right - 4]) {
+        if (!inMenu(x, y) && document.elementFromPoint(x, y)?.closest('a') === a) return { x, y, name: a.dataset.page };
+      }
+    }
+  }
+  return null;
 });
 await page.touchscreen.tap(outside.x, outside.y);
 await sleep(600);

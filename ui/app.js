@@ -15,7 +15,7 @@ import { Tabs, placeOf, parsePlace, sideNav } from './tabs.js';
 const settingsView = (...a) => import('./settings.js').then((m) => m.settingsView(...a));
 const openHistory = (...a) => import('./history.js').then((m) => m.openHistory(...a));
 import { SearchBox } from './search.js';
-import { parseChord, evChord, same } from './keys.js';
+import { parseChord, evChord, same, SEQ_MS } from './keys.js';
 import { initFileDrop } from './filedrop.js';
 import { makeChips } from './chips.js';
 import { releaseVersion, higherVersion } from './version.js';
@@ -290,7 +290,7 @@ export const DEFAULT_KEYS = {
 };
 // The actions runAction does (one-press keys with Ctrl or Alt run them anywhere, Build 48: the keys
 // set in config.edn did nothing unless a note was being typed in)
-const RUN_ACTIONS = ['go/journals', 'go/all-pages', 'go/todos', 'go/date', 'go/next-journal', 'go/prev-journal',
+export const RUN_ACTIONS = ['go/journals', 'go/all-pages', 'go/todos', 'go/date', 'go/next-journal', 'go/prev-journal',
   'sidebar/open-today-page', 'ui/toggle-left-sidebar', 'ui/toggle-wide-mode', 'editor/toggle-open-blocks',
   'editor/collapse-block-children', 'editor/expand-block-children', 'ui/text-bigger', 'ui/text-smaller', 'ui/text-reset', 'ui/refresh'];
 
@@ -478,6 +478,7 @@ class App {
     const text = this.textTa?.isConnected && document.activeElement === this.textTa; // (a page's properties box)
     tb.hidden = !(narrow && (text || (o && (o.cur !== null || o.sel))));
     tb.classList.toggle('tb-text', !!text);
+    document.documentElement.classList.toggle('tb-on', !tb.hidden); // (Build 49: what floats at the bottom moves up)
     if (tb.hidden) $('#addnote')?.classList.remove('away'); // (done typing: the "+" is back)
     const typing = !tb.hidden && !text && !!document.querySelector('textarea.ed');
     $('#topbar')?.classList.toggle('typing', typing); // (typing in a note: the bar out of the way; not for selected notes)
@@ -1888,31 +1889,31 @@ class App {
   /** The ⋯ menu beside a page's title. propsBox: its properties (renderPageProps); outline: its notes. */
   pageMenu(btn, pv, propsBox, outline) {
     const items = [];
-    if (propsBox?.edit && !propsBox.has) items.push({ label: 'Add properties', run: () => propsBox.edit() });
-    if (!pv.info.journal) items.push({ label: 'Rename…', run: () => this.renamePage(pv.info.name) });
-    items.push({ label: 'Find on this page', run: () => this.find.open() });
+    if (propsBox?.edit && !propsBox.has) items.push({ label: 'Add properties', icon: ICON.props, run: () => propsBox.edit() });
+    if (!pv.info.journal) items.push({ label: 'Rename…', icon: ICON.pen, run: () => this.renamePage(pv.info.name) });
+    items.push({ label: 'Find on this page', icon: ICON.search, run: () => this.find.open() });
     // Build 48 (he asked): the notes that link to files in assets, lit, with a count (attach.js)
-    if (outline) items.push({ label: this.attach?.on ? 'Hide attachments' : 'Show attachments on this page', run: () => this.showAttachments() });
+    if (outline) items.push({ label: this.attach?.on ? 'Hide attachments' : 'Show attachments on this page', icon: ICON.clip, run: () => this.showAttachments() });
     // its earlier versions: backups and safety copies (history.js)
-    if (outline) items.push({ label: 'History…', run: () => openHistory(this, outline) });
+    if (outline) items.push({ label: 'History…', icon: ICON.history, run: () => openHistory(this, outline) });
     // as text, OPML or HTML, to the clipboard or a file (export.js, loaded when first used)
-    if (outline) items.push({ label: 'Copy page as text…', run: () => import('./export.js').then((m) => m.exportPage(this, outline, pv)) });
+    if (outline) items.push({ label: 'Copy page as text…', icon: ICON.copyText, run: () => import('./export.js').then((m) => m.exportPage(this, outline, pv)) });
     // a leanoutliner://page/… link: opens the app right at this page (links.rs, openLink)
-    items.push({ label: 'Copy link', run: () => this.copyLink(pageLinkUrl(pv.info.name), 'Link to this page copied') });
+    items.push({ label: 'Copy link', icon: ICON.chain, run: () => this.copyLink(pageLinkUrl(pv.info.name), 'Link to this page copied') });
     // the Windows app: its file, selected in File Explorer (not on a phone)
-    if (isApp && !isAndroid && pv.info.exists) items.push({ label: 'Show file in Explorer', run: () => call('reveal_file', { name: pv.info.name }).catch((e) => this.toast(said(e), 5000)) });
+    if (isApp && !isAndroid && pv.info.exists) items.push({ label: 'Show file in Explorer', icon: ICON.folder, run: () => call('reveal_file', { name: pv.info.name }).catch((e) => this.toast(said(e), 5000)) });
     const T = this.tabs; // wide windows: tabs and two sides (tabs.js)
     if (T.on) {
       const p = this.paneOf(btn) ?? T.pane;
       const place = () => { T.activate(T.panes.indexOf(p)); return placeOf(T.tab(p)); };
-      items.push({ label: 'Open in a new tab', run: () => T.open(place()) });
-      items.push({ label: 'Open to the side', run: () => T.open(place(), 'side') });
-      if (T.panes.length > 1) items.push({ label: 'Close this side', run: () => T.closePane(T.panes.indexOf(p)) });
+      items.push({ label: 'Open in a new tab', icon: ICON.tabNew, run: () => T.open(place()) });
+      items.push({ label: 'Open to the side', icon: ICON.side, run: () => T.open(place(), 'side') });
+      if (T.panes.length > 1) items.push({ label: 'Close this side', icon: ICON.winClose, run: () => T.closePane(T.panes.indexOf(p)) });
     }
     // (wide windows on the laptop: a phone's notes use its whole width anyway)
-    if (!isAndroid && !matchMedia('(max-width: 860px)').matches) items.push({ label: this.wide ? 'Back to reading width' : 'Wide mode: use the whole width', hint: 't w', run: () => this.setWide() });
-    items.push({ label: 'Print or save as PDF', run: () => this.printPage() });
-    if (pv.info.exists) items.push({ label: 'Delete page…', danger: true, run: async () => { if (await this.deletePages([pv.info.name])) this.go('journals'); } });
+    if (!isAndroid && !matchMedia('(max-width: 860px)').matches) items.push({ label: this.wide ? 'Back to reading width' : 'Wide mode: use the whole width', icon: this.wide ? ICON.narrow : ICON.wide, hint: 't w', run: () => this.setWide() });
+    items.push({ label: 'Print or save as PDF', icon: ICON.print, run: () => this.printPage() });
+    if (pv.info.exists) items.push({ label: 'Delete page…', icon: ICON.trash, danger: true, run: async () => { if (await this.deletePages([pv.info.name])) this.go('journals'); } });
     menu(btn, items);
   }
 
@@ -2119,7 +2120,7 @@ class App {
         p.outlines = p.outlines.filter((o) => !names.some((x) => x.toLowerCase() === o.name.toLowerCase()));
         if (p.outlines.length !== had && p !== this.pane) this.draw(p); // the other side showed one: as it is now
       }
-      this.toast(`Deleted ${n} page${n === 1 ? '' : 's'}. You can restore them in Settings → Notes.`, 4000);
+      this.toast(`Deleted ${n} page${n === 1 ? '' : 's'}. You can restore them in Settings → Safety.`, 4000);
       return true;
     } catch (e) { this.toast(String(e), 6000); await this.refreshNames(); return false; }
   }
@@ -2782,8 +2783,9 @@ class App {
       if (last) { e.preventDefault(); e.shiftKey ? this.redo(last) : this.undo(last); }
       return;
     }
-    // one-press shortcuts with Ctrl or Alt (Ctrl+Alt+T…), with nothing being typed in (Build 48)
-    if (e.ctrlKey || e.metaKey || e.altKey) {
+    // one-press shortcuts with Ctrl or Alt (Ctrl+Alt+T…), with nothing being typed in (Build 48), and
+    // F1–F12 ones (Build 49: Settings' Change takes them)
+    if (e.ctrlKey || e.metaKey || e.altKey || /^F\d{1,2}$/.test(e.key)) {
       const name = RUN_ACTIONS.find((a) => act(a));
       if (name) { e.preventDefault(); this.runAction(name); return; }
     }
@@ -2796,7 +2798,7 @@ class App {
     // two-key sequences like "g j"
     const k = evChord(e);
     const now = Date.now();
-    const seq = this.seq && now - this.seq.at < 1200 ? [...this.seq.keys, k] : [k];
+    const seq = this.seq && now - this.seq.at < SEQ_MS ? [...this.seq.keys, k] : [k];
     const matches = Object.entries(this.keyMap).filter(([, keys]) => keys.some((s) => {
       const parts = s.split(' ').filter(Boolean).map(parseChord);
       return parts.length > 1 && parts.length >= seq.length && seq.every((c, n) => same(parts[n], c));
@@ -3361,7 +3363,7 @@ class App {
   }
 
   // ----- backups (Build 37, he asked Nov 6; core/src/app/backup.rs) -----
-  // Optional, off unless turned on in Settings → Notes → Backups; on the laptop only. While the app
+  // Optional, off unless turned on in Settings → Safety → Backups; on the laptop only. While the app
   // is open it checks once an hour (and a minute after the folder opens) whether a backup is due
   // (once a day or once a week); the core makes one only if something changed. Each device keeps
   // its own choice (the backup folder is a folder on that computer): localStorage "backup".

@@ -567,6 +567,7 @@ export class Tabs {
     const tab = e.target.closest?.('#histbar .tab');
     if (tab && !e.ctrlKey && !e.metaKey && !e.altKey && this.tabKey(e, tab)) { e.preventDefault(); e.stopPropagation(); return; }
     if (!(e.ctrlKey || e.metaKey) || e.altKey || !this.on) return;
+    if (this.app.recordingKeys?.()) return; // (Settings is waiting for new keys: Ctrl+T, Ctrl+W… are for it, Build 49)
     if (!document.getElementById('search').hidden || document.querySelector('.modal-back, .pop.menu, .pop.datepick')) return;
     const p = this.pane, n = p.tabs.length;
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;

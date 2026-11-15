@@ -1206,6 +1206,16 @@ impl App {
     /// formats, comma properties) mean the index is made again, as when the folder opens (`load`:
     /// from the index cache, written first, so only files new to it are read); the others are simply
     /// taken. True when any changed.
+    /// After the app wrote config.edn itself (`text` = what the file holds now): its own change needs
+    /// nothing from a rescan, so the file's stamp is taken, but only when the settings in memory now equal
+    /// the file's. A change made elsewhere that its write carried along (it re-reads the file first) is
+    /// left for the next rescan to take in (Build 49: it was stamped away and missed until a restart).
+    fn own_config_written(&mut self, text: &str) {
+        if Config::from_edn(text) == self.vault.config {
+            self.config_stamp = config_stamp(&self.root);
+        }
+    }
+
     fn take_config(&mut self, stamp: Option<Stamp>, cfg: Config) -> bool {
         let c = &self.vault.config;
         if *c == cfg {
@@ -1976,7 +1986,7 @@ impl App {
             return Err("That merge can't be undone any more.".into());
         }
         let Some(u) = self.last_merge.take() else { return Err("That merge can't be undone any more.".into()) };
-        let later = |what: &str| format!("{what} changed since the merge, so it can't be undone from here. “{}” is in the bin (Settings → Notes → Deleted pages).", u.from);
+        let later = |what: &str| format!("{what} changed since the merge, so it can't be undone from here. “{}” is in the bin (Settings → Safety → Deleted pages).", u.from);
         for (rel, _, after) in &u.files {
             if !matches!(read_text(&self.root.join(rel)), Ok(Some(t)) if t == *after) {
                 return Err(later(&format!("“{}”", self.vault.title_from_path(rel).0)));
@@ -2006,7 +2016,7 @@ impl App {
             let path = self.root.join("logseq").join("config.edn");
             if let Ok(true) = write_atomic_checked(&path, before, Expect::Bytes(after.as_bytes())) {
                 self.vault.config.favorites = Config::from_edn(before).favorites;
-                self.config_stamp = config_stamp(&self.root);
+                self.own_config_written(before);
             }
         }
         if !failed.is_empty() {
@@ -2252,7 +2262,7 @@ impl App {
         match rewrite(&path, "logseq/config.edn", 2, edit) {
             Ok(Rewrite::Done(text, out)) => {
                 self.vault.config.favorites = Config::from_edn(&out).favorites;
-                self.config_stamp = config_stamp(&self.root); // (its own change: nothing for a rescan)
+                self.own_config_written(&out);
                 Some((text, out))
             }
             Ok(Rewrite::Left(_)) => None,
@@ -2300,7 +2310,8 @@ impl App {
         };
         let text = match rewrite(&path, "logseq/config.edn", 2, edit)? {
             Rewrite::Done(_, out) => {
-                self.config_stamp = config_stamp(&self.root); // (its own change: nothing for a rescan)
+                self.vault.config.favorites = Config::from_edn(&out).favorites;
+                self.own_config_written(&out);
                 out
             }
             Rewrite::Left(Some(out)) => out,
@@ -2340,8 +2351,8 @@ impl App {
         };
         match rewrite(&path, "logseq/config.edn", 2, edit)? {
             Rewrite::Done(_, text) => {
-                self.config_stamp = config_stamp(&self.root); // (its own change: nothing for a rescan)
                 self.vault.config.shortcuts = Config::from_edn(&text).shortcuts;
+                self.own_config_written(&text);
             }
             // nothing to change: already so
             Rewrite::Left(cur) => self.vault.config.shortcuts = Config::from_edn(cur.as_deref().unwrap_or("{}")).shortcuts,
@@ -2375,7 +2386,6 @@ impl App {
             Ok(Some(text))
         };
         let Rewrite::Done(_, text) = rewrite(&path, "logseq/config.edn", 2, edit)? else { return Err(CONFIG_BUSY.into()) };
-        self.config_stamp = config_stamp(&self.root); // (its own change: nothing for a rescan)
         let fresh = Config::from_edn(&text);
         let c = &mut self.vault.config;
         c.favorites = fresh.favorites;
@@ -2384,6 +2394,7 @@ impl App {
         c.capture_today = fresh.capture_today;
         c.capture_redirect = fresh.capture_redirect;
         c.capture_page = fresh.capture_page;
+        self.own_config_written(&text);
         Ok(())
     }
 

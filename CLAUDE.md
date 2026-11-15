@@ -549,6 +549,32 @@ other). "Show attachments on this page" (page ⋯ menu, command list): `ui/attac
 outlines, rows `.att-hit`/`.att-cur` repainted after `render`/`drawMore` (`paint`, by block object), `#attbar` fixed at the
 bottom, ↑/↓ (app.js `onKey`, nothing selected) step and reveal a hidden one as find does (`unreveal`), Esc / `closeTop` /
 `draw` / tab changes close it.
+Build 49 (0.5.10; three independent reviews of Build 48 plus a fourth that checked the one-reviewer findings, and his
+picks and note of Nov 14; tested by t29_build48, core tests/features.rs `shortcuts_change_in_place`,
+`a_change_made_elsewhere_survives_the_apps_own_config_write`): ← / → on selected notes = Logseq's `open-selected-block!`
+(edit the first / last picked note, caret 0 / end; not their lit sub-notes); Ctrl+↑ / Ctrl+↓ with nothing selected =
+Logseq's `collapse!` / `expand!` (`foldAll`: of the shown notes with sub-notes, the deepest open level folds / the top-most
+folded level opens); `keepSelShown` after fold all (a selected note now hidden → its nearest shown parent). F1–F12 run
+`RUN_ACTIONS` too (app.js onKey). Settings' Change (`recordKeys`): listens only while its row shows (`gone()`: off the
+page or another Settings tab; hashchange cancels), `app.recordingKeys()` makes tabs.js's Ctrl+T/W/Tab stand aside, Tab /
+Shift+Tab and Enter / Space on the row's buttons pass through, focus to the row then back to its Change; `refuse(why)`:
+any part in `FIXED_KEYS` (now with shift+f10, contextmenu), `KEPT_FOR` (alt+shift+up/down only for move-block), a
+sequence for an action not in `RUN_ACTIONS` (act()/keyIs match one-press keys only) or with a part in `SCROLLS`
+(onKey's scroll keys return before the sequence code); `app.rescan()` before the clash check; the action saved first,
+then the others give their keys up. One key per action (his pick, Nov 14: no "Add a key"). keys.js: `evChord.base` =
+the key under Shift as Logseq names it (`BASE`: Slash "/", Minus "dash", Equal "equals", digits; e.code), `same` matches
+key or base, `chordText` writes the base ("mod+shift+/", Logseq can't read "?"); `SEQ_MS` = 1200 for both. edn.rs: `#_`
+reads on to a real form, so `#_#_` drops two (EDN spec, tools.reader, Logseq); `set_entry` removal: the entry plus its
+own same-line comment, the room before it only when that's blank, else its own line (indent and line break); insertion
+after the last entry's comment; `set_path` uses the file's line end and a new line after a comment. app.rs
+`own_config_written(text)`: the stamp is taken only when memory equals the file, else the next rescan takes the outside
+change (set_shortcut, favourites, reorder, edit_config, merge undo). src-tauri watch.rs `start(root, dirs, config, …)`:
+the `logseq` folder watched on its own, not recursively, `is_config` (Windows: subtree 0; Linux/Android: its own wd).
+attach.js: `again(o)` (from `paint` and `markDirty`, 400 ms) asks `asset_links` again for an outline whose words changed
+and recounts (current hit kept), tips set with `data-att-tip` and removed; app.css `#attbar` 76px up on phones, 53px with
+`html.tb-on` (set by `updateToolbar`). The page ⋯ menu: `menu()` items' `icon` (`.m-icon`, `.m-ic`, 17px, `--icon-ink`;
+dom.js `pen history copyText folder tabNew wide narrow print trash clip chain`). Stale locations fixed: Send feedback
+under Help, the bin under Safety (start.rs tour, README, site, app.js toast, settings.js dialog, app.rs merge undo).
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

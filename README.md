@@ -58,7 +58,7 @@ to how everything works, and `docs/ARCHITECTURE.md` the map; read them before ch
 
 ## Feedback and problems
 
-Use **Settings › About › Send feedback** in the app, or open an issue:
+Use **Settings › Help › Send feedback** in the app, or open an issue:
 https://github.com/srikanth-iyer/thinky/issues. Security problems: please see `SECURITY.md`.
 
 ## Licence

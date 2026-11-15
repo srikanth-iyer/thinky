@@ -1,16 +1,17 @@
-// Settings, in tabs so nothing needs a long scroll: Notes (folder and its health check, with pictures
-// nothing uses; deleted pages; safety copies), Look (looks, text size, link colour, page links, fonts), Capture
-// (quick capture; on Windows also the browser button and the shortcut key); Writing holds the keys (Build 40)
-// (send feedback, problems log, version, updates). The tab shows in the address (#/settings/look) and the last one
+// Settings, in tabs so nothing needs a long scroll (Build 48's): About (version, updates, what's new),
+// Notes (the folder and Check this folder), Safety (deleted pages and pictures, safety copies, backups),
+// Look (looks, text size, link colour, page links, property display), Typing & keys (spelling; the
+// laptop's keyboard shortcuts), Capture (quick capture; on Windows also the browser button and the
+// shortcut key), Help (send feedback, problems log). The tab shows in the address (#/settings/look) and the last one
 // is remembered.
 
 import { call, store, nowTime, isApp, isAndroid, assetUrl, today } from './api.js';
 import { esc, PROP_SHOWS, MARK_COLORS, builtinHidden, propsHtmlAs, renderBlock, whenText } from './render.js';
 import { h, ICON, BRAND, plural, SETTINGS_TABS, motionOn } from './dom.js';
 import { promptBox, confirmBox } from './popups.js';
-import { SKINS, accessCard, lookName, lookState } from './app.js';
+import { SKINS, accessCard, lookName, lookState, RUN_ACTIONS } from './app.js';
 import { fitChips } from './views.js';
-import { keyHtml, chordText, sameKey } from './keys.js';
+import { keyHtml, chordText, sameKey, SEQ_MS } from './keys.js';
 import { madeBy, showBinPage } from './history.js';
 import { VERSION } from './version.js';
 import { BUILD } from './build.js';
@@ -328,7 +329,7 @@ function picturesBox(app, r) {
     if (!k) return;
     const ok = await confirmBox({
       title: k === 1 ? 'Move this picture to the bin?' : `Move these ${k} pictures to the bin?`,
-      body: `${k === 1 ? 'It goes' : 'They go'} to the bin, <code>logseq/.recycle</code> in your notes folder (where deleted pages go), so nothing is lost; there ${k === 1 ? 'its name says' : 'each one’s name says'} where it came from (it starts with “assets%2F”). To bring one back: Settings → Notes → Deleted pages and pictures → Pictures → Put back. A picture a note has started using since the check stays where it is.`,
+      body: `${k === 1 ? 'It goes' : 'They go'} to the bin, <code>logseq/.recycle</code> in your notes folder (where deleted pages go), so nothing is lost; there ${k === 1 ? 'its name says' : 'each one’s name says'} where it came from (it starts with “assets%2F”). To bring one back: Settings → Safety → Deleted pages and pictures → Pictures → Put back. A picture a note has started using since the check stays where it is.`,
       ok: 'Move to the bin',
     });
     if (!ok) return;
@@ -342,7 +343,7 @@ function picturesBox(app, r) {
       r.unused_pictures = r.unused_pictures.filter(([p]) => !moved.has(p));
       r.unused_pictures_bytes = r.unused_pictures.reduce((n, [, b]) => n + b, 0);
       const left = res.skipped.length;
-      box.innerHTML = `<h4>Pictures nothing uses</h4><p class="note">✓ Moved ${plural(m, 'picture')} to the bin (<code>logseq/.recycle</code>).</p>
+      box.innerHTML = `<h4>Pictures nothing uses</h4>${okLine(`Moved ${plural(m, 'picture')} to the bin (<code>logseq/.recycle</code>).`)}
         ${left ? `<p class="note"><b>${left} stayed where ${left === 1 ? 'it was' : 'they were'}:</b></p>${list(res.skipped.map(([p, why]) => `${p}: ${why}`))}` : ''}`;
       app.toast(`Moved ${plural(m, 'picture')} to the bin.`);
       app.binChanged?.();
@@ -1189,7 +1190,12 @@ const FIXED = [
   ['While typing', [['/', 'Commands'], ['[[', 'Link to a page'], ['((', 'Block reference'], ['#', 'Tag'], ['::', 'Property']]],
 ];
 const FIXED_KEYS = ['enter', 'shift+enter', 'tab', 'shift+tab', 'mod+enter', 'mod+z', 'mod+y', 'mod+shift+z', 'mod+b', 'mod+i', 'mod+shift+v', 'mod+c', 'mod+x', 'mod+v',
-  'esc', 'delete', 'backspace', 'up', 'down', 'left', 'right', 'shift+up', 'shift+down', 'mod+t', 'mod+w', 'mod+tab', 'mod+shift+tab', 'mod+pageup', 'mod+pagedown'];
+  'esc', 'delete', 'backspace', 'up', 'down', 'left', 'right', 'shift+up', 'shift+down', 'mod+t', 'mod+w', 'mod+tab', 'mod+shift+tab', 'mod+pageup', 'mod+pagedown',
+  'shift+f10', 'contextmenu']; // (the note menu's keys, Build 49)
+// keys kept for one action: Alt+Shift+↑ / ↓ also move a favourite in the sidebar (Build 49)
+const KEPT_FOR = { 'alt+shift+up': 'editor/move-block-up', 'alt+shift+down': 'editor/move-block-down' };
+// (keys that scroll the page are taken before a two-key shortcut is: app.js onKey)
+const SCROLLS = ['space', 'up', 'down', 'pageup', 'pagedown', 'home', 'end'];
 const keyLabel = (action) => KEY_ROWS.flatMap(([, rows]) => rows).find(([, a]) => a === action)?.[0] ?? action;
 
 function keysCard(app) {
@@ -1202,7 +1208,7 @@ function keysCard(app) {
     <td class="kc"><button type="button" class="btn ghost small k-change" aria-label="Change the keys for ${esc(label)}">Change</button></td></tr>`;
   const groups = (list, fn, cols) => list.map(([g, rows]) => `<tbody><tr class="kg"><th colspan="${cols}" scope="colgroup">${esc(g)}</th></tr>${rows.map(fn).join('')}</tbody>`).join('');
   card.innerHTML = `<h2>Keyboard shortcuts</h2>
-    <p class="note">Change a shortcut: press <b>Change</b>, then the new keys (with Ctrl or Alt, or two keys one after the other like <kbd>g</kbd> <kbd>j</kbd>). It’s saved in <code>logseq/config.edn</code> (<code>:shortcuts</code>), so Logseq uses the same keys.</p>
+    <p class="note">Change a shortcut: press <b>Change</b>, then the new keys (with Ctrl or Alt, an F-key, or for going places two keys one after the other like <kbd>g</kbd> <kbd>j</kbd>). It’s saved in <code>logseq/config.edn</code> (<code>:shortcuts</code>), where Logseq reads the ones it has too (a few do slightly different things there).</p>
     <table class="keys keys-change">${groups(KEY_ROWS, row, 3)}</table>
     <h3 class="keys-h">Fixed keys</h3>
     <table class="keys keys-fixed">${groups(FIXED, ([k, what]) => `<tr><td>${esc(what)}</td><td class="kk">${k.split(' / ').map((x) => x.split(' ').map((y) => `<kbd>${esc(y)}</kbd>`).join(' ')).join(' / ')}</td></tr>`, 2)}</table>`;
@@ -1223,71 +1229,106 @@ function recordKeys(app, card, tr) {
   const kk = tr.querySelector('.kk'), kc = tr.querySelector('.kc');
   const was = [kk.innerHTML, kc.innerHTML];
   tr.classList.add('k-rec');
-  kk.innerHTML = '<span class="k-wait" role="status">Press the new keys… <span class="note">(Esc: cancel)</span></span>';
+  kk.innerHTML = '<span class="k-wait" role="status" tabindex="-1">Press the new keys… <span class="note">(Esc: cancel)</span></span>';
   const isDefault = !(app.summary?.config?.shortcuts || []).some(([x]) => x === a);
   kc.innerHTML = `<span class="k-acts"><button type="button" class="btn ghost small" data-k="default"${isDefault ? ' disabled' : ''}>Back to default</button><button type="button" class="btn ghost small" data-k="off">Turn off</button><button type="button" class="btn ghost small" data-k="cancel">Cancel</button></span>`;
+  // the keyboard goes to the row (it says what to do); Tab then reaches its buttons (Build 49)
+  kk.querySelector('.k-wait').focus({ preventScroll: true });
   let first = null, firstT = 0;
+  // Build 49 (three reviewers found it): it listens only while this row waits for keys, and stops the
+  // moment Settings leaves the screen (another page, another tab of Settings), so keys pressed later
+  // in a note are never taken as the new shortcut. app.recordingKeys() (true while the row waits and
+  // shows) tells tabs.js's own keys (Ctrl+T, Ctrl+W, Ctrl+Tab) to stand aside meanwhile.
+  const listen = () => { document.addEventListener('keydown', onKey, true); app.recordingKeys = () => !gone(); };
+  const unlisten = () => { document.removeEventListener('keydown', onKey, true); app.recordingKeys = null; };
+  const away = () => cancel();
+  window.addEventListener('hashchange', away);
   const done = () => {
-    document.removeEventListener('keydown', onKey, true);
+    unlisten();
+    window.removeEventListener('hashchange', away);
     tr.classList.remove('k-rec');
     tr.cancel = null;
   };
-  const cancel = () => { done(); [kk.innerHTML, kc.innerHTML] = was; };
+  const changeBtn = (row) => row?.querySelector('.k-change')?.focus({ preventScroll: true });
+  const cancel = () => {
+    done();
+    if (!tr.isConnected) return;
+    [kk.innerHTML, kc.innerHTML] = was;
+    if (tr.getClientRects().length) changeBtn(tr);
+  };
   tr.cancel = cancel;
   const save = async (keys) => {
     done();
     kk.innerHTML = '<span class="note">Saving…</span>';
     try {
-      // another action had these keys and he said yes: it gives them up first
-      if (keys?.length) {
-        for (const [other, oks] of Object.entries(app.keyMap)) {
-          if (other === a || !oks.some((k) => sameKey(k, keys[0]))) continue;
-          const left = oks.filter((k) => !sameKey(k, keys[0]));
-          app.takeShortcuts(await call('set_shortcut', { action: other, keys: left }));
-        }
-      }
+      // (the actions that had these keys, before this one takes them)
+      const others = keys?.length ? Object.entries(app.keyMap).filter(([o, oks]) => o !== a && oks.some((k) => sameKey(k, keys[0]))) : [];
       app.takeShortcuts(await call('set_shortcut', { action: a, keys }));
+      // then, he said yes, they give them up (Build 49: this one first, so a save that fails leaves no
+      // action without keys)
+      for (const [other, oks] of others) {
+        app.takeShortcuts(await call('set_shortcut', { action: other, keys: oks.filter((k) => !sameKey(k, keys[0])) }));
+      }
       app.toast(keys === null ? `${label}: back to its usual keys` : keys.length ? `${label}: saved` : `${label}: turned off`, 2000);
     } catch (err) { app.toast(said(err), 6000); }
-    card.replaceWith(keysCard(app));
+    if (!card.isConnected) return;
+    const fresh = keysCard(app);
+    card.replaceWith(fresh);
+    changeBtn(fresh.querySelector(`tr[data-a="${CSS.escape(a)}"]`)); // (the keyboard back on this row's Change)
+  };
+  const refuse = (why) => {
+    kk.innerHTML = `<span class="err" role="status">${why} Press other keys, or Esc.</span>`;
+    listen();
   };
   const take = async (k) => {
     // the same as now: nothing to do
     if (keysOf().some((x) => sameKey(x, k))) { cancel(); return; }
-    if (FIXED_KEYS.some((f) => sameKey(f, k))) {
-      kk.innerHTML = `<span class="err">${keyHtml(k)} always does its own job (see Fixed keys). Press other keys, or Esc.</span>`;
-      document.addEventListener('keydown', onKey, true);
-      return;
-    }
+    // Build 49 (checked by a reviewer each): keys that wouldn't work, or would take another job's
+    const parts = k.split(' ');
+    const fixed = parts.find((p) => FIXED_KEYS.some((f) => sameKey(f, p)));
+    if (fixed) return refuse(`${keyHtml(fixed)} always does its own job (see Fixed keys).`);
+    const kept = Object.keys(KEPT_FOR).find((f) => sameKey(f, k));
+    if (kept && KEPT_FOR[kept] !== a) return refuse(`${keyHtml(kept)} also moves a favourite in the sidebar, so it’s kept for ${esc(keyLabel(KEPT_FOR[kept]))}.`);
+    if (parts.length > 1 && !RUN_ACTIONS.includes(a)) return refuse('Two keys one after the other work for going places, folding and the window; this one needs Ctrl or Alt, or an F-key.');
+    if (parts.length > 1 && parts.some((p) => SCROLLS.includes(p.split('+').pop()))) return refuse('Arrows, Space, Home, End and Page Up / Down scroll the page, so they can’t start or end two-key shortcuts.');
+    // (config.edn may have changed elsewhere since this window read it: read it again first)
+    unlisten();
+    await app.rescan?.().catch(() => {});
+    if (gone()) { cancel(); return; }
     const other = Object.entries(app.keyMap).find(([x, ks]) => x !== a && ks.some((y) => sameKey(y, k)));
     if (other) {
-      document.removeEventListener('keydown', onKey, true);
       const ok = await confirmBox({ title: 'These keys are taken', body: `${keyHtml(k)} is already used for <b>${esc(keyLabel(other[0]))}</b>. Use ${keyHtml(k)} for <b>${esc(label)}</b> instead? ${esc(keyLabel(other[0]))} then loses these keys.`, ok: 'Use them here' });
-      if (!ok) { cancel(); return; }
+      if (!ok || gone()) { cancel(); return; }
     }
     save([k]);
   };
   const keysOf = () => app.keyMap[a] || [];
+  // (off the screen: another page, or another tab of Settings, which only hides this one)
+  const gone = () => !tr.isConnected || !tr.getClientRects().length;
   const onKey = (e) => {
+    if (gone()) { cancel(); return; } // (Settings left the screen: let the key be)
     if (e.isComposing) return;
+    const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+    // Tab / Shift+Tab move to the row's buttons, and Enter or Space press the one that has the keyboard
+    if (plain && e.key === 'Tab') return;
+    if (plain && !e.shiftKey && (e.key === 'Enter' || e.key === ' ') && e.target.closest?.('button') && tr.contains(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
-    const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
     if (e.key === 'Escape' && plain && !e.shiftKey) { cancel(); return; }
     const c = chordText(e);
     if (!c) return; // (Ctrl, Shift or Alt alone: wait for the key)
     // a key without Ctrl or Alt (and not F1–F12): the first of two, like "g j"
     const fkey = /^f\d{1,2}$/.test(c.split('+').pop());
     if (plain && !fkey) {
-      if (first && Date.now() - firstT < 2000) { const k = `${first} ${c}`; first = null; document.removeEventListener('keydown', onKey, true); take(k); return; }
+      if (first && Date.now() - firstT < SEQ_MS) { const k = `${first} ${c}`; first = null; unlisten(); take(k); return; }
       first = c; firstT = Date.now();
       kk.innerHTML = `<span class="k-wait" role="status">${keyHtml(c)} then… <span class="note">(the second key; Esc: cancel)</span></span>`;
       return;
     }
-    document.removeEventListener('keydown', onKey, true);
+    unlisten();
     take(c);
   };
-  document.addEventListener('keydown', onKey, true);
+  listen();
   kc.querySelector('.k-acts').addEventListener('click', (e) => {
     const k = e.target.closest('[data-k]')?.dataset.k;
     if (k === 'cancel') cancel();

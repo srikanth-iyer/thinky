@@ -153,8 +153,11 @@ impl<'a> P<'a> {
                         Edn::Set(self.seq(b'}')?)
                     }
                     b'_' => {
+                        // the next real form is dropped; a "#_" right after it drops one of its own,
+                        // so "#_#_ a b" drops both (EDN's rule, as Clojure and Logseq read it; Build 49:
+                        // it dropped only one, and a shortcut written after it landed in the wrong place)
                         self.i += 2;
-                        self.form()?;
+                        while self.form()?.is_none() {}
                         self.depth -= 1;
                         return Some(None);
                     }
@@ -319,8 +322,12 @@ pub fn set_path(text: &str, path: &[&str], value: &str) -> Option<String> {
                 let close = node.end - 1;
                 let body = &text[node.start..close];
                 let at = node.start + body.trim_end().len();
-                let sep = if depth == 0 { "\n " } else { " " };
-                let lead = if body.trim_end().ends_with('{') { "" } else { sep };
+                // (the file's own line ends, Build 49; and a new line when the last one ends in a
+                // comment, which would otherwise swallow what's added after it)
+                let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
+                let last_line = &text[text[..at].rfind('\n').map_or(0, |i| i + 1)..at];
+                let sep = if depth == 0 { format!("{nl} ") } else if last_line.contains(';') { format!("{nl} ") } else { " ".to_string() };
+                let lead = if body.trim_end().ends_with('{') && !last_line.contains(';') { "" } else { sep.as_str() };
                 return Some(format!("{}{}{}{}", &text[..at], lead, built, &text[at..]));
             }
         }
@@ -389,13 +396,42 @@ pub fn set_entry(text: &str, map_key: &str, key: &str, value: Option<&str>) -> O
             Some(format!("{}{}{}", &text[..n.start], v, &text[n.end..]))
         }
         (Some(k), None) => {
-            let (from, to) = if k > 0 {
-                (pairs[k - 1].1.end, pairs[k].1.end)
-            } else if pairs.len() > 1 {
-                (pairs[0].0.start, pairs[1].0.start)
+            // Build 49 (three reviewers found it): an entry goes with its own comment at the end of its
+            // line, and only that; a comment that belongs to the entry before it stays. The room taken
+            // with it: before it when that room is only spaces and line breaks (it was laid out for it),
+            // else its own line's indent and line break, else, for the first one, the room after it.
+            let (key, val) = (&pairs[k].0, &pairs[k].1);
+            let mut to = val.end;
+            let line_end = text[to..].find('\n').map_or(text.len(), |i| to + i);
+            let rest = text[to..line_end].trim_end_matches('\r');
+            if rest.trim_start().starts_with(';') {
+                to += rest.len();
+            }
+            let blank = |t: &str| t.chars().all(|c| c.is_whitespace() || c == ',');
+            let from;
+            if k > 0 && blank(&text[pairs[k - 1].1.end..key.start]) {
+                from = pairs[k - 1].1.end;
             } else {
-                (pairs[0].0.start, pairs[0].1.end)
-            };
+                // its own line: from the line's start; and its line break goes too when the line holds
+                // nothing else
+                let line_start = text[..key.start].rfind('\n').map_or(0, |i| i + 1);
+                if line_start > map.start && blank(&text[line_start..key.start]) {
+                    from = line_start;
+                    if text[to..].starts_with("\r\n") {
+                        to += 2;
+                    } else if text[to..].starts_with('\n') {
+                        to += 1;
+                    }
+                } else {
+                    from = key.start;
+                    // (the first one on the map's own line: the room after it goes, up to the next)
+                    if let Some((next, _)) = pairs.get(k + 1) {
+                        if blank(&text[to..next.start]) {
+                            to = next.start;
+                        }
+                    }
+                }
+            }
             Some(format!("{}{}", &text[..from], &text[to..]))
         }
         (None, None) => Some(text.to_string()),
@@ -405,6 +441,14 @@ pub fn set_entry(text: &str, map_key: &str, key: &str, value: Option<&str>) -> O
                 // an empty map: inside its braces
                 return Some(format!("{}{}{}", &text[..map.start + 1], entry, &text[map.start + 1..]));
             };
+            // after the last entry's own comment, if its line has one (Build 49: the comment stays with it)
+            let mut after = last.end;
+            let line_end = text[after..].find('\n').map_or(text.len(), |i| after + i);
+            let rest = text[after..line_end].trim_end_matches('\r');
+            let commented = rest.trim_start().starts_with(';');
+            if commented {
+                after += rest.len();
+            }
             // the room before the last entry, if it starts a line: the same room before the new one
             let first = &pairs[pairs.len() - 1].0;
             let line_start = text[..first.start].rfind('\n').map_or(0, |i| i + 1);
@@ -416,10 +460,14 @@ pub fn set_entry(text: &str, map_key: &str, key: &str, value: Option<&str>) -> O
                 // one entry on the map's own line ("{:a b"): line the new one up under it
                 let col = text[line_start..first.start].chars().count();
                 format!("{nl}{}", " ".repeat(col))
+            } else if commented {
+                // (a one-line map whose last entry has a comment: the new one on a line of its own)
+                let col = text[line_start..first.start].chars().count();
+                format!("{nl}{}", " ".repeat(col))
             } else {
                 " ".to_string()
             };
-            Some(format!("{}{}{}{}", &text[..last.end], sep, entry, &text[last.end..]))
+            Some(format!("{}{}{}{}", &text[..after], sep, entry, &text[after..]))
         }
     }
 }

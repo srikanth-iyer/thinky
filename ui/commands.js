@@ -89,7 +89,7 @@ export function commandList(app, ed) {
     add('Page', 'fold-all', 'Fold or unfold all notes', () => app.runAction('editor/toggle-open-blocks'), { key: 'editor/toggle-open-blocks', also: 'collapse expand' });
     add('Page', 'fold-every', 'Fold every note', () => app.runAction('editor/collapse-block-children'), { key: 'editor/collapse-block-children', also: 'collapse' });
     add('Page', 'unfold-every', 'Unfold every note', () => app.runAction('editor/expand-block-children'), { key: 'editor/expand-block-children', also: 'expand open' });
-    add('Page', 'attachments', 'Show attachments on this page', () => app.showAttachments(), { also: 'files assets pictures pdf' });
+    add('Page', 'attachments', app.attach?.on ? 'Hide attachments' : 'Show attachments on this page', () => app.showAttachments(), { also: 'files assets pictures pdf show attachments' });
   }
 
   // ----- the note being edited, or the notes selected -----

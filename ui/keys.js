@@ -29,13 +29,20 @@ export const parseChord = (s) => {
   const key = parts.pop();
   return { key, mod: parts.includes('mod') || parts.includes('ctrl') || parts.includes('meta'), shift: parts.includes('shift'), alt: parts.includes('alt') };
 };
-export const evChord = (e) => ({ key: KEYNAME[e.key.toLowerCase()] ?? e.key.toLowerCase(), mod: e.ctrlKey || e.metaKey, shift: e.shiftKey, alt: e.altKey });
-export const same = (a, b) => a.key === b.key && a.mod === b.mod && a.shift === b.shift && a.alt === b.alt;
+// With Shift, the key that was pressed, as Logseq names it ("shift+/", "shift+1", "shift+dash"), next to
+// the sign it typed ("?", "!", "_"): Logseq writes the first and can't read the second (Build 49)
+const BASE = { Slash: '/', Minus: 'dash', Equal: 'equals' };
+const baseOf = (e) => (!e.shiftKey ? undefined : BASE[e.code] ?? /^Digit(\d)$/.exec(e.code ?? '')?.[1]);
+export const evChord = (e) => ({ key: KEYNAME[e.key.toLowerCase()] ?? e.key.toLowerCase(), base: baseOf(e), mod: e.ctrlKey || e.metaKey, shift: e.shiftKey, alt: e.altKey });
+// (a key written either way matches: "shift+?" as thinky wrote it before Build 49, "shift+/" as Logseq does)
+export const same = (a, b) => (a.key === b.key || (a.base !== undefined && a.base === b.key) || (b.base !== undefined && b.base === a.key)) && a.mod === b.mod && a.shift === b.shift && a.alt === b.alt;
+/** How long a two-key shortcut ("g j") waits for its second key (app.js, and Settings' Change). */
+export const SEQ_MS = 1200;
 /** A key press in Logseq's notation, as config.edn keeps it ("mod+alt+t"); '' for a modifier alone. */
 export function chordText(e) {
   const c = evChord(e);
   if (['control', 'shift', 'alt', 'meta', 'altgraph', 'os', 'dead', 'unidentified', 'process'].includes(c.key)) return '';
-  return [c.mod && 'mod', c.alt && 'alt', c.shift && 'shift', c.key].filter(Boolean).join('+');
+  return [c.mod && 'mod', c.alt && 'alt', c.shift && 'shift', c.base ?? c.key].filter(Boolean).join('+');
 }
 /** Do two keys (Logseq's notation; a sequence "g j" is one key) mean the same presses? */
 export function sameKey(a, b) {

@@ -1384,7 +1384,7 @@ export class Outline {
     ta.rows = 1;
     ta.value = shown;
     ta.setAttribute('autocapitalize', 'sentences');
-    ta.spellcheck = store.get('spellcheck', true); // (Settings → Look; the system's own spelling check)
+    ta.spellcheck = store.get('spellcheck', true); // (Settings → Typing & keys; the system's own spelling check)
     ta.setAttribute('aria-label', 'Block text');
     div.querySelector('.bc').replaceWith(ta);
     div.classList.remove('marker-done');
@@ -1784,13 +1784,26 @@ export class Outline {
     if (mod && k === 'y') { this.app.redo(this); return true; }
     if (this.app.keyIs(e, 'editor/move-block-up')) { this.move(lo, -1); return true; }
     if (this.app.keyIs(e, 'editor/move-block-down')) { this.move(lo, 1); return true; }
-    // Build 48 (he asked): the shortcuts set in config.edn work with notes selected too; fold all and
-    // Ctrl+↑ / Ctrl+↓ act on these notes, ← folds and → unfolds them (as in a file tree; a note with
-    // nothing to fold: nothing happens, his pick); the app's other one-press keys run (app.js onKey)
+    // Build 48 (he asked): the shortcuts set in config.edn work with notes selected too: fold all (the
+    // whole page, as Logseq's toggle-open), Ctrl+↑ / Ctrl+↓ fold / unfold the selected notes; the app's
+    // other one-press keys run (app.js onKey). Build 49 (his pick, Nov 14): ← / → start typing in the
+    // first / last selected note, the text cursor at its start / end, as Logseq does (editor.cljs
+    // open-selected-block!); in Build 48 they folded
     if (this.app.keyIs(e, 'editor/toggle-open-blocks')) { this.toggleAll(); return true; }
     if (this.app.keyIs(e, 'editor/collapse-block-children')) { this.foldSel(true); return true; }
     if (this.app.keyIs(e, 'editor/expand-block-children')) { this.foldSel(false); return true; }
-    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !mod && !e.altKey && !e.shiftKey) { this.foldSel(e.key === 'ArrowLeft'); return true; }
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !mod && !e.altKey && !e.shiftKey) {
+      // (the first / last of the notes picked, as Logseq's first / last selected block; not a picked
+      // note's sub-notes, which are lit with it)
+      const lo = Math.min(this.sel.a, this.sel.b), hi = Math.max(this.sel.a, this.sel.b), hid = this.hiddenSet();
+      const shown = []; for (let j = lo; j <= hi; j++) if (!hid.has(j)) shown.push(j);
+      const left = e.key === 'ArrowLeft';
+      const i = left ? shown[0] : shown[shown.length - 1];
+      if (i === undefined) return true;
+      this.clearSel();
+      this.edit(i, left ? 0 : 'end');
+      return true;
+    }
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !mod && !e.altKey) {
       const dir = e.key === 'ArrowUp' ? -1 : 1;
       if (e.shiftKey) this.extendBy(dir);
@@ -2542,12 +2555,29 @@ export class Outline {
     }
     this.paintSel();
   }
-  /** Ctrl+↑ / Ctrl+↓ with nothing selected or typed in: every note on the page folded / unfolded. */
+  /** Ctrl+↑ / Ctrl+↓ with nothing selected or typed in: one level a press, as Logseq does (Build 49, his
+   *  pick; editor.cljs collapse! / expand!). Of the notes showing that have sub-notes, fold the deepest
+   *  level still open, or unfold the top-most level that's folded. */
   foldAll(fold) {
-    const js = [];
-    for (let i = this.start; i < this.end; i++) js.push(i);
     this.stopEdit();
-    this.foldNotes(js, fold);
+    const hid = this.hiddenSet(), js = [];
+    for (let i = this.start; i < this.end; i++) {
+      if (i !== this.root && !hid.has(i) && this.hasKids(i) && this.isCollapsed(i) !== fold) js.push(i);
+    }
+    if (!js.length) return;
+    const depths = js.map((i) => this.blocks[i].depth);
+    const level = fold ? Math.max(...depths) : Math.min(...depths);
+    this.foldNotes(js.filter((i) => this.blocks[i].depth === level), fold);
+  }
+  /** After folding: a selected note now hidden under a folded one gives its place to the nearest shown
+   *  note above it, so nothing unseen stays selected (Delete would act on it; Build 49). */
+  keepSelShown() {
+    if (!this.sel) return;
+    const hid = this.hiddenSet();
+    const shown = (i) => { while (i >= 0 && hid.has(i)) i = this.parentOf(i); return i; };
+    const a = shown(this.sel.a), b = shown(this.sel.b);
+    this.sel = a < this.start || b < this.start ? null : { a, b };
+    this.paintSel();
   }
 
   /** Fold everything that has children, or unfold all if anything is folded. */
@@ -2566,6 +2596,7 @@ export class Outline {
     this.stopEdit();
     this.render();
     this.markDirty();
+    this.keepSelShown();
   }
 
   /** Re-render after a structural change and keep editing block `i` at `caret`. */
@@ -2643,7 +2674,7 @@ export class Outline {
   }
 
   // ---------- saving ----------
-  markDirty() { this.dirty = true; this.endPlus(); this.flushSoon(800); }
+  markDirty() { this.dirty = true; this.endPlus(); this.flushSoon(800); if (this.app.attach?.on) this.app.attach.again(this); }
   flushSoon(ms) { clearTimeout(this.timer); this.timer = setTimeout(() => this.save(), ms); }
 
   /** Resolves once everything typed so far is saved (or a conflict is waiting for the user). */

@@ -9,8 +9,10 @@ use std::sync::Arc;
 static GEN: AtomicUsize = AtomicUsize::new(0);
 
 /// Watch `root` (its pages and journals) and call `changed` (at most every 400 ms) when a
-/// `.md` file appears, changes, moves or goes. Replaces any earlier watch.
-pub fn start(root: PathBuf, dirs: Vec<PathBuf>, changed: impl Fn() + Send + Sync + 'static) {
+/// `.md` file appears, changes, moves or goes, or `config` (the `logseq` folder, only its own files,
+/// not bak/ or the bin) gets a changed `config.edn` (Build 49: a sync's change to the settings went
+/// unseen while the window stayed in front). Replaces any earlier watch.
+pub fn start(root: PathBuf, dirs: Vec<PathBuf>, config: PathBuf, changed: impl Fn() + Send + Sync + 'static) {
     let gen = GEN.fetch_add(1, Ordering::SeqCst) + 1;
     let pending = Arc::new(AtomicBool::new(false));
     let changed = Arc::new(changed);
@@ -28,7 +30,7 @@ pub fn start(root: PathBuf, dirs: Vec<PathBuf>, changed: impl Fn() + Send + Sync
             }
         });
     };
-    let _ = std::thread::Builder::new().name("watch".into()).spawn(move || platform::run(root, dirs, gen, signal));
+    let _ = std::thread::Builder::new().name("watch".into()).spawn(move || platform::run(root, dirs, config, gen, signal));
 }
 
 fn current(gen: usize) -> bool {
@@ -39,6 +41,12 @@ fn current(gen: usize) -> bool {
 fn interesting(name: &str) -> bool {
     let file = name.rsplit(['/', '\\']).next().unwrap_or(name);
     file.ends_with(".md") && !file.starts_with('.')
+}
+
+/// In the `logseq` folder only the settings file counts (bak/, the bin and safety copies are written
+/// by the app and by Logseq all the time).
+fn is_config(name: &str) -> bool {
+    name.eq_ignore_ascii_case("config.edn")
 }
 
 #[cfg(windows)]
@@ -61,15 +69,18 @@ mod platform {
     const FILTER: u32 = 0x1 | 0x2 | 0x8 | 0x10;
 
     /// One recursive watch on each folder (ReadDirectoryChangesW, blocking).
-    pub fn run(_root: PathBuf, dirs: Vec<PathBuf>, gen: usize, signal: impl Fn() + Send + Sync + 'static) {
+    pub fn run(_root: PathBuf, dirs: Vec<PathBuf>, config: PathBuf, gen: usize, signal: impl Fn() + Send + Sync + 'static) {
         let signal = std::sync::Arc::new(signal);
         for dir in dirs {
             let signal = signal.clone();
-            std::thread::spawn(move || watch(dir, gen, move || signal()));
+            std::thread::spawn(move || watch(dir, gen, true, super::interesting, move || signal()));
         }
+        // (the logseq folder itself, not what's under it: only config.edn)
+        let signal = signal.clone();
+        std::thread::spawn(move || watch(config, gen, false, super::is_config, move || signal()));
     }
 
-    fn watch(dir: PathBuf, gen: usize, signal: impl Fn()) {
+    fn watch(dir: PathBuf, gen: usize, subtree: bool, wanted: fn(&str) -> bool, signal: impl Fn()) {
         let wide: Vec<u16> = dir.as_os_str().encode_wide().chain(Some(0)).collect();
         let h = unsafe { CreateFileW(wide.as_ptr(), FILE_LIST_DIRECTORY, SHARE_ALL, std::ptr::null(), OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, std::ptr::null_mut()) };
         if h.is_null() || h as isize == -1 {
@@ -79,7 +90,7 @@ mod platform {
         while super::current(gen) {
             let mut got = 0u32;
             let ok = unsafe {
-                ReadDirectoryChangesW(h, buf.as_mut_ptr().cast(), (buf.len() * 4) as u32, 1, FILTER, &mut got, std::ptr::null_mut(), std::ptr::null())
+                ReadDirectoryChangesW(h, buf.as_mut_ptr().cast(), (buf.len() * 4) as u32, subtree as i32, FILTER, &mut got, std::ptr::null_mut(), std::ptr::null())
             };
             if ok == 0 || !super::current(gen) {
                 break;
@@ -99,7 +110,7 @@ mod platform {
                 let (next, len) = (rd(0) as usize, rd(8) as usize);
                 let end = (at + 12 + len).min(bytes.len());
                 let units: Vec<u16> = bytes[at + 12..end].chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
-                if super::interesting(&String::from_utf16_lossy(&units)) {
+                if wanted(&String::from_utf16_lossy(&units)) {
                     signal();
                     break;
                 }
@@ -135,7 +146,7 @@ mod platform {
         }
     }
 
-    pub fn run(_root: PathBuf, dirs: Vec<PathBuf>, gen: usize, signal: impl Fn() + Send + Sync + 'static) {
+    pub fn run(_root: PathBuf, dirs: Vec<PathBuf>, config: PathBuf, gen: usize, signal: impl Fn() + Send + Sync + 'static) {
         let fd = unsafe { libc::inotify_init1(libc::IN_CLOEXEC) };
         if fd < 0 {
             return;
@@ -145,6 +156,8 @@ mod platform {
             add(fd, d);
             wds.push(d.clone());
         }
+        // (the logseq folder itself, not its sub-folders: only config.edn counts there)
+        let config_wd = CString::new(config.as_os_str().as_bytes()).map_or(-1, |c| unsafe { libc::inotify_add_watch(fd, c.as_ptr(), MASK) });
         let mut buf = vec![0u8; 16 * 1024];
         while super::current(gen) {
             let n = unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) };
@@ -155,11 +168,17 @@ mod platform {
             let mut at = 0;
             let mut hit = false;
             while at + 16 <= n {
+                let wd = i32::from_ne_bytes([buf[at], buf[at + 1], buf[at + 2], buf[at + 3]]);
                 let mask = u32::from_ne_bytes([buf[at + 4], buf[at + 5], buf[at + 6], buf[at + 7]]);
                 let len = u32::from_ne_bytes([buf[at + 12], buf[at + 13], buf[at + 14], buf[at + 15]]) as usize;
                 let name_end = (at + 16 + len).min(n);
                 let raw = &buf[at + 16..name_end];
                 let name = String::from_utf8_lossy(&raw[..raw.iter().position(|&b| b == 0).unwrap_or(raw.len())]).into_owned();
+                if wd >= 0 && wd == config_wd {
+                    hit |= super::is_config(&name);
+                    at += 16 + len;
+                    continue;
+                }
                 if mask & libc::IN_ISDIR != 0 && mask & libc::IN_CREATE != 0 {
                     // a new folder: watch it as well
                     for d in &wds {
@@ -184,5 +203,5 @@ mod platform {
 
 #[cfg(not(any(windows, target_os = "linux", target_os = "android")))]
 mod platform {
-    pub fn run(_root: std::path::PathBuf, _dirs: Vec<std::path::PathBuf>, _gen: usize, _signal: impl Fn() + Send + Sync + 'static) {}
+    pub fn run(_root: std::path::PathBuf, _dirs: Vec<std::path::PathBuf>, _config: std::path::PathBuf, _gen: usize, _signal: impl Fn() + Send + Sync + 'static) {}
 }

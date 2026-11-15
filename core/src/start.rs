@@ -307,13 +307,13 @@ const DEMO: [(&str, &str); 4] = [
 - ## A page’s own menu
 \t- The ⋯ beside a page’s title: **Rename…**, **Find on this page**, **History…** (earlier versions of the page), **Copy page as text…**, **Copy link**, **Print or save as PDF** and **Delete page…**.
 \t- Click or tap a page’s title to rename it. The star beside it adds the page to Favourites.
-\t- Deleted pages wait in a bin: Settings, then **Notes**, then **Deleted pages and pictures** brings them back.
+\t- Deleted pages wait in a bin: Settings, then **Safety**, then **Deleted pages and pictures** brings them back.
 - ## Commands
 \t- Every command in one list: **Ctrl+Shift+P** on a computer; **Commands** in the side menu on a phone.
 - ## Looks and settings
 \t- **Look**, at the bottom of the side menu, changes how everything looks. Try a few!
 \t- **Settings** has your notes folder, the look (text size and link style too), quick capture and, on a computer, the keyboard shortcuts.
-\t- To tell the app's maker what works or what you'd like: Settings, then **About**, then **Send feedback**.
+\t- To tell the app's maker what works or what you'd like: Settings, then **Help**, then **Send feedback**.
 - ## Where your notes live
 \t- Every page is a Markdown file in your notes folder: pages in `pages`, journal days in `journals`, pictures and files in `assets`, settings in `logseq/config.edn`.
 \t- Any text editor can open them, and so can Logseq. Settings, then **Notes**, shows which folder is open and lets you choose another.

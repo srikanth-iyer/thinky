@@ -797,9 +797,32 @@ fn shortcuts_change_in_place() {
     let ch = edn::set_entry(text, "shortcuts", "editor/toggle-open-blocks", Some("[\"t o\" \"alt+t\"]")).unwrap();
     assert_eq!(ch, text.replace("\"alt+ctrl+t\"", "[\"t o\" \"alt+t\"]"));
     assert_eq!(Config::from_edn(&ch).shortcuts[0], ("editor/toggle-open-blocks".to_string(), vec!["t o".to_string(), "alt+t".to_string()]));
-    // taken out: the last one with the room before it; the first with the room after it
-    assert_eq!(edn::set_entry(text, "shortcuts", "go/journals", None).unwrap(), ";; keys\r\n{:a 1\r\n :shortcuts {:editor/toggle-open-blocks \"alt+ctrl+t\"}\r\n :b 2}\r\n");
+    // taken out: the comment of the entry before it stays (Build 49), so its line goes, the "}" kept
+    assert_eq!(edn::set_entry(text, "shortcuts", "go/journals", None).unwrap(), ";; keys\r\n{:a 1\r\n :shortcuts {:editor/toggle-open-blocks \"alt+ctrl+t\" ; mine\r\n}\r\n :b 2}\r\n");
     assert_eq!(edn::set_entry(text, "shortcuts", "editor/toggle-open-blocks", None).unwrap(), ";; keys\r\n{:a 1\r\n :shortcuts {:go/journals \"g j\"}\r\n :b 2}\r\n");
+    // Build 49 (three reviewers found it): each entry takes only its own comment along
+    let commented = "{:shortcuts {:go/todos \"g t\" ;; t\n             :go/journals \"g j\" ;; j\n             :go/date \"g d\"}}";
+    assert_eq!(edn::set_entry(commented, "shortcuts", "go/journals", None).unwrap(), "{:shortcuts {:go/todos \"g t\" ;; t\n             :go/date \"g d\"}}");
+    assert_eq!(edn::set_entry(commented, "shortcuts", "go/todos", None).unwrap(), "{:shortcuts {:go/journals \"g j\" ;; j\n             :go/date \"g d\"}}");
+    assert_eq!(edn::set_entry(commented, "shortcuts", "go/date", None).unwrap(), "{:shortcuts {:go/todos \"g t\" ;; t\n             :go/journals \"g j\" ;; j\n}}");
+    let note_above = "{:shortcuts {:go/all-pages \"g a\"\n ;; my note\n :go/date \"g d\"}}";
+    assert_eq!(edn::set_entry(note_above, "shortcuts", "go/date", None).unwrap(), "{:shortcuts {:go/all-pages \"g a\"\n ;; my note\n}}");
+    // added after the last entry's own comment, never inside it
+    assert_eq!(edn::set_entry("{:shortcuts {:x \"y\" ; c\n}}", "shortcuts", "go/todos", Some("false")).unwrap(), "{:shortcuts {:x \"y\" ; c\n             :go/todos false\n}}");
+    // a new :shortcuts in a CRLF file gets CRLF too
+    assert_eq!(edn::set_entry("{:a 1\r\n :b 2}\r\n", "shortcuts", "go/todos", Some("false")).unwrap(), "{:a 1\r\n :b 2\r\n :shortcuts {:go/todos false}}\r\n");
+    for t in [commented, note_above] {
+        for k in ["go/todos", "go/journals", "go/date", "go/all-pages"] {
+            let out = edn::set_entry(t, "shortcuts", k, None).unwrap();
+            assert!(edn::parse(&out).is_some(), "{out}");
+        }
+    }
+    // "#_#_" drops the next two forms, as Clojure's reader and Logseq do (Build 49)
+    let disc = "{:shortcuts {#_#_ :go/old \"x\" :go/todos \"g t\"}}";
+    assert_eq!(Config::from_edn(disc).shortcuts, vec![("go/todos".to_string(), vec!["g t".to_string()])]);
+    assert_eq!(edn::set_entry(disc, "shortcuts", "go/all-pages", Some("\"mod+alt+p\"")).unwrap(), "{:shortcuts {#_#_ :go/old \"x\" :go/todos \"g t\" :go/all-pages \"mod+alt+p\"}}");
+    assert_eq!(edn::set_entry(disc, "shortcuts", "go/todos", Some("\"g x\"")).unwrap(), "{:shortcuts {#_#_ :go/old \"x\" :go/todos \"g x\"}}");
+    assert!(edn::parse("{#_#_ :journals-directory \"x\" :pages-directory \"pp\"}").unwrap().get("pages-directory").is_some());
     // not there: nothing changes
     assert_eq!(edn::set_entry(text, "shortcuts", "go/todos", None).unwrap(), text);
     // no :shortcuts yet, an empty one, one on its own line, nil
@@ -833,4 +856,25 @@ fn shortcuts_change_in_place() {
     // not an action's name: refused, nothing written
     assert!(app.set_shortcut("x} :evil", Some(&keys(&["a"]))).is_err());
     assert!(app.set_shortcut("noslash", Some(&keys(&["a"]))).is_err());
+}
+
+#[test]
+fn a_change_made_elsewhere_survives_the_apps_own_config_write() {
+    // Build 49 (found by a reviewer): the app writes config.edn (a shortcut) right after another
+    // program added a favourite there; the write keeps it (it re-reads the file), and the next rescan
+    // takes it in instead of treating the whole file as the app's own change
+    let v = tmp_vault("config_elsewhere");
+    std::fs::write(v.join("logseq/config.edn"), "{:favorites [\"a\"]}\n").unwrap();
+    let mut app = App::open(&v).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    std::fs::write(v.join("logseq/config.edn"), "{:favorites [\"a\" \"b\"]}\n").unwrap();
+    app.set_shortcut("go/todos", Some(&["mod+alt+o".to_string()])).unwrap();
+    let text = std::fs::read_to_string(v.join("logseq/config.edn")).unwrap();
+    assert!(text.contains("\"b\"") && text.contains(":go/todos \"mod+alt+o\""), "{text}");
+    let changed = app.rescan();
+    assert!(format!("{changed:?}").contains("config.edn"), "{changed:?}");
+    assert_eq!(app.vault.config.favorites, vec!["a".to_string(), "b".to_string()]);
+    // its own write alone leaves nothing for a rescan
+    app.set_shortcut("go/todos", Some(&["mod+alt+p".to_string()])).unwrap();
+    assert!(!format!("{:?}", app.rescan()).contains("config.edn"));
 }

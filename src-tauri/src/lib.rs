@@ -123,14 +123,14 @@ fn call(app: tauri::AppHandle, state: tauri::State<'_, State>, cmd: String, args
     })
 }
 
-/// Pictures come from the open notes folder, and its pages and journals folders are watched for
-/// changes made elsewhere (`lean-files` → the page rescans).
+/// Pictures come from the open notes folder, and its pages and journals folders (and config.edn,
+/// Build 49) are watched for changes made elsewhere (`lean-files` → the page rescans).
 fn watch_notes(app: &tauri::AppHandle, a: &App) {
     *ROOT.lock().unwrap_or_else(|p| p.into_inner()) = Some(a.root.clone());
     let cfg = &a.vault.config;
     let dirs = vec![a.root.join(&cfg.pages_dir), a.root.join(&cfg.journals_dir)];
     let h = app.clone();
-    watch::start(a.root.clone(), dirs, move || {
+    watch::start(a.root.clone(), dirs, a.root.join("logseq"), move || {
         let _ = h.emit("lean-files", ());
     });
 }

@@ -966,6 +966,13 @@ a.tag .hash { display: var(--hash); }
 .menu button { display: block; width: 100%; text-align: left; border: 0; background: none; font: inherit; font-size: var(--fs-ui); padding: 8px 10px; border-radius: var(--r-l); cursor: pointer; color: var(--ink); }
 .menu button:hover, .menu button:focus-visible { background: var(--accent-tint); outline: none; }
 .menu button.danger { color: var(--danger); }
+/* items with a drawing (Build 49: the page ⋯ menu, as the phone's side menu draws its rows) */
+.menu button.m-icon { display: flex; align-items: center; gap: 10px; }
+.menu button.m-icon .m-l { flex: 1; min-width: 0; }
+.menu button.m-icon .mhint { order: 3; float: none; margin-left: auto; }
+.menu .m-ic { display: inline-flex; flex: none; color: var(--icon-ink); opacity: .8; }
+.menu .m-ic svg { width: 17px; height: 17px; }
+.menu button.danger .m-ic { color: inherit; }
 .menu .mhint { float: right; margin-left: 22px; color: var(--ink-faint); font-size: var(--fs-sub); }
 .modal-back { position: fixed; inset: 0; z-index: 70; background: var(--scrim-modal); display: flex; align-items: flex-start; justify-content: center; padding: 14vh 16px 16px; }
 .modal { width: min(460px, 100%); background: var(--surface); border-radius: var(--r-xl); border: var(--sheet-border); box-shadow: 0 24px 60px -20px rgba(0,0,0,.45); padding: 18px 20px; line-height: 1.5; font-family: "IBM Plex Sans", system-ui, sans-serif; color: var(--ink); }
@@ -1917,5 +1924,10 @@ html[data-motion="off"] .fading { display: none !important; }
 #attbar .fb-row { width: 100%; box-shadow: 0 12px 30px -12px rgba(0,0,0,.4); }
 #attbar .ab-what { flex: 1; min-width: 0; color: var(--ink-soft); padding: 6px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #attbar button:disabled { opacity: .4; cursor: default; }
+/* (Build 49: on a phone it sits above the round "+", and above the editing toolbar while typing) */
+@media (max-width: 860px), (pointer: coarse) {
+  #attbar { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  html.tb-on #attbar { bottom: calc(53px + env(safe-area-inset-bottom, 0px)); }
+}
 .blk.att-hit > .bc { background: var(--accent-tint); box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
 .blk.att-cur > .bc { box-shadow: inset 3px 0 0 var(--accent); }

@@ -14,6 +14,39 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 49 · version 0.5.10 (November 2026)
+
+Fixes from three independent reviews of Build 48, and your picks of Nov 14.
+
+### Changed (your picks)
+- ← / → with notes selected now start typing, as in Logseq: ← in the first selected note with the text cursor at its start, → in the last one with the cursor at its end. (In Build 48 they folded and unfolded.)
+- Ctrl+↑ / Ctrl+↓ with nothing selected now go one level per press, as in Logseq: Ctrl+↑ folds the deepest level of notes still open, Ctrl+↓ opens the top-most folded level. (In Build 48 they folded or opened everything at once.) With a note being typed in, or notes selected, they still fold and unfold those notes.
+- A page's ⋯ menu has a small icon on each row, like the phone's side menu.
+
+### Fixed
+- Settings → Typing & keys → Change: if you left Settings (or switched to another Settings tab) without pressing keys or Esc, thinky kept listening, so keys you typed later in a note were taken as the new shortcut and saved to config.edn. It now stops as soon as the row is off the screen.
+- Change can be used with the keyboard alone: Tab moves to Back to default, Turn off and Cancel, Enter presses them, and the keyboard goes back to the row's Change button afterwards. Ctrl+T, Ctrl+W and Ctrl+Tab no longer open or close tabs while a row waits for keys.
+- Change no longer saves keys that would never work: a two-key shortcut for an action only one-press keys reach (Search, Find, Back…), one using Space, ↑ / ↓, Home, End or Page Up / Down (they scroll the page first), one made of fixed keys (Enter then Enter), Shift+F10 or the menu key (they open the note menu), and Alt+Shift+↑ / ↓ for anything but moving a note (they also move favourites). It says why, and waits for other keys.
+- A shortcut set to an F-key (F1–F12) now works.
+- Shift with a sign is saved as Logseq writes it ("shift+/", not "shift+?"), so Logseq can read it, and a "shift+/" written by Logseq works in thinky too.
+- Before warning that keys are taken, Change reads config.edn again, in case it changed elsewhere. When keys are taken over, the new action gets them first, so a save that fails never leaves both without keys.
+- Back to default keeps your comments in config.edn: an entry takes only its own comment along, and a comment on the line before stays. A new `:shortcuts` section uses the file's own line endings (Windows or not), and a new entry goes after the last one's comment, never inside it.
+- config.edn with `#_#_` (skip the next two items, as Clojure and Logseq read it) was read wrongly, and Change could then put a shortcut in the wrong place. It's read as Logseq reads it now.
+- A change made to config.edn elsewhere (by your sync, or Logseq) just before thinky wrote it itself was kept in the file but not taken in until a restart; the next look at the folder takes it in now. On Windows and Android, thinky now also notices config.edn changing while its window is in front.
+- With a note selected inside another one, Fold or unfold all (Ctrl+Alt+T in your setup) folded it away but left it selected, so Delete would remove a note you couldn't see. The selection now moves to the nearest note that shows.
+- Show attachments on this page: on a phone the bar sits above the round "+" and above the editing toolbar while you type; the file names shown when the mouse rests on a note go away when you close it; and a link you add while it's on is counted and lit a moment later. The command list says "Hide attachments" while they show.
+- Help pages and messages that still pointed to the old places: Send feedback is under Settings → Help (the starter tour, the website's home and privacy pages, the README), and deleted pages and pictures are under Settings → Safety (the starter tour, the message after deleting pages, the "Pictures nothing uses" dialog, a merge's Undo message).
+- Check this folder: "Moved N pictures to the bin" has its ✓ in the same column as the others.
+- The keyboard shortcuts card no longer says Logseq "uses the same keys": Logseq reads the ones it also has, and a few do slightly different things there.
+
+### Corrections to Build 48's notes
+- Ctrl/Alt shortcuts work anywhere except while typing in a note.
+- On the Journals list, fold and unfold act on one day (the one you last used), not the whole list.
+
+### Under the hood
+- ui/settings.js `recordKeys` (listens only while its row shows, `app.recordingKeys()` for tabs.js; `refuse`; `KEPT_FOR`, `SCROLLS`, Shift+F10 and ContextMenu in `FIXED_KEYS`; `RUN_ACTIONS` from app.js), ui/keys.js (`evChord`'s `base` from `e.code` with Shift, `same` matching either; `SEQ_MS` shared with app.js), ui/editor.js (← / → `edit`, `foldAll` one level, `keepSelShown`), ui/attach.js (`again`, tips cleared), ui/dom.js icons and popups.js `menu()` items' `icon`.
+- Core: edn.rs (`#_` drops one real form, so `#_#_` drops two; `set_entry` removal and insertion around comments; `set_path` line ends), app.rs `own_config_written`. src-tauri watch.rs: the `logseq` folder watched for config.edn only. Tests: tests/features.rs `shortcuts_change_in_place` (more cases), `a_change_made_elsewhere_survives_the_apps_own_config_write`; t29_build48 updated and extended.
+
 ## Build 48 · version 0.5.9 (November 2026)
 
 ### New
