@@ -1554,8 +1554,9 @@ window can't be sent to another page.
 - Here: `cargo test -p outline_core`; speed: `cargo run --release -p outline_core --example bench`.
   CI (build.yml `ui-tests`, from Build 37): all of them on every build, in six groups on six machines (every group runs to the end, `fail-fast: false`; t5_long first in its group)
   (Playwright 1.63.0 installed into /opt/npm-tools there, Pillow from apt); main signs only after all six
-  pass, then the `release` environment waits 30 minutes (no reviewer since Nov 5, 2026: cancel the run to
-  stop a release). A new test goes into run.sh's list AND one of the six groups.
+  pass, then it signs and publishes at once (the `release` environment has no reviewer since Nov 5, 2026 and
+  no wait since Nov 15, 2026, Build 49, he asked: a push to main that passes is a release; build.yml's header
+  comments still mention the old 30 minutes until the next build changes them). A new test goes into run.sh's list AND one of the six groups.
   UI: `dev/ui-tests/run.sh [test…]` (Playwright against the dev server, fresh sample vault per test,
   screenshots in `$UI_TEST_DIR/shots`; Playwright import `/opt/npm-tools/node_modules/playwright/index.mjs`).
   Run them all after UI changes; they catch CSP blocks too. Two copies of the project (git worktrees)
