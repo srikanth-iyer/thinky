@@ -334,7 +334,7 @@ console.log('settings: tabs, quick capture format, check, problems');
 await go(page, '#/settings');
 await sleep(400);
 const tabs = await page.locator('.set-tabs [data-tab]').allTextContents();
-check(tabs.join('|') === 'About|Notes|Safety|Look|Typing & keys|Capture|Help', 'Settings has tabs (Build 48: About and Help apart, Typing & keys)', tabs.join('|'));
+check(tabs.join('|') === 'About|Notes|Safety|Look|Typing & keys|Capture|AI|Help', 'Settings has tabs (Build 51: AI before Help)', tabs.join('|'));
 check(await page.locator('.set-tabs [aria-selected="true"]').textContent() === 'Safety' && await page.locator('.bin').first().isVisible() && !(await page.locator('[data-a="check"]').isVisible()) && !(await page.locator('.skin-card').count()),
   'it opens on the tab used last (Safety, for the bin above), showing only that');
 await page.locator('.set-tabs [data-tab="capture"]').click();

@@ -218,6 +218,46 @@ fn rename_inline(s: &str, old: &[String], new: &str) -> String {
     out
 }
 
+/// Every `[[link]]`, `#[[link]]` and `#tag` whose name `known` doesn't accept becomes plain words
+/// (the AI's Polish note may only link pages and use tags that exist, Build 51); code, web
+/// addresses and Markdown links stay as written. Gives the new text and the names taken out.
+pub fn unlink_unknown(text: &str, known: &dyn Fn(&str) -> bool) -> (String, Vec<String>) {
+    let mut gone = vec![];
+    let mut out = String::with_capacity(text.len());
+    for (n, line) in text.split('\n').enumerate() {
+        if n > 0 {
+            out.push('\n');
+        }
+        for p in pieces(line) {
+            match p {
+                Piece::Link { name, raw, .. } | Piece::Tag { name, raw } => {
+                    if known(name) {
+                        out.push_str(raw);
+                    } else {
+                        out.push_str(name);
+                        gone.push(name.to_string());
+                    }
+                }
+                Piece::Plain(t) | Piece::Fixed(t) => out.push_str(t),
+            }
+        }
+    }
+    (out, gone)
+}
+
+/// The names of the `[[links]]`, `#[[links]]` and `#tags` written in a text (code and addresses skipped).
+pub fn link_names(text: &str) -> Vec<String> {
+    let mut v = vec![];
+    for line in text.split('\n') {
+        for p in pieces(line) {
+            if let Piece::Link { name, .. } | Piece::Tag { name, .. } = p {
+                v.push(name.to_string());
+            }
+        }
+    }
+    v
+}
+
 /// Rewrite every link to one of `old` (lowercase keys) as a link to `new`, in a block's or
 /// preamble's text. Property values of tags/alias and `comma_keys` also match plain names.
 /// Returns None when nothing changed.

@@ -106,7 +106,8 @@ export function commandList(app, ed) {
     E('redo', 'Redo', (x) => app.redo(x), { keys: ['mod+y'] });
     // the / menu's commands, run as from it (to-do words, dates, links, formatting, headings…)
     const SLASH_KEYS = { bold: { keys: ['mod+b'] }, italic: { keys: ['mod+i'] }, mark: { key: 'editor/highlight' } };
-    for (const [label, hint, id] of SLASH) E('slash-' + (id || label), label, (x) => x.command(id || label), { hint, also: 'insert /', ...SLASH_KEYS[id] });
+    const ai = document.documentElement.classList.contains('ai-on'); // (Polish note once an AI is set up)
+    for (const [label, hint, id] of SLASH) if (ai || id !== 'polish') E('slash-' + (id || label), label, (x) => x.command(id || label), { hint, also: 'insert /', ...SLASH_KEYS[id] });
   } else if (sel) {
     const S = (id, label, run, more = {}) => add('Selected notes', id, label, () => run(sel, sel.selRange()[0]), more);
     S('indent', 'Indent the selected notes', (x, i) => x.indent(i), { keys: ['tab'] });

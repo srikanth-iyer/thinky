@@ -266,7 +266,7 @@ await sleep(800);
 
 console.log('Settings tabs (his pick: About and Help apart, Property display under Look)');
 const tabs = await page.locator('.set-tabs [data-tab]').allTextContents();
-check(tabs.join('|') === 'About|Notes|Safety|Look|Typing & keys|Capture|Help', 'About, Notes, Safety, Look, Typing & keys, Capture, Help', tabs.join('|'));
+check(tabs.join('|') === 'About|Notes|Safety|Look|Typing & keys|Capture|AI|Help', 'About, Notes, Safety, Look, Typing & keys, Capture, Help', tabs.join('|'));
 await go(page, '#/settings/look');
 await page.waitForSelector('.prop-display', { timeout: 4000 });
 check(true, 'Look has Property display');

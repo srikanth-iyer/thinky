@@ -14,6 +14,23 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 51 · version 0.6.0 (November 2026)
+
+A bigger step, so the middle number goes up: optional AI features, starting with Polish note. They stay off and out of sight until you choose an AI in Settings → AI.
+
+### New
+- **Settings → AI.** Pick a service from a list: Claude, OpenAI, Gemini, OpenRouter, or a program on your own computer (Ollama, LM Studio) that works offline with no key, or any other service that speaks the OpenAI format. Paste your key, press Test, and choose a model for text and one for pictures from the service's own list. Your key is kept by Windows (Credential Manager) or by Android's secure key store, never in your notes folder and never shown again.
+- **Polish note.** The AI tidies one note: spelling and shorthand fixed, a to-do with its date when the note says one ("next Tue" becomes a SCHEDULED date), links only to pages that exist, and tags only from the ones you already use. Its version appears in the note, the new words fading in and lightly tinted, with one line of buttons: Keep, Changes, Retry, Undo. Nothing is saved until you press Keep, and Keep can be undone. Start it from the ✦ at the end of a note (laptop), the ✦ in the phone's toolbar, the note menu, `/polish` or the command list.
+- Notes the AI writes are marked `by:: ai` (you can turn this off), and your note's own properties (its `id::`, for example) are kept.
+- Settings → AI → Advanced: your own wishes for Polish note (say, "British spelling"). They're added after thinky's own instructions, which can't be changed or broken.
+
+### Changed
+- Calm plain has a colour family of its own: a rich slate teal for buttons, ticks, links and tags, in place of Calm's sage green beside purple links.
+
+### Under the hood
+- One place builds every request and reads every answer (core `ai.rs`), for both request formats (Claude's and the OpenAI-style one), with Polish note's fixed instructions and the checks on its answers. Requests go out through Windows' own curl.exe and Android's own web code: no new library, so the app doesn't grow. https only, except a program on your own computer or home network.
+- A note's words are sent only when you ask, with the names of nearby pages and your tags in use; never your whole notes folder.
+
 ## Build 50 · version 0.5.11 (November 2026)
 
 One fix, from your note of Nov 18.

@@ -2586,7 +2586,7 @@ class App {
     const tb = $('#toolbar');
     // his order (Oct 30): Undo and Redo first, the writing buttons, then moving the note, "/" last
     const tools = [['undo', 'Undo'], ['redo', 'Redo'], ['newline', 'New line in this block'],
-      ['link', 'Link'], ['tag', 'Tag'], ['check', 'To-do'], ['date', 'Date: a link to a day, or scheduled / deadline'], ['bold', 'Bold'], ['italic', 'Italics'], ['mark', 'Highlight'], ['heading', 'Heading'],
+      ['link', 'Link'], ['tag', 'Tag'], ['check', 'To-do'], ['date', 'Date: a link to a day, or scheduled / deadline'], ['polish', 'Polish note (AI)'], ['bold', 'Bold'], ['italic', 'Italics'], ['mark', 'Highlight'], ['heading', 'Heading'],
       ['image', 'Add image'], ['more', 'Note menu: colour, heading, cut, copy…'], ['outdent', 'Outdent'], ['indent', 'Indent'], ['up', 'Move up'], ['down', 'Move down'], ['slash', 'Commands (/)']];
     const POPS = { more: 'menu', date: 'menu', slash: 'listbox' }; // (what each opens, for screen readers)
     const tbBtn = ([k, label], cls = '') => `<button data-t="${k}"${cls ? ` class="${cls}"` : ''}${POPS[k] ? ` aria-haspopup="${POPS[k]}"${k === 'slash' ? '' : ' aria-expanded="false"'}` : ''} aria-label="${label}" title="${label}">${ICON[k]}</button>`;
@@ -2653,6 +2653,7 @@ class App {
         // with words selected, the link button makes them a page link
         link: () => (o.ta && o.ta.selectionStart !== o.ta.selectionEnd ? o.wrap('[[', ']]') : o.insertAtCaret('[[]]', 2)),
         check: () => (o.sel ? o.cycleTodoSel() : o.cycleTodo()), date: () => o.dateMenu(b),
+        polish: () => o.polish(i), // (the optional AI, ui/polish.js: shown only once an AI is set up)
         slash: () => o.openCommands(), // (while typing; not for selected notes)
         bold: () => o.wrap('**', '**'), italic: () => o.wrap('*', '*'), mark: () => o.wrap('^^', '^^'), heading,
         image: () => o.pickFile(true), undo: () => this.undo(o), redo: () => this.redo(o),

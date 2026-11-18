@@ -6,6 +6,7 @@
 import { call, today, nowTime, noteLinkUrl, store } from './api.js';
 import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, hiddenKey, parseStamp, stampText, withPictureSize, playVideo, drawStamp } from './render.js';
 import { pickDate, caretRect, noteMenu, menu, formBox, confirmBox } from './popups.js';
+import { hoverSpark, startPolish } from './polish.js';
 // the clash screen loads when a clash first shows (Build 39: a faster start)
 const openClash = (...a) => import('./clash.js').then((m) => m.openClash(...a));
 
@@ -544,8 +545,8 @@ export class Outline {
     return null;
   }
 
-  viewEl(i) {
-    const b = this.blocks[i];
+  /** A note's words as shown (b: another text to draw in its place, Polish note's preview). */
+  viewEl(i, b = this.blocks[i]) {
     const bc = document.createElement('div');
     bc.className = 'bc';
     bc.from = b.text; // (the words it shows: a row whose words were drawn again in place, keepRows)
@@ -666,6 +667,8 @@ export class Outline {
 
   // ---------- events ----------
   bindEvents() {
+    // the optional AI's ✦ (Polish note) at the end of the note under the mouse (ui/polish.js; laptop only)
+    this.el.addEventListener('pointerover', (e) => hoverSpark(this, e), { passive: true });
     this.pins.addEventListener('click', (e) => {
       const row = e.target.closest('.pin');
       if (!row) return;
@@ -1215,6 +1218,8 @@ export class Outline {
       }
       items.push({ id: 'todo', label: 'Next to-do state', hint: `${now || 'none'} → ${this.nextMarker(now) || 'none'}` });
       if (!inSel) items.push({ id: 'slash', label: 'More commands…', hint: '/' });
+      // Build 51: the optional AI's Polish note (ui/polish.js), once an AI is set up (Settings → AI)
+      if (!inSel && document.documentElement.classList.contains('ai-on')) items.push({ id: 'polish', label: 'Polish note', hint: 'AI' });
       let kids = false;
       for (let j = lo; j < hi && !kids; j++) kids = this.hasKids(j);
       if (kids) items.push('-', { id: 'expand', label: 'Expand all' }, { id: 'collapse', label: 'Collapse all' });
@@ -1271,6 +1276,7 @@ export class Outline {
       }
       case 'todo': if (inSel) this.cycleTodoSel(); else this.cycleTodo(i); return;
       case 'numkids': this.numberList(true, i); return;
+      case 'polish': this.polish(i); return;
       case 'slash': // the "/" list, as if "/" were typed at the end of this note
         this.edit(i, 'end', true);
         if (this.cur === i) this.openCommands();
@@ -2095,6 +2101,12 @@ export class Outline {
   }
   textOf(i) { return this.cur === i && this.ta ? joinHidden(this.ta.value, this.hiddenLines) : this.blocks[i].text; }
 
+  /** Polish note (the optional AI, ui/polish.js): the AI's tidier version shown in the note, kept only
+   *  if the person presses Keep. */
+  polish(i = this.cur ?? (this.sel ? this.selRange()[0] : null)) {
+    if (i !== null && i !== undefined) startPolish(this, i);
+  }
+
   setMarker(i, marker) {
     if (this.readonly) return;
     this.snap();
@@ -2231,6 +2243,7 @@ export class Outline {
       case 'time': return this.insertAtCaret(nowTime());
       case 'link': return this.insertAtCaret('[[]]', 2);
       case 'blockref': return this.insertAtCaret('(())', 2); // (the "((" list opens: Suggest.blocks)
+      case 'polish': return this.polish(i);
       case 'weblink': return this.insertLink();
       case 'imagelink': return this.insertLink(true);
       case 'tag': return this.insertAtCaret('#');
