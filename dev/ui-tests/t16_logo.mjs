@@ -300,7 +300,8 @@ for (const look of ['calm', 'calmplain']) {
     return { accent: rgb('var(--accent)').join(), tint: rgb('var(--accent-tint)'), edit: rgb('var(--edit-bg)'), onAccent: con('var(--accent-ink)', 'var(--accent)'), link: con('var(--link)', 'var(--surface)'),
       btn: btn.backgroundColor, greens: [rgb('var(--accent)'), rgb('var(--accent-tint)'), rgb('var(--edit-bg)')].filter(green).length };
   });
-  check(c.accent === '47,110,82' && c.btn === 'rgb(47, 110, 82)', `${look}: the accent is the warmer green, buttons too`, JSON.stringify(c));
+  if (look === 'calm') check(c.accent === '47,110,82' && c.btn === 'rgb(47, 110, 82)', `${look}: the accent is the warmer green, buttons too`, JSON.stringify(c));
+  else check(c.accent === '15,116,135' && c.btn === 'rgb(15, 116, 135)', `${look}: the accent is its own teal since Build 51, buttons too`, JSON.stringify(c));
   check(c.onAccent >= 4.5 && c.link >= 4.5, `${look}: words on buttons and links stay easy to read`, JSON.stringify(c));
   await page.context().close();
 }

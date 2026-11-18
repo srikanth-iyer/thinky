@@ -88,6 +88,13 @@ export const ICON = {
   link: svg('<path d="M7 5H4v14h3M10.5 5h-3v14h3M17 5h3v14h-3M13.5 5h3v14h-3"/>', ' stroke-width="2"'),
   tag: svg('<path d="M9.5 4 7.5 20M16.5 4l-2 16M5 9h15M4 15h15"/>', ' stroke-width="2"'),
   mark: svg('<path d="m15 4 5 5-9 9H6v-5z"/><path d="M4 21h16"/>'),
+  // the optional AI features (Build 51): a four-point sparkle and a small one (Polish note), an eye
+  // (Changes), round arrows (Retry), a back arrow (Undo)
+  polish: svg('<path d="M10 4c.5 3.5 2.5 5.5 6 6-3.5.5-5.5 2.5-6 6-.5-3.5-2.5-5.5-6-6 3.5-.5 5.5-2.5 6-6z"/><path d="M18 14.5c.2 1.4 1 2.2 2.5 2.5-1.5.3-2.3 1.1-2.5 2.5-.2-1.4-1-2.2-2.5-2.5 1.5-.3 2.3-1.1 2.5-2.5z"/>'),
+  tick: svg('<path d="m5 12.5 4.5 4.5L19 7.5"/>'),
+  eye: svg('<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/>'),
+  retry: svg('<path d="M19.5 11A7.6 7.6 0 0 0 5 8.5M4.5 4.5v4h4"/><path d="M4.5 13A7.6 7.6 0 0 0 19 15.5M19.5 19.5v-4h-4"/>'),
+  undoArrow: svg('<path d="M9 14 4.5 9.5 9 5"/><path d="M4.5 9.5h10a5 5 0 0 1 0 10h-2"/>'),
   heading: svg('<path d="M6 4v16M18 4v16M6 12h12"/>'),
   slash: svg('<path d="M15.5 4 8.5 20"/>', ' stroke-width="2.2"'),
   more: svg('<circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/>'),
@@ -110,7 +117,7 @@ const frame = '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/>';
 export const SLASH_ICON = {
   TODO: svg(box), DOING: svg(box + '<path d="M8.5 12h7"/>'), LATER: svg(box + '<path d="M12 8.5V12l2.5 1.5"/>'), NOW: svg(box + '<circle cx="12" cy="12" r="2" fill="currentColor"/>'),
   WAITING: svg(box + '<path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/>', ' stroke-width="2.4"'), DONE: ICON.check, CANCELED: svg(box + '<path d="m9 9 6 6M15 9l-6 6"/>'),
-  sched: svg('<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>'), deadline: svg('<path d="M6 21V4.5M6 5h12l-3 4 3 4H6"/>'), date: ICON.date,
+  polish: ICON.polish, sched: svg('<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>'), deadline: svg('<path d="M6 21V4.5M6 5h12l-3 4 3 4H6"/>'), date: ICON.date,
   today: svg(cal + '<circle cx="12" cy="15" r="1.4" fill="currentColor"/>'), tomorrow: svg(cal + '<path d="M9 15h6M13 13l2 2-2 2"/>'), yesterday: svg(cal + '<path d="M15 15H9M11 13l-2 2 2 2"/>'),
   time: svg('<circle cx="12" cy="12" r="5.5"/><path d="M12 9.5V12l1.8 1.2M9.6 7 10.2 3.5h3.6l.6 3.5M9.6 17l.6 3.5h3.6l.6-3.5"/>'),
   link: ICON.link, blockref: svg('<path d="M8 4.5c-3 4.5-3 10.5 0 15M11.5 7.5c-1.6 2.8-1.6 6.2 0 9M16 4.5c3 4.5 3 10.5 0 15M12.5 7.5c1.6 2.8 1.6 6.2 0 9"/>'),
@@ -208,4 +215,4 @@ export function fadeAway(el, cls = '', anim = null) {
 /** Settings' tabs (settings.js; also the command list's "Settings: …" commands). */
 // (Build 48, his pick of Nov 13: About and Help apart, Property display under Look, Writing became
 // Typing & keys; the old #/settings/writing and #/settings/keys open Typing & keys)
-export const SETTINGS_TABS = [['about', 'About'], ['notes', 'Notes'], ['safety', 'Safety'], ['look', 'Look'], ['typing', 'Typing & keys'], ['capture', 'Capture'], ['help', 'Help']];
+export const SETTINGS_TABS = [['about', 'About'], ['notes', 'Notes'], ['safety', 'Safety'], ['look', 'Look'], ['typing', 'Typing & keys'], ['capture', 'Capture'], ['ai', 'AI'], ['help', 'Help']];

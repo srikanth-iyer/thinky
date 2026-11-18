@@ -68,7 +68,7 @@ the cream tile with a faint edge, `LOGO_LINE` = icon-small.svg's line sampled to
 lines, the spark as sqrt|x|+sqrt|y| curves; tested by core/tests/capture_box.rs `the_logo_is_drawn_in_its_square`);
 its words start after it (`left` = 38 px).
 Calm's accent (Build 32, the maintainer asked: keep it green but warmer, to sit with the brand) is a sage-green
-`#2F6E52` with cream-green tints and a faintly warm page (`[data-skin="calm"], [data-skin="calmplain"]`). The
+`#2F6E52` with cream-green tints and a faintly warm page (`[data-skin="calm"], [data-skin="calmplain"]`). Calm plain has its own slate teal since Build 51 (below). The
 fallbacks when no look was saved yet follow (capture box `BoxColors::default`, the Android widgets' and pop-up's
 `c_accent` default). The thinky look's in-app icon is an ink tile with cream lines (a cream tile melted into its
 light page).
@@ -575,6 +575,54 @@ and recounts (current hit kept), tips set with `data-att-tip` and removed; app.c
 `html.tb-on` (set by `updateToolbar`). The page ⋯ menu: `menu()` items' `icon` (`.m-icon`, `.m-ic`, 17px, `--icon-ink`;
 dom.js `pen history copyText folder tabNew wide narrow print trash clip chain`). Stale locations fixed: Send feedback
 under Help, the bin under Safety (start.rs tour, README, site, app.js toast, settings.js dialog, app.rs merge undo).
+Build 51 (0.6.0; he asked, Nov 18, and picked each part from a clickable preview; tested by t31_build51, core
+tests/ai.rs): the optional AI features, starting with Polish note. Off and out of sight until an AI is set up: ui/ai.js
+puts `ai-on` on <html> once a service and a text model are chosen (localStorage `ai` = {provider, base, textModel,
+pictureModel, mark, extra: {polish}}, this device's own; never the key). Not tied to one company (his rule): core
+`ai.rs` `PROVIDERS` (Claude, OpenAI, Gemini's OpenAI-style address, OpenRouter, Ollama and LM Studio on this computer
+with no key, "Other (OpenAI-style)"), two request formats (`chat_request`: Claude's /messages with x-api-key +
+anthropic-version, else /chat/completions with a Bearer key, no max_tokens or temperature there: newer models refuse
+them), `models_request`/`read_models` (Settings' lists and Test), `read_chat`, `answer_json` (401/403/404/429 in plain
+words). `check_base`: https anywhere, http only to this computer or a home network (`is_local_host`: localhost, 127.x,
+10.x, 192.168.x, 172.16–31.x, ::1, .local/.lan), no spaces, quotes or `@`. The key never reaches the page or the notes
+folder (Drive syncs it, a backup pushes it): Windows' Credential Manager (src-tauri `ai_key.rs`: CredWriteW/ReadW/
+DeleteW by hand, target "thinky AI key: <id>", this user, this computer), Android's Keystore (android/kotlin/AiKeys.kt:
+an AES-GCM key of the app's own, the sealed bytes in SharedPreferences `lean_ai`), the dev server's memory. Commands:
+core `ai_providers`, `ai_check_base`, `ai_models_request/read`, `ai_polish_request/read` (no vault needed for the first
+four); shells `ai_key_set` (empty = remove; `key_ok`: printable, no quotes), `ai_key_has`, `ai_send` {provider, req}.
+Sending: `ai::send_with_curl` (Windows' System32 curl.exe, `update::imp::curl`; the dev server's curl): its settings on
+curl's input (`--config -`, `-q` first), so the key is never on a command line; the body through a file in
+`<cache>/ai`, removed after; `proto =https` (or `=http,https` for a local one), 120 s, 8 MB, `write-out` the status.
+Android: `LeanAndroid.aiKeySet/aiKeyHas/aiSend(id, provider, req)` (a thread; the answer as a `lean-ai` DOM event, its
+detail a JSON string); https only there (http to a home network would need Android's cleartext allowance for the whole
+app). No new library: the app doesn't grow (his choice: "no new library", the same way updates go).
+Polish note: `POLISH_RULES` are fixed (he decided: built in, tested, never breakable; Settings → AI → Advanced's "Your
+own wishes for Polish note" are added after them, ≤2,000 characters, empty = the default). `polish_question`: today
+(weekday, ISO date, a day link as the folder writes it: `journal_title`), the pages it may link (`candidate_pages`:
+names or aliases sharing a 3+-letter word with the note, or starting the same 4+ letters, most linked first, ≤60;
+never the whole folder), the tags in use (≤150, most used first), and the note's words: its property lines
+(`split_props`: id::, collapsed::, by::…) are never sent. `polish_answer`: a code block or the <<< >>> it was sent in
+taken off; notes split at "- " lines (≤8; ≤4× the note + 600 characters); properties it made up dropped; every
+`[[link]]`/`#tag` that isn't a page, an alias, a tag in use, a day or already in the note becomes plain words (text.rs
+`unlink_unknown`, `link_names`; `unlinked` lists them); the first note gets the note's own property lines back; with
+`mark`, `by:: ai` on each (not when one already says `by::`); `same` when nothing changed. UI (ui/polish.js): the ✦
+(`.pz-spark`, one button moved into the row under the mouse by editor.js's pointerover, `hoverSpark`; in the margin,
+inside a card's padding: `right: -max(22px, --sheet-pad-x - 2px)`; laptops wider than 860px with a fine pointer only),
+the phone toolbar's `polish` (after the date button), the note menu's "Polish note" (`polish` in `menuPick`), "/polish"
+(`SLASH`, shown only with `ai-on`, as in the command list) → `Outline.polish(i)` → `startPolish`: `.pz-working` (the
+words in `--ink-faint`, `.pz-sweep` a 2px line in the accent sweeping along the note's foot), then `show`: the note's
+`.bc` hidden, `.pz` with each new note drawn by `viewEl(i, {text, depth})` (it takes a text to draw now), words
+wrapped in `.pz-w` (fading in, `--k` ≤ 24 × 22 ms) and `.pz-new` (not in the note: tinted `--accent-tint`), `.pz-bar`
+(Keep = `.btn small`, the look's accent with a tick; Changes, Retry, Undo = `.btn small ghost`; one line, his rule, on a
+phone too: `.pz` is a container, under 360px Retry is its icon alone), `.pz-diff` (Changes: opens in the page by
+grid-template-rows, old words struck), `.pz-why` (what became plain words). Nothing is saved before Keep (`keep`: the
+note unchanged since it was asked, `stale`; one `snap`, the first note in place, the others after its sub-notes at its
+level, `render`, `markDirty`, `undoToast`; `.pz-kept` fades a tint out). Undo / Esc close it unchanged; Retry asks again.
+Picture model: chosen and kept now (Settings), for Picture to text later. Also Build 51: Calm plain's own teal (he asked:
+Calm's sage beside purple links and tags was too many colours, and "sickly"; his pick "B+ richer teal"): `--accent`
+#0F7487, `--accent-tint` #DDF1F5, `--link` #0B6778, tags #095A69 on #DDF1F5, cool grey lines and dots; Calm keeps its
+sage (t16_logo checks both). Settings has an AI tab (`SETTINGS_TABS`, before Help; `aiCard`: dropdowns, only what the
+service needs, his rule "I don't want to clutter up the UI"). site/privacy.html says what is sent and when.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

@@ -3,7 +3,8 @@
 // a small JS bridge (window.LeanAndroid): file access, the widget and quick capture
 // settings, printing, the look's colours for the status and navigation bars, leaving
 // the app (Android's Back at the start; the app handles Back itself, see App.onBack), and
-// one-click updates (update / installUpdate, with UpdateReceiver at the end of this file);
+// one-click updates (update / installUpdate, with UpdateReceiver at the end of this file); the optional
+// AI features' keys and requests (aiKeySet / aiKeyHas / aiSend, AiKeys.kt);
 // and the long-press shortcuts on the app icon (Today, Add note, Search); leanoutliner://page/… and
 // …/note/… links (the manifest's VIEW filter, scripts/android_overlay.py) open the app at that page.
 
@@ -384,6 +385,17 @@ class MainActivity : TauriActivity() {
     }
     /** "Update now": download build `tag` ("build-24") and check it; the page hears how it goes
      *  ("lean-update" events) and, once it has saved everything, calls installUpdate. */
+    /** The optional AI features (AiKeys.kt, Build 51): a service's key (kept encrypted, never handed
+     *  back), and a request sent on a background thread; its answer comes as a "lean-ai" event. */
+    @JavascriptInterface fun aiKeySet(service: String, key: String): String = AiKeys.set(this@MainActivity, service, key)
+    @JavascriptInterface fun aiKeyHas(service: String): Boolean = AiKeys.has(this@MainActivity, service)
+    @JavascriptInterface fun aiSend(id: String, service: String, req: String) {
+      Thread {
+        val r = AiKeys.send(this@MainActivity, service, req).put("id", id)
+        val js = "document.dispatchEvent(new CustomEvent('lean-ai',{detail:${JSONObject.quote(r.toString())}}))"
+        runOnUiThread { web?.evaluateJavascript(js, null) }
+      }.start()
+    }
     @JavascriptInterface fun update(tag: String) { this@MainActivity.startUpdate(tag) }
     @JavascriptInterface fun installUpdate() { this@MainActivity.installUpdate() }
     /** The Google Play version (android_overlay.py with THINKY_PLAY=1 fills this in, and leaves out

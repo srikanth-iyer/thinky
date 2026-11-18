@@ -240,7 +240,7 @@ pub fn tidy() {
 }
 
 #[cfg(windows)]
-mod imp {
+pub(crate) mod imp {
     use std::ffi::c_void;
     use std::os::windows::ffi::{OsStrExt, OsStringExt};
     use std::path::{Path, PathBuf};

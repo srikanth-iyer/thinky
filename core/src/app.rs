@@ -2595,6 +2595,17 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
             crate::log::clear();
             return Ok(json!(true));
         }
+        // optional AI features (ai.rs, Build 51): the requests, built here; the shells send them with the key
+        "ai_providers" => return Ok(json!(crate::ai::PROVIDERS)),
+        "ai_check_base" => return Ok(json!(crate::ai::check_base(&s("base"))?.0)),
+        "ai_models_request" => {
+            let setup: crate::ai::Setup = serde_json::from_value(args.get("setup").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            return to_value(crate::ai::models_request(&setup)?).map_err(|e| e.to_string());
+        }
+        "ai_models_read" => {
+            let setup: crate::ai::Setup = serde_json::from_value(args.get("setup").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            return Ok(json!(crate::ai::read_models(&setup, n("status") as u16, &s("body"))?));
+        }
         "task_done" => return Ok(json!(crate::task::complete(&s("text"), date("today")?))),
         // what a leanoutliner:// link asks for (link.rs): {kind: page|note|capture|app, …}, or null
         "link" => return to_value(crate::link::parse(&s("link"))).map_err(|e| e.to_string()),
@@ -2670,6 +2681,17 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
         // Build 37: settings kept in the notes folder (logseq/thinky.json), shared by every device
         "folder_settings" => Ok(app.folder_settings()),
         // Build 37: backups (Settings → Backups; app/backup.rs)
+        // Polish note (ai.rs): the question (with the pages and tags it may use), then its answer checked
+        "ai_polish_request" => {
+            let setup: crate::ai::Setup = serde_json::from_value(args.get("setup").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let (system, user) = crate::ai::polish_question(&app.vault, &s("text"), date("today")?, &s("extra"));
+            to_value(crate::ai::chat_request(&setup, &system, &user, 1024)?)
+        }
+        "ai_polish_read" => {
+            let setup: crate::ai::Setup = serde_json::from_value(args.get("setup").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let words = crate::ai::read_chat(&setup, n("status") as u16, &s("body"))?;
+            Ok(crate::ai::polish_answer(&app.vault, &s("text"), &words, b("mark"))?)
+        }
         "backup_now" => to_value(app.backup_now(&s("kind"), &s("dest"), args.get("keep").and_then(Value::as_u64).unwrap_or(4) as usize, args.get("push").and_then(Value::as_bool).unwrap_or(true), &s("stamp"))),
         "backup_find" => Ok(json!(backup::find_in_backup(&s("kind"), std::path::Path::new(s("dest").trim()), &s("rel")))),
         "backup_restore" => Ok(json!(app.restore_from_backup(&s("kind"), &s("dest"), &s("rel"))?)),

@@ -1931,3 +1931,55 @@ html[data-motion="off"] .fading { display: none !important; }
 }
 .blk.att-hit > .bc { background: var(--accent-tint); box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
 .blk.att-cur > .bc { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* ---------- the optional AI (Build 51): Settings → AI and Polish note (ui/ai.js, ui/polish.js) ----------
+   Sleek, as he asked (Nov 18): hairlines, no frames of its own, one filled button (Keep, the look's
+   accent; the others the look's quiet buttons), all on one line; motion only where it says something
+   (the wait, the new words arriving), none when animations are off. */
+.field select, .field textarea { font: inherit; font-size: var(--fs-ui); padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); color: var(--ink); }
+.field textarea { resize: vertical; min-height: 64px; }
+.ai-card .ai-adv { margin-top: 12px; }
+.ai-card .ai-adv summary { font-size: var(--fs-ui); color: var(--ink-soft); }
+.ai-card h2 .note { font-weight: 400; }
+html:not(.ai-on) #toolbar [data-t="polish"], html:not(.ai-on) .pz-spark { display: none; }
+/* the ✦ at the end of the note under the mouse: in the margin (inside a card's own padding), so it never sits on the words */
+.pz-spark { position: absolute; top: 0; right: calc(-1 * max(22px, var(--sheet-pad-x) - 2px)); width: 22px; height: var(--bul-h); padding: 0; display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--r-m); background: transparent; color: var(--accent); opacity: 0; transition: opacity .15s; }
+.pz-spark svg { width: 16px; height: 16px; }
+.blk:hover > .pz-spark { opacity: .5; }
+.pz-spark:hover, .pz-spark:focus-visible { opacity: 1; background: var(--accent-tint); }
+@media (max-width: 860px), (pointer: coarse) { .pz-spark { display: none; } }
+/* waiting: the words go faint and a thin line sweeps along the note's foot */
+.blk.pz-on > .bc { position: relative; }
+.blk.pz-working > .bc { color: var(--ink-faint); overflow: hidden; transition: color .3s; }
+.pz-sweep { position: absolute; left: 0; bottom: 0; width: 30%; height: 2px; border-radius: var(--r-line); background: var(--accent); pointer-events: none; animation: pz-sweep 1s ease-in-out infinite; }
+@keyframes pz-sweep { from { transform: translateX(-100%); } to { transform: translateX(333%); } }
+/* the AI's version, in the note (not saved yet): new words tinted, each fading in after the one before */
+.pz-note { cursor: default; }
+.pz-more { position: relative; margin-top: 3px; padding-left: 16px; }
+.pz-more::before { content: ""; position: absolute; left: 3px; top: calc(var(--bul-h) / 2 - 3px); width: 6px; height: 6px; border-radius: 50%; background: var(--bullet); }
+.pz-w { animation: pz-in .28s ease-out both; animation-delay: calc(var(--k, 0) * 22ms); } /* (≤ 24 steps: all in within ~0.8 s) */
+@keyframes pz-in { from { opacity: 0; } to { opacity: 1; } }
+.pz-new { background: var(--accent-tint); border-radius: var(--r-s); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.pz { container-type: inline-size; }
+.pz-bar { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin: 7px 0 3px; }
+/* a narrow note (a phone): still one line (he asked: never a button on a second line): Retry by its icon alone, a little less room */
+@container (max-width: 360px) {
+  .pz-bar { gap: 4px; }
+  .pz-bar .pz-b { padding-left: 8px; padding-right: 8px; }
+  .pz-bar [data-pz="retry"] span { display: none; }
+}
+.pz-b { white-space: nowrap; flex: 0 0 auto; }
+.pz-bar .pz-keep { padding-left: 13px; padding-right: 13px; }
+/* Changes: opens under the buttons and moves the notes below down (smoothly), old words struck */
+.pz-diff { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .18s ease-out; }
+.pz-diff.open { grid-template-rows: 1fr; }
+.pz-diff > div { overflow: hidden; }
+.pz-diff.open > div { margin-top: 6px; padding: 2px 0 2px 10px; border-left: 1px solid var(--line); font-size: var(--fs-sub); white-space: pre-wrap; }
+.pz-old { color: var(--ink-faint); text-decoration: line-through; }
+.pz-newtext { color: var(--ink); margin-top: 3px; }
+.pz-why { margin: 4px 0 0; }
+/* kept: the note's tint fades away */
+.blk.pz-kept > .bc { animation: pz-kept 1.2s ease-out; }
+@keyframes pz-kept { from { background: var(--accent-tint); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .pz-w, .pz-sweep, .blk.pz-kept > .bc { animation: none; } .pz-sweep { width: 100%; } .pz-diff { transition: none; } }

@@ -9,7 +9,7 @@
 use outline_core::app::{asset_file, check_vault_at, dispatch, App};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 /// Sent with every file from the notes folder (pictures and attachments): shown as itself, never
@@ -119,6 +119,36 @@ struct Server {
     trace: Option<std::time::Instant>,
 }
 
+static AI_KEYS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+
+fn ai_command(cmd: &str, args: &serde_json::Value) -> Option<Result<serde_json::Value, String>> {
+    use serde_json::json;
+    let s = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let keys = || AI_KEYS.lock().unwrap_or_else(|p| p.into_inner());
+    Some(match cmd {
+        "ai_key_set" => {
+            let (p, k) = (s("provider"), s("key").trim().to_string());
+            keys().retain(|(q, _)| *q != p);
+            if k.is_empty() {
+                Ok(json!(false))
+            } else if !outline_core::ai::key_ok(&k) {
+                Err("That key has spaces, quotes or line breaks in it.".into())
+            } else {
+                keys().push((p, k));
+                Ok(json!(true))
+            }
+        }
+        "ai_key_has" => Ok(json!(keys().iter().any(|(q, _)| *q == s("provider")))),
+        "ai_send" => (|| {
+            let req: outline_core::ai::Request = serde_json::from_value(args.get("req").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let key = keys().iter().find(|(q, _)| *q == s("provider")).map(|x| x.1.clone());
+            let (status, body) = outline_core::ai::send_with_curl(Path::new("curl"), &req, key.as_deref(), &std::env::temp_dir().join("thinky-dev-ai"))?;
+            Ok(json!({ "status": status, "body": body }))
+        })(),
+        _ => return None,
+    })
+}
+
 fn handle(sv: &Server, stream: TcpStream) {
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
     let Some(req) = read_request(&stream) else { return };
@@ -137,6 +167,17 @@ fn handle(sv: &Server, stream: TcpStream) {
             return respond(&stream, 403, &[], b"forbidden");
         }
         let args = serde_json::from_slice(&req.body).unwrap_or(serde_json::Value::Null);
+        // the optional AI features (Build 51): the app keeps keys with Windows (src-tauri ai_key.rs);
+        // here they live in memory only, and requests go out with this computer's curl (UI tests point
+        // them at a stand-in AI service on this computer). Not under the notes' lock: a slow answer
+        // mustn't hold up the page.
+        if let Some(out) = ai_command(cmd, &args) {
+            let (code, out) = match out {
+                Ok(v) => (200, v.to_string()),
+                Err(e) => (400, serde_json::json!({ "error": e }).to_string()),
+            };
+            return respond(&stream, code, &[("Content-Type", "application/json")], out.as_bytes());
+        }
         let mut state = sv.state.lock().unwrap_or_else(|p| p.into_inner());
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match (cmd, req.test_now, state.as_ref()) {
             ("check", Some(now), Some(app)) => check_vault_at(&app.root, now).map(|r| serde_json::to_value(r).unwrap_or_default()),

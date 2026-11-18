@@ -9,6 +9,7 @@ use std::sync::{Mutex, MutexGuard};
 use tauri::{Emitter, Manager};
 
 pub mod update;
+mod ai_key;
 // Android's "Add a note" pop-up adds through the core (JNI; the tests run everywhere)
 pub mod android_capture;
 #[cfg(windows)]
@@ -101,6 +102,14 @@ fn call(app: tauri::AppHandle, state: tauri::State<'_, State>, cmd: String, args
         // the capture box's shortcut key (hotkey.rs): the key as saved, or what's set now
         "set_shortcut" => Ok(json!(hotkey::set(&s("key"))?)),
         "get_shortcut" => Ok(hotkey::state()),
+        // the optional AI features (ai_key.rs): a service's key kept by Windows, and a request sent with it
+        "ai_key_set" => Ok(json!(ai_key::set(&s("provider"), &s("key"))?)),
+        "ai_key_has" => Ok(json!(ai_key::has(&s("provider"))?)),
+        "ai_send" => {
+            let req: outline_core::ai::Request = serde_json::from_value(args.get("req").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let (status, body) = ai_key::send(&s("provider"), &req)?;
+            Ok(json!({ "status": status, "body": body }))
+        }
         // one-click updates (update.rs); the page passes only the build it saw ("build-24")
         "update_status" | "update_download" | "update_check" => update::command(&cmd, &s("tag"), &app.package_info().version.to_string()),
         "update_install" => {

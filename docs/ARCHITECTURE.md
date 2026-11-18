@@ -79,6 +79,7 @@ On Android there is one app (the APK) plus Kotlin extras (section 4). The Google
 | **File watcher** (a thread inside the main app) | While a vault is open | — | Notices `.md` changes in `pages/` and `journals/` (sync apps, the phone, other tools) within ~400 ms and tells the page (`lean-files` event → `rescan`). Windows change notifications / inotify on Android; dot-files ignored. The page *also* rescans when the window regains focus or becomes visible (and polls every 30 s under the dev server). |
 | **Safety-copy thread** (inside the main app) | Once, in the background after a vault opens | — | Copies recently changed notes into `logseq/.safety-<device>/` inside the notes folder (falls back to the app's data folder only when the notes folder can't be written; CLAUDE.md "app/safety.rs"). |
 | **Close guard thread** | When the window is closing | — | Gives the page 5 s to save (`lean-close`), then exits anyway. |
+| **AI requests** (Build 51, optional: only once Settings → AI is set up) | Only when the person presses Polish note (✦), Test, or opens Settings → AI with a key saved. **Never on a timer or by itself.** | `ai_send`: one Windows curl.exe process per request (no console window), gone when it answers; Android: one thread in MainActivity | Sends one note (and nearby page names, tags in use) to the AI service the person chose, with their key (Credential Manager / Keystore). |
 | **Update check** (inside the page) | Once at start (skipped if the last answer is under a day old), and from Settings → About. **No timer**: an app left open for days doesn't check again. Laptop and phone. | The check talks to `api.github.com`; "Update now" downloads from `github.com/…/releases/download` (curl.exe on Windows, MainActivity on Android) | Looks for a newer "Build N" among this repo's releases (Build 33 and older: the old downloads repo). |
 
 Rules that follow from this:
@@ -107,6 +108,7 @@ never) and when the app pushes new data; everything else runs only when opened.
 | File | Job |
 |---|---|
 | `app.rs` | `App` (an open vault) and **`dispatch(cmd, args)` = the whole API** the UI calls. Index cache, saving, rename/merge, assets, last-vault. |
+| `ai.rs` | The optional AI features (Build 51): the services' presets, both request formats (Claude's, OpenAI-style), reading answers, allowed addresses (`check_base`), `send_with_curl` (used by the Windows shell and the dev server), and Polish note's fixed instructions and answer checks. Never holds a key. |
 | `app/safety.rs`, `app/history.rs`, `app/pictures.rs` | Safety copies · a page's History · finding/binning unused pictures |
 | `parse.rs` | Text → blocks, properties, links, tags |
 | `vault.rs` | The index: backlinks, tags, properties, to-dos, search, linked/unlinked references |
@@ -133,6 +135,7 @@ never) and when the app pushes new data; everything else runs only when opened.
 | `capture_box/` | Native Win32 capture box (`mod.rs` the window, `ffi.rs` = Windows functions declared by hand, also used by links.rs; `files.rs` clipboard, file picker, picture → PNG; `selftest.rs` CI) |
 | `links.rs` | Handing page/note links to the open app |
 | `update.rs` | Download, check signature, run the installer (Windows' own `curl.exe` + CNG) |
+| `ai_key.rs` | The AI services' keys in Windows' Credential Manager, and `ai_send` (a request sent with the key through curl.exe; core `ai.rs` builds it) |
 | `win.rs` | Registry (link handler), the old Start-menu shortcut, clipboard, local time |
 | `windows/hooks.nsh` | Installer/uninstaller additions (stop the helper; remove Run value on uninstall) |
 | `tauri.conf.json`, `capabilities/default.json` | Window settings, the CSP (no inline scripts), window permissions |
@@ -152,6 +155,7 @@ never) and when the app pushes new data; everything else runs only when opened.
 | `settings.js` | Settings tabs (About/update, Notes, Safety, Look incl. Property display, Typing & keys incl. changing shortcuts in config.edn, Capture incl. the Edge extension's set-up + shortcut key, Help) |
 | `clash.js`, `history.js` | Clash screen · page History |
 | `find.js`, `attach.js`, `paste.js`, `export.js`, `move.js`, `filedrop.js` | Find/replace · Show attachments on this page (Build 48) · rich paste · copy page as text · move notes between pages · files dropped from Explorer |
+| `ai.js`, `polish.js` | The optional AI features (Build 51): this device's AI settings, keys and sending (through the shell, never the key itself) · Polish note's ✦, preview, Keep/Changes/Retry/Undo |
 | `keys.js` | Key notation (Logseq's "mod+shift+up", "g j") against key presses; keycaps for the command list and Settings |
 | `calendar.js`, `dom.js` | Month grid · small DOM helpers and icons |
 | `skins.css`, `app.css` | Looks are only token values in `skins.css`; `app.css` reads tokens and never names a look |
@@ -160,12 +164,12 @@ never) and when the app pushes new data; everything else runs only when opened.
 Tauri events the shell sends the page (`api.js listen`): `lean-files` (files changed), `lean-close`
 (window closing: save now), `lean-link` (a link arrived), `tauri://drag-*` (files dropped). On Android,
 `MainActivity` fires **DOM** events instead, through `evaluateJavascript` (`lean-update`,
-`lean-access`), which the page catches with `document.addEventListener`.
+`lean-access`, `lean-ai` = an AI request's answer), which the page catches with `document.addEventListener`.
 
 **Browser storage** (WebView2's own data lives in the app folder, section 5): localStorage `vault`
 decides which notes folder the app opens (separate from `last-vault.txt`, which is for the capture
 paths). Other localStorage keys: `tabs`, `updateCheck`, `skin`, `sideW`, `splitAt`, `wide`,
-`linkStyle`, `recentSearches`, `pagesOpts`, `exportOpts` and more (grep `store.get`); sessionStorage:
+`linkStyle`, `recentSearches`, `pagesOpts`, `exportOpts`, `ai` (Build 51: the AI service, address, models, by:: ai, extra wishes; never the key) and more (grep `store.get`); sessionStorage:
 `tabs`, `dayFolds`, `refFolds`.
 
 ### `android/` — added on top of Tauri's generated Android project
@@ -176,6 +180,7 @@ paths). Other localStorage keys: `tabs`, `updateCheck`, `skin`, `sideW`, `splitA
 | `MainActivity.kt` | Window insets, all-files permission, the **`window.LeanAndroid` bridge** (widget config/colours/tasks, bar colours, print, keyboard, shortcuts, updates), app-icon shortcuts, `leanoutliner://` links |
 | `kotlin/JournalWidget.kt` | Today's-journal widget (notes drawn with their formatting, to-do boxes and small pictures, `Journal.row`), the round "+" widget, and `Journal` (reads today's journal for the widget; the pop-up adds notes through the app's own Rust code, `LeanCore.kt` → `src-tauri/src/android_capture.rs`) |
 | `kotlin/QuickCaptureActivity.kt` | The "Add to journal" pop-up (widgets' "+", share sheet, tile) |
+| `kotlin/AiKeys.kt` | The AI services' keys, sealed by a Keystore key of the app's own, and sending an AI request (https only; Build 51) |
 | `kotlin/AddNoteTile.kt` | Quick Settings tile |
 | `res/` | Widget layouts and info XML, drawables, the pop-up's layout |
 | `release.keystore` | Not in the repo: the signing key is the `ANDROID_KEYSTORE_B64` secret (locked; never replace) |
@@ -211,6 +216,10 @@ tests (smoke + t1…t15), `run.sh` runs them all.
   portable, test, even the web capture box — re-points this to itself.** After testing an exe, put it
   back to `"%LOCALAPPDATA%\thinky\lean-outliner.exe" "%1"`.
 
+**Windows Credential Manager** (Build 51, only once a key is saved in Settings → AI): one generic credential per AI
+service, `thinky AI key: <service id>` (user "thinky", this computer only); Settings' Remove key deletes it.
+Uninstalling leaves it (Windows → Credential Manager → Windows Credentials can remove it).
+
 **Start menu:** `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Lean Outliner capture.lnk` — the
 *old* way to get a shortcut key (made by spawning PowerShell/WScript.Shell). The installed copy
 removes it once the helper holds the key; the portable copy still uses it.
@@ -235,6 +244,8 @@ NSIS installer adds its own uninstall entry and shortcuts; CI's Rename check cov
 | `problems.log` | anything that fails | Settings → About |
 | `safety-copies/vault-<hash>/…` | the safety thread, and `keep_replaced` right before each cache write (earlier texts) | Settings → Safety copies, History |
 | `update/` (Android: `cacheDir/update-apk`) | the updater | the updater (old ones tidied after 10 min) |
+| `ai/` | an AI request's body while curl.exe sends it (`ai-<pid>-<n>.json`, removed when it answers) | curl.exe |
+| Android only: SharedPreferences `lean_ai` + Keystore key `thinky-ai-keys` | Settings → AI's Save key (AiKeys.kt: the key sealed with AES-GCM; Remove key deletes it) | AiKeys.kt, when a request is sent |
 | WebView2 data (localStorage etc.) | the web engine | the page (section 4, "Browser storage") |
 
 **Inside the vault** (all Logseq-compatible): `logseq/bak/` (backups/History), `logseq/.recycle/`

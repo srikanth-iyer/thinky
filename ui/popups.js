@@ -116,6 +116,7 @@ export const SLASH = [
   ['Page link', '[[ ]]', 'link', 'page reference'], ['Block reference', '(( ))', 'blockref', 'block ref'], ['Link…', 'address, label', 'weblink', 'url web http'],
   ['Tag', '#', 'tag'], ['Template…', 'insert', 'template'], ['Image…', 'from a file', 'image', 'picture photo'], ['Image link…', 'a picture on the web', 'imagelink', 'picture url'],
   ['Upload a file…', 'any file', 'upload', 'upload an asset attach pdf'],
+  ['Polish note', 'AI', 'polish', 'ai tidy rewrite clean fix spelling'],
   ['Bold', '**', 'bold'], ['Italic', '*', 'italic'], ['Highlight', '^^', 'mark'], ['Strikethrough', '~~', 'strike'], ['Underline', '<ins>', 'underline'],
   ['Code', '`', 'code'], ['Code block', '```', 'codeblock'], ['Formula', '$ $', 'math', 'latex math'],
   ['Heading 1', '#', 'h1', 'h1'], ['Heading 2', '##', 'h2', 'h2'], ['Heading 3', '###', 'h3', 'h3'],
@@ -234,7 +235,8 @@ export class Suggest {
     // (all of them: the list scrolls, as Logseq's does)
     // the ones whose name starts with what's typed first, then a word of it ("/link": Link…, then Page link)
     const rank = (label) => { const l = label.toLowerCase(); return l.startsWith(ql) ? 0 : l.split(/\s+/).some((w) => w.startsWith(ql)) ? 1 : 2; };
-    const items = SLASH.filter(([label, , , more = '']) => !NOT_IN_SLASH.has(label)).filter(([label, , , more = '']) => !ql || `${label} ${more}`.toLowerCase().includes(ql) || label.toLowerCase().replace(/[^a-z]/g, '').startsWith(ql))
+    const ai = document.documentElement.classList.contains('ai-on'); // (Polish note only once an AI is set up: ai.js)
+    const items = SLASH.filter(([label, , id]) => !NOT_IN_SLASH.has(label) && (ai || id !== 'polish')).filter(([label, , , more = '']) => !ql || `${label} ${more}`.toLowerCase().includes(ql) || label.toLowerCase().replace(/[^a-z]/g, '').startsWith(ql))
       .sort((a, b) => (ql ? rank(a[0]) - rank(b[0]) : 0))
       .map(([label, hint, id]) => ({ label, html: `${slashIcon(id || label)}${esc(label)}<span class="hint">${esc(hint)}</span>`, value: id || label }));
     if (!items.length) return this.close();

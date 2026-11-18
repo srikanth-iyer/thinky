@@ -140,7 +140,7 @@
 /* Calm's green, a little warmer and creamier so it sits with thinky's cream, ink and red (he asked,
    Oct 29: keep it green, but compatible): a deeper sage-green for buttons, ticked boxes and pressed chips
    (white words on it 5.6:1), cream-green tints for the current place and the welcome screen's squares,
-   and a faintly warm page and editing colour. Calm plain has Calm's colours, so it follows */
+   and a faintly warm page and editing colour. Calm plain took Calm's colours until Build 51 (its own teal now, below) */
 [data-skin="calm"], [data-skin="calmplain"] { --accent: #2F6E52; --accent-ink: #FFFFFF; --accent-tint: #E5ECDC; --edit-bg: #F3F5EC; }
 [data-skin="calm"] { --bg: #F4F4EE; --line: #E0E1D8; --line-soft: #ECEDE6; --guide-ink: #DCDED4; }
 
@@ -152,6 +152,13 @@
   --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
   /* references: Calm's well, a little softer on the white page */
   --refgrp-shadow: inset 0 3px 6px -2px rgba(26,33,48,.14), inset 0 1px 1px rgba(26,33,48,.06);
+  /* One colour family (Build 51, he asked: Calm's sage beside the purple links and tags was too many colours, and
+     the green looked sickly; he picked "B+ richer teal" from a preview): a saturated slate teal for buttons, ticked
+     boxes, links and tags, cool grey lines and dots. White on the accent 5.4:1, links 6.5:1, tags 6.7:1 */
+  --accent: #0F7487; --accent-tint: #DDF1F5; --edit-bg: #F2F9FA;
+  --link: #0B6778; --link-line: color-mix(in srgb, #0B6778 35%, transparent);
+  --tag-bg: #DDF1F5; --tag-ink: #095A69;
+  --ink: #1B2430; --bullet-ink: #8A9AA1; --guide-ink: #D8E5E8; --line: #E0E7EA; --line-soft: #EEF3F5;
 }
 
 /* Night — the Board's dark look: labels sit IN the surface (inset wells), cards and buttons sit ON it */

@@ -101,7 +101,7 @@ await page.locator('.blk > .bc', { hasText: /^child two$/ }).tap();
 await sleep(400);
 const tb = await page.evaluate(() => {
   const pin = document.querySelector('#toolbar .tb-pin').getBoundingClientRect();
-  const btns = [...document.querySelectorAll('#toolbar .tb-scroll button')].map((b) => b.getBoundingClientRect());
+  const btns = [...document.querySelectorAll('#toolbar .tb-scroll button')].filter((b) => b.offsetParent).map((b) => b.getBoundingClientRect()); // (shown ones: Polish note only once an AI is set up)
   return { shown: !document.querySelector('#toolbar').hidden, pinRight: Math.round(innerWidth - pin.right), pinDone: document.querySelector('#toolbar .tb-pin').dataset.t, all: btns.length, visible: btns.filter((r) => r.right <= pin.left + 1).length, w: Math.round(btns[0].width),
     icon: Math.round(document.querySelector('#toolbar .tb-scroll svg').getBoundingClientRect().width), h: Math.round(document.querySelector('#toolbar').getBoundingClientRect().height) };
 });
@@ -263,7 +263,7 @@ const tabRow = await page.evaluate(() => {
   const sel = r.querySelector('[aria-selected="true"]').getBoundingClientRect();
   return { tabs: cs.map((c) => c.textContent).join('|'), oneLine: new Set(cs.map((c) => Math.round(c.getBoundingClientRect().top))).size === 1, scrolls: r.scrollWidth > r.clientWidth, chosenInView: sel.left >= box.left - 0.5 && sel.right <= box.right + 0.5 };
 });
-check(tabRow.tabs === 'About|Notes|Safety|Look|Typing & keys|Capture|Help' && tabRow.oneLine && tabRow.scrolls && tabRow.chosenInView, 'phone Settings, 320px: the seven tabs on one line that scrolls, the chosen one (Capture) in view', JSON.stringify(tabRow));
+check(tabRow.tabs === 'About|Notes|Safety|Look|Typing & keys|Capture|AI|Help' && tabRow.oneLine && tabRow.scrolls && tabRow.chosenInView, 'phone Settings, 320px: the eight tabs on one line that scrolls, the chosen one (Capture) in view', JSON.stringify(tabRow));
 await page.setViewportSize({ width: 393, height: 851 });
 await page.evaluate(() => { location.hash = '#/todos'; });
 await sleep(600);

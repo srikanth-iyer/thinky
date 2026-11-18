@@ -42,6 +42,7 @@ export async function settingsView(app, view, want = null) {
     look: async () => [lookCard(app), ...(app.vaultOpen ? [propDisplayCard(app)] : [])],
     typing: async () => [writingCard(), ...(isAndroid ? [] : [keysCard(app)])],
     capture: async () => [captureCard(app), ...(platform === 'windows' ? [browserCard(app), windowsCard(app)] : [])],
+    ai: async () => [await aiCard(app)],
     help: async () => [feedbackCard(app), problemsCard()],
   };
   // (Safety, Typing & keys and Capture once a notes folder is open)
@@ -936,6 +937,128 @@ function tabArrows(bar) {
 /** Writing (Build 40: its own tab): the spelling check (Build 34, he asked): the system's own check, as
  *  he types; the words are underlined and a right-click (on the phone, the keyboard) offers the right
  *  spelling. Nothing leaves the device. */
+// The optional AI features (Build 51, ui/ai.js; he asked, Nov 18): off until a service is picked. Dropdowns,
+// not a wall of boxes (his words: "I don't want to clutter up the UI"): the service, then only what it
+// needs (an address for a program on this computer or "Other", a key for a service on the internet), the
+// models for text and for pictures (filled from the service's own list), the by:: ai mark, and a folded
+// Advanced part: extra wishes for Polish note, added after thinky's own fixed instructions (he decided:
+// those are built in and can't be broken; empty = the default).
+async function aiCard(app) {
+  const ai = await import('./ai.js');
+  const card = h('div', 'card ai-card');
+  const list = await ai.providers().catch(() => []);
+  let s = ai.aiSettings();
+  const opt = (v, label, on) => `<option value="${esc(v)}"${on ? ' selected' : ''}>${esc(label)}</option>`;
+  card.innerHTML = `<h2>AI <span class="note">(optional)</span></h2>
+    <p class="note">Off until you choose a service. thinky sends a note to the AI only when you ask (✦ Polish note), shows you the change, and saves nothing until you press Keep. Your key stays on this device, never in your notes.</p>
+    <label class="field">Service<select data-f="provider">${opt('', 'Off', !s.provider)}${list.map((p) => opt(p.id, p.name, p.id === s.provider)).join('')}</select></label>
+    <p class="note small ai-say"></p>
+    <label class="field ai-base" hidden>Address<input data-f="base" spellcheck="false" autocomplete="off" placeholder="https://…/v1"></label>
+    <div class="ai-key" hidden>
+      <label class="field">Key<input data-f="key" type="password" spellcheck="false" autocomplete="off" placeholder="Paste your key"></label>
+      <div class="btn-row"><button class="btn" data-a="savekey">Save key</button><button class="btn ghost" data-a="dropkey" hidden>Remove key</button><span class="note ai-keysay"></span></div>
+    </div>
+    <div class="ai-models" hidden>
+      <label class="field">Model for text<select data-f="textModel"></select></label>
+      <label class="field ai-type" hidden>Model’s name<input data-f="typed" spellcheck="false" autocomplete="off" placeholder="e.g. llama3.2"></label>
+      <label class="field">Model for pictures<select data-f="pictureModel"></select></label>
+      <div class="btn-row"><button class="btn ghost" data-a="test">Test</button><span class="note ai-test" role="status"></span></div>
+      <label class="toggle"><input type="checkbox" data-f="mark"${s.mark ? ' checked' : ''}> Mark notes the AI writes with <code>by:: ai</code></label>
+      <details class="ai-adv"><summary>Advanced</summary>
+        <label class="field">Your own wishes for Polish note<textarea data-f="polish" rows="3" placeholder="e.g. Use British spelling. Keep my abbreviations."></textarea></label>
+        <p class="note small">Added after thinky’s own instructions, which stay as they are. Leave it empty for the usual behaviour.</p>
+      </details>
+    </div>`;
+  const f = (k) => $(`[data-f="${k}"]`, card);
+  let models = [];
+  const prov = () => list.find((p) => p.id === s.provider);
+  const fillModels = () => {
+    const have = new Set(models);
+    const t = s.textModel, p = s.pictureModel;
+    const extra = (m) => (m && !have.has(m) ? opt(m, m, true) : '');
+    f('textModel').innerHTML = (t ? '' : opt('', models.length ? 'Choose a model' : 'Press Test to list the models', true)) + extra(t) + models.map((m) => opt(m, m, m === t)).join('') + opt('__type', 'Type a name…', false);
+    f('pictureModel').innerHTML = opt('', 'Same as the model for text', !p) + extra(p) + models.map((m) => opt(m, m, m === p)).join('');
+  };
+  let asked = 0; // (only the newest question's answer is shown)
+  const load = async (quiet) => {
+    const say = $('.ai-test', card);
+    const me = ++asked;
+    say.textContent = 'Asking for its models…';
+    try {
+      const got = await ai.listModels(s);
+      if (me !== asked) return;
+      models = got;
+      say.textContent = `✓ Connected: ${models.length} model${models.length === 1 ? '' : 's'}.`;
+    } catch (e) {
+      if (me !== asked) return;
+      models = [];
+      say.textContent = quiet ? '' : String(e.message || e);
+    }
+    fillModels();
+  };
+  const draw = async () => {
+    const p = prov();
+    $('.ai-say', card).textContent = p ? p.note : 'Polish note and the other AI features stay hidden while this is off.';
+    const local = p && p.key === 'none';
+    $('.ai-base', card).hidden = !p || !(p.id === 'other' || local);
+    f('base').value = s.base || (p ? p.base : '');
+    $('.ai-key', card).hidden = !p || p.key === 'none';
+    $('.ai-models', card).hidden = !p;
+    if (p && p.key !== 'none') {
+      const has = await ai.keyHas(p.id);
+      $('[data-a="dropkey"]', card).hidden = !has;
+      $('.ai-keysay', card).textContent = has ? '✓ A key is saved on this device.' : '';
+      f('key').placeholder = has ? 'Paste a new key to replace it' : 'Paste your key';
+    }
+    fillModels();
+    f('polish').value = s.extra.polish || '';
+  };
+  f('provider').onchange = async () => {
+    s = ai.setAiSettings({ provider: f('provider').value, base: '', textModel: '', pictureModel: '' });
+    models = [];
+    $('.ai-test', card).textContent = '';
+    await draw();
+    const p = prov();
+    if (p && (p.key === 'none' || await ai.keyHas(p.id))) load(true);
+  };
+  f('base').onchange = async () => {
+    const v = f('base').value.trim();
+    try {
+      const b = v ? await call('ai_check_base', { base: v }) : '';
+      s = ai.setAiSettings({ base: b === prov()?.base ? '' : b });
+      $('.ai-test', card).textContent = '';
+      load(true);
+    } catch (e) { $('.ai-test', card).textContent = String(e.message || e); }
+  };
+  $('[data-a="savekey"]', card).onclick = async () => {
+    try {
+      await ai.keySet(s.provider, f('key').value);
+      f('key').value = '';
+      await draw();
+      load(false);
+    } catch (e) { $('.ai-keysay', card).textContent = String(e.message || e); }
+  };
+  $('[data-a="dropkey"]', card).onclick = async () => {
+    await ai.keySet(s.provider, '').catch(() => {});
+    await draw();
+  };
+  f('textModel').onchange = () => {
+    const v = f('textModel').value;
+    $('.ai-type', card).hidden = v !== '__type';
+    if (v === '__type') { f('typed').focus(); return; }
+    s = ai.setAiSettings({ textModel: v });
+  };
+  f('typed').onchange = () => { s = ai.setAiSettings({ textModel: f('typed').value.trim() }); $('.ai-type', card).hidden = true; fillModels(); };
+  f('pictureModel').onchange = () => { s = ai.setAiSettings({ pictureModel: f('pictureModel').value }); };
+  f('mark').onchange = () => { s = ai.setAiSettings({ mark: f('mark').checked }); };
+  f('polish').onchange = () => { s = ai.setAiSettings({ extra: { ...s.extra, polish: f('polish').value.slice(0, 2000) } }); };
+  $('[data-a="test"]', card).onclick = () => load(false);
+  await draw();
+  const p = prov();
+  if (p && (p.key === 'none' || await ai.keyHas(p.id))) load(true);
+  return card;
+}
+
 function writingCard() {
   const card = h('div', 'card writing');
   card.innerHTML = '<h2>Spelling</h2>';

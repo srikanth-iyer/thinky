@@ -8,6 +8,7 @@
 //! the notes they name are found by their `id::` when shown (`Vault::blocks_by_id`). Not supported
 //! on purpose: queries, graph.
 
+pub mod ai;
 pub mod app;
 pub mod capture;
 pub mod capture_box;
