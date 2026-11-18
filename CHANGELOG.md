@@ -14,6 +14,13 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 50 · version 0.5.11 (November 2026)
+
+One fix, from your note of Nov 18.
+
+### Fixed
+- Settings → Safety → Backups → Choose… can now pick a clone of your backup repository with the GitHub kind, such as C:\Users\you\vault-backup. A clone holds a copy of your notes, so it has a `pages` folder, and the picker took it for a notes folder and turned "Use this folder" off. It now says "A git repository holding a copy of your notes" and lets you use it. Your open notes folder, a folder inside a notes folder, a notes folder that isn't a git clone and (with the snapshot zip kind) any notes folder are still refused.
+
 ## Build 49 · version 0.5.10 (November 2026)
 
 Fixes from three independent reviews of Build 48, and your picks of Nov 14.

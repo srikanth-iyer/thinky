@@ -201,7 +201,7 @@ into a git clone outside the notes folder, add/commit/push via the `git` program
 time; both refuse a folder inside the notes folder and a notes folder with no notes; ≥ 20 (or a tenth) gone →
 warning; `find_in_backup`/`restore_from_backup` with create_new), dispatch `backup_now`/`backup_find`/
 `backup_restore`; UI `App.backupNow`/`backupIfDue` (hourly check, day/week, localStorage `backup` per device),
-Settings → Notes `backupCard` (not on Android), Missing pictures' "Found in your backup: restore". Android:
+Settings → Notes `backupCard` (not on Android), Missing pictures' "Found in your backup: restore". Its Choose… (`folderPicker` mode 'choose'; since Build 50, he asked Nov 18): with the GitHub kind a git clone that looks like a notes folder (a copy of the notes, so it has `pages`) can be used unless it is the open notes folder (`app.summary.root`) or inside a notes folder; a notes folder with no `.git`, and with the zip kind any notes folder, stay refused. Tested by t30_build50 (Build 50, 0.5.11). Android:
 `SelectionCaptureActivity.kt` (PROCESS_TEXT, translucent, finishes at once; `LeanCore.addSelected` →
 android_capture.rs `plain` → `clip::defuse` → `capture_to_usual`), manifest entry in android_overlay.py,
 android_test.sh step 5b. Missing pictures: pictures.rs `link_end` ends a link by what opened it (a Markdown

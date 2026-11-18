@@ -412,12 +412,22 @@ export async function folderPicker(app, card, start, opts = {}) {
         <div class="btn-row"><button class="btn" data-create${blocked ? ' disabled' : ''}>Create notes folder</button>
         <span class="note pk-msg">${blocked || 'It’s made inside the folder shown above.'}</span></div></div>`;
     } else if (mode === 'choose') {
-      // (backups: never in a notes folder or inside one, where they'd be synced and backed up again)
-      const no = l.vault ? 'This is a notes folder: choose a folder outside it.'
-        : l.inside ? `This is inside the notes folder <code>${esc(l.inside)}</code>: choose a folder outside it.` : '';
-      const why = no || (opts.git
-        ? (l.git ? 'A git repository: backups are saved and uploaded from here.' : 'Not a git repository yet: clone your backup repository into a folder first (<code>git clone …</code>), then choose that folder.')
-        : 'Backups are saved in this folder.');
+      // (backups: never in a notes folder or inside one, where they'd be synced and backed up again.
+      //  Build 50, he asked Nov 18: a GitHub backup's clone holds a copy of the notes, so it has
+      //  `pages` and looks like a notes folder; with the GitHub kind a git clone that isn't the open
+      //  notes folder can be used. core backup.rs `check_place` still refuses the open one, or one
+      //  inside it or holding it.)
+      const same = (a, b) => !!a && !!b && a.replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase() === b.replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase();
+      const open = app.summary?.root;
+      const copy = opts.git && l.vault && l.git && !l.inside && !same(l.path, open);
+      const no = same(l.path, open) ? 'This is your notes folder: choose a folder outside it.'
+        : l.inside ? `This is inside the notes folder <code>${esc(l.inside)}</code>: choose a folder outside it.`
+          : l.vault && !copy ? (opts.git ? 'This is a notes folder, not a git repository: choose a folder outside it, or a clone of your backup repository.' : 'This is a notes folder: choose a folder outside it.') : '';
+      const why = no || (copy
+        ? 'A git repository holding a copy of your notes: backups are saved and uploaded from here. Each backup makes it match your notes folder exactly (earlier versions stay in its history).'
+        : opts.git
+          ? (l.git ? 'A git repository: backups are saved and uploaded from here.' : 'Not a git repository yet: clone your backup repository into a folder first (<code>git clone …</code>), then choose that folder.')
+          : 'Backups are saved in this folder.');
       foot = `<div class="foot"><button class="btn" data-use${no ? ' disabled' : ''}>Use this folder</button><button class="btn ghost pk-new" data-new>${ICON.plus}New folder</button><button class="btn ghost" data-cancel>Cancel</button>
         <span class="note pk-msg">${why}</span></div>`;
     } else {
