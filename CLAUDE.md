@@ -650,6 +650,13 @@ softened): `ui/skins/washi.svg` (our own: feTurbulence clouding, two thin fibre 
 fine speckle; all faint) as `--page-image` and `--sheet-image`, page #F5F1E9, ink #231F1A, `--ink-shadow` (a .4px blur; skins.css
 root `none`, app.css `.bc, .page-title, .refgrp`), accent #9C1A22, links #24456E; its sidebar `--side-bg` #FBF9F4 (he asked: the
 words merged into the paper), the dot grid fainter. settings.js AI card: `asked++` on a provider change and a refused address.
+Build 54 (0.6.3; his notes of Nov 20; tested by t31_build51, t33_build54): Polish note's suggestion can be changed by hand
+before Keep (polish.js `editNotes`: a click on `.pz-note` makes every note a `.pz-ed` text box, its hidden properties kept aside
+by editor.js `splitHidden`/`joinHidden`; each input updates `res.notes`; Ctrl+Enter = Keep, Esc = `drawNotes` again (no fade);
+keys in the box don't reach the page; Keep drops a note emptied by hand). The ✦ (laptop, `hoverSpark`) and the phone toolbar's ✦
+open `aiMenu` (he asked: a curious click mustn't start the AI): `menu()` with `title` "AI", the heading "Nothing changes until you
+press Keep", Polish note, and Picture to text when `PICTURE_IN`; the toolbar's in OPENS like the date menu. In a `.refgrp` (which
+clips at its edge) the outline ends 8px sooner and the ✦ sits at `right: -14px` (it was cut off in every look, Paper most).
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 
