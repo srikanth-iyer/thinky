@@ -1016,6 +1016,7 @@ async function aiCard(app) {
   f('provider').onchange = async () => {
     s = ai.setAiSettings({ provider: f('provider').value, base: '', textModel: '', pictureModel: '' });
     models = [];
+    asked++; // (the last service's model list, still on its way, is not this one's)
     $('.ai-test', card).textContent = '';
     await draw();
     const p = prov();
@@ -1028,7 +1029,7 @@ async function aiCard(app) {
       s = ai.setAiSettings({ base: b === prov()?.base ? '' : b });
       $('.ai-test', card).textContent = '';
       load(true);
-    } catch (e) { $('.ai-test', card).textContent = String(e.message || e); }
+    } catch (e) { asked++; $('.ai-test', card).textContent = String(e.message || e); } // (a model list still on its way says nothing over this)
   };
   $('[data-a="savekey"]', card).onclick = async () => {
     try {
