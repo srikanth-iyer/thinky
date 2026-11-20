@@ -1969,7 +1969,6 @@ html:not(.ai-on) #toolbar [data-t="polish"], html:not(.ai-on) .pz-spark { displa
 .pz-sweep { position: absolute; left: 0; bottom: 0; width: 30%; height: 2px; border-radius: var(--r-line); background: var(--accent); pointer-events: none; animation: pz-sweep 1s ease-in-out infinite; }
 @keyframes pz-sweep { from { transform: translateX(-100%); } to { transform: translateX(333%); } }
 /* the AI's version, in the note (not saved yet): new words tinted, each fading in after the one before */
-.pz-note { cursor: default; }
 .pz-more { position: relative; margin-top: 3px; padding-left: 16px; }
 .pz-more::before { content: ""; position: absolute; left: 3px; top: calc(var(--bul-h) / 2 - 3px); width: 6px; height: 6px; border-radius: 50%; background: var(--bullet); }
 .pz-w { animation: pz-in .28s ease-out both; animation-delay: calc(var(--k, 0) * 22ms); } /* (≤ 24 steps: all in within ~0.8 s) */
@@ -2043,3 +2042,13 @@ html:not(.ai-on) .ai-chip { display: none; }
 .ai-ref-t { display: block; }
 .ai-ref.no .ai-ref-t { color: var(--ink-faint); }
 @media (prefers-reduced-motion: reduce) { .pz-added { animation: none; } }
+/* Polish note: the AI's words edited by hand before Keep (Build 54, he asked): a click on them makes them text boxes */
+.pz-note { cursor: text; }
+.pz-still { animation: none; }
+.pz-ed { display: block; width: 100%; min-height: var(--line-box); padding: var(--bc-pad-y) 6px; margin: 0 0 0 -6px; font: inherit; line-height: var(--lh); color: inherit;
+  border: 0; outline: 0; resize: none; background: var(--edit-bg); border-radius: var(--r-m); overflow: hidden; field-sizing: content; box-shadow: inset 0 0 0 1px var(--accent-tint); }
+.pz-ed.pz-more { width: calc(100% - 16px); margin-left: 10px; }
+/* the ✦ beside an edited linked reference (Build 54, he saw it cut off): the reference box clips what passes its edge,
+   so there the note ends a little sooner and the ✦ sits inside the box's own padding */
+.refgrp .outline { margin-right: 8px; }
+.refgrp .pz-spark { right: -14px; }

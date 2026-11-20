@@ -14,7 +14,14 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
-## Build 53 · version 0.6.2 (November 2026)
+## Build 54 · version 0.6.3 (November 2026)
+
+- Polish note: a click on the AI's words lets you change them by hand before keeping them (each of its notes becomes a text box; Keep or Ctrl+Enter keeps them as typed, Esc shows them drawn again). Nothing is saved before Keep, and a note emptied by hand isn't kept.
+- The ✦ no longer starts anything by itself: it opens a small "AI" menu with Polish note (and Picture to text on a note with a picture). The same on the phone toolbar's ✦.
+- The ✦ beside an edited linked reference is no longer cut off at the reference box's edge (it was in every look; most in Paper).
+- Under the hood: polish.js `aiMenu`, `drawNotes`, `editNotes`; popups.js `menu()` takes a `title`; test t33_build54 checks the ✦ is whole in every look, t31 the menu and the editing.
+
+ version 0.6.2 (November 2026)
 
 - The laptop's note menu: resting the mouse on "More commands" opens the "/" commands beside it, with a box to narrow them (→, Enter or a click opens it from the keyboard too). The phone keeps "More commands…".
 - Calm's note cards sit lower: a thin edge and a short, close shadow, so they no longer look lifted high off the page.

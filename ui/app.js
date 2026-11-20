@@ -2633,7 +2633,7 @@ class App {
     // Pressed again while what it opened is showing (the note menu, the date menu, the "/" list), a
     // button closes it and does nothing else (Build 39, he asked). Seen before the pop-up's own
     // "press outside" listener closes it: this one is on window, in the capture phase, so it runs first.
-    const OPENS = { more: '.note-menu', date: '.pop.tb-menu', slash: '#ac:not([hidden])' };
+    const OPENS = { more: '.note-menu', date: '.pop.tb-menu', polish: '.pop.tb-menu', slash: '#ac:not([hidden])' };
     let shut = null;
     addEventListener('pointerdown', (e) => {
       const b = e.target.closest?.('#toolbar button');
@@ -2671,7 +2671,7 @@ class App {
         // with words selected, the link button makes them a page link
         link: () => (o.ta && o.ta.selectionStart !== o.ta.selectionEnd ? o.wrap('[[', ']]') : o.insertAtCaret('[[]]', 2)),
         check: () => (o.sel ? o.cycleTodoSel() : o.cycleTodo()), date: () => o.dateMenu(b),
-        polish: () => o.polish(i), // (the optional AI, ui/polish.js: shown only once an AI is set up)
+        polish: () => import('./polish.js').then((m) => m.aiMenu(o, i, b, true)), // (the optional AI, ui/polish.js: shown only once an AI is set up; a menu first, Build 54)
         slash: () => o.openCommands(), // (while typing; not for selected notes)
         bold: () => o.wrap('**', '**'), italic: () => o.wrap('*', '*'), mark: () => o.wrap('^^', '^^'), heading,
         image: () => o.pickFile(true), undo: () => this.undo(o), redo: () => this.redo(o),

@@ -10,6 +10,8 @@
 import { polishText, pictureText, aiOn } from './ai.js';
 import { ICON, motionOn } from './dom.js';
 import { esc } from './render.js';
+import { splitHidden, joinHidden } from './editor.js';
+import { menu } from './popups.js';
 
 const root = document.documentElement;
 const words = (t) => new Set((t.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []));
@@ -26,15 +28,15 @@ export function hoverSpark(o, e) {
     spark.className = 'pz-spark';
     spark.type = 'button';
     spark.tabIndex = -1;
-    spark.title = 'Polish note (AI)';
-    spark.setAttribute('aria-label', 'Polish note (AI)');
+    spark.title = 'AI…';
+    spark.setAttribute('aria-label', 'AI: polish this note…');
     spark.innerHTML = ICON.polish;
     spark.addEventListener('pointerdown', (ev) => { ev.preventDefault(); ev.stopPropagation(); }); // (no drag, no editing)
     spark.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
       const r = spark.parentElement;
-      if (r && spark.o) startPolish(spark.o, +r.dataset.i);
+      if (r && spark.o) aiMenu(spark.o, +r.dataset.i, spark);
     });
   }
   spark.o = o;
@@ -42,6 +44,16 @@ export function hoverSpark(o, e) {
 }
 
 // ---------- polishing one note ----------
+/** What the ✦ does (Build 54, he asked: a click out of curiosity mustn't start anything): a small menu
+ *  that says what each choice does; only a choice in it asks the AI. From the ✦ beside a note (laptop)
+ *  and the phone toolbar's ✦ (`tb`: the keyboard stays up). */
+export function aiMenu(o, i, anchor, tb = false) {
+  if (!(i >= 0) || !o.blocks[i]) return;
+  const items = [{ label: 'Polish note', hint: 'Tidies its words', icon: ICON.polish, run: () => startPolish(o, i) }];
+  if (PICTURE_IN.test(o.textOf(i))) items.push({ label: 'Picture to text', hint: 'Its words as notes', icon: ICON.polish, run: () => startPicture(o, i) });
+  menu(anchor, items, { title: 'AI', ...(tb ? { keep: true, cls: 'tb-menu ai-menu' } : { cls: 'ai-menu' }) });
+}
+
 /** Ask the AI to polish note i of outline o, and show its answer for the person to keep or not. */
 export async function startPolish(o, i) {
   const app = o.app;
@@ -106,17 +118,55 @@ function show(st, res) {
   const box = document.createElement('div');
   box.className = 'pz';
   st.box = box;
-  const old = words(st.text);
+  st.old = words(st.text);
+  st.notesEl = document.createElement('div');
+  st.notesEl.className = 'pz-notes';
+  box.append(st.notesEl);
+  drawNotes(st, res, motionOn());
+  const btn = (a, icon, label, cls = '') => `<button type="button" class="btn small pz-b${cls}" data-pz="${a}" aria-label="${label}" title="${label}">${icon}<span>${label}</span></button>`;
+  box.insertAdjacentHTML('beforeend', `<div class="pz-bar" role="group" aria-label="The AI’s version">${btn('keep', ICON.tick, 'Keep', ' pz-keep')}${btn('diff', ICON.eye, 'Changes', ' ghost')}${btn('retry', ICON.retry, 'Retry', ' ghost')}${btn('undo', ICON.undoArrow, 'Undo', ' ghost')}</div>
+    <div class="pz-diff"><div><div class="pz-old">${esc(st.text.split('\n').filter((l) => !/^[\w.-]+::/.test(l.trim())).join('\n'))}</div><div class="pz-newtext">${res.notes.map((t) => esc(t.split('\n').filter((l) => !/^[\w.-]+::/.test(l.trim()) || /^by::/.test(l.trim())).join('\n'))).join('\n')}</div></div></div>`);
+  if (res.unlinked?.length) box.insertAdjacentHTML('beforeend', `<p class="note small pz-why">Left as plain words (no such page or tag): ${res.unlinked.map(esc).join(', ')}</p>`);
+  (bc || row.lastChild).after(box);
+  box.addEventListener('pointerdown', (e) => e.stopPropagation()); // (not a press on the note: no editing, no drag)
+  box.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const b = e.target.closest('[data-pz]');
+    const a = b?.dataset.pz;
+    if (a === 'diff') { const d = box.querySelector('.pz-diff'); d.classList.toggle('open'); b.setAttribute('aria-pressed', String(d.classList.contains('open'))); return; }
+    if (a === 'undo') { close(st); return; }
+    if (a === 'retry') { close(st); startPolish(o, i); return; }
+    if (a === 'keep') { keep(st, res); return; }
+    // a click on the AI's words: edit them in place before keeping (he asked, Nov 20)
+    const v = e.target.closest('.pz-note');
+    if (v && !st.editing) { e.preventDefault(); editNotes(st, res, [...st.notesEl.children].indexOf(v)); }
+  });
+  box.addEventListener('keydown', (e) => { // (typing here is its own: not the page's keys)
+    if (!e.target.closest('.pz-ed')) return;
+    e.stopPropagation();
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); keep(st, res); }
+    else if (e.key === 'Escape') { e.preventDefault(); drawNotes(st, res, false); box.querySelector('.pz-keep')?.focus(); }
+  });
+  st.esc = (e) => { if (e.key === 'Escape' && o.pz === st && !st.editing && !document.querySelector('.pop:not([hidden]), .modal-back')) { e.preventDefault(); close(st); } };
+  document.addEventListener('keydown', st.esc, true);
+}
+
+/** The AI's notes as drawn notes (not saved), the words that weren't in the note tinted; with `fade`,
+ *  each word fades in after the one before. Also after editing them by hand. */
+function drawNotes(st, res, fade) {
+  const { o, i } = st;
+  st.editing = false;
+  st.box.classList.remove('pz-editing');
+  st.notesEl.replaceChildren();
   res.notes.forEach((t, n) => {
     const v = o.viewEl(i, { text: t, depth: st.depth });
     v.classList.add('pz-note');
+    v.title = 'Click to change these words before keeping them';
     if (n > 0) v.classList.add('pz-more'); // (another note it became, after this one)
-    box.append(v);
+    st.notesEl.append(v);
   });
-  // each word fades in after the one before; the ones that weren't in the note are tinted
   let k = 0;
-  const motion = motionOn();
-  for (const v of box.querySelectorAll('.pz-note')) {
+  for (const v of st.notesEl.querySelectorAll('.pz-note')) {
     const walk = document.createTreeWalker(v, NodeFilter.SHOW_TEXT);
     const texts = [];
     while (walk.nextNode()) texts.push(walk.currentNode);
@@ -128,32 +178,44 @@ function show(st, res) {
         if (!p || /^\s+$/.test(p)) { frag.append(p); continue; }
         const s = document.createElement('span');
         const w = (p.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
-        s.className = 'pz-w' + (w.length && w.some((x) => !old.has(x)) ? ' pz-new' : '');
-        if (motion) s.style.setProperty('--k', String(Math.min(k++, 24)));
+        s.className = 'pz-w' + (w.length && w.some((x) => !st.old.has(x)) ? ' pz-new' : '') + (fade ? '' : ' pz-still');
+        if (fade) s.style.setProperty('--k', String(Math.min(k++, 24)));
         s.textContent = p;
         frag.append(s);
       }
       tn.replaceWith(frag);
     }
   }
-  const btn = (a, icon, label, cls = '') => `<button type="button" class="btn small pz-b${cls}" data-pz="${a}" aria-label="${label}" title="${label}">${icon}<span>${label}</span></button>`;
-  box.insertAdjacentHTML('beforeend', `<div class="pz-bar" role="group" aria-label="The AI’s version">${btn('keep', ICON.tick, 'Keep', ' pz-keep')}${btn('diff', ICON.eye, 'Changes', ' ghost')}${btn('retry', ICON.retry, 'Retry', ' ghost')}${btn('undo', ICON.undoArrow, 'Undo', ' ghost')}</div>
-    <div class="pz-diff"><div><div class="pz-old">${esc(st.text.split('\n').filter((l) => !/^[\w.-]+::/.test(l.trim())).join('\n'))}</div><div class="pz-newtext">${res.notes.map((t) => esc(t.split('\n').filter((l) => !/^[\w.-]+::/.test(l.trim()) || /^by::/.test(l.trim())).join('\n'))).join('\n')}</div></div></div>`);
-  if (res.unlinked?.length) box.insertAdjacentHTML('beforeend', `<p class="note small pz-why">Left as plain words (no such page or tag): ${res.unlinked.map(esc).join(', ')}</p>`);
-  (bc || row.lastChild).after(box);
-  box.addEventListener('pointerdown', (e) => e.stopPropagation()); // (not a press on the note: no editing, no drag)
-  box.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const b = e.target.closest('[data-pz]');
-    if (!b) return;
-    const a = b.dataset.pz;
-    if (a === 'diff') { const d = box.querySelector('.pz-diff'); d.classList.toggle('open'); b.setAttribute('aria-pressed', String(d.classList.contains('open'))); return; }
-    if (a === 'undo') { close(st); return; }
-    if (a === 'retry') { close(st); startPolish(o, i); return; }
-    if (a === 'keep') keep(st, res);
+  newText(st, res);
+}
+const propLine = (l) => /^[\w.-]+::/.test(l.trim());
+function newText(st, res) {
+  const el = st.box.querySelector('.pz-newtext');
+  if (el) el.textContent = res.notes.map((t) => t.split('\n').filter((l) => !propLine(l) || /^by::/.test(l.trim())).join('\n')).join('\n');
+}
+
+/** Edit the AI's notes by hand: each becomes a text box with its words (its hidden properties, such as
+ *  the note's id::, kept aside and put back); Keep (or Ctrl+Enter) keeps them as typed, Esc shows them
+ *  drawn again. The note itself still isn't touched until Keep. */
+function editNotes(st, res, at) {
+  st.editing = true;
+  st.box.classList.add('pz-editing');
+  st.notesEl.replaceChildren();
+  const tas = res.notes.map((t, n) => {
+    const { shown, hidden } = splitHidden(t);
+    const ta = document.createElement('textarea');
+    ta.className = 'pz-ed' + (n > 0 ? ' pz-more' : '');
+    ta.value = shown;
+    ta.rows = 1;
+    ta.spellcheck = localStorage.getItem('spellcheck') !== 'false';
+    ta.setAttribute('aria-label', n ? `The AI’s note ${n + 1}, to change` : 'The AI’s version, to change');
+    ta.addEventListener('input', () => { res.notes[n] = joinHidden(ta.value, hidden); newText(st, res); });
+    st.notesEl.append(ta);
+    return ta;
   });
-  st.esc = (e) => { if (e.key === 'Escape' && o.pz === st && !document.querySelector('.pop:not([hidden]), .modal-back')) { e.preventDefault(); close(st); } };
-  document.addEventListener('keydown', st.esc, true);
+  const ta = tas[Math.max(0, at)] || tas[0];
+  ta?.focus();
+  ta?.setSelectionRange(ta.value.length, ta.value.length);
 }
 
 /** Keep: the note takes the AI's words (and the notes it became go in after it and its sub-notes),
@@ -161,7 +223,9 @@ function show(st, res) {
 function keep(st, res) {
   const { o, i } = st;
   if (stale(st)) { close(st); app(st).toast('The note changed meanwhile, so nothing was changed.', 4000); return; }
-  const [first, ...more] = res.notes;
+  const notes = res.notes.filter((t) => splitHidden(t).shown.trim()); // (a note emptied by hand isn't kept)
+  if (!notes.length) { app(st).toast('There’s nothing left to keep: Undo to leave the note as it was.', 4000); return; }
+  const [first, ...more] = notes;
   const at = o.subtreeEnd(i);
   close(st);
   o.snap();
@@ -171,7 +235,7 @@ function keep(st, res) {
   o.ta = null;
   o.render();
   o.markDirty();
-  const n = res.notes.length;
+  const n = notes.length;
   o.undoToast(n === 1 ? 'Polished the note.' : `Polished the note into ${n} notes.`);
   const div = o.blockDiv(i);
   if (div && motionOn()) { div.classList.add('pz-kept'); setTimeout(() => div.classList.remove('pz-kept'), 1400); }
