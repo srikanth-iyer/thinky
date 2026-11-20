@@ -1641,6 +1641,19 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 .nm-l { flex: 1; }
 .nm-item[aria-checked="true"] .nm-l::after { content: "  ✓"; white-space: pre; color: var(--accent); font-weight: 600; }
 .nm-hint { font-size: var(--fs-small); color: var(--ink-faint); text-align: right; }
+/* "More commands" (Build 53): a › at its end; its list opens beside the menu (laptop) */
+.nm-chev { color: var(--ink-faint); font-size: var(--fs-read); line-height: 1; }
+.nm-has-sub[aria-expanded="true"] { background: var(--surface-2); }
+.nm-sub { position: fixed; z-index: 61; width: 240px; display: flex; flex-direction: column; overflow: hidden; }
+.nm-sub .nm-find { flex: none; margin: 2px 2px 4px; height: 28px; padding: 0 8px; font: inherit; font-size: var(--fs-ui); border: 1px solid var(--line); border-radius: var(--r-m); background: var(--bg); color: var(--ink); }
+.nm-sub .nm-find:focus { outline: 2px solid var(--accent-tint); border-color: var(--accent); }
+.nm-sub .nm-list { overflow-y: auto; min-height: 0; }
+.nm-sub .nm-cmd { display: flex; align-items: center; width: 100%; text-align: left; }
+.nm-sub .nm-cmd .hint { margin-left: auto; padding-left: 10px; font-size: var(--fs-small); color: var(--ink-faint); }
+.nm-sub .ac-ic { display: inline-block; flex: none; width: 18px; height: 18px; margin: 0 9px 0 -1px; color: var(--ink-soft); text-align: center; overflow: hidden; }
+.nm-sub .ac-ic svg { width: 17px; height: 17px; display: block; margin: .5px auto 0; }
+.nm-sub .ac-ic.ac-t { font: 700 var(--fs-tiny)/18px var(--font-body); letter-spacing: -.02em; }
+.nm-none-found { margin: 6px 8px; font-size: var(--fs-sub); color: var(--ink-faint); }
 /* a phone: one column, rows close together (he asked for it, Build 32: 32px, was 44) and small
    colour dots; each dot's button reaches a little past it (::before), so it's still easy to hit */
 @media (pointer: coarse) {

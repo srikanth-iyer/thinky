@@ -234,14 +234,7 @@ export class Suggest {
   }
 
   slash(outline, start, q) {
-    const ql = q.toLowerCase();
-    // (all of them: the list scrolls, as Logseq's does)
-    // the ones whose name starts with what's typed first, then a word of it ("/link": Link…, then Page link)
-    const rank = (label) => { const l = label.toLowerCase(); return l.startsWith(ql) ? 0 : l.split(/\s+/).some((w) => w.startsWith(ql)) ? 1 : 2; };
-    const ai = document.documentElement.classList.contains('ai-on'); // (Polish note only once an AI is set up: ai.js)
-    const items = SLASH.filter(([label, , id]) => !NOT_IN_SLASH.has(label) && (ai || !AI_SLASH.has(id))).filter(([label, , , more = '']) => !ql || `${label} ${more}`.toLowerCase().includes(ql) || label.toLowerCase().replace(/[^a-z]/g, '').startsWith(ql))
-      .sort((a, b) => (ql ? rank(a[0]) - rank(b[0]) : 0))
-      .map(([label, hint, id]) => ({ label, html: `${slashIcon(id || label)}${esc(label)}<span class="hint">${esc(hint)}</span>`, value: id || label }));
+    const items = slashChoices(q);
     if (!items.length) return this.close();
     this.show(outline, 'slash', start, q, items);
   }
@@ -539,6 +532,18 @@ const COLOR_NAMES = { yellow: 'Yellow', red: 'Red', pink: 'Pink', green: 'Green'
  * it keeps it: the editing box on a phone keeps its keyboard). o.touch: opened by a finger. o.closed(picked)
  * when it closes.
  */
+/** The "/" list's rows for what's typed after "/" (q): {label, html, value}. Shared by the "/" list and
+ *  the note menu's "More commands" (Build 53). */
+export function slashChoices(q = '') {
+  const ql = q.toLowerCase();
+  // the ones whose name starts with what's typed first, then a word of it ("/link": Link…, then Page link)
+  const rank = (label) => { const l = label.toLowerCase(); return l.startsWith(ql) ? 0 : l.split(/\s+/).some((w) => w.startsWith(ql)) ? 1 : 2; };
+  const ai = document.documentElement.classList.contains('ai-on'); // (the AI rows only once an AI is set up: ai.js)
+  return SLASH.filter(([label, , id]) => !NOT_IN_SLASH.has(label) && (ai || !AI_SLASH.has(id))).filter(([label, , , more = '']) => !ql || `${label} ${more}`.toLowerCase().includes(ql) || label.toLowerCase().replace(/[^a-z]/g, '').startsWith(ql))
+    .sort((a, b) => (ql ? rank(a[0]) - rank(b[0]) : 0))
+    .map(([label, hint, id]) => ({ label, html: `${slashIcon(id || label)}${esc(label)}<span class="hint">${esc(hint)}</span>`, value: id || label }));
+}
+
 export function noteMenu(r, o) {
   const box = h('div', 'pop menu note-menu');
   box.setAttribute('role', 'menu');
@@ -555,14 +560,71 @@ export function noteMenu(r, o) {
   }
   if (html) html += '<div class="nm-sep" role="separator"></div>';
   html += o.items.map((it, k) => it === '-' ? '<div class="nm-sep" role="separator"></div>'
-    : `<button type="button" role="${it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" class="nm-item${it.danger ? ' danger' : ''}" data-k="${k}"${it.checked === undefined ? '' : ` aria-checked="${!!it.checked}"`}><span class="nm-l">${esc(it.label)}</span>${it.hint ? `<span class="nm-hint">${esc(it.hint)}</span>` : ''}</button>`).join('');
+    : `<button type="button" role="${it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" class="nm-item${it.danger ? ' danger' : ''}${it.sub ? ' nm-has-sub' : ''}" data-k="${k}"${it.checked === undefined ? '' : ` aria-checked="${!!it.checked}"`}${it.sub ? ' aria-haspopup="menu" aria-expanded="false"' : ''}><span class="nm-l">${esc(it.label)}</span>${it.sub ? '<span class="nm-chev" aria-hidden="true">›</span>' : it.hint ? `<span class="nm-hint">${esc(it.hint)}</span>` : ''}</button>`).join('');
   box.innerHTML = html;
   document.body.append(box);
   const before = document.activeElement;
   let open = true;
+  // Build 53 (he asked, Nov 20): on a laptop "More commands" opens the "/" list beside the menu when
+  // the mouse rests on it (or → / Enter on it), with a filter box; a row runs on the note (pick 'slash')
+  let sub = null, subFor = null, subTimer = 0;
+  const closeSub = (refocus = false) => {
+    clearTimeout(subTimer);
+    if (!sub) return;
+    sub.remove();
+    sub = null;
+    subFor?.setAttribute('aria-expanded', 'false');
+    if (refocus) subFor?.focus({ preventScroll: true });
+    subFor = null;
+  };
+  const openSub = (b, kb = false) => {
+    if (sub && subFor === b) { if (kb) sub.querySelector('input')?.focus(); return; }
+    closeSub();
+    const it = o.items[+b.dataset.k];
+    subFor = b;
+    b.setAttribute('aria-expanded', 'true');
+    sub = h('div', 'pop menu note-menu nm-sub');
+    sub.setAttribute('role', 'menu');
+    sub.setAttribute('aria-label', it.label);
+    sub.innerHTML = '<input type="text" class="nm-find" placeholder="Filter…" aria-label="Filter the commands" autocomplete="off" spellcheck="false"><div class="nm-list"></div>';
+    const list = sub.querySelector('.nm-list');
+    const fill = (q = '') => {
+      const rows = it.sub(q);
+      list.innerHTML = rows.length ? rows.map((x, n) => `<button type="button" role="menuitem" class="nm-item nm-cmd" data-n="${n}">${x.html}</button>`).join('') : '<p class="nm-none-found">No such command</p>';
+      list.rows = rows;
+    };
+    fill();
+    document.body.append(sub);
+    const mb = box.getBoundingClientRect(), bb = b.getBoundingClientRect();
+    const w = sub.offsetWidth;
+    const left = mb.right - 2 + w <= innerWidth - 8 ? mb.right - 2 : Math.max(8, mb.left - w + 2);
+    const top = Math.max(8, Math.min(bb.top - 42, innerHeight - 8 - Math.min(sub.offsetHeight, 420)));
+    Object.assign(sub.style, { left: left + 'px', top: top + 'px', maxHeight: Math.min(420, innerHeight - 8 - top) + 'px' });
+    const find = sub.querySelector('input');
+    find.addEventListener('input', () => fill(find.value.trim()));
+    sub.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
+    sub.addEventListener('click', (e) => {
+      const c = e.target.closest('.nm-cmd');
+      if (!c) return;
+      const v = list.rows[+c.dataset.n].value;
+      close(true);
+      o.pick('slash', v);
+    });
+    sub.addEventListener('keydown', (e) => {
+      const rows = [...list.querySelectorAll('.nm-cmd')];
+      const k = rows.indexOf(document.activeElement);
+      const go = (x) => { e.preventDefault(); e.stopPropagation(); x?.focus({ preventScroll: false }); };
+      if (e.key === 'ArrowDown') return go(rows[k < 0 ? 0 : (k + 1) % rows.length]);
+      if (e.key === 'ArrowUp') return go(k <= 0 ? (k === 0 ? find : rows.at(-1)) : rows[k - 1]);
+      if (e.key === 'Enter' && document.activeElement === find && rows[0]) { e.preventDefault(); e.stopPropagation(); rows[0].click(); return; }
+      if (e.key === 'ArrowLeft' && document.activeElement !== find || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSub(true); }
+    });
+    if (kb) find.focus({ preventScroll: true });
+  };
   const close = (picked = false) => {
     if (!open) return;
     open = false;
+    closeSub();
     const had = box.contains(document.activeElement);
     closeFrom(box);
     document.removeEventListener('pointerdown', onDown, true);
@@ -576,23 +638,25 @@ export function noteMenu(r, o) {
   box.addEventListener('pop-close', away); // (its dot, under it, pressed again)
   window.addEventListener('hashchange', away);
   // typing goes on elsewhere (the editing box keeps the keyboard when a finger opens it): it closes
-  const typed = (e) => { if (!box.contains(e.target)) close(); };
+  const typed = (e) => { if (!box.contains(e.target) && !sub?.contains(e.target)) close(); };
   document.addEventListener('beforeinput', typed, true);
   // a press outside closes it; after a finger's, the tap doesn't also act on what's under it
   const onDown = (e) => {
-    if (box.contains(e.target)) return;
+    if (box.contains(e.target) || sub?.contains(e.target)) return;
     if (e.button === 0) eatNextClick();
     close();
   };
   const buttons = () => [...box.querySelectorAll('button')];
   const lineOf = (b) => (b.closest('.nm-row') ?? b); // (a row of swatches or headings is one line)
   const onKey = (e) => {
+    if (sub?.contains(document.activeElement)) return; // (its own keys: sub's keydown)
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
     // a key while the menu doesn't have the keyboard: it's for what does (the menu goes)
     if (!box.contains(document.activeElement)) { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) close(); return; }
     if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); close(); return; }
     const all = buttons();
     const cur = all.indexOf(document.activeElement);
+    if ((e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') && all[cur]?.classList.contains('nm-has-sub')) { e.preventDefault(); e.stopPropagation(); openSub(all[cur], true); return; }
     const go = (b) => { if (b) { e.preventDefault(); e.stopPropagation(); b.focus(); } };
     if (e.key === 'Home') return go(all[0]);
     if (e.key === 'End') return go(all.at(-1));
@@ -619,8 +683,18 @@ export function noteMenu(r, o) {
   // phone its keyboard); the keyboard still reaches them when the menu has the focus
   box.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
   const opened = Date.now();
+  // the mouse resting on "More commands" opens its list; on another row, closes it
+  box.addEventListener('pointerover', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const b = e.target.closest('.nm-item');
+    if (!b) return;
+    clearTimeout(subTimer);
+    if (b.classList.contains('nm-has-sub')) subTimer = setTimeout(() => open && openSub(b), 120);
+    else if (sub) subTimer = setTimeout(() => closeSub(), 200);
+  });
   box.addEventListener('click', (e) => {
     const b = e.target.closest('button');
+    if (b?.classList.contains('nm-has-sub')) { openSub(b); return; }
     // (opened by a finger let go: a click that comes with that finger, where the menu now is, isn't a choice)
     if (!b || (o.touch && Date.now() - opened < 350)) return;
     close(true);

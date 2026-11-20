@@ -950,7 +950,7 @@ async function aiCard(app) {
   let s = ai.aiSettings();
   const opt = (v, label, on) => `<option value="${esc(v)}"${on ? ' selected' : ''}>${esc(label)}</option>`;
   card.innerHTML = `<h2>AI <span class="note">(optional)</span></h2>
-    <p class="note">Off until you choose a service. thinky sends a note to the AI only when you ask (✦ Polish note), shows you the change, and saves nothing until you press Keep. Your key stays on this device, never in your notes.</p>
+    <p class="note">Off until you choose a service. thinky sends something to the AI only when you use one of its features (Polish note, Picture to text, Ask about this page, Suggest links, aliases and a description), shows you what it suggests, and saves nothing until you press its button. Your key stays on this device, never in your notes.</p>
     <label class="field">Service<select data-f="provider">${opt('', 'Off', !s.provider)}${list.map((p) => opt(p.id, p.name, p.id === s.provider)).join('')}</select></label>
     <p class="note small ai-say"></p>
     <label class="field ai-base" hidden>Address<input data-f="base" spellcheck="false" autocomplete="off" placeholder="https://…/v1"></label>
