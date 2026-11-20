@@ -58,6 +58,7 @@ fn each_format_asks_its_own_way_and_never_carries_the_key() {
     assert_eq!(b["system"], "rules");
     assert_eq!(b["messages"][0]["content"], "the note");
     assert_eq!(b["max_tokens"], 1024);
+    assert!(b.get("temperature").is_none() && b.get("top_p").is_none(), "newer Claude models refuse temperature (Build 52)");
 
     let r = ai::chat_request(&setup("gemini", "gemini-x"), "rules", "the note", 1024).unwrap();
     assert_eq!(r.url, "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
@@ -195,4 +196,93 @@ fn curl_sends_the_key_in_a_header_and_reads_the_answer() {
     let gone = Setup { provider: "other".into(), base: "http://127.0.0.1:9/v1".into(), model: "m".into() };
     let e = ai::send_with_curl(curl, &ai::chat_request(&gone, "a", "b", 9).unwrap(), None, &tmp).unwrap_err();
     assert!(e.contains("Is it running"), "{e}");
+}
+
+// ---------------------------------------------------------------- Build 52: the other AI features
+
+#[test]
+fn a_picture_goes_with_the_question_in_each_format() {
+    assert_eq!(ai::base64(b"Man"), "TWFu");
+    assert_eq!(ai::base64(b"Ma"), "TWE=");
+    assert_eq!(ai::base64(b"M"), "TQ==");
+    assert_eq!(ai::picture_type("a.JPG"), Some("image/jpeg"));
+    assert_eq!(ai::picture_type("a.svg"), None);
+    let pic = ai::Picture { media_type: "image/png", data: "AAAA".into() };
+    let r = ai::chat_request_with(&setup("claude", "c"), "rules", "words", Some(&pic), 100).unwrap();
+    let b: Value = serde_json::from_str(r.body.as_deref().unwrap()).unwrap();
+    assert_eq!(b["messages"][0]["content"][0]["source"]["media_type"], "image/png");
+    assert_eq!(b["messages"][0]["content"][1]["text"], "words");
+    let r = ai::chat_request_with(&setup("openai", "o"), "rules", "words", Some(&pic), 100).unwrap();
+    let b: Value = serde_json::from_str(r.body.as_deref().unwrap()).unwrap();
+    assert_eq!(b["messages"][1]["content"][0]["image_url"]["url"], "data:image/png;base64,AAAA");
+}
+
+#[test]
+fn picture_to_text_gives_notes_with_depths_and_only_known_links() {
+    let v = vault("pic");
+    let app = open(&v);
+    let (_, user) = ai::picture_question(&app.vault, "Photo of the whiteboard ![b](../assets/b.png)");
+    assert!(user.contains("Diogo Silva (also called: Diogo)"), "the most linked pages are offered");
+    let a = "```\n- Talk plan for [[CBeRa]]\n  - 1. why noise helps\n      - deep\n  - ask [[Nobody Here]]\nkey:: value\n```";
+    let r = ai::picture_answer(&app.vault, "note", a, true).unwrap();
+    let notes = r["notes"].as_array().unwrap();
+    assert_eq!(notes[0]["text"], "Talk plan for [[CBeRa]]\nby:: ai");
+    assert_eq!(notes[1]["text"], "why noise helps");
+    assert_eq!(notes[1]["depth"], 1);
+    assert_eq!(notes[2]["depth"], 2, "never more than one deeper than the note before");
+    assert_eq!(notes[3]["text"], "ask Nobody Here");
+    assert_eq!(notes.len(), 4, "a property line is dropped");
+    assert_eq!(r["unlinked"][0], "Nobody Here");
+    assert!(ai::picture_answer(&app.vault, "note", "  \n", true).is_err());
+}
+
+#[test]
+fn ask_this_page_reads_the_page_and_what_links_to_it() {
+    let v = vault("ask");
+    put(&v, "journals/2026_10_28.md", "- asked Rita whether [[CBeRa]] covers the fees\n\t- needs the invoice by Dec 15\n");
+    put(&v, "journals/2026_10_09.md", "- [[CBeRa]] report due end of January\n");
+    let app = open(&v);
+    let (_, user, sources) = ai::ask_question(&app.vault, "cbera", "What do I owe?").unwrap();
+    assert_eq!(sources[0], "CBeRa");
+    assert_eq!(sources.len(), 3);
+    assert!(user.contains("needs the invoice by Dec 15"), "a linking note's sub-notes come along");
+    assert!(user.contains("[1] The page \"CBeRa\""));
+    assert!(ai::ask_question(&app.vault, "cbera", "  ").is_err());
+    let r = ai::ask_answer(&app.vault, "- The invoice, by Dec 15. [2]\n- The report [3][2][9]\n- About [[Made Up]] [x]", &sources).unwrap();
+    let p = r["points"].as_array().unwrap();
+    assert_eq!(p[0]["text"], "The invoice, by Dec 15.");
+    assert_eq!(p[0]["sources"][0], sources[1]);
+    assert_eq!(p[1]["sources"].as_array().unwrap().len(), 2, "an unknown number is dropped");
+    assert_eq!(p[2]["text"], "About Made Up [x]");
+    assert_eq!(ai::ask_answer(&app.vault, "Your notes don't say.", &sources).unwrap()["none"], true);
+}
+
+#[test]
+fn link_suggestions_number_the_mentions_and_read_yes_or_no() {
+    let v = vault("links");
+    put(&v, "journals/2026_11_19.md", "- ask Luis Rocha about the plots\n- Luis Rocha the footballer scored\n");
+    let app = open(&v);
+    let m = ai::link_mentions(&app.vault, "Luis Rocha");
+    assert_eq!(m.len(), 2);
+    let (_, user) = ai::links_question(&app.vault, "Luis Rocha", &m).unwrap();
+    assert!(user.contains("1: (in \"Nov 19th, 2026\") ask Luis Rocha about the plots"), "{user}");
+    let r = ai::links_answer("1: yes - the collaborator\n2: No — a footballer\n7: yes - out of range", 2).unwrap();
+    assert_eq!(r[0]["link"], true);
+    assert_eq!(r[0]["why"], "the collaborator");
+    assert_eq!(r[1]["link"], false);
+    assert_eq!(r[1]["why"], "a footballer");
+    assert!(ai::links_answer("I think so", 2).is_err());
+    assert!(ai::links_question(&app.vault, "Recipes", &[]).is_err());
+}
+
+#[test]
+fn aliases_never_take_another_pages_name() {
+    let v = vault("names");
+    let app = open(&v);
+    let a = "description: The CBR-funded project for my [[fellowship]]\nalias: Sibera\nalias: Diogo, CBR fellowship\nalias: CBeRa\nalias: [[x]]\nalias: Nov 17th, 2026";
+    let r = ai::names_answer(&app.vault, "CBeRa", a).unwrap();
+    assert_eq!(r["description"], "The CBR-funded project for my fellowship");
+    let al: Vec<&str> = r["aliases"].as_array().unwrap().iter().map(|x| x.as_str().unwrap()).collect();
+    assert_eq!(al, ["Sibera", "CBR fellowship"], "not Diogo (Diogo Silva's), not its own name, not a day");
+    assert!(ai::names_answer(&app.vault, "CBeRa", "nothing here").is_err());
 }

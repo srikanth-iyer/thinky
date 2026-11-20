@@ -5,7 +5,7 @@
 // app's own (App, Tabs, Find, Outline, the / menu's commands): nothing here does the work itself.
 
 import { isAndroid, isApp, call, pageLinkUrl } from './api.js';
-import { SLASH, promptBox } from './popups.js';
+import { SLASH, AI_SLASH, promptBox } from './popups.js';
 // (History loads when it's used: Build 39)
 const openHistory = (...a) => import('./history.js').then((m) => m.openHistory(...a));
 import { placeOf, parsePlace } from './tabs.js';
@@ -107,7 +107,7 @@ export function commandList(app, ed) {
     // the / menu's commands, run as from it (to-do words, dates, links, formatting, headings…)
     const SLASH_KEYS = { bold: { keys: ['mod+b'] }, italic: { keys: ['mod+i'] }, mark: { key: 'editor/highlight' } };
     const ai = document.documentElement.classList.contains('ai-on'); // (Polish note once an AI is set up)
-    for (const [label, hint, id] of SLASH) if (ai || id !== 'polish') E('slash-' + (id || label), label, (x) => x.command(id || label), { hint, also: 'insert /', ...SLASH_KEYS[id] });
+    for (const [label, hint, id] of SLASH) if (ai || !AI_SLASH.has(id)) E('slash-' + (id || label), label, (x) => x.command(id || label), { hint, also: 'insert /', ...SLASH_KEYS[id] });
   } else if (sel) {
     const S = (id, label, run, more = {}) => add('Selected notes', id, label, () => run(sel, sel.selRange()[0]), more);
     S('indent', 'Indent the selected notes', (x, i) => x.indent(i), { keys: ['tab'] });

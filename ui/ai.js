@@ -87,4 +87,46 @@ export async function polishText(text) {
   return call('ai_polish_read', { setup, status: r.status, body: r.body, text, mark: !!s.mark });
 }
 
+
+// ---------- Build 52: the other features (each checked by core ai.rs, nothing saved here) ----------
+const ready = () => {
+  const s = aiSettings();
+  if (!aiOn(s)) throw new Error('Set up an AI in Settings → AI first.');
+  return s;
+};
+/** Picture to text: the note's (first) picture in the notes folder read into notes {text, depth},
+ *  with the model for pictures (else the one for text). */
+export async function pictureText(text) {
+  const s = ready();
+  const setup = setupOf(s, s.pictureModel || s.textModel);
+  const req = await call('ai_picture_request', { setup, text });
+  const r = await send(s.provider, req);
+  return call('ai_picture_read', { setup, status: r.status, body: r.body, text, mark: !!s.mark });
+}
+/** Ask this page: {points: [{text, sources}], none}, from the page and every note linking to it. */
+export async function askPage(page, question) {
+  const s = ready();
+  const setup = setupOf(s);
+  const { req, sources } = await call('ai_ask_request', { setup, page, question });
+  const r = await send(s.provider, req);
+  return call('ai_ask_read', { setup, status: r.status, body: r.body, sources });
+}
+/** Link suggestions: the page's unlinked mentions, each with {link, why}. */
+export async function suggestLinks(page) {
+  const s = ready();
+  const setup = setupOf(s);
+  const { req, mentions } = await call('ai_links_request', { setup, page });
+  const r = await send(s.provider, req);
+  const said = await call('ai_links_read', { setup, status: r.status, body: r.body, count: mentions.length });
+  return mentions.map((m, k) => ({ ...m, ...said[k] }));
+}
+/** Aliases and a description for a page: {description, aliases, current}. */
+export async function suggestNames(page) {
+  const s = ready();
+  const setup = setupOf(s);
+  const req = await call('ai_names_request', { setup, page });
+  const r = await send(s.provider, req);
+  return call('ai_names_read', { setup, status: r.status, body: r.body, page });
+}
+
 document.documentElement.classList.toggle('ai-on', aiOn());

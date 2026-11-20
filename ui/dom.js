@@ -117,7 +117,7 @@ const frame = '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/>';
 export const SLASH_ICON = {
   TODO: svg(box), DOING: svg(box + '<path d="M8.5 12h7"/>'), LATER: svg(box + '<path d="M12 8.5V12l2.5 1.5"/>'), NOW: svg(box + '<circle cx="12" cy="12" r="2" fill="currentColor"/>'),
   WAITING: svg(box + '<path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/>', ' stroke-width="2.4"'), DONE: ICON.check, CANCELED: svg(box + '<path d="m9 9 6 6M15 9l-6 6"/>'),
-  polish: ICON.polish, sched: svg('<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>'), deadline: svg('<path d="M6 21V4.5M6 5h12l-3 4 3 4H6"/>'), date: ICON.date,
+  polish: ICON.polish, picture: ICON.polish, sched: svg('<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>'), deadline: svg('<path d="M6 21V4.5M6 5h12l-3 4 3 4H6"/>'), date: ICON.date,
   today: svg(cal + '<circle cx="12" cy="15" r="1.4" fill="currentColor"/>'), tomorrow: svg(cal + '<path d="M9 15h6M13 13l2 2-2 2"/>'), yesterday: svg(cal + '<path d="M15 15H9M11 13l-2 2 2 2"/>'),
   time: svg('<circle cx="12" cy="12" r="5.5"/><path d="M12 9.5V12l1.8 1.2M9.6 7 10.2 3.5h3.6l.6 3.5M9.6 17l.6 3.5h3.6l.6-3.5"/>'),
   link: ICON.link, blockref: svg('<path d="M8 4.5c-3 4.5-3 10.5 0 15M11.5 7.5c-1.6 2.8-1.6 6.2 0 9M16 4.5c3 4.5 3 10.5 0 15M12.5 7.5c1.6 2.8 1.6 6.2 0 9"/>'),

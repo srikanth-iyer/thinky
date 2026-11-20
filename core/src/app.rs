@@ -2692,6 +2692,70 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
             let words = crate::ai::read_chat(&setup, n("status") as u16, &s("body"))?;
             Ok(crate::ai::polish_answer(&app.vault, &s("text"), &words, b("mark"))?)
         }
+        // Build 52: the other AI features (ai.rs); each request built here and sent by the shell, its
+        // answer read and checked here. Nothing is saved by these: the page saves what is kept.
+        // what link_mention would make of a note (Suggest links' Undo puts the note back from it)
+        "mention_linked" => {
+            let names = app.vault.mention_names(&s("target"));
+            Ok(json!(crate::text::link_first_mention(&s("base"), &names)))
+        }
+        "ai_picture_request" => {
+            let setup: crate::ai::Setup = serde_json::from_value(args.get("setup").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let text = s("text");
+            let names = pictures::asset_links(&text);
+            let Some((name, kind)) = names.iter().find_map(|n| crate::ai::picture_type(n).map(|k| (n, k))) else {
+                return Err(if names.iter().any(|n| is_picture(n)) {
+                    "The AI can read PNG, JPEG, GIF and WebP pictures; this one is another kind.".into()
+                } else {
+                    "This note has no picture saved in your notes folder (a picture from the web can't be read).".into()
+                });
+            };
+            let path = app.asset_file(&format!("assets/{name}")).ok_or_else(|| format!("The picture “{name}” isn't in the assets folder."))?;
+            let bytes = std::fs::read(&path).map_err(|e| format!("The picture couldn't be read: {e}"))?;
+            if bytes.len() > crate::ai::MAX_PICTURE_BYTES {
+                return Err(format!("The picture is {:.1} MB; the AI services take at most 5 MB.", bytes.len() as f64 / 1_048_576.0));
+            }
+            let pic = crate::ai::Picture { media_type: kind, data: crate::ai::base64(&bytes) };
+            let (system, user) = crate::ai::picture_question(&app.vault, &text);
+            to_value(crate::ai::chat_request_with(&setup, &system, &user, Some(&pic), 2048)?)
+        }
+        "ai_picture_read" => {
+            let setup: crate::ai::Setup = serde_json::from_value(args.get("setup").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let words = crate::ai::read_chat(&setup, n("status") as u16, &s("body"))?;
+            Ok(crate::ai::picture_answer(&app.vault, &s("text"), &words, b("mark"))?)
+        }
+        "ai_ask_request" => {
+            let setup: crate::ai::Setup = serde_json::from_value(args.get("setup").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let (system, user, sources) = crate::ai::ask_question(&app.vault, &s("page"), &s("question"))?;
+            Ok(json!({ "req": crate::ai::chat_request(&setup, &system, &user, 1500)?, "sources": sources }))
+        }
+        "ai_ask_read" => {
+            let setup: crate::ai::Setup = serde_json::from_value(args.get("setup").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let words = crate::ai::read_chat(&setup, n("status") as u16, &s("body"))?;
+            let sources: Vec<String> = serde_json::from_value(args.get("sources").cloned().unwrap_or(Value::Null)).unwrap_or_default();
+            Ok(crate::ai::ask_answer(&app.vault, &words, &sources)?)
+        }
+        "ai_links_request" => {
+            let setup: crate::ai::Setup = serde_json::from_value(args.get("setup").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let mentions = crate::ai::link_mentions(&app.vault, &s("page"));
+            let (system, user) = crate::ai::links_question(&app.vault, &s("page"), &mentions)?;
+            Ok(json!({ "req": crate::ai::chat_request(&setup, &system, &user, 1500)?, "mentions": mentions }))
+        }
+        "ai_links_read" => {
+            let setup: crate::ai::Setup = serde_json::from_value(args.get("setup").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let words = crate::ai::read_chat(&setup, n("status") as u16, &s("body"))?;
+            Ok(crate::ai::links_answer(&words, n("count"))?)
+        }
+        "ai_names_request" => {
+            let setup: crate::ai::Setup = serde_json::from_value(args.get("setup").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let (system, user) = crate::ai::names_question(&app.vault, &s("page"));
+            to_value(crate::ai::chat_request(&setup, &system, &user, 600)?)
+        }
+        "ai_names_read" => {
+            let setup: crate::ai::Setup = serde_json::from_value(args.get("setup").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let words = crate::ai::read_chat(&setup, n("status") as u16, &s("body"))?;
+            Ok(crate::ai::names_answer(&app.vault, &s("page"), &words)?)
+        }
         "backup_now" => to_value(app.backup_now(&s("kind"), &s("dest"), args.get("keep").and_then(Value::as_u64).unwrap_or(4) as usize, args.get("push").and_then(Value::as_bool).unwrap_or(true), &s("stamp"))),
         "backup_find" => Ok(json!(backup::find_in_backup(&s("kind"), std::path::Path::new(s("dest").trim()), &s("rel")))),
         "backup_restore" => Ok(json!(app.restore_from_backup(&s("kind"), &s("dest"), &s("rel"))?)),

@@ -166,17 +166,39 @@ pub fn read_models(s: &Setup, status: u16, body: &str) -> Result<Vec<String>, St
 
 /// One question to a chat model: fixed instructions (`system`) and the person's material (`user`).
 pub fn chat_request(s: &Setup, system: &str, user: &str, max_tokens: u32) -> Result<Request, String> {
+    chat_request_with(s, system, user, None, max_tokens)
+}
+
+/// A picture sent with a question: its type ("image/png"…) and its bytes in base64.
+pub struct Picture {
+    pub media_type: &'static str,
+    pub data: String,
+}
+
+/// `chat_request`, with a picture in front of the words when there is one (Picture to text): Claude
+/// takes it as an "image" part, the OpenAI style as an "image_url" with a data: address (OpenAI,
+/// Gemini, OpenRouter, Ollama and LM Studio all read that).
+pub fn chat_request_with(s: &Setup, system: &str, user: &str, picture: Option<&Picture>, max_tokens: u32) -> Result<Request, String> {
     let (base, local, p) = setup_base(s)?;
     let model = s.model.trim();
     if model.is_empty() {
         return Err("Pick a model in Settings → AI.".into());
     }
     let (url, headers, body) = if p.format == "claude" {
-        let body = json!({ "model": model, "max_tokens": max_tokens, "temperature": 0.2, "system": system, "messages": [{ "role": "user", "content": user }] });
+        // (no temperature: Claude's newer models refuse it, "`temperature` is deprecated for this model")
+        let content = match picture {
+            Some(pic) => json!([{ "type": "image", "source": { "type": "base64", "media_type": pic.media_type, "data": pic.data } }, { "type": "text", "text": user }]),
+            None => json!(user),
+        };
+        let body = json!({ "model": model, "max_tokens": max_tokens, "system": system, "messages": [{ "role": "user", "content": content }] });
         (format!("{base}/messages"), vec![("anthropic-version".to_string(), "2023-06-01".to_string())], body)
     } else {
         // (no max_tokens or temperature: some newer models refuse them, and these answers are short)
-        let body = json!({ "model": model, "stream": false, "messages": [{ "role": "system", "content": system }, { "role": "user", "content": user }] });
+        let content = match picture {
+            Some(pic) => json!([{ "type": "image_url", "image_url": { "url": format!("data:{};base64,{}", pic.media_type, pic.data) } }, { "type": "text", "text": user }]),
+            None => json!(user),
+        };
+        let body = json!({ "model": model, "stream": false, "messages": [{ "role": "system", "content": system }, { "role": "user", "content": content }] });
         (format!("{base}/chat/completions"), vec![], body)
     };
     Ok(Request { method: "POST".into(), url, auth: auth_of(p), headers, body: Some(body.to_string()), local, key_required: p.key == "required" })
@@ -383,6 +405,25 @@ pub fn polish_question(v: &Vault, text: &str, today: Date, extra: &str) -> (Stri
     (system, user)
 }
 
+/// What an answer may link (folded): pages and their aliases, tags in use, and whatever `also`
+/// linked already. (Days are checked by their title, `journal_from_title`.)
+fn known_names(v: &Vault, also: &str) -> HashSet<String> {
+    let mut known: HashSet<String> = HashSet::new();
+    for p in v.all_pages() {
+        known.insert(fold(&p.name));
+        for al in &p.aliases {
+            known.insert(fold(al));
+        }
+    }
+    for t in v.all_tags() {
+        known.insert(fold(&t.0));
+    }
+    for n in crate::text::link_names(also) {
+        known.insert(fold(&n));
+    }
+    known
+}
+
 /// Polish note's answer as notes ready to go in: each `text` as the editor keeps a note (first line,
 /// then its other lines). The first takes the note's own property lines back; with `mark`, every note
 /// says `by:: ai` (unless it already says who wrote it). Links and tags to pages that don't exist
@@ -422,20 +463,7 @@ pub fn polish_answer(v: &Vault, original: &str, answer: &str, mark: bool) -> Res
     if notes.len() > 8 {
         return Err("The AI split the note into too many pieces, so its answer wasn't used. Try again.".into());
     }
-    // what may be linked: pages and their aliases, tags in use, days, and whatever the note linked already
-    let mut known: HashSet<String> = HashSet::new();
-    for p in v.all_pages() {
-        known.insert(fold(&p.name));
-        for al in &p.aliases {
-            known.insert(fold(al));
-        }
-    }
-    for t in v.all_tags() {
-        known.insert(fold(&t.0));
-    }
-    for n in crate::text::link_names(&words) {
-        known.insert(fold(&n));
-    }
+    let known = known_names(v, &words);
     let is_known = |name: &str| known.contains(&fold(name)) || v.config.journal_from_title(name).is_some();
     let mut unlinked: Vec<String> = vec![];
     let mut out: Vec<String> = vec![];
@@ -466,4 +494,423 @@ pub fn polish_answer(v: &Vault, original: &str, answer: &str, mark: bool) -> Res
     unlinked.dedup();
     let same = out.len() == 1 && split_props(&out[0]).0.trim() == words.trim();
     Ok(json!({ "notes": out, "unlinked": unlinked, "same": same }))
+}
+
+// ------------------------------------------------------------------ shared by the features below
+
+/// An answer that came back in a code block: its inside.
+fn unfence(a: &str) -> String {
+    let a = a.trim();
+    if let Some(rest) = a.strip_prefix("```") {
+        let rest = rest.split_once('\n').map_or("", |(_, r)| r);
+        return rest.rfind("```").map_or(rest, |i| &rest[..i]).trim().to_string();
+    }
+    a.to_string()
+}
+
+/// The most linked pages (not days), with their other names: what Picture to text may link, when
+/// there are no words of the note's own to choose them by.
+fn top_pages(v: &Vault, n: usize) -> Vec<String> {
+    let mut all: Vec<_> = v.all_pages().into_iter().filter(|p| p.journal.is_none()).collect();
+    all.sort_by(|a, b| b.refs.cmp(&a.refs).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    all.into_iter()
+        .take(n)
+        .map(|p| if p.aliases.is_empty() { p.name } else { format!("{} (also called: {})", p.name, p.aliases.join(", ")) })
+        .collect()
+}
+
+/// A page and every note that links to it (with the notes it sits under and its sub-notes), as
+/// numbered sources for the AI: [1] is the page itself, then one per page or day that links to it.
+/// At most `budget` characters (the rest is left out, and it says so). Gives the text and the
+/// sources' names in order (index 0 = [1]).
+fn page_material(v: &Vault, name: &str, budget: usize) -> (String, Vec<String>, usize) {
+    let info = v.page_info(name);
+    let mut out = String::new();
+    let mut sources = vec![info.name.clone()];
+    out.push_str(&format!("[1] The page \"{}\"", info.name));
+    if !info.aliases.is_empty() {
+        out.push_str(&format!(" (also called: {})", info.aliases.join(", ")));
+    }
+    out.push_str(":\n");
+    for (k, val) in &info.props {
+        if !matches!(k.as_str(), "id" | "collapsed" | "title") {
+            out.push_str(&format!("{k}:: {val}\n"));
+        }
+    }
+    let notes = v.page_notes(name);
+    if notes.is_empty() {
+        out.push_str("(no notes of its own)\n");
+    }
+    for (d, t) in notes {
+        push_note(&mut out, d, &t);
+    }
+    let mut refs = 0;
+    let mut cut = false;
+    for g in v.linked_refs(name) {
+        if out.chars().count() > budget {
+            cut = true;
+            break;
+        }
+        sources.push(g.page.clone());
+        let what = if g.journal.is_some() { "The journal day" } else { "The page" };
+        out.push_str(&format!("\n[{}] {what} \"{}\":\n", sources.len(), g.page));
+        for hit in &g.hits {
+            refs += 1;
+            for p in &hit.parents {
+                push_note(&mut out, p.depth, &p.text);
+            }
+            push_note(&mut out, hit.depth, &hit.text);
+            for k in &hit.kids {
+                push_note(&mut out, k.depth, &k.text);
+            }
+        }
+    }
+    if cut {
+        out.push_str("\n(more notes link to it; they were left out for length)\n");
+    }
+    let out: String = out.chars().take(budget + 2000).collect();
+    (out, sources, refs)
+}
+
+fn push_note(out: &mut String, depth: usize, text: &str) {
+    let (words, _) = split_props(text);
+    let pad = "  ".repeat(depth.min(8));
+    for (n, line) in words.lines().enumerate() {
+        out.push_str(&pad);
+        out.push_str(if n == 0 { "- " } else { "  " });
+        out.push_str(line.trim_end());
+        out.push('\n');
+    }
+}
+
+// ------------------------------------------------------------------ Picture to text (Build 52)
+
+const PICTURE_RULES: &str = "You turn a picture from a person's notes (a whiteboard, a page of paper, a screenshot) into outliner notes (Logseq-style Markdown). Reply with only the notes, nothing before or after them.
+
+Rules:
+- One note per line, each starting with \"- \". A point that belongs under another is indented two more spaces.
+- Copy the words as they are written, in the picture's order and language. Fix only plain spelling slips. Never add information that isn't in the picture.
+- Lists, numbered or not, become notes (leave out the numbers). A heading or title becomes a note with the points under it.
+- Page links: write [[Name]] only for names in the list of pages below, spelled exactly as listed. Never make up a page name.
+- No headings (#), bold, code blocks, properties (key:: value) or remarks of your own.
+- If the picture has no words, write one short note saying what it shows.";
+
+/// The picture types the services read.
+pub fn picture_type(name: &str) -> Option<&'static str> {
+    let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+    match ext.as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+/// The largest picture sent (Claude takes at most 5 MB a picture).
+pub const MAX_PICTURE_BYTES: usize = 5 * 1024 * 1024;
+
+pub fn base64(bytes: &[u8]) -> String {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for c in bytes.chunks(3) {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        out.push(A[(n >> 18) as usize & 63] as char);
+        out.push(A[(n >> 12) as usize & 63] as char);
+        out.push(if c.len() > 1 { A[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if c.len() > 2 { A[n as usize & 63] as char } else { '=' });
+    }
+    out
+}
+
+/// Picture to text's question: the fixed instructions, the pages it may link (the note's own words'
+/// pages, then the most linked), and the note's words for context.
+pub fn picture_question(v: &Vault, note: &str) -> (String, String) {
+    let (words, _) = split_props(note);
+    let mut pages = candidate_pages(v, &words);
+    for p in top_pages(v, 80) {
+        if pages.len() >= 120 {
+            break;
+        }
+        if !pages.contains(&p) {
+            pages.push(p);
+        }
+    }
+    let mut user = String::from("Pages you may link:\n");
+    user.push_str(&if pages.is_empty() { "(none)".to_string() } else { pages.join("\n") });
+    user.push_str("\n\nThe note the picture is in (for context only; don't copy it):\n<<<\n");
+    user.push_str(&words.chars().take(2000).collect::<String>());
+    user.push_str("\n>>>\n\nWrite the picture's words as notes.");
+    (PICTURE_RULES.to_string(), user)
+}
+
+/// Picture to text's answer as notes `{text, depth}` (depth 0 = right under the note with the
+/// picture), each checked as Polish note's are: links only to pages that exist (`unlinked` names the
+/// others), no properties of their own, `by:: ai` on the top ones with `mark`. At most 60 notes.
+pub fn picture_answer(v: &Vault, note: &str, answer: &str, mark: bool) -> Result<Value, String> {
+    let a = unfence(answer);
+    let known = known_names(v, note);
+    let is_known = |name: &str| known.contains(&fold(name)) || v.config.journal_from_title(name).is_some();
+    let mut notes: Vec<(usize, String)> = vec![];
+    let mut unlinked: Vec<String> = vec![];
+    for line in a.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let indent: usize = line.chars().take_while(|c| *c == ' ' || *c == '\t').map(|c| if c == '\t' { 2 } else { 1 }).sum();
+        let t = line.trim();
+        let t = t.strip_prefix("- ").or_else(|| t.strip_prefix("* ")).unwrap_or(t).trim();
+        // (a number the AI kept anyway: "1. x" → "x")
+        let t = match t.split_once(". ") {
+            Some((n, rest)) if !n.is_empty() && n.len() <= 3 && n.chars().all(|c| c.is_ascii_digit()) => rest,
+            _ => t,
+        };
+        if t.is_empty() || crate::parse::property(t).is_some() {
+            continue;
+        }
+        let t = t.trim_start_matches('#').trim();
+        let (text, gone) = crate::text::unlink_unknown(t, &is_known);
+        unlinked.extend(gone);
+        let text = text.trim().to_string();
+        if !text.is_empty() {
+            notes.push((indent / 2, text));
+        }
+    }
+    if notes.is_empty() {
+        return Err("The AI found no words in the picture. Try again, or try another model for pictures.".into());
+    }
+    if notes.len() > 60 {
+        notes.truncate(60);
+    }
+    // depths: the first at 0, each at most one deeper than the one before
+    let mut prev: Option<usize> = None;
+    let base = notes.iter().map(|n| n.0).min().unwrap_or(0);
+    let out: Vec<Value> = notes
+        .into_iter()
+        .map(|(d, mut text)| {
+            let d = d - base;
+            let d = match prev { None => 0, Some(p) => d.min(p + 1) };
+            prev = Some(d);
+            if mark && d == 0 {
+                text.push_str("\nby:: ai");
+            }
+            json!({ "text": text, "depth": d })
+        })
+        .collect();
+    unlinked.sort();
+    unlinked.dedup();
+    Ok(json!({ "notes": out, "unlinked": unlinked }))
+}
+
+// ------------------------------------------------------------------ Ask this page (Build 52)
+
+const ASK_RULES: &str = "You answer a person's question about one page of their outliner notes, using only the notes given: the page itself and every note that links to it, each under a numbered source.
+
+Rules:
+- Answer only from these notes. If they don't say, answer exactly: Your notes don't say.
+- Answer in short points, one per line, each starting with \"- \". At most 8 points. Plain, short sentences in the person's language.
+- End each point with the numbers of the sources it comes from, in square brackets, like [2] or [2][5].
+- Dates: say them as the notes do. Don't work out anything the notes don't say.
+- No headings, bold, code blocks or remarks of your own before or after the points.";
+
+pub fn ask_question(v: &Vault, page: &str, question: &str) -> Result<(String, String, Vec<String>), String> {
+    let q = question.trim();
+    if q.is_empty() {
+        return Err("Type a question first.".into());
+    }
+    let (material, sources, _) = page_material(v, page, 60_000);
+    let user = format!("The notes:\n<<<\n{material}>>>\n\nThe question: {}", q.chars().take(1000).collect::<String>());
+    Ok((ASK_RULES.to_string(), user, sources))
+}
+
+/// Ask this page's answer: points `{text, sources: [page names]}` (a source number that isn't one is
+/// dropped), links in them only to pages that exist; `none` = the notes don't say.
+pub fn ask_answer(v: &Vault, answer: &str, sources: &[String]) -> Result<Value, String> {
+    let a = unfence(answer);
+    if a.trim().trim_end_matches('.').eq_ignore_ascii_case("your notes don't say") || a.trim().trim_end_matches('.').eq_ignore_ascii_case("- your notes don't say") {
+        return Ok(json!({ "points": [], "none": true }));
+    }
+    let known = known_names(v, "");
+    let is_known = |name: &str| known.contains(&fold(name)) || v.config.journal_from_title(name).is_some();
+    let mut points = vec![];
+    for line in a.lines() {
+        let t = line.trim();
+        let t = t.strip_prefix("- ").or_else(|| t.strip_prefix("* ")).unwrap_or(t).trim();
+        if t.is_empty() {
+            continue;
+        }
+        // the [n] marks, wherever they are, become its sources
+        let mut words = String::new();
+        let mut srcs: Vec<String> = vec![];
+        let mut rest = t;
+        while let Some(i) = rest.find('[') {
+            let after = &rest[i + 1..];
+            match after.find(']').map(|j| (&after[..j], j)) {
+                Some((n, j)) if !n.is_empty() && n.len() <= 3 && n.chars().all(|c| c.is_ascii_digit()) && !rest[..i].ends_with('[') && !after[j + 1..].starts_with(']') => {
+                    words.push_str(&rest[..i]);
+                    if let Some(name) = n.parse::<usize>().ok().and_then(|k| k.checked_sub(1)).and_then(|k| sources.get(k)) {
+                        if !srcs.contains(name) {
+                            srcs.push(name.clone());
+                        }
+                    }
+                    rest = &after[j + 1..];
+                }
+                _ => {
+                    words.push_str(&rest[..=i]);
+                    rest = after;
+                }
+            }
+        }
+        words.push_str(rest);
+        let (text, _) = crate::text::unlink_unknown(words.trim(), &is_known);
+        let text = text.trim().trim_end_matches(',').to_string();
+        if !text.is_empty() {
+            points.push(json!({ "text": text, "sources": srcs }));
+        }
+        if points.len() >= 12 {
+            break;
+        }
+    }
+    if points.is_empty() {
+        return Err("The AI's answer had nothing usable in it. Try again.".into());
+    }
+    Ok(json!({ "points": points, "none": false }))
+}
+
+// ------------------------------------------------------------------ Link suggestions (Build 52)
+
+const LINKS_RULES: &str = "A person's outliner notes have a page, and notes that mention its name (or another name of it) without linking to it. You decide, for each such mention, whether it really means this page, or the same word used for something else (another person with that first name, an ordinary word).
+
+First read the page and the notes that already link to it, to learn what or who the page is about. Then answer one line per mention, in this form:
+<number>: yes - <a short reason, under 12 words>
+<number>: no - <a short reason, under 12 words>
+Nothing before or after these lines. When unsure, say no.";
+
+/// The mentions a page's link suggestions look at: its unlinked references (at most 40).
+pub fn link_mentions(v: &Vault, page: &str) -> Vec<Value> {
+    let (groups, _) = v.unlinked_refs(page, 40);
+    let mut out = vec![];
+    for g in groups {
+        for h in g.hits {
+            if let Some(line) = h.line {
+                out.push(json!({ "page": g.page, "journal": g.journal, "line": line, "text": h.text, "depth": h.depth }));
+            }
+        }
+    }
+    out
+}
+
+pub fn links_question(v: &Vault, page: &str, mentions: &[Value]) -> Result<(String, String), String> {
+    if mentions.is_empty() {
+        return Err("This page has no unlinked mentions.".into());
+    }
+    let (material, _, _) = page_material(v, page, 30_000);
+    let mut user = format!("The page and the notes that link to it:\n<<<\n{material}>>>\n\nThe mentions to decide on:\n");
+    for (i, m) in mentions.iter().enumerate() {
+        let text = m.get("text").and_then(Value::as_str).unwrap_or("");
+        let (words, _) = split_props(text);
+        let words: String = words.replace('\n', " ").chars().take(500).collect();
+        user.push_str(&format!("{}: (in \"{}\") {}\n", i + 1, m.get("page").and_then(Value::as_str).unwrap_or(""), words));
+    }
+    Ok((LINKS_RULES.to_string(), user))
+}
+
+/// One `{link, why}` per mention, in order; a mention the AI didn't answer is a "no".
+pub fn links_answer(answer: &str, count: usize) -> Result<Value, String> {
+    let a = unfence(answer);
+    let mut out: Vec<Value> = (0..count).map(|_| json!({ "link": false, "why": "The AI didn't say." })).collect();
+    let mut any = false;
+    for line in a.lines() {
+        let t = line.trim().trim_start_matches("- ");
+        let Some((n, rest)) = t.split_once(':') else { continue };
+        let Some(i) = n.trim().parse::<usize>().ok().and_then(|n| n.checked_sub(1)).filter(|i| *i < count) else { continue };
+        let rest = rest.trim();
+        let low = rest.to_lowercase();
+        let yes = low.starts_with("yes");
+        if !yes && !low.starts_with("no") {
+            continue;
+        }
+        let why = rest[if yes { 3 } else { 2 }..].trim_start_matches([' ', '-', '–', '—', ':', ',']).trim();
+        out[i] = json!({ "link": yes, "why": why.chars().take(120).collect::<String>() });
+        any = true;
+    }
+    if !any {
+        return Err("The AI's answer couldn't be read. Try again.".into());
+    }
+    Ok(json!(out))
+}
+
+// ------------------------------------------------------------------ aliases and a description (Build 52)
+
+const NAMES_RULES: &str = "You suggest other names (aliases) and a one-line description for one page of a person's outliner notes, from the page and the notes that link to it.
+
+Reply with exactly these lines and nothing else:
+description: <one short line saying what or who the page is, in the person's words where possible, under 20 words>
+alias: <another name>
+alias: <another name>
+
+Rules:
+- Aliases: names the notes themselves use for the same thing (spellings, short forms, first names, how the person writes it), at most 5. Never one that is the page's own name, and never a name made up.
+- If there is no good alias, give no alias lines.";
+
+pub fn names_question(v: &Vault, page: &str) -> (String, String) {
+    let (material, _, _) = page_material(v, page, 30_000);
+    (NAMES_RULES.to_string(), format!("The page and the notes that link to it:\n<<<\n{material}>>>"))
+}
+
+/// `{description, aliases}`: aliases that aren't already this page's names, nor another page's or
+/// alias (an alias there would make two pages answer to one name); the description one plain line.
+pub fn names_answer(v: &Vault, page: &str, answer: &str) -> Result<Value, String> {
+    let a = unfence(answer);
+    let info = v.page_info(page);
+    let own = v.resolve(page);
+    let mut taken: HashSet<String> = HashSet::new();
+    taken.insert(fold(&info.name));
+    for al in &info.aliases {
+        taken.insert(fold(al));
+    }
+    let mut description = String::new();
+    let mut aliases: Vec<String> = vec![];
+    for line in a.lines() {
+        let t = line.trim().trim_start_matches("- ");
+        let Some((k, val)) = t.split_once(':') else { continue };
+        let raw = val.trim().trim_matches(['"', '“', '”']).trim();
+        match k.trim().to_lowercase().as_str() {
+            "description" if description.is_empty() && !raw.is_empty() => {
+                // plain words: a link the AI wrote becomes its words
+                let (val, _) = crate::text::unlink_unknown(raw, &|_| false);
+                description = val.replace("[[", "").replace("]]", "").trim().chars().take(200).collect();
+            }
+            "alias" | "aliases" => {
+                // (a link, or a day such as "Nov 17th, 2026", is never an alias)
+                if raw.contains(['[', ']']) || v.config.journal_from_title(raw).is_some() {
+                    continue;
+                }
+                for one in raw.split(',') {
+                    let one = one.trim().trim_matches(['"', '“', '”', '#']).trim();
+                    if one.is_empty() || one.chars().count() > 60 || one.contains(['[', ']', '#', '\n']) || one.contains("::") {
+                        continue;
+                    }
+                    let f = fold(one);
+                    if taken.contains(&f) {
+                        continue;
+                    }
+                    // another page's name or alias, or a day
+                    let other = v.resolve(one);
+                    if (other != own && v.page_info(one).exists) || v.config.journal_from_title(one).is_some() {
+                        continue;
+                    }
+                    taken.insert(f);
+                    aliases.push(one.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    aliases.truncate(5);
+    if description.is_empty() && aliases.is_empty() {
+        return Err("The AI had nothing to suggest. Try again.".into());
+    }
+    let current = info.props.iter().find(|(k, _)| k == "description").map(|p| p.1.clone());
+    Ok(json!({ "description": description, "aliases": aliases, "current": current }))
 }

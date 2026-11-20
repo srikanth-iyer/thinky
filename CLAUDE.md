@@ -581,7 +581,7 @@ puts `ai-on` on <html> once a service and a text model are chosen (localStorage 
 pictureModel, mark, extra: {polish}}, this device's own; never the key). Not tied to one company (his rule): core
 `ai.rs` `PROVIDERS` (Claude, OpenAI, Gemini's OpenAI-style address, OpenRouter, Ollama and LM Studio on this computer
 with no key, "Other (OpenAI-style)"), two request formats (`chat_request`: Claude's /messages with x-api-key +
-anthropic-version, else /chat/completions with a Bearer key, no max_tokens or temperature there: newer models refuse
+anthropic-version and max_tokens but no temperature (Build 52: Claude's newer models refuse it), else /chat/completions with a Bearer key, no max_tokens or temperature there: newer models refuse
 them), `models_request`/`read_models` (Settings' lists and Test), `read_chat`, `answer_json` (401/403/404/429 in plain
 words). `check_base`: https anywhere, http only to this computer or a home network (`is_local_host`: localhost, 127.x,
 10.x, 192.168.x, 172.16–31.x, ::1, .local/.lan), no spaces, quotes or `@`. The key never reaches the page or the notes
@@ -623,6 +623,23 @@ Calm's sage beside purple links and tags was too many colours, and "sickly"; his
 #0F7487, `--accent-tint` #DDF1F5, `--link` #0B6778, tags #095A69 on #DDF1F5, cool grey lines and dots; Calm keeps its
 sage (t16_logo checks both). Settings has an AI tab (`SETTINGS_TABS`, before Help; `aiCard`: dropdowns, only what the
 service needs, his rule "I don't want to clutter up the UI"). site/privacy.html says what is sent and when.
+Build 52 (0.6.1; his picks from a clickable preview, Nov 20; tested by t32_build52, core tests/ai.rs): the other AI features,
+each built and checked in core ai.rs, nothing saved before its one filled button. Picture to text (polish.js `startPicture`,
+`PICTURE_IN`: a note linking a PNG/JPEG/GIF/WebP in assets/; the note menu's "Picture to text", "/picture"): dispatch
+`ai_picture_request` reads the first such file (≤5 MB, `MAX_PICTURE_BYTES`), `chat_request_with` sends it with the words
+(Claude: an "image" part; OpenAI style: an "image_url" data: address), the model for pictures; `picture_answer` → notes
+{text, depth} (indent → depth, never more than one deeper, ≤60, links only to pages that exist, by:: ai on the top ones);
+shown under the note (`.pz-pic`), Keep adds them after its sub-notes (one Undo step; a folded note opens). ui/ai-page.js
+(loaded on first use): the page's ⋯ menu "Ask about this page…" (`askAbout`: `.ai-panel` under the title, `ai_ask_request`
+→ `page_material`: [1] the page, then a numbered source per page/day linking to it with the notes it sits under and its
+sub-notes, ≤60,000 characters; `ask_answer`: points with their [n] sources as page names; "Your notes don't say." = none;
+"Add to page": the question at the end with by:: ai, the points under it ending "([[day]])", one Undo step) and "Suggest
+aliases and a description" (not journal days; `names_answer`: never the page's own names, another page's name or alias, a
+day or a link; ≤5; `setPageProps`: the lines above the notes, or the first note when it holds only properties; alias:: joins
+the values there, description:: replaces; a YAML header refused). "Unlinked references" gets `.ai-chip` "Suggest links"
+(`suggestLinksIn`: `link_mentions` = its unlinked references ≤40, `links_answer` reads "n: yes/no - why"; ticked ones go
+through `link_mention`, Undo through `mention_linked` + `save_block`; the side is drawn again, `App.redrawPage`). The
+temperature setting is no longer sent to Claude. site/privacy.html says what each sends.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

@@ -6,7 +6,7 @@
 import { call, today, nowTime, noteLinkUrl, store } from './api.js';
 import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, hiddenKey, parseStamp, stampText, withPictureSize, playVideo, drawStamp } from './render.js';
 import { pickDate, caretRect, noteMenu, menu, formBox, confirmBox } from './popups.js';
-import { hoverSpark, startPolish } from './polish.js';
+import { hoverSpark, startPolish, startPicture, PICTURE_IN } from './polish.js';
 // the clash screen loads when a clash first shows (Build 39: a faster start)
 const openClash = (...a) => import('./clash.js').then((m) => m.openClash(...a));
 
@@ -1219,7 +1219,11 @@ export class Outline {
       items.push({ id: 'todo', label: 'Next to-do state', hint: `${now || 'none'} → ${this.nextMarker(now) || 'none'}` });
       if (!inSel) items.push({ id: 'slash', label: 'More commands…', hint: '/' });
       // Build 51: the optional AI's Polish note (ui/polish.js), once an AI is set up (Settings → AI)
-      if (!inSel && document.documentElement.classList.contains('ai-on')) items.push({ id: 'polish', label: 'Polish note', hint: 'AI' });
+      if (!inSel && document.documentElement.classList.contains('ai-on')) {
+        items.push({ id: 'polish', label: 'Polish note', hint: 'AI' });
+        // Build 52: a picture saved in the notes folder, read into sub-notes under it
+        if (PICTURE_IN.test(this.textOf(i))) items.push({ id: 'picture', label: 'Picture to text', hint: 'AI' });
+      }
       let kids = false;
       for (let j = lo; j < hi && !kids; j++) kids = this.hasKids(j);
       if (kids) items.push('-', { id: 'expand', label: 'Expand all' }, { id: 'collapse', label: 'Collapse all' });
@@ -1277,6 +1281,7 @@ export class Outline {
       case 'todo': if (inSel) this.cycleTodoSel(); else this.cycleTodo(i); return;
       case 'numkids': this.numberList(true, i); return;
       case 'polish': this.polish(i); return;
+      case 'picture': startPicture(this, i); return;
       case 'slash': // the "/" list, as if "/" were typed at the end of this note
         this.edit(i, 'end', true);
         if (this.cur === i) this.openCommands();
@@ -2244,6 +2249,7 @@ export class Outline {
       case 'link': return this.insertAtCaret('[[]]', 2);
       case 'blockref': return this.insertAtCaret('(())', 2); // (the "((" list opens: Suggest.blocks)
       case 'polish': return this.polish(i);
+      case 'picture': return startPicture(this, i);
       case 'weblink': return this.insertLink();
       case 'imagelink': return this.insertLink(true);
       case 'tag': return this.insertAtCaret('#');

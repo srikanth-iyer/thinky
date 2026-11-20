@@ -494,6 +494,12 @@ impl Vault {
         self.alias.get(&k).cloned().unwrap_or(k)
     }
 
+    /// A page's notes as (depth, text), in page order (empty for a page with no file). For the AI
+    /// features (ai.rs), which read a page and what links to it.
+    pub fn page_notes(&self, name: &str) -> Vec<(usize, String)> {
+        self.pages.get(&self.resolve(name)).map(|p| p.parsed.blocks.iter().map(|b| (b.depth, b.text.clone())).collect()).unwrap_or_default()
+    }
+
     pub fn page_count(&self) -> usize {
         self.pages.len()
     }
