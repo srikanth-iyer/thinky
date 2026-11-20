@@ -29,7 +29,7 @@ for (const id of ['calm', 'calmplain', 'night', 'paper', 'automaton']) {
   await look(id, '#/page/Tobias%20Wren%20Okafor');
   const s = await page.evaluate(() => ({ sheet: getComputedStyle(document.querySelector('.sheet.page')).boxShadow, refs: getComputedStyle(document.querySelector('.refgrp')).boxShadow }));
   const sh = layers(s.sheet), rf = layers(s.refs);
-  if (id !== 'calmplain') check(sh.length >= 2 && sh.every((l) => l.blur >= 3 && !l.inset) && sh.some((l) => l.y >= 6), `${id}: the sheet is raised by soft shadows only (every layer blurred ≥ 3px, no hard offset)`, s.sheet);
+  if (id !== 'calmplain') check(sh.length >= 2 && sh.every((l) => l.blur >= 3 && !l.inset) && sh.some((l) => l.y >= (id === 'calm' || id === 'paper' ? 3 : 6)), `${id}: the sheet is raised by soft shadows only (every layer blurred ≥ 3px, no hard offset; Calm and Paper sit lower since Build 53)`, s.sheet);
   const well = { calm: 'rgba(26, 33, 48, 0.18) 0px 3px 6px -2px inset', calmplain: 'rgba(26, 33, 48, 0.14) 0px 3px 6px -2px inset', night: 'rgba(0, 0, 0, 0.38) 0px 2px 5px 0px inset',
     paper: 'rgba(70, 50, 20, 0.08) 0px 1px 3px 0px inset', automaton: 'rgba(23, 32, 51, 0.15) 0px 3px 6px -2px inset' }[id];
   check(rf.some((l) => l.inset) && s.refs.startsWith(well), `${id}: the reference box pressed in as in round 1 (its inner shade at the top)`, s.refs);
@@ -42,7 +42,7 @@ check(layers(st).some((l) => l.blur === 0 && l.x === 4), 'Sticker keeps its draw
 await look('paper', '#/journals');
 const pp = await page.evaluate(() => ({ sheet: getComputedStyle(document.querySelector('.sheet.day')).backgroundImage, side: getComputedStyle(document.querySelector('#side')).backgroundImage,
   sideSize: getComputedStyle(document.querySelector('#side')).backgroundSize }));
-check(!pp.sheet.includes('radial-gradient') && pp.sheet.includes('grain.svg'), 'Paper: no dot grid behind the notes (the paper grain stays)', pp.sheet);
+check(!pp.sheet.includes('radial-gradient') && pp.sheet.includes('washi.svg'), 'Paper: no dot grid behind the notes (the washi paper stays, Build 53)', pp.sheet);
 const alpha = +(pp.side.match(/rgba\([^)]*,\s*([\d.]+)\)/) || [])[1];
 check(pp.side.includes('radial-gradient') && alpha > 0 && alpha <= 0.15 && pp.sideSize.startsWith('9px 9px'), 'Paper: the sidebar has the dot grid, faint (≤ .15)', JSON.stringify(pp));
 await page.screenshot({ path: SHOTS + '/t16-paper.png' });

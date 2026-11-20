@@ -14,6 +14,14 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 53 · version 0.6.2 (November 2026)
+
+- The laptop's note menu: resting the mouse on "More commands" opens the "/" commands beside it, with a box to narrow them (→, Enter or a click opens it from the keyboard too). The phone keeps "More commands…".
+- Calm's note cards sit lower: a thin edge and a short, close shadow, so they no longer look lifted high off the page.
+- Paper looks like paper: a soft, faint handmade (washi) paper under the page and the cards, drawn by thinky itself (ui/skins/washi.svg, under 2 KB), words in a deeper ink with a hair of spread as in print, a deeper ink red and dark ink-blue links; the sidebar has a plain, whiter background of its own, so its words read easily.
+- Settings → AI: the note lists every AI feature now; a reply about one service's models can no longer clear a message about another (a choice made meanwhile).
+- Under the hood: popups.js `slashChoices` (the "/" list's rows, shared by the submenu); skins.css `--ink-shadow` (none but in Paper); tests t28_build46 (the submenu), t16_looks2 (Calm and Paper's lower shadows, the washi).
+
 ## Build 52 · version 0.6.1 (November 2026)
 
 The rest of the optional AI features (off until an AI is set up in Settings → AI). Each one shows what it suggests in the page, and nothing is saved until you press its one filled button.
