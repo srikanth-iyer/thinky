@@ -1,0 +1,3 @@
+{:journals-directory "Diary"
+ :journal/page-title-format "MMMM do, yyyy"
+ :journal/file-name-format "MMMM do, yyyy"}

@@ -1,0 +1,5 @@
+- written before the share
+- [[quick capture]] **15:59**: Shared from another app
+- [[quick capture]] **15:59**: Selected words [​[Not A Link]​] #​nottag
+- [[quick capture]] **16:00**: ![shared](../assets/shared_1795190416094.png)
+- [[quick capture]] **16:00**: ![shared](../assets/shared_1795190425253.png)
