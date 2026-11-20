@@ -77,6 +77,8 @@
   /* a raised sheet: soft, diffused layers only (he asked, Oct 29: no hard offset or edge lines) */
   --sheet-shadow: 0 1px 3px rgba(26,33,48,.06), 0 6px 16px -4px rgba(26,33,48,.10), 0 18px 36px -14px rgba(26,33,48,.20);
   --sheet-outline: none; --sheet-outline-offset: 0px; --sheet-pad-x: 24px;
+  /* the words as printed in ink: a hair of spread round each letter (Paper, Build 53); none elsewhere */
+  --ink-shadow: none;
   --sheet-band: none; --sheet-band-h: 0px; --today-bg: var(--sheet-bg);
   --sheet-divider: var(--sheet-border); --sheet-gap: 26px;
   --sheet-pad-top: 22px; --sheet-pad-bottom: 18px; /* inside a sheet, above and below what it holds */
@@ -136,7 +138,9 @@
 
 /* Calm — the Board's original: light, teal, lifted cards with firm edges. Its day cards closer
    together (he asked, Oct 29: the gap between them looked too big; the room inside each stays) */
-[data-skin="calm"] { --day-gap: 32px; --day-gap-phone: 22px; }
+[data-skin="calm"] { --day-gap: 32px; --day-gap-phone: 22px;
+  /* lower (Build 53, he asked: the cards looked lifted too high): a thin edge and a close, soft shadow */
+  --sheet-shadow: 0 1px 3px rgba(26,33,48,.05), 0 3px 10px -4px rgba(26,33,48,.08); }
 /* Calm's green, a little warmer and creamier so it sits with thinky's cream, ink and red (he asked,
    Oct 29: keep it green, but compatible): a deeper sage-green for buttons, ticked boxes and pressed chips
    (white words on it 5.6:1), cream-green tints for the current place and the welcome screen's squares,
@@ -190,23 +194,25 @@
    typewriter labels, highlighter marks, a red-pen tick */
 [data-skin="paper"] {
   --bullet-strength: 67%; --guide-strength: 100%;
-  /* the app's icon in this look */ --logo-tile: #FFFEFA; --logo-ink: #2A251E; --logo-spark: #B23A26;
-  --bg: #F4F2EC; --surface: #FFFEFA; --surface-2: #F8F6F0;
-  --ink: #2A251E; --ink-soft: #5E564A; --ink-faint: #746C5E; /* ≥ 4.5:1 (was #8F8676) */
+  /* the app's icon in this look */ --logo-tile: #FFFEFA; --logo-ink: #2A251E; --logo-spark: #9C1A22;
+  --bg: #F5F1E9; --surface: #FCFAF5; --surface-2: #F6F3EC;
+  --ink: #231F1A; --ink-soft: #564E43; --ink-faint: #6E665A; /* ≥ 4.5:1 on the paper (Build 53: deeper, as ink) */
+  --ink-shadow: 0 0 .4px rgba(35,31,26,.55);
   --line: #DCD7CC; --line-soft: #EAE6DD;
-  --accent: #B23A26; --accent-tint: #F3DED4;
-  --link: #2D5B8A; --link-line: rgba(45,91,138,.35);
+  --accent: #9C1A22; --accent-tint: #F1DCD6;
+  --link: #24456E; --link-line: rgba(36,69,110,.35);
   --tag-bg: transparent; --tag-ink: var(--ink-soft); --tag-border: 0; --tag-radius: 0;
   --tag-decoration: underline dotted var(--ink-faint);
   --mark-bg: linear-gradient(transparent 12%, rgba(250,215,80,.55) 12%, rgba(250,215,80,.55) 88%, transparent 88%);
   --edit-bg: rgba(250,215,80,.12); --guide-ink: transparent; --bullet-ink: #8F8676;
-  --page-image: url(skins/grain.svg);
+  --page-image: url(skins/washi.svg); --page-image-size: 480px 480px;
   /* plain grained paper under the notes (he asked, Oct 29: the dot grid there distracted); his Today
      Board's dot grid moved to the sidebar, faint enough that its words read easily */
-  --sheet-image: url(skins/grain.svg); --sheet-image-size: auto;
-  --side-image: radial-gradient(circle, rgba(70,60,45,.13) .55px, transparent .8px); --side-image-size: 9px 9px;
-  --sheet-border: 1px solid var(--line-soft); --sheet-radius: 2px; --sheet-pad-x: 30px;
-  --sheet-shadow: 0 1px 3px rgba(70,50,20,.07), 0 5px 14px -4px rgba(70,50,20,.10), 0 16px 32px -14px rgba(70,50,20,.18);
+  --sheet-image: url(skins/washi.svg); --sheet-image-size: 480px 480px;
+  --side-image: radial-gradient(circle, rgba(70,60,45,.08) .55px, transparent .8px); --side-image-size: 9px 9px;
+  --side-bg: #FBF9F4; /* (Build 53, he asked: whiter than the page, so its words read easily) */ 
+  --sheet-border: 1px solid rgba(120,100,70,.12); --sheet-radius: 2px; --sheet-pad-x: 30px;
+  --sheet-shadow: 0 1px 3px rgba(70,50,20,.06), 0 4px 12px -6px rgba(70,50,20,.10);
   /* "Scheduled & deadline" and references: typewriter headings, a pencilled box, a quiet rule */
   --sec-font: var(--font-label); --box-bg: transparent; --box-border: 1.2px dashed var(--line); --box-radius: 2px;
   --refgrp-bg: var(--surface); --refgrp-border: 1.2px dashed var(--line); --refgrp-radius: 3px; --refgrp-line: 1px dashed var(--line-soft);
@@ -219,7 +225,7 @@
   --weekday-font: var(--font-mono); --weekday-style: normal;
   --bullet-w: 5px; --bullet-h: 5px;
   --btn-bg: transparent; --btn-border: 1px solid var(--ink-soft); --btn-radius: 3px; --btn-shadow: none;
-  --check-radius: 2px; --check-border: 1.5px solid var(--ink-soft); --check-on-bg: transparent; --check-tick: #B23A26;
+  --check-radius: 2px; --check-border: 1.5px solid var(--ink-soft); --check-on-bg: transparent; --check-tick: #9C1A22;
 }
 
 /* Sticker — the Board's own look: cream, bold outlines, hard offset shadows, purple, chunky type */

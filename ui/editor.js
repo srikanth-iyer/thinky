@@ -5,7 +5,7 @@
 
 import { call, today, nowTime, noteLinkUrl, store } from './api.js';
 import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, hiddenKey, parseStamp, stampText, withPictureSize, playVideo, drawStamp } from './render.js';
-import { pickDate, caretRect, noteMenu, menu, formBox, confirmBox } from './popups.js';
+import { pickDate, caretRect, noteMenu, menu, formBox, confirmBox, slashChoices } from './popups.js';
 import { hoverSpark, startPolish, startPicture, PICTURE_IN } from './polish.js';
 // the clash screen loads when a clash first shows (Build 39: a faster start)
 const openClash = (...a) => import('./clash.js').then((m) => m.openClash(...a));
@@ -1217,7 +1217,8 @@ export class Outline {
         items.push({ id: 'numkids', label: 'Number its sub-notes', checked: ks.some((j) => NUMBERED.test(this.textOf(j))) });
       }
       items.push({ id: 'todo', label: 'Next to-do state', hint: `${now || 'none'} → ${this.nextMarker(now) || 'none'}` });
-      if (!inSel) items.push({ id: 'slash', label: 'More commands…', hint: '/' });
+      // (a laptop: its list opens beside the menu when the mouse rests on it, Build 53, he asked; a phone: a tap edits the note and opens the "/" list)
+      if (!inSel) items.push({ id: 'slash', label: 'More commands…', hint: '/', sub: matchMedia('(hover: hover) and (pointer: fine)').matches ? slashChoices : null });
       // Build 51: the optional AI's Polish note (ui/polish.js), once an AI is set up (Settings → AI)
       if (!inSel && document.documentElement.classList.contains('ai-on')) {
         items.push({ id: 'polish', label: 'Polish note', hint: 'AI' });
@@ -1258,6 +1259,12 @@ export class Outline {
   menuPick(kind, v, { i, lo, hi, tops, inSel }) {
     if (kind === 'color') { this.changeTexts(tops, (t) => withProp(t, 'background-color', v || null)); return; }
     if (kind === 'heading') { this.changeTexts(tops, (t) => withHeading(t, v)); return; }
+    // a row of "More commands" (laptop): as if picked from the "/" list typed at the end of this note
+    if (kind === 'slash') {
+      this.edit(i, 'end', true);
+      if (this.cur === i) this.command(v);
+      return;
+    }
     const n = hi - lo;
     const what = n === 1 ? 'the note' : `${n} notes`;
     switch (v) {

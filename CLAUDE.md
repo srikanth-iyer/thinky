@@ -640,6 +640,16 @@ the values there, description:: replaces; a YAML header refused). "Unlinked refe
 (`suggestLinksIn`: `link_mentions` = its unlinked references ≤40, `links_answer` reads "n: yes/no - why"; ticked ones go
 through `link_mention`, Undo through `mention_linked` + `save_block`; the side is drawn again, `App.redrawPage`). The
 temperature setting is no longer sent to Claude. site/privacy.html says what each sends.
+Build 53 (0.6.2; his notes of Nov 20; tested by t28_build46, t16_looks2): the laptop's note menu opens "More commands" as a
+submenu (popups.js `noteMenu`: an item with `sub` gets `.nm-has-sub` and a chevron; `openSub` makes `.nm-sub` beside it, its
+filter `.nm-find` and rows `.nm-cmd` from `slashChoices` (shared with the "/" list); 120 ms hover (mouse only), click, → / Enter /
+Space; a row → `menuPick('slash', id)` = edit the note at its end and run the command; `(hover: hover) and (pointer: fine)` only,
+the phone keeps "More commands…"). Calm's `--sheet-shadow` lower (he said the cards looked lifted too high): a thin edge and a
+short close shadow. Paper (he asked: like real paper, "a subtle version of" Paper Marathon 100's background, then "too strong":
+softened): `ui/skins/washi.svg` (our own: feTurbulence clouding, two thin fibre layers made by a spike in an `feFuncA` table, a
+fine speckle; all faint) as `--page-image` and `--sheet-image`, page #F5F1E9, ink #231F1A, `--ink-shadow` (a .4px blur; skins.css
+root `none`, app.css `.bc, .page-title, .refgrp`), accent #9C1A22, links #24456E; its sidebar `--side-bg` #FBF9F4 (he asked: the
+words merged into the paper), the dot grid fainter. settings.js AI card: `asked++` on a provider change and a refused address.
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 

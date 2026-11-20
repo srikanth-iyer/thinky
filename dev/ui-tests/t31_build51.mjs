@@ -58,7 +58,7 @@ check(await page.locator('.ai-key').isHidden() && await page.locator('.ai-base')
 await page.selectOption('[data-f="provider"]', 'other');
 await page.fill('[data-f="base"]', `http://example.com/v1`);
 await page.locator('[data-f="base"]').dispatchEvent('change');
-await sleep(300);
+await page.waitForFunction(() => /Only a program on this computer/.test(document.querySelector('.ai-test')?.textContent || ''), null, { timeout: 5000 }).catch(() => {});
 check(/Only a program on this computer/.test(await page.locator('.ai-test').innerText()), 'http to the internet is refused', await page.locator('.ai-test').innerText());
 await page.fill('[data-f="base"]', `http://127.0.0.1:${PORT}/v1`);
 await page.locator('[data-f="base"]').dispatchEvent('change');
