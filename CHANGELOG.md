@@ -14,6 +14,17 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 52 · version 0.6.1 (November 2026)
+
+The rest of the optional AI features (off until an AI is set up in Settings → AI). Each one shows what it suggests in the page, and nothing is saved until you press its one filled button.
+
+- Picture to text: on a note with a picture (the note menu, or "/picture to text"), the AI reads the picture's words into sub-notes under it, using the model for pictures. The picture stays.
+- Ask about this page (the page's ⋯ menu): a question answered from the page and every note that links to it. Each point names the page or day it came from (a click opens it); "Add to page" adds the question with the answer under it.
+- Suggest aliases and a description (the page's ⋯ menu): aliases to tick and a description you can edit, added to the page's properties. It never offers a name another page already has.
+- Suggest links (a ✦ button on "Unlinked references"): the AI reads the page and what links to it, then ticks the mentions that really mean this page and says why it left the others. "Link" turns the ticked words into links, with Undo.
+- Polish note works with Claude's newer models: thinky no longer sends a "temperature" setting, which they refuse ("`temperature` is deprecated for this model").
+- Under the hood: core ai.rs builds each request (a picture goes along as the service expects it) and checks each answer (links only to pages that exist); new ui/ai-page.js; tests core/tests/ai.rs and t32_build52.
+
 ## Build 51 · version 0.6.0 (November 2026)
 
 A bigger step, so the middle number goes up: optional AI features, starting with Polish note. They stay off and out of sight until you choose an AI in Settings → AI.

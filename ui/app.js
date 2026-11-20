@@ -1412,6 +1412,17 @@ class App {
       : '<h2 class="sec-h"><button class="disclose" aria-expanded="false">Unlinked references</button> <span class="n">mentions of this page’s name that aren’t links yet</span></h2><div class="body"></div>';
     const btn = $('.disclose', sec);
     const body = $('.body', sec);
+    // Build 52: the optional AI's link suggestions (ui/ai-page.js), on a page's own section
+    if (!day && document.documentElement.classList.contains('ai-on')) {
+      const sug = h('button', 'ai-chip', `${ICON.polish}<span>Suggest links</span>`);
+      sug.type = 'button';
+      sug.title = 'Suggest which mentions mean this page (AI)';
+      $('.sec-h', sec).append(sug);
+      sug.onclick = () => {
+        btn.setAttribute('aria-expanded', 'true');
+        import('./ai-page.js').then((m) => m.suggestLinksIn(this, body, name));
+      };
+    }
     btn.onclick = async () => {
       const open = btn.getAttribute('aria-expanded') === 'true';
       btn.setAttribute('aria-expanded', String(!open));
@@ -1892,6 +1903,13 @@ class App {
     if (propsBox?.edit && !propsBox.has) items.push({ label: 'Add properties', icon: ICON.props, run: () => propsBox.edit() });
     if (!pv.info.journal) items.push({ label: 'Rename…', icon: ICON.pen, run: () => this.renamePage(pv.info.name) });
     items.push({ label: 'Find on this page', icon: ICON.search, run: () => this.find.open() });
+    // Build 52: the optional AI on the whole page (ui/ai-page.js, loaded when first used), once an AI is set up
+    if (outline && document.documentElement.classList.contains('ai-on') && propsBox?.parentElement) {
+      const head = propsBox.parentElement;
+      const ai = () => import('./ai-page.js');
+      items.push({ label: 'Ask about this page…', icon: ICON.polish, run: () => ai().then((m) => m.askAbout(this, head, outline, pv.info.name)) });
+      if (!pv.info.journal && !outline.readonly) items.push({ label: 'Suggest aliases and a description', icon: ICON.polish, run: () => ai().then((m) => m.suggestAliases(this, head, outline, propsBox, pv.info.name)) });
+    }
     // Build 48 (he asked): the notes that link to files in assets, lit, with a count (attach.js)
     if (outline) items.push({ label: this.attach?.on ? 'Hide attachments' : 'Show attachments on this page', icon: ICON.clip, run: () => this.showAttachments() });
     // its earlier versions: backups and safety copies (history.js)
@@ -3136,6 +3154,9 @@ class App {
   /** After the app itself changed a page from a list (a to-do ticked in "Scheduled & deadline", a
    *  mention linked): the same page open in an outline shows it too (a rescan doesn't see the app's
    *  own writes), so editing it next doesn't look like a clash. */
+  /** Draw again the side el is on (its page's references read again: Suggest links). */
+  redrawPage(el) { const p = this.paneOf(el) ?? this.tabs.pane; if (p) this.draw(p); }
+
   async reloadPage(name) {
     const n = String(name).toLowerCase();
     for (const o of this.outlines) if (o.name.toLowerCase() === n) await o.reload();

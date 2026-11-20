@@ -1967,7 +1967,7 @@ html:not(.ai-on) #toolbar [data-t="polish"], html:not(.ai-on) .pz-spark { displa
 @container (max-width: 360px) {
   .pz-bar { gap: 4px; }
   .pz-bar .pz-b { padding-left: 8px; padding-right: 8px; }
-  .pz-bar [data-pz="retry"] span { display: none; }
+  .pz-bar [data-pz="retry"] span, .pz-bar [data-a="again"] span, .pz-bar [data-a="copy"] span { display: none; }
 }
 .pz-b { white-space: nowrap; flex: 0 0 auto; }
 .pz-bar .pz-keep { padding-left: 13px; padding-right: 13px; }
@@ -1983,3 +1983,49 @@ html:not(.ai-on) #toolbar [data-t="polish"], html:not(.ai-on) .pz-spark { displa
 .blk.pz-kept > .bc { animation: pz-kept 1.2s ease-out; }
 @keyframes pz-kept { from { background: var(--accent-tint); } to { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { .pz-w, .pz-sweep, .blk.pz-kept > .bc { animation: none; } .pz-sweep { width: 100%; } .pz-diff { transition: none; } }
+
+/* ---------- the optional AI, Build 52 (ui/polish.js startPicture, ui/ai-page.js; his picks from a clickable
+   preview, Nov 20): Picture to text, Ask about this page, aliases and a description, Suggest links. The same
+   quiet look: hairlines, one filled button, one line of buttons, nothing saved until that button. */
+.pz-reading { position: relative; margin: 4px 0; padding-bottom: 4px; font-size: var(--fs-sub); color: var(--ink-faint); overflow: hidden; }
+.pz-pic .pz-added { margin-left: calc(var(--pd, 0) * var(--ind)); }
+.pz-added { animation: pz-in .28s ease-out both; animation-delay: calc(var(--k, 0) * 40ms); }
+.pz-new-note { background: var(--accent-tint); border-radius: var(--r-s); }
+/* the box under a page's title: a question and its answer, or aliases to tick */
+.ai-panel { container-type: inline-size; margin: 4px 0 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--surface); font-family: var(--font-body); font-size: var(--fs-ui); }
+.ask-row { display: flex; align-items: center; gap: 6px; margin: 0; }
+.ask-q { flex: 1; min-width: 0; height: 32px; padding: 0 10px; font: inherit; border: 1px solid var(--line); border-radius: var(--r-m); background: var(--bg); color: var(--ink); }
+.ask-q:focus { outline: 2px solid var(--accent-tint); border-color: var(--accent); }
+.ask-row .pz-b { flex: none; }
+.ask-reads { margin: 6px 0 0; }
+.ask-out:not(:empty) { margin-top: 10px; }
+.ask-said { font-weight: 600; margin: 0 0 4px; }
+.ask-points { margin: 0; padding-left: 18px; line-height: 1.55; }
+.ask-points li { margin: 3px 0; }
+.ask-none { color: var(--ink-soft); margin: 0; }
+.ask-src { display: inline-block; border: 0; margin-left: 3px; padding: 0 7px; border-radius: var(--r-pill); background: var(--line-soft); color: var(--link); font-size: var(--fs-small); line-height: 1.6; white-space: nowrap; vertical-align: 1px; }
+.ask-src:hover { background: var(--accent-tint); }
+.sug-group + .sug-group { margin-top: 10px; }
+.ai-panel h5 { margin: 0 0 4px; font-size: var(--fs-small); font-weight: 600; color: var(--ink-faint); }
+.sug-opt { display: flex; gap: 8px; align-items: flex-start; }
+.sug-opt input { margin-top: 5px; accent-color: var(--accent); flex: none; }
+.sug-desc { flex: 1; font: inherit; border: 1px solid transparent; border-radius: var(--r-m); padding: 1px 5px; margin: -1px 0 0 -5px; resize: none; background: transparent; color: var(--ink); field-sizing: content; min-height: 1.6em; }
+.sug-desc:hover { border-color: var(--line); }
+.sug-desc:focus { outline: 0; border-color: var(--accent); background: var(--bg); }
+.sug-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sug-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 7px; border: 1px solid var(--line); border-radius: var(--r-pill); color: var(--ink-soft); }
+.sug-chip input { margin: 0; accent-color: var(--accent); }
+.sug-chip:has(input:checked) { background: var(--accent-tint); border-color: transparent; color: var(--ink); }
+/* Suggest links: a quiet button at the end of "Unlinked references", then the mentions with ticks and why */
+html:not(.ai-on) .ai-chip { display: none; }
+.sec-h .ai-chip { margin-left: auto; float: right; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--r-m); background: transparent; color: var(--ink-soft); font: 500 var(--fs-small) var(--font-body); white-space: nowrap; }
+.ai-chip svg { width: 14px; height: 14px; color: var(--accent); }
+.ai-chip:hover { background: var(--line-soft); color: var(--ink); }
+.ai-links .refgrp { padding: 8px 12px; }
+.ai-links .grp-h { font-weight: 600; margin-bottom: 4px; }
+.ai-ref { display: grid; grid-template-columns: 24px 1fr; align-items: start; padding: 3px 0; border-top: var(--refgrp-line); }
+.ai-links .grp-h + .ai-ref { border-top: 0; }
+.ai-ref input { margin-top: 5px; accent-color: var(--accent); }
+.ai-ref-t { display: block; }
+.ai-ref.no .ai-ref-t { color: var(--ink-faint); }
+@media (prefers-reduced-motion: reduce) { .pz-added { animation: none; } }

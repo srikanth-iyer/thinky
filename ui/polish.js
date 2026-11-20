@@ -7,7 +7,7 @@
 // Where it starts: the ✦ at the right end of the note under the mouse (laptop), the phone toolbar's
 // ✦, the note menu, "/polish" and the command list; none of them shows until an AI is set up (ai.js
 // puts `ai-on` on <html>). The answer is checked by the app's Rust code first (core ai.rs).
-import { polishText, aiOn } from './ai.js';
+import { polishText, pictureText, aiOn } from './ai.js';
 import { ICON, motionOn } from './dom.js';
 import { esc } from './render.js';
 
@@ -175,4 +175,80 @@ function keep(st, res) {
   o.undoToast(n === 1 ? 'Polished the note.' : `Polished the note into ${n} notes.`);
   const div = o.blockDiv(i);
   if (div && motionOn()) { div.classList.add('pz-kept'); setTimeout(() => div.classList.remove('pz-kept'), 1400); }
+}
+
+// ---------- Picture to text (Build 52; he picked it from a clickable preview, Nov 20) ----------
+/** A note with a picture saved in the notes folder, of a kind the AI services read (core ai.rs
+ *  picture_type: PNG, JPEG, GIF, WebP). */
+export const PICTURE_IN = /\.\.\/assets\/[^)\n]*\.(png|jpe?g|gif|webp)\b/i;
+
+/** The words in note i's picture, read by the AI, shown as sub-notes under it (not saved); Keep adds
+ *  them after its own sub-notes, one Undo step. The picture stays. */
+export async function startPicture(o, i) {
+  const app = o.app;
+  if (!aiOn()) {
+    app.toast('Choose an AI first: Settings → AI.', 5000, { label: 'Open', run: () => { location.hash = '#/settings/ai'; } });
+    return;
+  }
+  if (o.readonly || o.conflict) { app.toast('This page can’t be changed just now.', 3500); return; }
+  if (!(i >= o.start && i < o.end) || !o.blocks[i]) return;
+  if (o.pz) close(o.pz);
+  if (o.cur === i) o.stopEdit();
+  const text = o.textOf(i);
+  if (!PICTURE_IN.test(text)) { app.toast('This note has no picture saved in your notes folder.', 3500); return; }
+  const row = o.blockDiv(i);
+  if (!row) return;
+  const st = { o, i, text, row, len: o.blocks.length, depth: o.blocks[i].depth, kind: 'picture' };
+  o.pz = st;
+  row.classList.add('pz-on');
+  const box = document.createElement('div');
+  box.className = 'pz pz-pic';
+  box.innerHTML = '<p class="pz-reading" aria-busy="true">Reading the picture…<span class="pz-sweep" aria-hidden="true"></span></p>';
+  st.box = box;
+  (row.querySelector(':scope > .bc') || row.lastChild).after(box);
+  box.addEventListener('pointerdown', (e) => e.stopPropagation());
+  let res;
+  try {
+    res = await pictureText(text);
+  } catch (e) {
+    close(st);
+    app.toast(String(e?.message ?? e), 7000);
+    return;
+  }
+  if (o.pz !== st) return;
+  if (stale(st)) { close(st); app.toast('The note changed while the AI was working, so nothing was changed.', 5000); return; }
+  box.replaceChildren();
+  const motion = motionOn();
+  let k = 0;
+  for (const n of res.notes) {
+    const v = o.viewEl(i, { text: n.text, depth: st.depth + 1 + n.depth });
+    v.classList.add('pz-note', 'pz-more', 'pz-added', 'pz-new-note');
+    v.style.setProperty('--pd', String(n.depth));
+    if (motion) v.style.setProperty('--k', String(Math.min(k++, 24)));
+    box.append(v);
+  }
+  const btn = (a, icon, label, cls = '') => `<button type="button" class="btn small pz-b${cls}" data-pz="${a}" aria-label="${label}" title="${label}">${icon}<span>${label}</span></button>`;
+  box.insertAdjacentHTML('beforeend', `<div class="pz-bar" role="group" aria-label="The AI’s reading of the picture">${btn('keep', ICON.tick, 'Keep', ' pz-keep')}${btn('retry', ICON.retry, 'Retry', ' ghost')}${btn('undo', ICON.undoArrow, 'Undo', ' ghost')}</div>`);
+  if (res.unlinked?.length) box.insertAdjacentHTML('beforeend', `<p class="note small pz-why">Left as plain words (no such page): ${res.unlinked.map(esc).join(', ')}</p>`);
+  box.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const b = e.target.closest('[data-pz]');
+    if (!b) return;
+    if (b.dataset.pz === 'undo') close(st);
+    else if (b.dataset.pz === 'retry') { close(st); startPicture(o, i); } else if (b.dataset.pz === 'keep') {
+      if (stale(st)) { close(st); app.toast('The note changed meanwhile, so nothing was changed.', 4000); return; }
+      const at = o.subtreeEnd(i);
+      close(st);
+      o.snap();
+      o.blocks.splice(at, 0, ...res.notes.map((n) => ({ depth: st.depth + 1 + n.depth, text: n.text, raw: null })));
+      o.blocks[i].text = o.blocks[i].text.replace(/\ncollapsed:: true(?=\n|$)/, ''); // (open, so they show)
+      o.cur = null;
+      o.ta = null;
+      o.render();
+      o.markDirty();
+      o.undoToast(`Added ${res.notes.length} note${res.notes.length === 1 ? '' : 's'} under the picture.`);
+    }
+  });
+  st.esc = (e) => { if (e.key === 'Escape' && o.pz === st && !document.querySelector('.pop:not([hidden]), .modal-back')) { e.preventDefault(); close(st); } };
+  document.addEventListener('keydown', st.esc, true);
 }

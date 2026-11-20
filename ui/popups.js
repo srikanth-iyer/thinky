@@ -117,6 +117,7 @@ export const SLASH = [
   ['Tag', '#', 'tag'], ['Template…', 'insert', 'template'], ['Image…', 'from a file', 'image', 'picture photo'], ['Image link…', 'a picture on the web', 'imagelink', 'picture url'],
   ['Upload a file…', 'any file', 'upload', 'upload an asset attach pdf'],
   ['Polish note', 'AI', 'polish', 'ai tidy rewrite clean fix spelling'],
+  ['Picture to text', 'AI', 'picture', 'ai ocr read words image photo whiteboard handwriting'],
   ['Bold', '**', 'bold'], ['Italic', '*', 'italic'], ['Highlight', '^^', 'mark'], ['Strikethrough', '~~', 'strike'], ['Underline', '<ins>', 'underline'],
   ['Code', '`', 'code'], ['Code block', '```', 'codeblock'], ['Formula', '$ $', 'math', 'latex math'],
   ['Heading 1', '#', 'h1', 'h1'], ['Heading 2', '##', 'h2', 'h2'], ['Heading 3', '###', 'h3', 'h3'],
@@ -135,6 +136,8 @@ const slashIcon = (id) => {
 /** To-do words the "/" list doesn't offer (he asked, Oct 29: only TODO, DOING, DONE and CANCELED there).
  *  Notes that have them still show and work as before, and the command list (Ctrl+Shift+P) keeps them. */
 const NOT_IN_SLASH = new Set(['LATER', 'NOW', 'WAITING']);
+/** The "/" list's AI rows (Build 51–52): shown only once an AI is set up (ai.js puts `ai-on` on <html>). */
+export const AI_SLASH = new Set(['polish', 'picture']);
 
 export class Suggest {
   constructor(app) {
@@ -236,7 +239,7 @@ export class Suggest {
     // the ones whose name starts with what's typed first, then a word of it ("/link": Link…, then Page link)
     const rank = (label) => { const l = label.toLowerCase(); return l.startsWith(ql) ? 0 : l.split(/\s+/).some((w) => w.startsWith(ql)) ? 1 : 2; };
     const ai = document.documentElement.classList.contains('ai-on'); // (Polish note only once an AI is set up: ai.js)
-    const items = SLASH.filter(([label, , id]) => !NOT_IN_SLASH.has(label) && (ai || id !== 'polish')).filter(([label, , , more = '']) => !ql || `${label} ${more}`.toLowerCase().includes(ql) || label.toLowerCase().replace(/[^a-z]/g, '').startsWith(ql))
+    const items = SLASH.filter(([label, , id]) => !NOT_IN_SLASH.has(label) && (ai || !AI_SLASH.has(id))).filter(([label, , , more = '']) => !ql || `${label} ${more}`.toLowerCase().includes(ql) || label.toLowerCase().replace(/[^a-z]/g, '').startsWith(ql))
       .sort((a, b) => (ql ? rank(a[0]) - rank(b[0]) : 0))
       .map(([label, hint, id]) => ({ label, html: `${slashIcon(id || label)}${esc(label)}<span class="hint">${esc(hint)}</span>`, value: id || label }));
     if (!items.length) return this.close();
