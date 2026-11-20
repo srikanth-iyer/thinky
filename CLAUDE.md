@@ -654,8 +654,7 @@ Build 54 (0.6.3; his notes of Nov 20; tested by t31_build51, t33_build54): Polis
 before Keep (polish.js `editNotes`: a click on `.pz-note` makes every note a `.pz-ed` text box, its hidden properties kept aside
 by editor.js `splitHidden`/`joinHidden`; each input updates `res.notes`; Ctrl+Enter = Keep, Esc = `drawNotes` again (no fade);
 keys in the box don't reach the page; Keep drops a note emptied by hand). The ✦ (laptop, `hoverSpark`) and the phone toolbar's ✦
-open `aiMenu` (he asked: a curious click mustn't start the AI): `menu()` with `title` "AI", the heading "Nothing changes until you
-press Keep", Polish note, and Picture to text when `PICTURE_IN`; the toolbar's in OPENS like the date menu. In a `.refgrp` (which
+open `aiMenu` (he asked: a curious click mustn't start the AI): `menu()` with `title` "AI", Polish note, and Picture to text when `PICTURE_IN`; the toolbar's in OPENS like the date menu. In a `.refgrp` (which
 clips at its edge) the outline ends 8px sooner and the ✦ sits at `right: -14px` (it was cut off in every look, Paper most).
 Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tauri + Rust; AGPL, so
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.

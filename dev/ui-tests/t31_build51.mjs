@@ -95,7 +95,7 @@ const sb = await page.locator('.blk').first().locator('.pz-spark').boundingBox()
 check(sb.x >= wb.x + wb.width - 1, 'in the margin, never on the words', JSON.stringify([sb, wb]));
 await page.locator('.blk').first().locator('.pz-spark').click();
 await page.waitForSelector('.ai-menu', { timeout: 3000 });
-check(await page.locator('.ai-menu').textContent().then((t) => /Nothing changes until you press Keep/.test(t) && /Polish note/.test(t)), 'the ✦ first opens a small menu that says what it does');
+check(await page.locator('.ai-menu').textContent().then((t) => /Polish note/.test(t)), 'the ✦ first opens a small menu that says what it does');
 check(!seen.some((r) => r.url === '/v1/chat/completions'), 'nothing is asked of the AI by the ✦ alone');
 await page.locator('.ai-menu button', { hasText: 'Polish note' }).click();
 await page.waitForSelector('.blk.pz-working .pz-sweep', { timeout: 3000 }).catch(() => {});

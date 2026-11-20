@@ -49,8 +49,7 @@ export function hoverSpark(o, e) {
  *  and the phone toolbar's ✦ (`tb`: the keyboard stays up). */
 export function aiMenu(o, i, anchor, tb = false) {
   if (!(i >= 0) || !o.blocks[i]) return;
-  const items = [{ head: 'Nothing changes until you press Keep' },
-    { label: 'Polish note', hint: 'Tidies its words', icon: ICON.polish, run: () => startPolish(o, i) }];
+  const items = [{ label: 'Polish note', hint: 'Tidies its words', icon: ICON.polish, run: () => startPolish(o, i) }];
   if (PICTURE_IN.test(o.textOf(i))) items.push({ label: 'Picture to text', hint: 'Its words as notes', icon: ICON.polish, run: () => startPicture(o, i) });
   menu(anchor, items, { title: 'AI', ...(tb ? { keep: true, cls: 'tb-menu ai-menu' } : { cls: 'ai-menu' }) });
 }

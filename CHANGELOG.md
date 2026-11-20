@@ -17,7 +17,7 @@ went up. Build 40 and older still update to it (each release keeps a signature f
 ## Build 54 · version 0.6.3 (November 2026)
 
 - Polish note: a click on the AI's words lets you change them by hand before keeping them (each of its notes becomes a text box; Keep or Ctrl+Enter keeps them as typed, Esc shows them drawn again). Nothing is saved before Keep, and a note emptied by hand isn't kept.
-- The ✦ no longer starts anything by itself: it opens a small "AI" menu that says nothing changes until you press Keep, with Polish note (and Picture to text on a note with a picture). The same on the phone toolbar's ✦.
+- The ✦ no longer starts anything by itself: it opens a small "AI" menu with Polish note (and Picture to text on a note with a picture). The same on the phone toolbar's ✦.
 - The ✦ beside an edited linked reference is no longer cut off at the reference box's edge (it was in every look; most in Paper).
 - Under the hood: polish.js `aiMenu`, `drawNotes`, `editNotes`; popups.js `menu()` takes a `title`; test t33_build54 checks the ✦ is whole in every look, t31 the menu and the editing.
 
