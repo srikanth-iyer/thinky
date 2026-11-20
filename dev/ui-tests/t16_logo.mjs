@@ -322,7 +322,7 @@ async function pixel(page, x, y) {
 }
 const near = (a, b) => a.every((v, k) => Math.abs(v - b[k]) <= 4);
 const hex = (h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
-for (const [look, tile, spark] of [['calm', '#F4EEE3', '#FF4B2B'], ['plainnight', '#262626', '#FF6E52'], ['automaton', '#E1E9FD', '#FF4B2B'], ['paper', '#FFFEFA', '#B23A26']]) {
+for (const [look, tile, spark] of [['calm', '#F4EEE3', '#FF4B2B'], ['plainnight', '#262626', '#FF6E52'], ['automaton', '#E1E9FD', '#FF4B2B'], ['paper', '#FFFEFA', '#9C1A22']]) {
   const page = await start({ look, init: (pg) => pg.addInitScript(() => { try { localStorage.removeItem('vault'); } catch {} }) }); // (the welcome screen)
   await page.waitForSelector('.wl-logo .logo');
   await sleep(500);
