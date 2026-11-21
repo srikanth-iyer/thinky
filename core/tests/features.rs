@@ -644,6 +644,236 @@ fn notes_added_at_the_same_place_on_both_sides_are_both_kept() {
     assert!(merged("- TODO water plants\n- b\n", "- TODO water plants\n- b\n- TODO water plants\n", "- TODO water plants\n- b\n- TODO water plants\n- c\n").is_none());
 }
 
+/// Review claim 7: notes added at the same place on both sides were de-duplicated one note at a
+/// time, by depth and words only, so a note under another parent was lost, or one whose parent was
+/// dropped ended up under the wrong note; and an edit that also moved a note in or out was combined
+/// with notes added under it on the other side, making them its siblings.
+#[test]
+fn merging_never_loses_or_moves_a_note_under_another_parent() {
+    use outline_core::merge::{clash_parts, merge_blocks, merge_docs, Part};
+    let merged = |b: &str, m: &str, t: &str| merge_docs(&split_doc(b), &split_doc(m), &split_doc(t)).map(|d| join_doc(&d));
+    let count = |page: &str, words: &str| page.lines().filter(|l| l.trim_start().trim_start_matches("- ") == words).count();
+
+    // the review's case 1: the same to-do under two different projects: both kept, each under its own
+    let page = merged("- Top
+", "- Top
+- Project A
+	- TODO review
+", "- Top
+- Project B
+	- TODO review
+").expect("merges");
+    assert_eq!(page, "- Top
+- Project A
+	- TODO review
+- Project B
+	- TODO review
+");
+    assert_eq!(count(&page, "TODO review"), 2, "Project B's task isn't lost");
+    // the other way round too
+    assert_eq!(merged("- Top
+", "- Top
+- Project B
+	- TODO review
+", "- Top
+- Project A
+	- TODO review
+").as_deref(), Some("- Top
+- Project B
+	- TODO review
+- Project A
+	- TODO review
+"));
+
+    // the review's case 2: the same new parent with different notes under it: never "Eggs" under
+    // whatever came before; he chooses, and either choice has each note under its parent
+    let (b, m, t) = (split_doc("- Top
+"), split_doc("- Top
+- Groceries
+	- Milk
+"), split_doc("- Top
+- Groceries
+	- Eggs
+"));
+    assert!(merge_docs(&b, &m, &t).is_none());
+    let parts = clash_parts(&b.blocks, &m.blocks, &t.blocks).unwrap();
+    assert!(matches!(&parts[..], [Part::Same { .. }, Part::Clash { base, .. }] if base.is_empty()), "{parts:?}");
+    // the orphan the review saw: mine has another note after "Groceries" at the top level
+    let page = merged("- Top
+", "- Top
+- Groceries
+	- Milk
+- Unrelated
+", "- Top
+- Groceries
+	- Eggs
+");
+    assert!(page.is_none(), "{page:?}");
+    // the same: theirs has the subtree inside a bigger addition
+    assert!(merged("- Top
+", "- Top
+- Groceries
+	- Milk
+", "- Top
+- Notes
+- Groceries
+	- Eggs
+").is_none());
+    // but when the parent was already on the page, notes added under it on both sides merge fine
+    assert_eq!(
+        merged("- Top
+- Groceries
+", "- Top
+- Groceries
+	- Milk
+", "- Top
+- Groceries
+	- Eggs
+").as_deref(),
+        Some("- Top
+- Groceries
+	- Milk
+	- Eggs
+")
+    );
+
+    // the review's case 3: one side moves "A" in and edits it, the other adds a child under "A":
+    // the child would become A's sibling; he chooses
+    let (b, m, t) = (split_doc("- H
+- A
+- Z
+"), split_doc("- H
+	- A edited
+- Z
+"), split_doc("- H
+- A
+	- child of A
+- Z
+"));
+    assert!(merge_blocks(&b.blocks, &m.blocks, &t.blocks).is_none());
+    assert!(merge_blocks(&b.blocks, &t.blocks, &m.blocks).is_none(), "either side");
+    let parts = clash_parts(&b.blocks, &m.blocks, &t.blocks).unwrap();
+    assert!(parts.iter().any(|p| matches!(p, Part::Clash { .. })), "{parts:?}");
+    // moved out (shallower) and edited: the same
+    assert!(merged("- H
+	- A
+- Z
+", "- H
+- A edited
+- Z
+", "- H
+	- A
+		- child of A
+- Z
+").is_none());
+    // an edit in place next to an addition still merges (depths unchanged)
+    assert_eq!(merged("- H
+- A
+- Z
+", "- H
+- A edited
+- Z
+", "- H
+- A
+	- child of A
+- Z
+").as_deref(), Some("- H
+- A edited
+	- child of A
+- Z
+"));
+    // an "edit" that is really a note moved to where another was (its old words still on the page)
+    // is never paired by place with the other side's additions
+    assert!(merged("- H
+- A
+- B
+- Z
+", "- H
+- B
+- A
+- Z
+", "- H
+- A
+- new
+- B
+- Z
+").is_none());
+
+    // de-duplication still works for whole subtrees made twice
+    assert_eq!(merged("- Top
+", "- Top
+- Groceries
+	- Milk
+", "- Top
+- Groceries
+	- Milk
+").as_deref(), Some("- Top
+- Groceries
+	- Milk
+"));
+    assert_eq!(
+        merged("- Top
+", "- Top
+- Groceries
+	- Milk
+- Mine only
+", "- Top
+- Groceries
+	- Milk
+- Theirs only
+").as_deref(),
+        Some("- Top
+- Groceries
+	- Milk
+- Mine only
+- Theirs only
+")
+    );
+    // a subtree that is only part of one of ours is no copy of it: he chooses
+    assert!(merged("- Top
+", "- Top
+- G
+	- Milk
+	- Eggs
+", "- Top
+- G
+	- Milk
+").is_none());
+    // a theirs note at a deeper level under ours, with the same words as one of ours at the top: a
+    // different note (another parent), kept
+    assert_eq!(merged("- a
+", "- a
+	- x
+", "- a
+	- y
+		- x
+").as_deref(), Some("- a
+	- x
+	- y
+		- x
+"));
+    // empty notes made on both sides are one note
+    assert_eq!(merged("- a
+", "- a
+- 
+", "- a
+- 
+").as_deref(), Some("- a
+- 
+"));
+    // two copies there, one here: the second copy is kept (nothing lost)
+    assert_eq!(merged("- a
+", "- a
+- same
+", "- a
+- same
+- same
+").as_deref(), Some("- a
+- same
+- same
+"));
+}
+
 #[test]
 fn the_clash_command_reads_the_file_and_backups_never_overwrite() {
     let (v, mut app) = sample_vault("clash");

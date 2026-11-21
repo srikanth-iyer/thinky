@@ -1529,10 +1529,13 @@ it; the first save of a new page writes only where no file is: one that turned u
   block by block (`merge.rs`, one `stretch` rule for both `merge_blocks` and `clash_parts`: between
   notes both left alone, one side's change wins; notes edited in place on both sides merge note by note
   only when every note resolves and both line up (`aligned`); notes added at the same place on both
-  sides are both kept, this device's first, unless that re-parents a note (the order, or an added note
-  shallower than the next note both still have), one of them has words that were on the page (moved,
-  or a repeat), or both took a note away from its place (`both_added`); else the whole stretch is one
-  clash). A real clash opens the clash screen (`ui/clash.js`, from `Outline.showConflict`): `clash`
+  sides are both kept, this device's first, a subtree made the same on both kept once, unless that
+  re-parents a note (the order, or an added note shallower than the next note both still have), one
+  side's subtree starts with the same note as one of the other's but has other notes under it (review
+  claim 7), one of them has words that were on the page (moved, or a repeat), or both took a note away
+  from its place (`both_added`); words edited on one side next to notes added on the other combine only
+  when the edited notes kept their depths and line up (`edits_and_insertions`); else the whole stretch
+  is one clash). A real clash opens the clash screen (`ui/clash.js`, from `Outline.showConflict`): `clash`
   (app.rs, `merge::clash_parts`; checks `path` like `save`) gives the file's version and the page in
   parts; only the clashing stretches (and the page properties, if both changed them) are shown, this
   device's and the other copy's side by side with how they were before, one pre-picked as suggested
