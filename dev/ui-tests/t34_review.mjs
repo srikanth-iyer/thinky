@@ -219,7 +219,10 @@ console.log('AI panels: their Esc listeners go with them');
   }
   check(await page.locator('.ai-panel').count() === 1, 'one panel at a time');
   check(await count() === 1, 'three opened, one listener left (the open one’s)', await count());
+  // (the page's ⋯ menu must be gone first: Esc with a menu open closes the menu, not the panel)
+  await page.waitForFunction(() => !document.querySelector('.pop:not([hidden]), .modal-back'), null, { timeout: 5000 });
   await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('.ai-panel'), null, { timeout: 3000 }).catch(() => {});
   check(await page.locator('.ai-panel').count() === 0 && await count() === 0, 'Esc closes it and its listener goes', await count());
   // a polish closed by the page being drawn again: its listener goes at the next key
   await page.evaluate(async () => { const o = window.leanApp.outlines.find((x) => x.name === 'Review'); const n = o.blocks.findIndex((b) => b.text.startsWith('polish me')); await (await import('/polish.js')).startPolish(o, n); });
