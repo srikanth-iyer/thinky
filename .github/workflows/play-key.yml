@@ -12,20 +12,26 @@ on:
 permissions:
   contents: read
 
+env:
+  # Google's PEPK tool runs with the release keystore, so it must be the very file checked by hand, not
+  # whatever the address gives today (review claim 21a). TODO(maintainer): fill in pepk.jar's SHA-256
+  # (download it from Play Console's App signing page, check it there, then `sha256sum pepk.jar`);
+  # until then this workflow stops before the keystore is ever unpacked.
+  PEPK_SHA256: ''
+
 jobs:
-  # Google's own tool (PEPK), fetched here in a job with no secrets; the next job checks it's this file.
+  # Google's own tool (PEPK), fetched here in a job with no secrets and checked against PEPK_SHA256;
+  # the next job checks it again.
   tool:
     runs-on: ubuntu-latest
-    outputs:
-      sum: ${{ steps.get.outputs.sum }}
     steps:
       - id: get
         run: |
           set -euo pipefail
+          [[ "$PEPK_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::PEPK_SHA256 in play-key.yml isn't filled in: check pepk.jar by hand and put its SHA-256 there first."; exit 1; }
           curl -fsSL --proto '=https' -o pepk.jar https://www.gstatic.com/play-apps-publisher-rapid/signing-tool/prod/pepk.jar
-          SUM=$(sha256sum pepk.jar | cut -d' ' -f1)
-          echo "sum=$SUM" >> "$GITHUB_OUTPUT"
-          echo "::notice title=PEPK::pepk.jar SHA-256 $SUM"
+          echo "$PEPK_SHA256  pepk.jar" | sha256sum -c - || { echo "::error::pepk.jar isn't the file whose SHA-256 is in play-key.yml (Google may have changed it: check the new one by hand)."; exit 1; }
+          echo "::notice title=PEPK::pepk.jar SHA-256 $PEPK_SHA256"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: pepk, path: pepk.jar, retention-days: 1 }
 
@@ -43,19 +49,22 @@ jobs:
         env:
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
-          SUM: ${{ needs.tool.outputs.sum }}
         run: |
           set -euo pipefail
           umask 077
           [ -f ci/play-encryption-key.pem ] || { echo "::error::ci/play-encryption-key.pem is missing: save the key from Play Console's App signing page there first."; exit 1; }
-          echo "$SUM  tool/pepk.jar" | sha256sum -c -
+          [[ "$PEPK_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::PEPK_SHA256 in play-key.yml isn't filled in."; exit 1; }
+          echo "$PEPK_SHA256  tool/pepk.jar" | sha256sum -c -
           [ -n "$KEY_PASS" ] && [ -n "$KEYSTORE_B64" ] || { echo "::error::The release environment's secrets are missing."; exit 1; }
           KS="$RUNNER_TEMP/release.keystore"; trap 'rm -f "$KS"' EXIT
           printf '%s' "$KEYSTORE_B64" | base64 -d > "$KS"
           mkdir -p out
-          java -jar tool/pepk.jar --keystore="$KS" --alias=leanoutliner --output=out/thinky-play-key.zip \
-            --include-cert --rsa-aes-encryption --encryption-key-path=ci/play-encryption-key.pem \
-            --keystore-pass="$KEY_PASS" --key-pass="$KEY_PASS"
+          # (the passwords never on the command line, where every program on the machine can read them:
+          # PEPK asks for them when they aren't given, and gets them on its input, store's then key's.
+          # TODO(maintainer): when filling in PEPK_SHA256, check this PEPK still asks that way; if it
+          # stops with no password, it made nothing and nothing leaked)
+          printf '%s\n%s\n' "$KEY_PASS" "$KEY_PASS" | java -jar tool/pepk.jar --keystore="$KS" --alias=leanoutliner --output=out/thinky-play-key.zip \
+            --include-cert --rsa-aes-encryption --encryption-key-path=ci/play-encryption-key.pem
           [ -s out/thinky-play-key.zip ] || { echo "::error::PEPK made nothing."; exit 1; }
           echo "::notice title=Play key::thinky-play-key.zip is ready (encrypted for Google Play)"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -343,7 +343,7 @@ Also mirrored: `search.rs` `fold` ↔ `ui/search.js`.
 
 - Push to `main` = a public release "Build N" (Windows installer + portable exe, Android APK) on
   this repo, where the app looks for updates from Build 34 on (Build 34 also went to the old downloads
-  repo, `srikanth-iyer/lean-outliner-releases`, where Build 33 and older look). Commits touching only Markdown, `ci/baseline.json`, `dev/**` or the phone-test scripts don't build (`paths-ignore` in build.yml; the phone test has no such list, so `[android-test]` still runs it). `wip/**` branches
+  repo, `srikanth-iyer/lean-outliner-releases`, where Build 33 and older look). Commits touching only Markdown, `ci/baseline.json` or the phone-test scripts don't build (`dev/**` does since the review fixes: the dev server and UI tests are checked) (`paths-ignore` in build.yml; the phone test has no such list, so `[android-test]` still runs it). `wip/**` branches
   build without publishing — use them to check compiling. Build minutes are limited: batch features.
 - Jobs in `.github/workflows/build.yml`: `number`, `test`, `update-key`, `windows` (also runs both
   self-tests), `capture-shots`, `android`, `sign` (main, after approval), `sign-wip`, `verify`, `sizes`,

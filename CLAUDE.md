@@ -358,11 +358,14 @@ may update only through Play), `LeanAndroid.fromPlay()` true → app.js `checkUp
 bundle at all: android_overlay.py `without_updater` cuts MainActivity.kt between its `// ---- updater…` / `// ---- end of
 the updater…` markers (and the UpdateReceiver to the end of the file), drops imports no longer used and sets
 `const val PLAY` (`__PLAY__`); android/test/overlay_test.py checks both shapes. `sign` signs the bundle with jarsigner and the same release key (Play's
-upload key; its certificate must equal the APK's; its manifest checked for the install permission); `sign-wip` with the
+upload key; its certificate must equal the APK's; its manifest checked for the install permission; `android` also
+searches its DEX for the updater's code, `releases/download` and `PackageInstaller$Session`, review claim 10c); `sign-wip` with the
 throw-away key; `release` publishes it with the others (7 files, 10 with the old names). Play App Signing reuses the
 release key (he chose it, Nov 10): `.github/workflows/play-key.yml` (run by hand on main, environment `release`) exports
 it with Google's PEPK, encrypted with Play Console's key saved as `ci/play-encryption-key.pem`, as the artifact
-`thinky-play-key.zip` for Play Console's App signing page. Package name on Play: `com.srikanth.leanoutliner`.
+`thinky-play-key.zip` for Play Console's App signing page. pepk.jar must match the SHA-256 pinned in the workflow's
+`PEPK_SHA256` (empty until the maintainer checks the file: the workflow stops before the keystore is unpacked), and the
+passwords go to PEPK on its input, never its command line (review claim 21a). Package name on Play: `com.srikanth.leanoutliner`.
 Build 43 (0.5.4; the maintainer's notes of Nov 10; tested by t25_build43): a hidden sidebar peeks out on the mouse (as in
 Notion; `App.peekSidebar`: pointerover on the strip's sidebar button, 120 ms, adds `body.side-peek` (+ `.peeking` for the
 slide when `motionOn()`), the sidebar floats over the notes (z 30, shadow; app.css "peeking out"), its links work; leaving
@@ -1838,10 +1841,12 @@ window can't be sent to another page.
   sizes; `release` (main only, environment `publish`) publishes here (and on the old downloads repo while
   `RELEASES_TOKEN` exists). Build numbers follow the newest release here or on the old downloads repo
   (`number` refuses to start below build 33; so does `prev-cert` look in both). Pull requests run
-  only `pr.yml` (the core's tests; no secrets, never `pull_request_target`). Every action is pinned to a
+  only `pr.yml` (the core's and the dev server's tests, Clippy with its correctness and suspicious lints stopping
+  it; no secrets, never `pull_request_target`). Every action is pinned to a
   commit; Dependabot proposes updates; Cargo.lock is used as is (`--locked`, `cargo fetch --locked`) and
-  npm installs without install scripts; `deny` runs cargo-deny (deny.toml) and reports without holding
-  a build back. The first build with updates is installed by hand.
+  npm installs without install scripts; `deny` runs cargo-deny (deny.toml): a security advisory holds the
+  release back (`sign` needs `deny`), licences, bans and sources only report. Release lists are read with
+  `gh api --paginate` (all pages, not only the newest 100). The first build with updates is installed by hand.
 - Pull before pushing.
 
 ## Android extras

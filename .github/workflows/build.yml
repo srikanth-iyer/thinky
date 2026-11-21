@@ -22,7 +22,7 @@ name: build
 on:
   push:
     branches: [main, 'wip/**']
-    paths-ignore: ['**.md', 'ci/baseline.json', 'dev/**', 'site/**', '.github/workflows/android-test.yml', '.github/workflows/pr.yml', 'scripts/android_test.sh', 'scripts/make_test_vault.py', 'scripts/ui_tap.py', 'scripts/android_cdp.mjs']
+    paths-ignore: ['**.md', 'ci/baseline.json', 'site/**', '.github/workflows/android-test.yml', '.github/workflows/pr.yml', 'scripts/android_test.sh', 'scripts/make_test_vault.py', 'scripts/ui_tap.py', 'scripts/android_cdp.mjs']
   workflow_dispatch:
 
 # a newer push to a wip branch stops that branch's older run; main's runs (releases) always finish
@@ -72,7 +72,7 @@ jobs:
           newest() {
             local best=0 from= r n
             for r in "$GITHUB_REPOSITORY" "$OLD_RELEASES"; do
-              n=$(gh api "repos/$r/releases?per_page=100" | jq --arg a "$1" '[.[] | select($a == "" or any(.assets[]; .name == $a)) | .tag_name | select(test("^build-[0-9]+$")) | ltrimstr("build-") | tonumber] | max // 0')
+              n=$(gh api --paginate "repos/$r/releases?per_page=100" | jq -s --arg a "$1" '[(add // [])[] | select($a == "" or any(.assets[]; .name == $a)) | .tag_name | select(test("^build-[0-9]+$")) | ltrimstr("build-") | tonumber] | max // 0')
               if [ "$n" -gt "$best" ]; then best=$n; from=$r; fi
             done
             echo "$best $from"
@@ -125,7 +125,7 @@ jobs:
           newest() {
             local best=0 from= r n
             for r in "$GITHUB_REPOSITORY" "$OLD_RELEASES"; do
-              n=$(gh api "repos/$r/releases?per_page=100" | jq --arg a "$1" '[.[] | select($a == "" or any(.assets[]; .name == $a)) | .tag_name | select(test("^build-[0-9]+$")) | ltrimstr("build-") | tonumber] | max // 0')
+              n=$(gh api --paginate "repos/$r/releases?per_page=100" | jq -s --arg a "$1" '[(add // [])[] | select($a == "" or any(.assets[]; .name == $a)) | .tag_name | select(test("^build-[0-9]+$")) | ltrimstr("build-") | tonumber] | max // 0')
               if [ "$n" -gt "$best" ]; then best=$n; from=$r; fi
             done
             echo "$best $from"
@@ -370,16 +370,19 @@ jobs:
           path: ${{ runner.temp }}/ui/shots
           retention-days: 7
 
-  # Dependency checks (deny.toml: known security advisories, licences, where crates come from). It
-  # reports and doesn't hold the build back: a new advisory shows here as a failed check to look at.
+  # Dependency checks (deny.toml). A known security advisory in a crate holds the release back (`sign`
+  # waits for this job; review A4); licences, bans and where crates come from only report, as a failed
+  # step to look at.
   deny:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
-        with: { command: check advisories licenses bans sources }
+        with: { command: check advisories }
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        continue-on-error: true
+        with: { command: check licenses bans sources }
 
   # A wip build's capture box pictures (from the Windows job's check), kept on the capture-box-shots
   # branch. A job of its own: the build job's token can only read.
@@ -448,6 +451,23 @@ jobs:
           [ -n "$AAB" ] || { echo "::error::No release .aab was built."; exit 1; }
           cp "$AAB" thinky-play-unsigned.aab
           echo "sums=$(sha256sum LeanOutliner-unsigned.apk thinky-play-unsigned.aab | base64 -w0)" >> "$GITHUB_OUTPUT"
+      # The Play bundle carries none of the self-updater's code either (review claim 10: Play lets an app
+      # update only through Play; the manifest check in `sign` sees only its permissions). Its DEX files
+      # are searched for the updater's download address and the system installer it drives; the APK,
+      # which keeps the updater, must show both, so the search is known to see them.
+      - name: The Play bundle has no updater code
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/dex"; rm -rf "$D"; mkdir -p "$D/aab" "$D/apk"
+          unzip -q -o thinky-play-unsigned.aab 'base/dex/*.dex' -d "$D/aab" || true
+          unzip -q -o LeanOutliner-unsigned.apk 'classes*.dex' -d "$D/apk" || true
+          ls "$D"/aab/base/dex/*.dex > /dev/null || { echo "::error::The Play bundle has no DEX files to check."; exit 1; }
+          ls "$D"/apk/classes*.dex > /dev/null || { echo "::error::The APK has no DEX files to check."; exit 1; }
+          for w in 'releases/download' 'PackageInstaller$Session'; do
+            grep -a -F -q "$w" "$D"/apk/classes*.dex || { echo "::error::The APK's code has no \"$w\": the updater changed, so this check no longer sees it (update the words here)."; exit 1; }
+            if grep -a -F -l "$w" "$D"/aab/base/dex/*.dex; then echo "::error::The Play bundle's code still holds \"$w\" (the self-updater): Play refuses an app that installs its own updates."; exit 1; fi
+          done
+          echo "::notice title=Play bundle::no updater code in its DEX"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: android-unsigned, path: "LeanOutliner-unsigned.apk\nthinky-play-unsigned.aab", retention-days: 5 }
 
@@ -470,7 +490,7 @@ jobs:
           newest() {
             local best=0 from= r n
             for r in "$GITHUB_REPOSITORY" "$OLD_RELEASES"; do
-              n=$(gh api "repos/$r/releases?per_page=100" | jq --arg a "$1" '[.[] | select($a == "" or any(.assets[]; .name == $a)) | .tag_name | select(test("^build-[0-9]+$")) | ltrimstr("build-") | tonumber] | max // 0')
+              n=$(gh api --paginate "repos/$r/releases?per_page=100" | jq -s --arg a "$1" '[(add // [])[] | select($a == "" or any(.assets[]; .name == $a)) | .tag_name | select(test("^build-[0-9]+$")) | ltrimstr("build-") | tonumber] | max // 0')
               if [ "$n" -gt "$best" ]; then best=$n; from=$r; fi
             done
             echo "$best $from"
@@ -492,7 +512,7 @@ jobs:
   # environment `release`'s 30-minute wait (cancel the run to stop a release). The keys are written from secrets into the
   # runner's temp folder and deleted at the end; they are never outputs, artifacts or log lines.
   sign:
-    needs: [number, update-key, windows, android, prev-cert, ui-tests]
+    needs: [number, update-key, windows, android, prev-cert, ui-tests, deny]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: release
