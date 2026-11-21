@@ -946,8 +946,10 @@ function tabArrows(bar) {
 async function aiCard(app) {
   const ai = await import('./ai.js');
   const card = h('div', 'card ai-card');
-  const list = await ai.providers().catch(() => []);
   let s = ai.aiSettings();
+  // (the phone sends only to https:// addresses (AiKeys.kt), so a program "on this computer" isn't offered
+  // there; one chosen before stays listed, so it can be turned off)
+  const list = (await ai.providers().catch(() => [])).filter((p) => !isAndroid || p.key !== 'none' || p.id === s.provider);
   const opt = (v, label, on) => `<option value="${esc(v)}"${on ? ' selected' : ''}>${esc(label)}</option>`;
   card.innerHTML = `<h2>AI <span class="note">(optional)</span></h2>
     <p class="note">Off until you choose a service. thinky sends something to the AI only when you use one of its features (Polish note, Picture to text, Ask about this page, Suggest links, aliases and a description), shows you what it suggests, and saves nothing until you press its button. Your key stays on this device, never in your notes.</p>
@@ -1026,14 +1028,21 @@ async function aiCard(app) {
     const v = f('base').value.trim();
     try {
       const b = v ? await call('ai_check_base', { base: v }) : '';
+      const was = s.base;
       s = ai.setAiSettings({ base: b === prov()?.base ? '' : b });
       $('.ai-test', card).textContent = '';
+      // ("Other"'s key goes only to the address it was saved with)
+      if (s.provider === 'other' && s.base !== was && await ai.keyHas('other')) $('.ai-keysay', card).textContent = 'Paste the key again to use it with this address.';
       load(true);
     } catch (e) { asked++; $('.ai-test', card).textContent = String(e.message || e); } // (a model list still on its way says nothing over this)
   };
   $('[data-a="savekey"]', card).onclick = async () => {
     try {
-      await ai.keySet(s.provider, f('key').value);
+      // "Other": the key is kept with the address in the box (it goes there and nowhere else)
+      const v = f('base').value.trim();
+      if (s.provider === 'other' && !v) throw new Error('Type the address first: the key is kept for that address only.');
+      const base = s.provider === 'other' ? await call('ai_check_base', { base: v }) : '';
+      await ai.keySet(s.provider, f('key').value, base);
       f('key').value = '';
       await draw();
       load(false);
