@@ -598,3 +598,40 @@ fn renaming_a_property_leaves_code_alone() {
     app.rename_property("authors", "writer").unwrap();
     assert_eq!(std::fs::read_to_string(v.join("pages/Q.md")).unwrap(), "- x\n  ```a```\n  writer:: Cy\n");
 }
+
+// ---- 17b: a rescan is only taken into the folder (and the opening of it) it was read from ----
+
+#[test]
+fn a_rescan_of_one_folder_never_lands_in_another() {
+    use outline_core::app::collect_changes;
+    let a = tmp_vault("rescan-a");
+    let b = tmp_vault("rescan-b");
+    put(&a, "pages/OnlyInA.md", "- a's note\n");
+    put(&b, "pages/OnlyInB.md", "- b's note\n");
+    let app_a = App::open(&a).unwrap();
+    // a's rescan is being read when the folder is switched to b
+    put(&a, "pages/New in A.md", "- new\n");
+    std::fs::remove_file(a.join("pages/OnlyInA.md")).unwrap();
+    let plan = app_a.scan_plan();
+    drop(app_a);
+    let ch = collect_changes(plan);
+    assert_eq!(ch.root, a, "the changes say where they were read");
+    let mut app_b = App::open(&b).unwrap();
+    assert!(app_b.apply_changes(ch).is_empty(), "nothing of a's goes into b");
+    assert!(!app_b.vault.page_info("New in A").exists);
+    assert!(app_b.vault.page_info("OnlyInB").exists, "b's own pages stay");
+    // the same folder opened again meanwhile: an earlier opening's rescan is ignored too
+    let first = App::open(&b).unwrap();
+    put(&b, "pages/Later.md", "- later\n");
+    let ch = collect_changes(first.scan_plan());
+    std::fs::remove_file(b.join("pages/Later.md")).unwrap();
+    let mut again = App::open(&b).unwrap();
+    assert!(again.apply_changes(ch).is_empty());
+    assert!(!again.vault.page_info("Later").exists);
+    // the usual case: a rescan of the open folder is taken in
+    put(&b, "pages/Fresh.md", "- fresh\n");
+    let ch = collect_changes(again.scan_plan());
+    assert_eq!(again.apply_changes(ch), vec!["pages/Fresh.md".to_string()]);
+    assert!(again.vault.page_info("Fresh").exists);
+    assert!(again.rescan().is_empty(), "nothing more");
+}

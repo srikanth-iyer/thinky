@@ -95,6 +95,8 @@ pub struct App {
     /// `logseq/config.edn`'s stamp when the settings were read (None: no file): a rescan reads it
     /// again when it changed (`collect_changes`).
     config_stamp: Option<Stamp>,
+    /// This opening of the folder (each `App` gets its own): a rescan made for another one is ignored.
+    opened: u64,
 }
 
 /// What `undo_merge` needs: every file the merge changed (path, text before, text after) and the
@@ -655,6 +657,7 @@ fn load_cache(root: &Path) -> Cached {
 /// What a rescan needs, copied out so the slow part can run without holding the app.
 pub struct ScanPlan {
     root: PathBuf,
+    opened: u64,
     cfg: Config,
     files: HashMap<String, Stamp>,
     config_stamp: Option<Stamp>,
@@ -662,6 +665,11 @@ pub struct ScanPlan {
 
 /// Files that changed on disk, already read.
 pub struct Changes {
+    /// The notes folder they were read from (review 17b: a rescan that read one folder is never
+    /// taken into another one opened meanwhile; `App::apply_changes` checks this, and which opening
+    /// of the folder it was).
+    pub root: PathBuf,
+    opened: u64,
     now: HashMap<String, Stamp>,
     /// creation times the system gives (`made_of`)
     made: HashMap<String, u64>,
@@ -696,7 +704,7 @@ pub fn collect_changes(plan: ScanPlan) -> Changes {
         .then(|| std::fs::read_to_string(plan.root.join(CONFIG_REL)).ok().filter(|t| crate::edn::parse(t).is_some()))
         .flatten()
         .map(|t| (cs, Config::from_edn(&t)));
-    Changes { now, made, read, removed, base: plan.files, config, config_base: plan.config_stamp }
+    Changes { root: plan.root, opened: plan.opened, now, made, read, removed, base: plan.files, config, config_base: plan.config_stamp }
 }
 
 /// A name the user typed for a page: trimmed, one line, not empty.
@@ -1175,7 +1183,9 @@ impl App {
         // index cache on disk is the only place that has those earlier texts: it's written now only
         // when there are none (else by start_safety_copy once they're kept, or the next persist).
         // Opened only to read (the capture box, the check), it's never written: see write_cache.
-        let mut app = App { root: root.to_path_buf(), vault, files, contents, non_utf8, cache_dirty, replaced, keep_cache, born, last_merge: None, config_stamp };
+        static OPENED: AtomicUsize = AtomicUsize::new(1);
+        let opened = OPENED.fetch_add(1, Ordering::Relaxed) as u64;
+        let mut app = App { root: root.to_path_buf(), vault, files, contents, non_utf8, cache_dirty, replaced, keep_cache, born, last_merge: None, config_stamp, opened };
         if keep_cache && app.replaced.is_empty() {
             app.write_cache();
         }
@@ -1263,12 +1273,17 @@ impl App {
 
     /// Snapshot for a rescan (cheap): see `collect_changes` and `apply_changes`.
     pub fn scan_plan(&self) -> ScanPlan {
-        ScanPlan { root: self.root.clone(), cfg: self.vault.config.clone(), files: self.files.clone(), config_stamp: self.config_stamp }
+        ScanPlan { root: self.root.clone(), opened: self.opened, cfg: self.vault.config.clone(), files: self.files.clone(), config_stamp: self.config_stamp }
     }
 
     /// Take in files that changed on disk. Files the app itself wrote since the snapshot are
-    /// left alone (their newer state is already indexed). Returns the changed paths.
+    /// left alone (their newer state is already indexed). Returns the changed paths. Changes read
+    /// from another folder, or for another opening of this one (the folder was switched while they
+    /// were being read), are ignored: nothing changes and nothing is returned.
     pub fn apply_changes(&mut self, ch: Changes) -> Vec<String> {
+        if ch.root != self.root || ch.opened != self.opened {
+            return vec![];
+        }
         let mut changed = vec![];
         for (rel, text, utf8) in ch.read {
             if self.files.get(&rel) != ch.base.get(&rel) {

@@ -1595,7 +1595,9 @@ it; the first save of a new page writes only where no file is: one that turned u
   that stays unparseable still gives the defaults). Settings → Notes folder shows why with "Try again"
   (`.btn-row.retry`, finger-sized on touch; a fresh page load, as at a start). While open, a rescan
   stats config.edn (`App::config_stamp`; the app's own writes record theirs) and reads it when it
-  changed, whole files only (`collect_changes`); `take_config` takes favourites, shortcuts, capture…
+  changed, whole files only (`collect_changes`; its `Changes` name the folder, `root`, and the opening
+  of it they were read for, and `apply_changes` ignores ones from another: a folder switched while a
+  rescan read the old one never gets the old one's files); `take_config` takes favourites, shortcuts, capture…
   in place, and for other folders, date formats or comma properties opens the index again (`load`,
   from the cache); `"logseq/config.edn"` in rescan's list → the UI takes the settings
   (`App.useSettings`) and redraws both sides if journals moved; the Windows app watches the new
