@@ -61,10 +61,41 @@ pub fn bullet(line: &str) -> Option<(usize, &str)> {
     Some((depth, body))
 }
 
+/// Does this line (already trimmed at its start) open or close a code block? A line that
+/// opens with ``` and closes it again (`` ```inline code``` ``) is inline code, not a fence.
+pub(crate) fn fence_line(t: &str) -> bool {
+    t.strip_prefix("```").is_some_and(|rest| !rest.contains("```"))
+}
+
 fn is_fence(line: &str) -> bool {
     let t = strip_eol(line).trim_start();
     let t = bullet(line).map(|(_, b)| b.trim_start()).unwrap_or(t);
-    t.starts_with("```")
+    fence_line(t)
+}
+
+/// A continuation line whose words would read back as a bullet (`- x`, `* x`, `+ x`, a lone
+/// `-`) is written with a backslash in front (`\- x`), as Markdown escapes it; a line that
+/// already starts with backslashes before such a shape gets one more, so reading drops exactly
+/// one and every line comes back as it was.
+fn needs_escape(line: &str) -> bool {
+    let t = line.trim_start_matches([' ', '\t']);
+    bullet(t.trim_start_matches('\\')).is_some()
+}
+
+fn escape_line(line: &str) -> String {
+    if !needs_escape(line) {
+        return line.to_string();
+    }
+    let ws = line.len() - line.trim_start_matches([' ', '\t']).len();
+    format!("{}\\{}", &line[..ws], &line[ws..])
+}
+
+fn unescape_line(line: &str) -> String {
+    let ws = line.len() - line.trim_start_matches([' ', '\t']).len();
+    match line[ws..].strip_prefix('\\') {
+        Some(r) if needs_escape(r) => format!("{}{}", &line[..ws], r),
+        _ => line.to_string(),
+    }
 }
 
 fn is_blank(line: &str) -> bool {
@@ -216,15 +247,24 @@ fn block_text(lines: &[&str]) -> String {
     let lead = &first[..first_ws];
     let (_, body) = bullet(lines[0]).unwrap_or((0, first));
     let mut out = body.to_string();
+    let mut in_fence = fence_line(body.trim_start());
     for l in &lines[1..] {
         let l = strip_eol(l);
         out.push('\n');
-        if let Some(r) = l.strip_prefix(lead) {
+        let line = if let Some(r) = l.strip_prefix(lead) {
             // one indent step (two spaces, a tab or a space): deeper indentation is content,
             // e.g. code inside the block
-            out.push_str(r.strip_prefix("  ").or_else(|| r.strip_prefix('\t')).or_else(|| r.strip_prefix(' ')).unwrap_or(r));
+            r.strip_prefix("  ").or_else(|| r.strip_prefix('\t')).or_else(|| r.strip_prefix(' ')).unwrap_or(r)
         } else {
-            out.push_str(l.trim_start());
+            l.trim_start()
+        };
+        if in_fence {
+            out.push_str(line);
+        } else {
+            out.push_str(&unescape_line(line));
+        }
+        if fence_line(line.trim_start()) {
+            in_fence = !in_fence;
         }
     }
     // trailing blank lines belong to the raw only
@@ -237,8 +277,15 @@ fn block_text(lines: &[&str]) -> String {
 fn render_block(b: &DocBlock, indent: &str, nl: &str) -> String {
     let ind = indent.repeat(b.depth);
     let mut s = String::new();
+    let mut in_fence = false;
     for (i, line) in b.text.split('\n').enumerate() {
         let line = line.trim_end_matches('\r');
+        let fence = fence_line(line.trim_start());
+        // inside a code block a deeper bullet stays part of the block, so code is kept as typed
+        let line: std::borrow::Cow<str> = if i == 0 || in_fence { line.into() } else { escape_line(line).into() };
+        if fence {
+            in_fence = !in_fence;
+        }
         if i == 0 {
             if line.is_empty() {
                 s.push_str(&format!("{ind}-{nl}"));

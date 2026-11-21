@@ -1521,7 +1521,10 @@ Logseq `- ` bullets (tabs), Obsidian `* ` bullets, plain paragraphs before any b
 once one is edited, later ones are written as bullets), YAML `---` headers (page props; YAML `title`
 never renames), `key::` props, files without a final newline, CRLF, BOM, duplicate page names (first
 file wins, `Vault::duplicates`), emoji/curly quotes in names (never slice strings by byte index),
-unclosed code fences (end at the next bullet that isn't deeper). File names: Logseq triple-lowbar rules
+unclosed code fences (end at the next bullet that isn't deeper; ```code``` closed on its own line is inline
+code, never a fence: `doc::fence_line`, also used by parse and text). A note's later line that would read
+as a bullet (`- x`, `* x`, `+ x`, a lone `-`) is written as `\- x` outside code blocks and read back
+without the backslash (one more backslash in front of lines that already start with some). File names: Logseq triple-lowbar rules
 (`file_stem_for`, Windows' reserved names in any capitals); names a file can't hold get `title::` (new
 pages, and renames: `add_title_prop`). A new page never takes another page's file: when its file name
 is already used (by a page named by its `title::`; capitals ignored, as Windows and Android do), it gets

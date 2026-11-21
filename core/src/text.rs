@@ -22,7 +22,7 @@ impl LineKinds {
     }
     fn kind(&mut self, line: &str) -> Kind {
         let t = line.trim();
-        if t.starts_with("```") {
+        if crate::doc::fence_line(t) {
             self.in_fence = !self.in_fence;
             return Kind::Other;
         }
