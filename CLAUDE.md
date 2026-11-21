@@ -1574,7 +1574,9 @@ it; the first save of a new page writes only where no file is: one that turned u
   program saving at the worst moment).
 - The settings (config.edn) are never guessed (Build 32): `capture::read_config` is the one rule for
   opening (`App::open`, `open_read_only`) and adding notes: missing → Logseq's defaults (and on Android
-  a PermissionDenied: without "all files access" the folder opens empty, `App.noAccess`); any other read
+  a PermissionDenied when opening: without "all files access" the folder opens empty, `App.noAccess`; adding
+  a note uses `read_config_to_add`, where that is an error too, never the defaults); a UTF-8 BOM at the
+  start is skipped (`edn::parse`, kept by rewrites; review claim 9d); any other read
   problem, or text that isn't whole EDN, is tried again ~0.5 s, then the folder isn't opened (a file
   that stays unparseable still gives the defaults). Settings → Notes folder shows why with "Try again"
   (`.btn-row.retry`, finger-sized on touch; a fresh page load, as at a start). While open, a rescan

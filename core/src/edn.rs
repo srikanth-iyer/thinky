@@ -221,7 +221,11 @@ impl<'a> P<'a> {
 
 /// Parse the first form in `text` (the config map). None if the text isn't readable EDN.
 pub fn parse(text: &str) -> Option<Node> {
-    let mut p = P { s: text, b: text.as_bytes(), i: 0, depth: 0 };
+    // a UTF-8 byte order mark (Notepad's "UTF-8 with BOM") is skipped, never read as a symbol: that
+    // would make the file "not a map" and every setting the default (review claim 9d); offsets stay
+    // the text's own, so `set_path` keeps it in place
+    let i = if text.starts_with('\u{feff}') { '\u{feff}'.len_utf8() } else { 0 };
+    let mut p = P { s: text, b: text.as_bytes(), i, depth: 0 };
     loop {
         match p.form()? {
             Some(n) => return Some(n),

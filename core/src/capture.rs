@@ -193,13 +193,30 @@ pub fn as_todo(line: &str, marker: &str) -> String {
 /// added, with guessed settings (journals from and into the wrong folder, under the wrong names).
 /// (A file that stays unreadable EDN still gives Logseq's defaults, as Logseq would.)
 pub fn read_config(root: &Path) -> std::io::Result<Config> {
+    read_config_as(root, false)
+}
+
+/// `read_config` for ADDING a note (the usual place, Android's share pop-up and selection capture):
+/// a config.edn that is there but may not be read is an error on Android too, never Logseq's
+/// defaults, which would put the note in the wrong folder under the wrong name (the review's
+/// medium row on capture.rs:202). Opening the folder (`read_config`) still opens it empty there.
+pub fn read_config_to_add(root: &Path) -> std::io::Result<Config> {
+    read_config_as(root, true)
+}
+
+/// Whether a read error of config.edn means "use Logseq's defaults": a missing file always; on
+/// Android, one the app may not read, but only when opening the folder, not when adding a note.
+pub(crate) fn defaults_for(kind: std::io::ErrorKind, android: bool, adding: bool) -> bool {
     use std::io::ErrorKind;
+    kind == ErrorKind::NotFound || (android && !adding && kind == ErrorKind::PermissionDenied)
+}
+
+fn read_config_as(root: &Path, adding: bool) -> std::io::Result<Config> {
     let path = root.join("logseq").join("config.edn");
     for left in (0..5).rev() {
         match std::fs::read_to_string(&path) {
             Ok(t) if left == 0 || crate::edn::parse(&t).is_some() => return Ok(Config::from_edn(&t)),
-            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Config::default()),
-            Err(e) if cfg!(target_os = "android") && e.kind() == ErrorKind::PermissionDenied => return Ok(Config::default()),
+            Err(e) if defaults_for(e.kind(), cfg!(target_os = "android"), adding) => return Ok(Config::default()),
             Err(e) if left == 0 => return Err(e),
             _ => std::thread::sleep(std::time::Duration::from_millis(100)),
         }
@@ -303,7 +320,7 @@ pub fn capture_media_to_usual(root: &Path, link: &str, today: Date, time: &str) 
 }
 
 fn line_to_usual(root: &Path, today: Date, line: &dyn Fn(&Config) -> Result<String, String>) -> Result<String, String> {
-    let cfg = read_config(root).map_err(|e| format!("Couldn't read logseq/config.edn ({e}), so nothing was added."))?;
+    let cfg = read_config_to_add(root).map_err(|e| format!("Couldn't read logseq/config.edn ({e}), so nothing was added."))?;
     if !cfg.capture_today {
         let mut app = crate::app::App::open_read_only(root).map_err(|e| format!("{e} So nothing was added."))?;
         return app.capture_line_to_page(&cfg.capture_page, line);
@@ -358,5 +375,28 @@ pub fn with_source(words: &str, url: Option<&str>) -> String {
             format!("{} {}", words.trim_end(), md_link(&text_fragment(u, words), "", ""))
         }
         _ => words.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::defaults_for;
+    use std::io::ErrorKind;
+
+    #[test]
+    fn only_a_missing_config_gives_the_defaults_when_adding() {
+        for android in [false, true] {
+            for adding in [false, true] {
+                assert!(defaults_for(ErrorKind::NotFound, android, adding), "a missing file: Logseq's defaults");
+                for k in [ErrorKind::Other, ErrorKind::Interrupted, ErrorKind::InvalidData, ErrorKind::TimedOut] {
+                    assert!(!defaults_for(k, android, adding), "{k:?}");
+                }
+            }
+        }
+        // Android without "all files access": opening shows the folder empty, adding stops
+        assert!(defaults_for(ErrorKind::PermissionDenied, true, false));
+        assert!(!defaults_for(ErrorKind::PermissionDenied, true, true));
+        assert!(!defaults_for(ErrorKind::PermissionDenied, false, false));
+        assert!(!defaults_for(ErrorKind::PermissionDenied, false, true));
     }
 }
