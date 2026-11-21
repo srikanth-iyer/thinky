@@ -38,9 +38,9 @@ fn the_name_ends_at_a_slash_question_mark_or_hash() {
     }
     // https to the same addresses is fine (it isn't local, and https may go anywhere)
     assert_eq!(check_base("https://ai.example.org?x=1").unwrap(), ("https://ai.example.org?x=1".to_string(), false));
-    assert_eq!(check_base("https://ai.example.org#frag").unwrap().1, false);
+    assert!(!check_base("https://ai.example.org#frag").unwrap().1);
     // a local name with a query is still local
-    assert_eq!(check_base("http://box.lan?x=1").unwrap().1, true);
+    assert!(check_base("http://box.lan?x=1").unwrap().1);
 }
 
 #[test]
@@ -76,8 +76,8 @@ fn number_addresses_are_read_strictly() {
     assert!(check_base("http://172.15.0.1/v1").is_err(), "172.15 isn't a home network");
     assert!(check_base("http://172.32.0.1/v1").is_err(), "172.32 isn't a home network");
     assert!(check_base("http://8.8.8.8/v1").is_err());
-    assert_eq!(check_base("https://8.8.8.8/v1").unwrap().1, false, "https to a number address is fine, not local");
-    assert_eq!(check_base("https://127.0.0.1/v1").unwrap().1, false, "local only matters for http");
+    assert!(!check_base("https://8.8.8.8/v1").unwrap().1, "https to a number address is fine, not local");
+    assert!(!check_base("https://127.0.0.1/v1").unwrap().1, "local only matters for http");
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn ipv6_addresses_must_be_real_ones() {
     ] {
         assert!(check_base(u).is_err(), "{u}");
     }
-    assert_eq!(check_base("https://[2001:db8::1]/v1").unwrap().1, false);
+    assert!(!check_base("https://[2001:db8::1]/v1").unwrap().1);
 }
 
 #[test]
@@ -337,7 +337,7 @@ fn send_keyed_takes_the_header_from_the_service_and_keeps_the_key_home() {
     // a key for a service elsewhere: refused, nothing sent (no server is listening: a send would fail
     // with "Is it running", not this)
     for (svc, url, saved) in [
-        ("other", format!("http://127.0.0.1:9/v1/models"), Some(base.as_str())),
+        ("other", "http://127.0.0.1:9/v1/models".to_string(), Some(base.as_str())),
         ("other", format!("{base}/models"), None),
         ("claude", format!("{base}/messages"), Some(base.as_str())),
         ("openai", "http://127.0.0.1:9/v1/chat/completions".to_string(), None),

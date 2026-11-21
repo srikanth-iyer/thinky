@@ -5,6 +5,7 @@
 //! - **GitHub** (or any git repository): the notes folder copied into a separate folder that is a git
 //!   repository, then a snapshot ("commit") and an upload ("push") with the `git` program, as his own
 //!   weekly script does. Every earlier snapshot stays in the repository's history.
+//!
 //! Either way a backup is made only when something changed since the last one, never from a folder
 //! that doesn't look like the notes folder (so an empty or half-synced folder can't look like
 //! "everything was deleted"), and it says when an unusual number of files vanished.
@@ -308,7 +309,7 @@ fn zip_walk(zip: &Path, keep: &mut impl FnMut(&str) -> bool, out: &mut Vec<(Stri
     let mut buf = vec![0u8; tail as usize];
     f.read_exact(&mut buf).ok()?;
     // the end record is 22 bytes: the last signature with room for them
-    let at = buf.windows(4).enumerate().filter(|(i, w)| *w == [0x50, 0x4b, 0x05, 0x06] && i + 22 <= buf.len()).map(|(i, _)| i).last()?;
+    let at = buf.windows(4).enumerate().rev().find(|(i, w)| *w == [0x50, 0x4b, 0x05, 0x06] && i + 22 <= buf.len()).map(|(i, _)| i)?;
     let u16_ = |b: &[u8], i: usize| u16::from_le_bytes([b[i], b[i + 1]]) as usize;
     let u32_ = |b: &[u8], i: usize| u32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]) as u64;
     let (n, cd_size, cd_off) = (u16_(&buf, at + 10), u32_(&buf, at + 12), u32_(&buf, at + 16));
