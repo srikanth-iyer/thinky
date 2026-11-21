@@ -516,6 +516,7 @@ a.tag .hash { display: var(--hash); }
 .m-big { font-size: 1.35em; vertical-align: -0.15em; margin: 0 1px; }
 .m-acc { display: inline-block; }
 .m-unknown { color: var(--ink-faint); font-family: var(--font-mono); font-size: .85em; }
+.m-src { font-family: var(--font-mono); font-size: .85em; font-style: normal; white-space: pre-wrap; overflow-wrap: anywhere; } /* a formula too big to draw (math.js) */
 .m-mat { display: inline-grid; grid-template-columns: repeat(var(--cols), auto); gap: 2px 12px; vertical-align: middle; padding: 2px 8px; margin: 2px 4px; text-align: center; border: 0 solid currentColor; }
 .m-mat.m-left { text-align: left; }
 .m-b { border-left: 1.5px solid; border-right: 1.5px solid;

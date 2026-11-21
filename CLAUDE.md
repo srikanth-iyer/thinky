@@ -1673,7 +1673,9 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
   take only names `pictures::asset_links` gives: read (`%2e`, `%5C`, `%3A`) first, then any `..`, `\`, `:` or NUL
   refused, and looked up only through `asset_file` (review claim 4). (tests/features.rs, tests/pictures.rs, t18_security)
 - Drawing notes: a note that makes a drawing rule throw shows as its plain words (`renderBlock`'s
-  catch); math.js looks names up with `Object.hasOwn` (no `\constructor`). (t18_security)
+  catch); math.js looks names up with `Object.hasOwn` (no `\constructor`); a formula of more than 2,000
+  matrix cells or nested more than 40 deep shows as its source (`.m-src`); a link's label holds no other link
+  (`inline(label, true)`). (t18_security, unit.mjs)
 - config.edn: `:pages-directory`/`:journals-directory` only folders inside the notes folder
   (`config::inside_folder`), a journal file name with `/`, `\`, `:` or a leading `.` falls back to
   `yyyy_MM_dd` (`journal_rel_path`). (tests/features.rs `folder_settings_stay_inside_the_notes_folder`)
@@ -1714,6 +1716,8 @@ window can't be sent to another page.
   pass, then it signs and publishes at once (the `release` environment has no reviewer since Nov 5, 2026 and
   no wait since Nov 15, 2026, Build 49, he asked: a push to main that passes is a release; build.yml's header
   comments still mention the old 30 minutes until the next build changes them). A new test goes into run.sh's list AND one of the six groups.
+  Page modules that load on their own (math.js, render.js): `node dev/ui-tests/unit.mjs` (plain Node, no server;
+  CI's `test` job and pr.yml). Dev server: `cargo test -p devserver` (its paths, Origin, AI keys).
   UI: `dev/ui-tests/run.sh [test…]` (Playwright against the dev server, fresh sample vault per test,
   screenshots in `$UI_TEST_DIR/shots`; Playwright import `/opt/npm-tools/node_modules/playwright/index.mjs`).
   Run them all after UI changes; they catch CSP blocks too. Two copies of the project (git worktrees)
@@ -1841,8 +1845,8 @@ window can't be sent to another page.
   sizes; `release` (main only, environment `publish`) publishes here (and on the old downloads repo while
   `RELEASES_TOKEN` exists). Build numbers follow the newest release here or on the old downloads repo
   (`number` refuses to start below build 33; so does `prev-cert` look in both). Pull requests run
-  only `pr.yml` (the core's and the dev server's tests, Clippy with its correctness and suspicious lints stopping
-  it; no secrets, never `pull_request_target`). Every action is pinned to a
+  only `pr.yml` (the core's and the dev server's tests, `src-tauri/pure_tests.sh`, `node dev/ui-tests/unit.mjs`,
+  Clippy with its correctness and suspicious lints stopping it; no secrets, never `pull_request_target`). Every action is pinned to a
   commit; Dependabot proposes updates; Cargo.lock is used as is (`--locked`, `cargo fetch --locked`) and
   npm installs without install scripts; `deny` runs cargo-deny (deny.toml): a security advisory holds the
   release back (`sign` needs `deny`), licences, bans and sources only report. Release lists are read with

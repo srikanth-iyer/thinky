@@ -1,4 +1,5 @@
-# Pull requests (also from forks): the core's and the dev server's tests and Clippy only. No secrets, a
+# Pull requests (also from forks): the core's, the dev server's, the shell's pure rules' and the page's
+# plain-Node tests, and Clippy only. No secrets, a
 # read-only token, and never `pull_request_target` (which would run a fork's code with this repo's
 # rights). First-time contributors' runs also wait for the maintainer's approval (repository setting).
 name: pull request
@@ -18,5 +19,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       # the crates that build on Ubuntu (src-tauri needs the Windows or Android system's own parts)
       - run: cargo test -p outline_core -p devserver --locked
+      # the Windows/Android shell's rules that need no Windows (plain rustc tests against outline_core)
+      - run: sh src-tauri/pure_tests.sh
+      # the page's modules that load on their own (math.js, render.js), in plain Node
+      - run: node dev/ui-tests/unit.mjs
       # Clippy: its correctness and suspicious lints stop the check; the rest only show (review A4)
       - run: cargo clippy -p outline_core -p devserver --all-targets --locked -- -D clippy::correctness -D clippy::suspicious

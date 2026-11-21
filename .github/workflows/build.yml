@@ -89,7 +89,11 @@ jobs:
         with: { persist-credentials: false }
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: cargo test -p outline_core --locked
+      - run: cargo test -p outline_core -p devserver --locked
+      # the Windows/Android shell's rules that need no Windows (plain rustc tests against outline_core)
+      - run: sh src-tauri/pure_tests.sh
+      # the page's modules that load on their own (math.js, render.js), in plain Node
+      - run: node dev/ui-tests/unit.mjs
       - name: Speed check
         run: |
           cargo run --locked --release -p outline_core --example bench | tee bench.txt
@@ -163,6 +167,9 @@ jobs:
       - id: version
         run: python scripts/ci_version.py
         env: { BUILD_NUMBER: '${{ needs.number.outputs.n }}' }
+      # the shell's own tests, on Windows (its Windows-only code included)
+      - run: cargo test -p lean-outliner --lib --locked
+        env: { LEAN_UPDATE_KEY: '${{ needs.update-key.outputs.pub }}' }
       - run: npx tauri build --bundles nsis
         env: { LEAN_UPDATE_KEY: '${{ needs.update-key.outputs.pub }}' }
       # Collected and uploaded straight after the build, with their SHA-256 as this job's output:

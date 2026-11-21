@@ -74,8 +74,27 @@ class P {
   skipSpace() { while (this.peek() === ' ') this.i++; }
 }
 
+// A formula that would draw too much (a matrix of thousands of cells from a short note, or groups
+// nested ever deeper) is shown as its source, as plain words (review claim 22a).
+const MAX_CELLS = 2000; // matrix cells in one formula, nested ones too
+const MAX_DEPTH = 40; // groups, powers, fractions… inside one another
+class TooBig extends Error {}
+let drawn = 0; // matrix cells drawn so far in this formula
+
 /** Render a TeX source string to HTML. */
 export function tex(src) {
+  drawn = 0;
+  try {
+    return draw(src, 0);
+  } catch (e) {
+    if (e instanceof TooBig) return `<span class="m-src">${esc(src)}</span>`;
+    throw e;
+  }
+}
+
+function draw(src, depth) {
+  if (depth > MAX_DEPTH) throw new TooBig();
+  const tex = (s) => draw(s, depth + 1);
   const p = new P(src);
   let out = '';
   let base = ''; // last atom, for ^ and _
@@ -130,7 +149,7 @@ export function tex(src) {
       if (name === 'mathit' || name === 'textit' || name === 'emph') { base = `<i>${esc(p.arg())}</i>`; continue; }
       if (name === 'mathsf' || name === 'mathtt' || name === 'texttt') { base = `<span class="m-text">${esc(p.arg())}</span>`; continue; }
       if (Object.hasOwn(FONTS, name)) { base = esc([...p.arg()].map(FONTS[name]).join('')); continue; }
-      if (name === 'begin') { base = env(p); continue; }
+      if (name === 'begin') { base = env(p, tex); continue; }
       if (name === 'not') { const a = tex(p.arg()); base = `${a}̸`; continue; }
       base = `<span class="m-unknown">\\${esc(name)}</span>`;
       continue;
@@ -150,7 +169,7 @@ export function tex(src) {
 }
 
 /** \begin{bmatrix} a & b \\ c & d \end{bmatrix} (and pmatrix, vmatrix, matrix, cases, aligned…) */
-function env(p) {
+function env(p, tex) {
   const kind = p.arg();
   const endTag = `\\end{${kind}}`;
   const end = p.s.indexOf(endTag, p.i);
@@ -158,7 +177,10 @@ function env(p) {
   p.i = end < 0 ? p.s.length : end + endTag.length;
   const text = kind === 'array' ? body.replace(/^\s*\{[^}]*\}/, '') : body; // drop the column spec
   const rows = text.split(/\\\\/).map((r) => r.trim()).filter((r, k, all) => r || k < all.length - 1).map((r) => r.split('&'));
-  const cols = Math.max(1, ...rows.map((r) => r.length));
+  let cols = 1;
+  for (const r of rows) cols = Math.max(cols, r.length); // (not Math.max(...): a huge row would overflow the stack)
+  drawn += rows.length * cols;
+  if (drawn > MAX_CELLS) throw new TooBig();
   const cells = rows.map((r) => Array.from({ length: cols }, (_, k) => `<span>${tex((r[k] ?? '').trim())}</span>`).join('')).join('');
   const FENCE = { bmatrix: 'm-b', pmatrix: 'm-p', vmatrix: 'm-v', Vmatrix: 'm-vv', Bmatrix: 'm-cb', cases: 'm-cases' };
   const fence = Object.hasOwn(FENCE, kind) ? FENCE[kind] : ''; // (own names only: never "constructor" and the like)
