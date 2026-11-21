@@ -477,3 +477,35 @@ fn quick_captures_waiting_in_the_journal_count_as_kept() {
     let _ = std::fs::remove_dir_all(&w);
     let _ = std::fs::remove_dir_all(&q);
 }
+
+/// Review: 20,000 addresses can be well over the 1 MB a browser takes in one message from thinky,
+/// so the list is cut by its size as JSON too.
+#[test]
+fn the_article_list_always_fits_one_browser_message() {
+    use outline_core::clip::{answer, article_urls, MAX_ARTICLES_BYTES};
+    use serde_json::json;
+    // bad input: 600 pages whose addresses are 2,000 characters long (about 1.2 MB in all)
+    let v = vault("many-articles");
+    for i in 0..600 {
+        put(&v, &format!("pages/a{i:03}.md"), &format!("source:: https://example.org/{i:03}/{}\n\n- x\n", "p".repeat(2000)));
+    }
+    let app = open(&v);
+    let urls = article_urls(&app);
+    let size = serde_json::to_string(&urls).unwrap().len();
+    assert!(size <= MAX_ARTICLES_BYTES, "{size}");
+    assert!(urls.len() > 400 && urls.len() < 600, "as many as fit, kept in order: {}", urls.len());
+    assert!(urls.windows(2).all(|w| w[0] < w[1]));
+    assert!(urls[0].contains("/000/"));
+    // the whole answer the extension gets is under 1 MB
+    let a = answer(&json!({ "cmd": "articles" }), Ok(v.clone()), TODAY, "");
+    assert!(a["urls"].as_array().is_some_and(|u| u.len() == urls.len()), "{}", a["error"]);
+    assert!(serde_json::to_string(&a).unwrap().len() < 1_000_000);
+    // normal case: a short list comes back whole
+    let w = vault("few-articles");
+    for i in 0..3 {
+        put(&w, &format!("pages/b{i}.md"), &format!("source:: https://example.org/{i}\n\n- x\n"));
+    }
+    assert_eq!(article_urls(&open(&w)).len(), 3);
+    // edge: none at all
+    assert!(article_urls(&open(&vault("no-articles"))).is_empty());
+}

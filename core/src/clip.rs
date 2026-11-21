@@ -400,6 +400,9 @@ pub const MAX_KEPT: usize = 500;
 /// The most article addresses handed back (the extension keeps the list to know, without asking
 /// thinky on every page he opens, which pages have highlights).
 pub const MAX_ARTICLES: usize = 20_000;
+/// The most bytes the article list takes as JSON: the browser takes at most 1 MB in one message
+/// from thinky, so the list stops well before it, with room for the rest of the answer.
+pub const MAX_ARTICLES_BYTES: usize = 900_000;
 
 /// Every article the notes have a page for (a `source::` web address), as `normalize_url` writes
 /// them, sorted, each once.
@@ -422,6 +425,16 @@ pub fn article_urls(app: &App) -> Vec<String> {
     v.sort();
     v.dedup();
     v.truncate(MAX_ARTICLES);
+    // (each address as JSON text, with its comma)
+    let mut bytes = 2;
+    let fits = v
+        .iter()
+        .take_while(|u| {
+            bytes += serde_json::to_string(u).map_or(usize::MAX / 2, |j| j.len()) + 1;
+            bytes <= MAX_ARTICLES_BYTES
+        })
+        .count();
+    v.truncate(fits);
     v
 }
 

@@ -483,7 +483,7 @@ the missing pictures' file names under their page from the left (`.missing-box .
 The edge swipe that opens the phone's menu stays as it is (he asked, Nov 12).
 Also Build 46 (he asked, Nov 12: "Can't I just also see what is already highlighted?"; he said yes to all, and
 "anyone can use this feature… we need a way to show them how"): highlights shown again, read only. Core clip.rs
-`article_urls(app)` (every page's `source::` address, `normalize_url`, sorted, ≤20,000) and `kept_highlights(app,
+`article_urls(app)` (every page's `source::` address, `normalize_url`, sorted, ≤20,000 and ≤900 KB as JSON, under the browser's 1 MB a message) and `kept_highlights(app,
 url)` → `Kept {page, highlights: [{plain, link}]}` (the notes of each page whose `source::` is that article, date
 bullets `[[…]]` left out; `plain_words`: property lines, pictures, Markdown marks and invisible spaces go, links as
 their words except one to the article itself, the ` [↗](…)` link handed back; ≤500, each once); native messages
