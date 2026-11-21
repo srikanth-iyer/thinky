@@ -121,6 +121,35 @@ object Checks {
    *  half the memory (Android's RGB_565); PNG, WebP and GIF pictures may be see-through, and keep it. */
   fun opaqueType(mime: String?): Boolean = mime.equals("image/jpeg", ignoreCase = true)
 
+  // ---- the journal widget's notes (Journal.notes)
+
+  /** A page's text without its YAML front matter (the page's own settings, not notes), exactly as
+   *  core doc::front_matter_len finds it: a first line "---", then within 300 lines a "---" or "..."
+   *  line after at least one `key: value` line; blank lines and # comments may come between, and
+   *  indented or "- " lines only after a key. Anything else: no front matter, the text as it is. */
+  fun withoutFrontMatter(text: String): String {
+    val lines = text.split('\n')
+    if (lines[0].trimEnd('\r').trimEnd() != "---") return text
+    var keys = 0
+    for (j in 1 until minOf(lines.size, 301)) {
+      val t = lines[j].removeSuffix("\r")
+      if (t.trimEnd() == "---" || t.trimEnd() == "...") return if (keys > 0) lines.drop(j + 1).joinToString("\n") else text
+      if (t.isBlank() || t.startsWith("#")) continue
+      if (t.startsWith(" ") || t.startsWith("\t") || t.startsWith("- ")) { if (keys == 0) return text; continue }
+      if (!yamlKey(t)) return text
+      keys++
+    }
+    return text
+  }
+
+  /** `key: value` (YAML), not `key:: value` (a Logseq property): core doc::yaml_key. */
+  private fun yamlKey(t: String): Boolean {
+    val i = t.indexOf(':')
+    if (i <= 0) return false
+    val k = t.substring(0, i); val v = t.substring(i + 1)
+    return k.all { it.isLetterOrDigit() || it in "-_." } && (v.isEmpty() || v.startsWith(" "))
+  }
+
   // ---- the share pop-up's pictures (QuickCaptureActivity.sharedPicture; the review's claim 15)
 
   /** A content:// address's provider name (its "authority") that may be another app's: not empty,

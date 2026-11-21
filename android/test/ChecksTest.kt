@@ -167,8 +167,24 @@ fun signatures() {
   eq("both unknown", Checks.allAmong<String>(null, null), false)
 }
 
+fun frontMatter() {
+  val notes = "- first note\n- second"
+  eq("front matter left out", Checks.withoutFrontMatter("---\ntitle: Day\ntags: [a, b]\n---\n$notes"), notes)
+  eq("with Windows line ends", Checks.withoutFrontMatter("---\r\ntitle: Day\r\n---\r\n- a\r\n"), "- a\r\n")
+  eq("ended by ...", Checks.withoutFrontMatter("---\ntitle: Day\n...\n$notes"), notes)
+  eq("comments, blanks and lists after a key", Checks.withoutFrontMatter("---\n# c\n\ntags:\n  - a\n- b\n---\n$notes"), notes)
+  eq("no key: not front matter", Checks.withoutFrontMatter("---\n---\n$notes"), "---\n---\n$notes")
+  eq("a Logseq property isn't YAML", Checks.withoutFrontMatter("---\ntitle:: Day\n---\n$notes"), "---\ntitle:: Day\n---\n$notes")
+  eq("a bullet before any key", Checks.withoutFrontMatter("---\n- a\n---\n"), "---\n- a\n---\n")
+  eq("never closed", Checks.withoutFrontMatter("---\ntitle: Day\n$notes"), "---\ntitle: Day\n$notes")
+  eq("not at the start", Checks.withoutFrontMatter("- a\n---\ntitle: x\n---"), "- a\n---\ntitle: x\n---")
+  eq("plain notes", Checks.withoutFrontMatter(notes), notes)
+  eq("empty", Checks.withoutFrontMatter(""), "")
+  eq("a word that isn't a key", Checks.withoutFrontMatter("---\nhello world\n---\n- a"), "---\nhello world\n---\n- a")
+}
+
 fun main() {
-  aiKeys(); thumbs(); sharing(); selection(); todo(); signatures()
+  aiKeys(); thumbs(); sharing(); selection(); todo(); signatures(); frontMatter()
   println("Checks.kt: $passed passed, $failed failed")
   if (failed > 0) kotlin.system.exitProcess(1)
 }
