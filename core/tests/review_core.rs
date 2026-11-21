@@ -441,3 +441,160 @@ fn a_file_over_25_mb_is_refused_before_it_is_decoded() {
     // a small one is still saved
     assert!(app.save_asset("small.txt", "aGk=").unwrap().starts_with("../assets/small"));
 }
+
+// ---- app.rs medium rows: title:: on save, aliases on merge, rename order, properties in code ----
+
+/// Save a new page `name` whose doc is `preamble` and one note `text`, through the editor's command.
+fn save_new(v: &Path, name: &str, preamble: &str, text: &str) -> serde_json::Value {
+    use outline_core::app::dispatch;
+    use serde_json::json;
+    let mut st = Some(App::open(v).unwrap());
+    let pv = dispatch(&mut st, "page", json!({ "name": name })).unwrap();
+    let mut doc = pv["doc"].clone();
+    doc["preamble"] = json!(preamble);
+    doc["blocks"] = json!([{ "depth": 0, "text": text }]);
+    dispatch(&mut st, "save", json!({ "name": name, "doc": doc, "base": pv["doc"], "base_hash": pv["hash"], "path": pv["info"]["path"] })).unwrap()
+}
+
+#[test]
+fn a_new_pages_title_goes_after_its_yaml_header() {
+    // bad input: a YAML header (title:: used to go above its ---, so it was no header any more)
+    let v = tmp_vault("title-yaml");
+    let r = save_new(&v, "con", "---\nauthor: me\n---\n", "hi");
+    assert_eq!(r["ok"], true, "{r}");
+    let t = std::fs::read_to_string(v.join("pages/con___.md")).unwrap();
+    assert_eq!(t, "---\nauthor: me\n---\ntitle:: con\n- hi\n");
+    let app = App::open(&v).unwrap();
+    assert!(app.vault.page_info("con").exists);
+    // bad input: subtitle:: is not title::, so the page still gets its title
+    let v = tmp_vault("title-subtitle");
+    save_new(&v, "con", "subtitle:: Not the name\n", "hi");
+    let t = std::fs::read_to_string(v.join("pages/con___.md")).unwrap();
+    assert!(t.lines().any(|l| l == "title:: con"), "{t:?}");
+    assert!(t.contains("subtitle:: Not the name"), "{t:?}");
+    // a page that has its own title:: gets no second one
+    let v = tmp_vault("title-own");
+    save_new(&v, "con", "title:: con\n", "hi");
+    let t = std::fs::read_to_string(v.join("pages/con___.md")).unwrap();
+    assert_eq!(t.matches("title::").count(), 1, "{t:?}");
+    // the usual case: a name the file holds gets no title::, a plain new page is as before
+    let v = tmp_vault("title-plain");
+    save_new(&v, "Plain", "", "hi");
+    assert_eq!(std::fs::read_to_string(v.join("pages/Plain.md")).unwrap(), "- hi\n");
+    let v = tmp_vault("title-none");
+    save_new(&v, "con", "", "hi");
+    assert_eq!(std::fs::read_to_string(v.join("pages/con___.md")).unwrap(), "title:: con\n- hi\n");
+}
+
+#[test]
+fn a_merged_pages_aliases_lead_to_the_page_it_went_into() {
+    let v = tmp_vault("merge-alias");
+    put(&v, "pages/Old.md", "alias:: Former, [[Earlier]]\ntype:: idea\n\n- old note\n");
+    put(&v, "pages/New.md", "alias:: Fresh\n\n- new note\n");
+    put(&v, "pages/Uses.md", "- see [[Former]] and [[Earlier]] and [[Old]]\n");
+    let mut app = App::open(&v).unwrap();
+    app.merge_pages("Old", "New").unwrap();
+    let t = std::fs::read_to_string(v.join("pages/New.md")).unwrap();
+    assert!(t.starts_with("alias:: Fresh, Former, Earlier\n"), "{t:?}");
+    assert!(t.contains("type:: idea") && t.contains("old note"), "other properties still come as a note: {t:?}");
+    assert!(!t.contains("- alias::") && t.matches("alias::").count() == 1, "{t:?}");
+    let app = App::open(&v).unwrap();
+    for n in ["Former", "Earlier", "Fresh"] {
+        assert_eq!(app.vault.resolve(n), key("New"), "{n}");
+    }
+    // a target with no aliases gets an alias:: line with its properties; Logseq's first-note
+    // properties and YAML headers are found too
+    let v = tmp_vault("merge-alias2");
+    put(&v, "pages/A.md", "---\naliases: Ay\n---\n- a\n");
+    put(&v, "pages/B.md", "- tags:: x\n- b\n");
+    put(&v, "pages/C.md", "tags:: y\n\n- c\n");
+    put(&v, "pages/D.md", "- d\n");
+    let mut app = App::open(&v).unwrap();
+    app.merge_pages("A", "B").unwrap();
+    let b = std::fs::read_to_string(v.join("pages/B.md")).unwrap();
+    assert!(b.starts_with("- tags:: x\n  alias:: Ay\n- b\n"), "in the first note with the page's properties: {b:?}");
+    app.merge_pages("B", "C").unwrap();
+    let c = std::fs::read_to_string(v.join("pages/C.md")).unwrap();
+    assert!(c.starts_with("tags:: y\nalias:: Ay\n\n- c\n"), "after the page's properties: {c:?}");
+    // edge: aliases the target has already, or its own name, aren't added twice
+    put(&v, "pages/E.md", "alias:: Ay, C\n\n- e\n");
+    let mut app = App::open(&v).unwrap();
+    app.merge_pages("E", "C").unwrap();
+    let c = std::fs::read_to_string(v.join("pages/C.md")).unwrap();
+    assert!(c.starts_with("tags:: y\nalias:: Ay\n\n- c\n"), "after the page's properties: {c:?}");
+    // a page without aliases merges as before
+    app.merge_pages("C", "D").unwrap();
+    let d = std::fs::read_to_string(v.join("pages/D.md")).unwrap();
+    assert!(d.starts_with("alias:: Ay\n- d\n"), "{d:?}");
+}
+
+#[test]
+fn a_page_changed_while_merging_is_not_put_in_the_bin() {
+    use outline_core::app::set_write_hook;
+    let v = tmp_vault("merge-race");
+    put(&v, "pages/Old.md", "- old note\n");
+    put(&v, "pages/New.md", "- new note\n");
+    let mut app = App::open(&v).unwrap();
+    // when New is written, Old gets new words from elsewhere
+    let old = v.join("pages/Old.md");
+    set_write_hook(Some(Box::new(move |p: &Path| {
+        if p.ends_with("New.md") {
+            std::fs::write(&old, "- old note\n- typed on the phone\n").unwrap();
+        }
+    })));
+    let err = app.merge_pages("Old", "New");
+    set_write_hook(None);
+    let err = err.unwrap_err();
+    assert!(err.contains("changed somewhere else") && err.contains("nothing was merged"), "{err}");
+    assert_eq!(std::fs::read_to_string(v.join("pages/Old.md")).unwrap(), "- old note\n- typed on the phone\n");
+    assert_eq!(std::fs::read_to_string(v.join("pages/New.md")).unwrap(), "- new note\n", "put back as it was");
+}
+
+#[test]
+fn a_rename_that_cant_rename_its_file_changes_no_links() {
+    use outline_core::app::set_write_hook;
+    let v = tmp_vault("rename-order");
+    put(&v, "pages/Old.md", "- old, see [[Old]]\n");
+    put(&v, "pages/Uses.md", "- see [[Old]]\n");
+    let mut app = App::open(&v).unwrap();
+    // the new file name turns up while the page's own file is being written
+    let turned = v.join("pages/Fresh.md");
+    set_write_hook(Some(Box::new(move |p: &Path| {
+        if p.ends_with("Old.md") && !turned.exists() {
+            std::fs::write(&turned, "- someone else's\n").unwrap();
+        }
+    })));
+    let r = app.rename("Old", "Fresh");
+    set_write_hook(None);
+    let Err(err) = r else { panic!("renamed over another file") };
+    assert!(err.contains("links to it weren't changed"), "{err}");
+    assert_eq!(std::fs::read_to_string(v.join("pages/Uses.md")).unwrap(), "- see [[Old]]\n");
+    assert_eq!(std::fs::read_to_string(v.join("pages/Fresh.md")).unwrap(), "- someone else's\n");
+    assert_eq!(std::fs::read_to_string(v.join("pages/Old.md")).unwrap(), "- old, see [[Old]]\n", "its own words put back");
+    // the usual case: the file is renamed and the links follow
+    let v = tmp_vault("rename-ok");
+    put(&v, "pages/Old.md", "- old [[Old]]\n");
+    put(&v, "pages/Uses.md", "- see [[Old]]\n");
+    let mut app = App::open(&v).unwrap();
+    let r = app.rename("Old", "Fresh").unwrap();
+    assert_eq!(r.files_changed, 1);
+    assert_eq!(std::fs::read_to_string(v.join("pages/Fresh.md")).unwrap(), "- old [[Fresh]]\n");
+    assert_eq!(std::fs::read_to_string(v.join("pages/Uses.md")).unwrap(), "- see [[Fresh]]\n");
+    assert!(!v.join("pages/Old.md").exists());
+}
+
+#[test]
+fn renaming_a_property_leaves_code_alone() {
+    let v = tmp_vault("prop-code");
+    put(&v, "pages/P.md", "authors:: Ann\n\n- note\n  authors:: Bo\n  ```yaml\n  authors:: in code\n  ```\n  ```inline``` authors:: words\n- ```\n  authors:: code only\n  ```\n");
+    let mut app = App::open(&v).unwrap();
+    let r = app.rename_property("authors", "author").unwrap();
+    assert_eq!(r.lines, 2, "{r:?}");
+    let t = std::fs::read_to_string(v.join("pages/P.md")).unwrap();
+    assert_eq!(t, "author:: Ann\n\n- note\n  author:: Bo\n  ```yaml\n  authors:: in code\n  ```\n  ```inline``` authors:: words\n- ```\n  authors:: code only\n  ```\n");
+    // a property after a one-line ```code``` is a property again
+    put(&v, "pages/Q.md", "- x\n  ```a```\n  authors:: Cy\n");
+    let mut app = App::open(&v).unwrap();
+    app.rename_property("authors", "writer").unwrap();
+    assert_eq!(std::fs::read_to_string(v.join("pages/Q.md")).unwrap(), "- x\n  ```a```\n  writer:: Cy\n");
+}

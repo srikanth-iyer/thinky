@@ -773,12 +773,25 @@ fn b64_decode_max(s: &str, max: usize) -> Result<Vec<u8>, String> {
 fn rename_prop_lines(text: &str, old: &str, new: &str) -> Option<(String, usize)> {
     let mut lines: Vec<String> = text.split_inclusive('\n').map(str::to_string).collect();
     let start = 0;
-    let key_of = |l: &str| crate::parse::property(l.trim_start().trim_end_matches(['\n', '\r'])).map(|(k, _)| k);
-    let target = lines.iter().enumerate().skip(start).find(|(_, l)| key_of(l).as_deref() == Some(&new.to_lowercase())).map(|(i, _)| i);
+    // lines inside a code block are code, never properties (as `parse_page` reads them)
+    let mut in_fence = false;
+    let code: Vec<bool> = lines
+        .iter()
+        .map(|l| {
+            let fence = crate::doc::fence_line(l.trim());
+            let c = in_fence || fence;
+            if fence {
+                in_fence = !in_fence;
+            }
+            c
+        })
+        .collect();
+    let key_of = |i: usize, l: &str| if code[i] { None } else { crate::parse::property(l.trim_start().trim_end_matches(['\n', '\r'])).map(|(k, _)| k) };
+    let target = lines.iter().enumerate().skip(start).find(|(i, l)| key_of(*i, l).as_deref() == Some(&new.to_lowercase())).map(|(i, _)| i);
     let mut n = 0;
     let mut drop = vec![];
     for i in start..lines.len() {
-        if key_of(&lines[i]).as_deref() != Some(old) {
+        if key_of(i, &lines[i]).as_deref() != Some(old) {
             continue;
         }
         let l = lines[i].clone();
@@ -907,15 +920,18 @@ fn yaml_header_simple(text: &str) -> bool {
 
 /// The notes of a page being merged into another (`App::merge_pages`), as new notes for the end of
 /// that page: its properties first, as a note of their own (Logseq lines as written, a YAML
-/// header's as `key:: value`; `title::` left out: the name goes away), then its notes (paragraphs
+/// header's as `key:: value`; `title::` left out: the name goes away; `alias::` too: its names
+/// join the other page's own aliases, `add_aliases`), then its notes (paragraphs
 /// before its first bullet become bullets; a note never steps in more than one level below the one
 /// before it), links to `olds` pointing at `new`. Also: did its properties come along?
 fn moved_notes(text: &str, olds: &[String], new: &str, comma: &[String]) -> (Vec<DocBlock>, bool) {
     let d = split_doc(text);
-    let is_title = |l: &str| crate::parse::property(l.trim()).is_some_and(|(k, _)| k == "title");
+    // (title:: goes: the name goes away; alias:: goes to the other page's own alias::, `add_aliases`)
+    let gone_key = |k: &str| matches!(k, "title" | "alias" | "aliases");
+    let is_title = |l: &str| crate::parse::property(l.trim()).is_some_and(|(k, _)| gone_key(&k));
     let pre: Vec<&str> = d.preamble.split_inclusive('\n').collect();
     let fm = crate::doc::front_matter_len(&pre).unwrap_or(0);
-    let mut props: Vec<String> = crate::parse::yaml_props(&pre[..fm]).into_iter().filter(|(k, _)| k != "title").map(|(k, v)| format!("{k}:: {v}")).collect();
+    let mut props: Vec<String> = crate::parse::yaml_props(&pre[..fm]).into_iter().filter(|(k, _)| !gone_key(k)).map(|(k, v)| format!("{k}:: {v}")).collect();
     let mut on_top = fm > 0; // (the page has properties at the top of its file)
     for l in &pre[fm..] {
         let l = l.trim_end_matches(['\n', '\r']).trim();
@@ -985,10 +1001,78 @@ fn set_title_prop(text: &str, new: &str) -> String {
     keep_shape(Some(text), join_doc(&doc), doc.crlf)
 }
 
+/// Add `names` to a page's own `alias::` (Merge into…: the merged page's aliases keep leading to
+/// its notes): at the end of its `alias::` line among the page's properties, else as a new
+/// `alias::` line where `title::` would go. Names it already has, or `name` itself, are left out.
+fn add_aliases(text: &str, name: &str, names: &[String], comma: &[String]) -> String {
+    let have = crate::parse::parse_page(text, comma).aliases;
+    let mut add: Vec<&String> = vec![];
+    for n in names {
+        let k = crate::key(n);
+        if k != crate::key(name) && !have.iter().any(|h| crate::key(h) == k) && !add.iter().any(|a| crate::key(a) == k) {
+            add.push(n);
+        }
+    }
+    if add.is_empty() {
+        return text.to_string();
+    }
+    let joined = add.iter().map(|n| n.as_str()).collect::<Vec<_>>().join(", ");
+    let extend = |s: &str| -> Option<String> {
+        let mut done = false;
+        let lines: Vec<String> = s
+            .split('\n')
+            .map(|l| match crate::parse::property(l.trim()) {
+                Some((k, v)) if !done && k == "alias" => {
+                    done = true;
+                    let cr = if l.ends_with('\r') { "\r" } else { "" };
+                    format!("{}{}{joined}{cr}", l.trim_end(), if v.is_empty() { " " } else { ", " })
+                }
+                _ => l.to_string(),
+            })
+            .collect();
+        done.then(|| lines.join("\n"))
+    };
+    let mut doc = split_doc(text);
+    let pre: Vec<&str> = doc.preamble.split_inclusive('\n').collect();
+    let fm = crate::doc::front_matter_len(&pre).unwrap_or(0);
+    if let Some(rest) = extend(&pre[fm..].concat()) {
+        doc.preamble = format!("{}{rest}", pre[..fm].concat());
+        return keep_shape(Some(text), join_doc(&doc), doc.crlf);
+    }
+    let props_block = |b: &DocBlock| {
+        let lines: Vec<&str> = b.text.split('\n').map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+        b.depth == 0 && !b.plain && !lines.is_empty() && lines.iter().all(|l| crate::parse::property(l).is_some())
+    };
+    let line = format!("alias:: {joined}");
+    // no alias:: yet: a new line after the page's last property (every other byte stays)
+    let nl = if doc.crlf { "\r\n" } else { "\n" };
+    if let Some(last) = (fm..pre.len()).rev().find(|&i| crate::parse::property(pre[i].trim()).is_some()) {
+        let mut p: String = pre[..=last].concat();
+        if !p.ends_with('\n') {
+            p.push_str(nl);
+        }
+        p.push_str(&format!("{line}{nl}"));
+        p.push_str(&pre[last + 1..].concat());
+        doc.preamble = p;
+        return keep_shape(Some(text), join_doc(&doc), doc.crlf);
+    }
+    if let Some(b) = doc.blocks.first_mut().filter(|b| fm == 0 && props_block(b)) {
+        b.text = extend(&b.text).unwrap_or_else(|| format!("{}\n{line}", b.text.trim_end_matches('\n')));
+        return keep_shape(Some(text), join_doc(&doc), doc.crlf);
+    }
+    add_page_prop(text, &line)
+}
+
 /// Give a page's text the `title::` property it lacks: with its page properties at the top (after
 /// a YAML header), or in Logseq's properties-only first block, else as a new first line. Nothing
 /// else in the file changes.
 fn add_title_prop(text: &str, new: &str) -> String {
+    add_page_prop(text, &format!("title:: {new}"))
+}
+
+/// Add one page property line (`key:: value`) where `add_title_prop` puts `title::`.
+fn add_page_prop(text: &str, line: &str) -> String {
+    let new = line;
     let mut doc = split_doc(text);
     let nl = if doc.crlf { "\r\n" } else { "\n" };
     let pre: Vec<&str> = doc.preamble.split_inclusive('\n').collect();
@@ -999,13 +1083,13 @@ fn add_title_prop(text: &str, new: &str) -> String {
         b.depth == 0 && !b.plain && !lines.is_empty() && lines.iter().all(|l| crate::parse::property(l).is_some())
     };
     match doc.blocks.first_mut() {
-        Some(b) if fm == 0 && !props_on_top && props_block(b) => b.text = format!("title:: {new}\n{}", b.text),
+        Some(b) if fm == 0 && !props_on_top && props_block(b) => b.text = format!("{new}\n{}", b.text),
         _ => {
             let mut p: String = pre[..fm].concat();
             if !p.is_empty() && !p.ends_with('\n') {
                 p.push_str(nl);
             }
-            p.push_str(&format!("title:: {new}{nl}"));
+            p.push_str(&format!("{new}{nl}"));
             p.push_str(&pre[fm..].concat());
             doc.preamble = p;
         }
@@ -1397,11 +1481,14 @@ impl App {
                 return Ok(SaveRes { ok: true, hash: String::new(), conflict: false, merged: None });
             }
             let mut text = keep_shape(current.as_deref(), text, doc.crlf);
-            if current.is_none() && info.journal.is_none() && !doc.preamble.to_lowercase().contains("title::") {
-                // like Logseq: a name the file name can't hold exactly gets a title:: property
+            // (only a `title::` line of its own counts: not `subtitle::`, not words that mention it)
+            let has_title = doc.preamble.lines().any(|l| crate::parse::property(l.trim()).is_some_and(|(k, _)| k == "title"));
+            if current.is_none() && info.journal.is_none() && !has_title {
+                // like Logseq: a name the file name can't hold exactly gets a title:: property,
+                // with the page's properties (after a YAML header, never above its `---`)
                 let stem = rel.rsplit('/').next().unwrap_or(&rel).trim_end_matches(".md");
                 if self.vault.title_from_path(&format!("{}/{stem}.md", self.vault.config.pages_dir)).0 != info.name {
-                    text = format!("title:: {}\n{}", info.name, text);
+                    text = add_title_prop(&text, &info.name);
                 }
             }
             match &current {
@@ -1778,27 +1865,14 @@ impl App {
                 return Err(format!("A file named “{}” already exists in your notes folder.", n));
             }
         }
-        // 1. links in other files
-        let mut changed = 0;
-        let mut skipped = vec![];
+        // which other files link to it (read before its own file changes)
         let rels = self.link_files(&info.name, own_rel.as_deref());
-        let done = each_file(&self.root, &rels, |r| r.as_str(), |path, _| link_rewrite(path, &olds, &new, &comma));
-        for (rel, (r, md)) in rels.into_iter().zip(done) {
-            match r {
-                Some(Rewrite::Done(_, t)) => {
-                    self.record_written(&rel, &t, md);
-                    changed += 1;
-                }
-                Some(Rewrite::Left(_)) => {}
-                _ => skipped.push(rel),
-            }
-        }
-        // 2. the page's own file: its self-links and title::, then the file name
+        // 1. the page's own file first: its self-links and title::, then the file name
         if let (Some(rel), Some(nrel)) = (own_rel, new_rel) {
             let path = self.root.join(&rel);
-            // (looked at again: a file synced in while the links changed is never replaced)
+            // (looked at again: a file synced in meanwhile is never replaced)
             if crate::key(&nrel) != crate::key(&rel) && self.root.join(&nrel).exists() {
-                return Err(format!("A file named “{nrel}” turned up in your notes folder just now, so “{}” wasn't renamed, though links to it now say “{new}”. Rename that file, then rename this page again.", info.name));
+                return Err(format!("A file named “{nrel}” turned up in your notes folder just now, so “{}” wasn't renamed and links to it weren't changed. Rename that file, then rename this page again.", info.name));
             }
             let own = |cur: Option<&str>| {
                 let cur = cur.unwrap_or("");
@@ -1813,24 +1887,45 @@ impl App {
                 };
                 Ok((text != cur).then_some(text))
             };
-            let text = match rewrite(&path, "this page's file", 3, own)? {
-                Rewrite::Done(_, t) => t,
-                Rewrite::Left(cur) => cur.unwrap_or_default(),
+            let (was_text, text) = match rewrite(&path, "this page's file", 3, own)? {
+                Rewrite::Done(c, t) => (Some(c), t),
+                Rewrite::Left(cur) => (None, cur.unwrap_or_default()),
                 Rewrite::Busy => return Err(format!("“{}” kept being saved somewhere else just now, so it wasn't renamed. Try again in a moment.", info.name)),
             };
             if nrel != rel {
+                // its words go back as they were if the file can't take its new name
+                let put_back = |app: &mut App| {
+                    if let Some(c) = &was_text {
+                        if write_atomic_checked(&path, c, Expect::Bytes(text.as_bytes())).unwrap_or(false) {
+                            app.record_write(&rel, c);
+                        }
+                    }
+                };
                 let to = self.root.join(&nrel);
                 if crate::key(&nrel) == crate::key(&rel) {
                     // only the capitals change: go through a temporary name, which also works
                     // where file names ignore case (Windows, Android)
                     let tmp = path.with_file_name(format!(".rename-{}.tmp", std::process::id()));
-                    std::fs::rename(&path, &tmp).map_err(|e| format!("Couldn't rename the file: {e}"))?;
+                    if let Err(e) = std::fs::rename(&path, &tmp) {
+                        put_back(self);
+                        return Err(format!("Couldn't rename the file: {e}"));
+                    }
                     if let Err(e) = std::fs::rename(&tmp, &to) {
                         let _ = std::fs::rename(&tmp, &path);
+                        put_back(self);
                         return Err(format!("Couldn't rename the file: {e}"));
                     }
                 } else {
-                    std::fs::rename(&path, &to).map_err(|e| format!("Couldn't rename the file: {e}"))?;
+                    // (and looked at once more right before: a file synced in while its words
+                    // changed is never replaced)
+                    if to.exists() {
+                        put_back(self);
+                        return Err(format!("A file named “{nrel}” turned up in your notes folder just now, so “{}” wasn't renamed and links to it weren't changed. Rename that file, then rename this page again.", info.name));
+                    }
+                    if let Err(e) = std::fs::rename(&path, &to) {
+                        put_back(self);
+                        return Err(format!("Couldn't rename the file: {e}"));
+                    }
                 }
                 let was = self.born.get(&rel).copied(); // (when the page was made: it's the same page)
                 self.forget(&rel);
@@ -1841,6 +1936,21 @@ impl App {
                 }
             } else {
                 self.record_write(&nrel, &text);
+            }
+        }
+        // 2. links in other files, once its own file has its new name (a rename that fails
+        // leaves every link as it was)
+        let mut changed = 0;
+        let mut skipped = vec![];
+        let done = each_file(&self.root, &rels, |r| r.as_str(), |path, _| link_rewrite(path, &olds, &new, &comma));
+        for (rel, (r, md)) in rels.into_iter().zip(done) {
+            match r {
+                Some(Rewrite::Done(_, t)) => {
+                    self.record_written(&rel, &t, md);
+                    changed += 1;
+                }
+                Some(Rewrite::Left(_)) => {}
+                _ => skipped.push(rel),
             }
         }
         self.write_cache();
@@ -1963,6 +2073,9 @@ impl App {
         let notes = moved.len();
         doc.blocks.extend(moved);
         let after = keep_shape(Some(&before), join_doc(&doc), doc.crlf);
+        // its aliases become the other page's, so links to them still lead to its notes
+        let aliases = from_text.as_deref().map(|t| crate::parse::parse_page(t, &comma).aliases).unwrap_or_default();
+        let after = add_aliases(&after, &name, &aliases, &comma);
         let mut files = vec![];
         if after != before {
             if !write_atomic_checked(&t_path, &after, Expect::Bytes(before.as_bytes()))? {
@@ -1974,7 +2087,10 @@ impl App {
         // the old page's file to the bin; if it can't go, the other page is put back as it was
         let mut binned = None;
         if let (Some(rel), Some(text)) = (from_rel, from_text) {
-            match self.bin_file(&rel) {
+            // (read again: words saved to it since it was read would go to the bin unmerged)
+            let now = read_text(&self.root.join(&rel)).ok().flatten();
+            let moved_on = if now.as_deref() == Some(text.as_str()) { Ok(()) } else { Err("it was changed somewhere else just now".to_string()) };
+            match moved_on.and_then(|_| self.bin_file(&rel)) {
                 Ok(dest) => {
                     self.forget(&rel);
                     binned = Some((rel, dest, text));

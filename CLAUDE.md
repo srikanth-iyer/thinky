@@ -171,7 +171,7 @@ unsaved typing or a clash (`refresh` for one being edited), place kept, "Up to d
 buttons and the filter, shown as "· under …" (`taskRow`). Note menu: "Show hidden properties" when the
 note has some (`hiddenProps`, render.js `hiddenKey`), a read-only box with Copy (`showHidden`).
 Properties: a key's page has "Rename or merge…" → `rename_property` (app.rs; `rename_prop_in_text`:
-whole `key:: value` lines, the first line too, as Logseq reads them; a note with both merges the values
+whole `key:: value` lines, the first line too, as Logseq reads them, never inside a code block; a note with both merges the values
 into its existing line, the file's shape kept; id, collapsed, title, alias, heading, background-color
 refused). Check this folder: `missing_pictures` (pictures.rs; `…/assets/<name>` links in pages and
 journals whose file isn't there; code spans skipped) → Settings' "Missing pictures" (`missingBox`).
@@ -1388,11 +1388,14 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     merge-pages!): the old page's notes go at the end of the target (raw None, the target's indent and
     line ends; paragraphs become bullets; depth at most one below the note before), its page
     properties first as a note of their own (`moved_notes`: Logseq lines as written, YAML as `k:: v`,
-    `title::` dropped; or its properties-only first note; a YAML header with values over several lines
+    `title::` dropped, `alias::` too: its names join the target's own `alias::` (`add_aliases`: at the
+    end of its line, else a new line after its last page property), so links to them still lead to
+    its notes; or its properties-only first note; a YAML header with values over several lines
     or nested keys is refused, `yaml_header_simple`; so is a name another file also claims,
     `Vault::has_duplicate`, and a journal day's alias as the target), links to the old name in every file (the
     target's own notes too, `rename_doc`) point at the target's name, the old file to the bin
-    (`bin_file`, as `delete_pages`). The target is written with `Expect::Bytes` (nobody saved it
+    (`bin_file`, as `delete_pages`; read again first: one changed meanwhile isn't binned, and the
+    target is put back). The target is written with `Expect::Bytes` (nobody saved it
     meanwhile), before the old file moves (if that fails, it's put back): its other bytes, BOM, CRLF,
     no final newline stay. A link file that can't be written is listed (`skipped`), the merge still
     finishes. A favourite follows a rename or merge (`rename_favorite`: only its entry's text changes in
@@ -1526,7 +1529,9 @@ code, never a fence: `doc::fence_line`, also used by parse and text). A note's l
 as a bullet (`- x`, `* x`, `+ x`, a lone `-`) is written as `\- x` outside code blocks and read back
 without the backslash (one more backslash in front of lines that already start with some). File names: Logseq triple-lowbar rules
 (`file_stem_for`, Windows' reserved names in any capitals); names a file can't hold get `title::` (new
-pages, and renames: `add_title_prop`). A new page never takes another page's file: when its file name
+pages, and renames: `add_title_prop`, after a YAML header; only a `title::` line counts, not `subtitle::`).
+A rename changes the page's own file and its name first, then links in other files (a rename that
+fails, or whose new file name turns up meanwhile, changes no links and puts its words back). A new page never takes another page's file: when its file name
 is already used (by a page named by its `title::`; capitals ignored, as Windows and Android do), it gets
 the next free `<name> (2).md` with `title::` (`Vault::free_rel`, used by `page_info` for pages without
 a file, so the editor's page view and first save, renames, quick capture and the capture box all follow
