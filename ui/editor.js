@@ -268,11 +268,16 @@ function listMark(n, deep) {
     for (let k = n; k > 0; k = Math.floor((k - 1) / 26)) s = String.fromCharCode(97 + ((k - 1) % 26)) + s;
     return s + '.';
   }
+  /** @type {[number, string][]} */
   const R = [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']];
   let s = '';
   for (const [v, r] of R) while (n >= v) { s += r; n -= v; }
   return s + '.';
 }
+
+/** A note's row on the page (div.blk) or its words (div.bc), with what it was drawn from kept on it,
+ *  so keepRows can tell whether it can stay as it is: `sig` on a row, `from` and `noKeep` on its words.
+ *  @typedef {HTMLDivElement & { sig?: string, from?: string, noKeep?: boolean }} RowEl */
 
 export class Outline {
   /** host: element to render into. view: PageView from the backend. app: shared app services.
@@ -281,6 +286,10 @@ export class Outline {
    *  follows a link, folds or gets selected (a picture still opens big); it's never saved. */
   constructor(host, view, app, opts = {}) {
     this.app = app;
+    // Set from outside this file (each is undefined until then). Listed here only so the type checker
+    // knows what they hold: a line like `this.locked;` just reads the property and does nothing.
+    /** @type {boolean | undefined} */ this.locked; // notes being moved to or from here (move.js): no editing meanwhile
+    /** @type {(() => void) | undefined} */ this.refreshHead; // draw the page's properties again (app.js, used by history.js)
     this.host = host;
     this.preview = !!opts.preview;
     // opts.embed: a note shown and edited inside another page's linked references (App.editRef): no
@@ -495,18 +504,18 @@ export class Outline {
   }
   blockEl(i) {
     const b = this.blocks[i];
-    const div = document.createElement('div');
+    const div = /** @type {RowEl} */ (document.createElement('div'));
     div.className = 'blk';
     div.dataset.i = i;
     div.sig = this.rowSig(i); // (what it was drawn from: keepRows)
     this.divs[i] = div;
     const d = b.depth - this.baseDepth;
-    div.style.setProperty('--d', d);
+    div.style.setProperty('--d', String(d));
     // the last row of a branch: the pale lines of the levels from the next shown note's down to this
     // one end here, a little above its bottom (app.css .blk::before)
     const next = this.isCollapsed(i) ? this.subtreeEnd(i) : i + 1;
     const e = next < this.end ? this.blocks[next].depth - this.baseDepth : 0;
-    if (e < d) div.style.setProperty('--e', Math.max(e, 0));
+    if (e < d) div.style.setProperty('--e', String(Math.max(e, 0)));
     if (this.hidden.has(i)) div.hidden = true;
     if (this.hasKids(i)) {
       div.classList.add('has-kids');
@@ -547,7 +556,7 @@ export class Outline {
 
   /** A note's words as shown (b: another text to draw in its place, Polish note's preview). */
   viewEl(i, b = this.blocks[i]) {
-    const bc = document.createElement('div');
+    const bc = /** @type {RowEl} */ (document.createElement('div'));
     bc.className = 'bc';
     bc.from = b.text; // (the words it shows: a row whose words were drawn again in place, keepRows)
     const r = renderBlock(b.text, b.depth);
@@ -579,7 +588,7 @@ export class Outline {
       if (!div) return;
       div.classList.toggle('marker-done', doneCls);
       if (r.mark) div.dataset.mark = r.mark; else delete div.dataset.mark; // (Build 37: Property display's mark)
-      if (hf) div.style.setProperty('--hf', hf); else div.style.removeProperty('--hf');
+      if (hf) div.style.setProperty('--hf', String(hf)); else div.style.removeProperty('--hf');
       if (lead) div.style.setProperty('--lead', lead); else div.style.removeProperty('--lead');
     });
     return bc;
@@ -672,13 +681,13 @@ export class Outline {
     // the optional AI's ✦ (Polish note) at the end of the note under the mouse (ui/polish.js; laptop only)
     this.el.addEventListener('pointerover', (e) => hoverSpark(this, e), { passive: true });
     this.pins.addEventListener('click', (e) => {
-      const row = e.target.closest('.pin');
+      const row = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('.pin'));
       if (!row) return;
       e.preventDefault();
       this.goToPinned(+row.dataset.i);
     });
     this.crumbs.addEventListener('click', (e) => {
-      const a = e.target.closest('[data-z]');
+      const a = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('[data-z]'));
       if (!a) return;
       e.preventDefault();
       this.flush();
@@ -686,10 +695,10 @@ export class Outline {
       else this.app.go('zoom', this.name, { line: this.lineOf(+a.dataset.z) });
     });
     this.el.addEventListener('click', (e) => {
-      if (this.preview) { e.preventDefault(); if (e.target.tagName === 'IMG') this.app.showImage(e.target.src); return; }
+      if (this.preview) { e.preventDefault(); if (/** @type {HTMLElement} */ (e.target).tagName === 'IMG') this.app.showImage(/** @type {HTMLImageElement} */ (e.target).src); return; }
       if (Date.now() - (this.swipedAt || 0) < 400) return; // the end of a swipe (phones)
-      const t = e.target;
-      const blk = t.closest('.blk');
+      const t = /** @type {HTMLElement} */ (e.target);
+      const blk = /** @type {HTMLElement} */ (t.closest('.blk'));
       if (!blk) return;
       const i = +blk.dataset.i;
       const thread = this.threadAt(e, blk);
@@ -699,7 +708,7 @@ export class Outline {
       if (pi && matchMedia('(pointer: coarse)').matches) { e.preventDefault(); this.app.toast(pi.getAttribute('aria-label'), 3000); return; }
       const yt = t.closest('.yt'); // a YouTube video's picture: its player, here (render.js)
       if (yt) { e.preventDefault(); if (!yt.classList.contains('playing')) playVideo(yt, (u) => this.app.openUrl(u)); return; }
-      const ref = t.closest('.bref[data-page]'); // a block reference: to the note it names
+      const ref = /** @type {HTMLElement} */ (t.closest('.bref[data-page]')); // a block reference: to the note it names
       if (ref) { e.preventDefault(); this.flush(); this.app.go('zoom', ref.dataset.page, { line: +ref.dataset.line }); return; }
       const a = t.closest('a');
       if (a) {
@@ -712,7 +721,7 @@ export class Outline {
       if (t.classList.contains('pk')) { this.app.go('props', t.dataset.prop); return; }
       if (t.classList.contains('fold')) { this.toggleCollapse(i); return; }
       if (t.closest('.date-chip')) { this.editDate(i, t.closest('.date-chip').textContent.includes('Deadline') ? 'deadline' : 'scheduled'); return; }
-      if (t.tagName === 'IMG') { this.app.showImage(t.src); return; }
+      if (t.tagName === 'IMG') { this.app.showImage(/** @type {HTMLImageElement} */ (t).src); return; }
       if (t.closest('.pic')) return; // a picture's resize handle (or around a picture that didn't load)
       if (e.shiftKey && (this.sel || this.cur !== null)) { e.preventDefault(); this.extendTo(i); return; }
       if (t.classList.contains('bul')) { // (a drag or a hold that ends on it set swipedAt: no click then)
@@ -730,25 +739,25 @@ export class Outline {
     // Logseq-style thread lines: the line linking a block's children lights up under the
     // pointer, and clicking it folds everything under that block (or unfolds it all)
     this.el.addEventListener('mousemove', (e) => {
-      const blk = !this.drag && e.target.closest('.blk');
+      const blk = !this.drag && /** @type {HTMLElement} */ (e.target).closest('.blk');
       this.showThread(blk ? this.threadAt(e, blk) : null);
     });
     this.el.addEventListener('mouseleave', () => this.showThread(null));
     // a picture's corner handle: drag it to resize the picture, double-click it for the usual size
-    this.el.addEventListener('pointerdown', (e) => { if (e.target.classList.contains('pic-h')) this.dragPicture(e); });
-    this.el.addEventListener('dblclick', (e) => { if (e.target.classList.contains('pic-h')) this.sizePicture(e.target, 0, 0); });
+    this.el.addEventListener('pointerdown', (e) => { if (/** @type {HTMLElement} */ (e.target).classList.contains('pic-h')) this.dragPicture(e); });
+    this.el.addEventListener('dblclick', (e) => { if (/** @type {HTMLElement} */ (e.target).classList.contains('pic-h')) this.sizePicture(e.target, 0, 0); });
     // a note's dot: drag it to move the note (phones: hold it first; holding without moving opens the
     // note menu), right-click it for the menu (pressDot, openMenu)
-    this.el.addEventListener('pointerdown', (e) => { const bul = e.target.closest('.bul'); if (bul && !this.preview) this.pressDot(e, bul); });
+    this.el.addEventListener('pointerdown', (e) => { const bul = /** @type {HTMLElement} */ (e.target).closest('.bul'); if (bul && !this.preview) this.pressDot(e, bul); });
     this.el.addEventListener('contextmenu', (e) => {
-      const blk = e.target.closest('.blk');
+      const blk = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('.blk'));
       if (!blk || this.preview) return; // (an earlier version, shown read-only in History)
       const touch = this.press?.touch || e.pointerType === 'touch'; // (a hold on a phone: pressDot takes it)
-      if (e.target.closest('.bul')) {
+      if (/** @type {HTMLElement} */ (e.target).closest('.bul')) {
         e.preventDefault();
-        document.activeElement?.closest?.('.bul')?.blur(); // (a right press focused the dot: Space would then open it)
+        /** @type {HTMLElement} */ (document.activeElement?.closest?.('.bul'))?.blur(); // (a right press focused the dot: Space would then open it)
         if (!touch) this.openMenu(+blk.dataset.i, {}); // (Build 41: it opens out of the dot itself)
-      } else if (!touch && blk.classList.contains('sel') && !e.target.closest('.ed')) { // in the selected notes: their menu
+      } else if (!touch && blk.classList.contains('sel') && !/** @type {HTMLElement} */ (e.target).closest('.ed')) { // in the selected notes: their menu
         e.preventDefault();
         this.openMenu(+blk.dataset.i, { at: { left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY } });
       }
@@ -768,12 +777,12 @@ export class Outline {
     this.el.addEventListener('touchstart', (e) => {
       sw = null;
       const t = e.touches[0];
-      const blk = e.target.closest('.blk');
+      const blk = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('.blk'));
       // only on a note's words (not its dot or the margin), never from the edge. Build 39 (he asked, Nov 9, as in
       // Logseq): also on the note being typed in, which then moves with the keyboard still up (a press held
       // before moving is choosing words, not a swipe: `t0`)
-      const typing = !!e.target.closest('.ed');
-      if (e.touches.length !== 1 || this.readonly || !blk || !(typing || e.target.closest('.bc')) || t.clientX < EDGE || e.target.closest('.fold, .todo, img, .pic-h, pre, .math, .tbl-wrap')) return;
+      const typing = !!/** @type {HTMLElement} */ (e.target).closest('.ed');
+      if (e.touches.length !== 1 || this.readonly || !blk || !(typing || /** @type {HTMLElement} */ (e.target).closest('.bc')) || t.clientX < EDGE || /** @type {HTMLElement} */ (e.target).closest('.fold, .todo, img, .pic-h, pre, .math, .tbl-wrap')) return;
       sw = { blk, i: +blk.dataset.i, x: t.clientX, y: t.clientY, dx: 0, dy: 0, on: false, typing, t0: Date.now(), sy: scrollY + (this.el.closest('.pane')?.scrollTop ?? 0) }; // (its side's notes)
     }, { passive: true });
     this.el.addEventListener('touchmove', (e) => {
@@ -964,7 +973,7 @@ export class Outline {
       const z = zoomOf(pane, r);
       return { top: r.top, bottom: r.bottom, by: (dy) => { pane.scrollTop += dy / z; } };
     }
-    const bar = document.querySelector('#topbar'), tb = document.querySelector('#toolbar:not([hidden])');
+    const bar = /** @type {HTMLElement} */ (document.querySelector('#topbar')), tb = document.querySelector('#toolbar:not([hidden])');
     return { top: bar?.offsetParent ? bar.getBoundingClientRect().bottom : 0, bottom: tb ? tb.getBoundingClientRect().top : innerHeight, by: (dy) => window.scrollBy(0, dy) };
   }
 
@@ -1005,7 +1014,7 @@ export class Outline {
     const t = this.dropAt(x, y, D);
     if (t) return { o: this, t };
     const el = document.elementFromPoint(x, y);
-    const link = el?.closest?.('#favs .side-list a[data-page], #recent a[data-page]');
+    const link = /** @type {HTMLElement} */ (el?.closest?.('#favs .side-list a[data-page], #recent a[data-page]'));
     if (link) return { page: link.dataset.page, link };
     const sheet = el?.closest?.('.sheet');
     const o = sheet && this.app.outlines.find((x) => x !== this && sheet.contains(x.el));
@@ -1382,7 +1391,10 @@ export class Outline {
 
   // ---------- editing ----------
   /** Open note i for typing, the caret at caret (or its end). now: as it is (App.editAfterSave
-   *  already waited for the other side). */
+   *  already waited for the other side).
+   *  @param {number} i  the note
+   *  @param {'end' | number} [caret]  'end', or a place in its words (0 = the start)
+   *  @param {boolean} [now] */
   edit(i, caret = 'end', now = false) {
     if (i < this.start || i >= this.end || this.locked) return; // (locked: notes being moved to or from here, move.js)
     if (this.readonly) {
@@ -1420,7 +1432,7 @@ export class Outline {
     const pos = caret === 'end' ? contentEnd(shown) : Math.min(caret, shown.length);
     ta.setSelectionRange(pos, pos);
     // a wide window: once this note is at the top, its parents get pinned there; scroll it in below them
-    const main = this.el.closest('.pane'); // (its side's notes)
+    const main = /** @type {HTMLElement} */ (this.el.closest('.pane')); // (its side's notes)
     if (main && getComputedStyle(main).overflowY !== 'visible') {
       let n = 0;
       for (let a = this.parentOf(i); a >= this.start; a = this.parentOf(a)) n++;
@@ -1652,6 +1664,7 @@ export class Outline {
     const isBullet = (l) => /^\s*[-*+] |^\s*-$/.test(l);
     if (lines.filter(isBullet).length < 2) return; // plain paste stays inside this block
     e.preventDefault();
+    /** @type {{ depth: number, text: string }[] & { lead?: string[] }} */ // (lead: lines before the first bullet)
     const parsed = [];
     let lead = null; // indent of the bullet the continuation lines belong to
     for (const l of lines) {
@@ -1789,7 +1802,7 @@ export class Outline {
     this.app.selecting(this, false);
   }
   paintSel() {
-    this.el.querySelectorAll('.blk').forEach((d) => d.classList.toggle('sel', this.inSel(+d.dataset.i)));
+    (/** @type {NodeListOf<HTMLElement>} */ (this.el.querySelectorAll('.blk'))).forEach((d) => d.classList.toggle('sel', this.inSel(+d.dataset.i)));
     const head = this.sel && this.blockDiv(this.sel.b);
     head?.scrollIntoView({ block: 'nearest' });
   }
@@ -2676,7 +2689,7 @@ export class Outline {
     if (key === this.pinned) return;
     this.pinned = key;
     this.pins.hidden = !pins.length;
-    this.pins.firstChild.innerHTML = pins.map((i) => `<div class="pin" data-i="${i}" style="--d:${this.blocks[i].depth - this.baseDepth}">${this.pinText(i)}</div>`).join('');
+    /** @type {HTMLElement} */ (this.pins.firstChild).innerHTML = pins.map((i) => `<div class="pin" data-i="${i}" style="--d:${this.blocks[i].depth - this.baseDepth}">${this.pinText(i)}</div>`).join('');
   }
   /** A note's first line of words, for a pinned row. */
   pinText(i) {
@@ -2890,7 +2903,7 @@ export class Outline {
     this.showBanner(`<span>This page was also changed ${this.elsewhere()}, in the same notes as here. Nothing on this page is saved until you choose.</span>
       <span class="btn-row"><button class="btn" data-a="choose">Choose what to keep…</button></span>`);
     this.app.conflicts?.add(this);
-    this.banner.onclick = (e) => { if (e.target.closest('[data-a="choose"]')) openClash(this); };
+    this.banner.onclick = (e) => { if (/** @type {HTMLElement} */ (e.target).closest('[data-a="choose"]')) openClash(this); };
     openClash(this);
   }
 

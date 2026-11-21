@@ -216,7 +216,7 @@ export async function showBinPage(app, file, restore) {
   if (document.querySelector('.bin-view')) return;
   let r;
   try { r = await call('recycled_page', { file }); } catch (e) { app.toast(String(e?.message ?? e), 6000); return; }
-  const opener = document.activeElement;
+  const opener = /** @type {HTMLElement} */ (document.activeElement);
   const back = h('div', 'modal-back panel-back bin-view');
   const box = h('div', 'panel hist');
   box.setAttribute('role', 'dialog');

@@ -135,7 +135,7 @@ export function commandList(app, ed) {
   add('Window', 'smaller', 'Smaller text', () => app.runAction('ui/text-smaller'), { key: 'ui/text-smaller', also: 'zoom out size' });
   add('Window', 'text-reset', 'Text size back to 100%', () => app.runAction('ui/text-reset'), { key: 'ui/text-reset', also: 'zoom reset size' });
   add('Look', 'look', 'Change the look…', () => {
-    const b = document.querySelector('#side [data-a="looks"]');
+    const b = /** @type {HTMLElement} */ (document.querySelector('#side [data-a="looks"]'));
     if (b?.offsetParent && !phone) app.openLooks(b); else app.go('settings', 'look');
   }, { also: 'theme skin colours' });
   const cur = document.documentElement.dataset.skin;

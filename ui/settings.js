@@ -511,7 +511,7 @@ async function useHere(app, list) {
       + '<label class="toggle pk-tour"><input type="checkbox" checked> Add the short tour (4 pages)</label>',
     ok: empty ? 'Start here' : 'Start here anyway',
   });
-  const tick = document.querySelector('.modal .pk-tour input'); // (read once it's answered)
+  const tick = /** @type {HTMLInputElement} */ (document.querySelector('.modal .pk-tour input')); // (read once it's answered)
   if (await ask) await startNotes(app, list.path, tick ? tick.checked : true);
 }
 
@@ -1074,8 +1074,8 @@ function writingCard() {
   card.innerHTML = '<h2>Spelling</h2>';
   const spell = h('label', 'toggle spell-row', `<input type="checkbox"${store.get('spellcheck', true) ? ' checked' : ''}> Check spelling as I type ${matchMedia('(pointer: coarse)').matches ? '(your keyboard suggests the right word)' : '(right-click an underlined word for suggestions)'}`);
   $('input', spell).onchange = (e) => {
-    store.set('spellcheck', e.target.checked);
-    for (const ta of document.querySelectorAll('textarea.ed')) ta.spellcheck = e.target.checked; // (a note being typed in now too)
+    store.set('spellcheck', /** @type {HTMLInputElement} */ (e.target).checked);
+    for (const ta of /** @type {NodeListOf<HTMLTextAreaElement>} */ (document.querySelectorAll('textarea.ed'))) ta.spellcheck = /** @type {HTMLInputElement} */ (e.target).checked; // (a note being typed in now too)
   };
   card.append(spell);
   return card;
@@ -1316,6 +1316,7 @@ function safetyCard(app) {
 // action already has them; saved in logseq/config.edn :shortcuts, where Logseq reads them too, with
 // "Back to default" and "Turn off"), then the fixed keys as a table in groups (they were one long
 // sentence). The fixed editing keys stay fixed (his pick).
+/** @type {[string, [string, string][]][]} */ // (each group: its name, then [label, action] rows)
 const KEY_ROWS = [
   ['Go', [['Search', 'go/search'], ['Command list', 'command-palette/toggle'], ['Journals', 'go/journals'], ['Today’s journal', 'sidebar/open-today-page'], ['All pages', 'go/all-pages'], ['To-dos', 'go/todos'],
     ['Go to a date', 'go/date'], ['Next journal day', 'go/next-journal'], ['Previous journal day', 'go/prev-journal'], ['Back', 'go/backward'], ['Forward', 'go/forward']]],
@@ -1722,4 +1723,4 @@ function androidSaid({ stage, msg = '' }) {
   call('log', { msg: 'update (Android): ' + msg }).catch(() => {});
   fail(job.app, msg);
 }
-if (isAndroid) document.addEventListener('lean-update', (e) => (job.android || androidSaid)(e.detail || {}));
+if (isAndroid) document.addEventListener('lean-update', (e) => (job.android || androidSaid)(/** @type {CustomEvent} */ (e).detail || {}));

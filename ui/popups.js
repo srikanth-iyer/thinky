@@ -81,7 +81,7 @@ export function closeFrom(box) {
 
 /** How far down a pop-up may go: the window's foot, or the phone's editing toolbar's top while it shows. */
 export function roomBelow() {
-  const tb = document.querySelector('#toolbar:not([hidden])');
+  const tb = /** @type {HTMLElement} */ (document.querySelector('#toolbar:not([hidden])'));
   const t = tb && tb.offsetHeight ? tb.getBoundingClientRect().top : Infinity;
   return Math.min(window.innerHeight, t);
 }
@@ -153,6 +153,9 @@ export const AI_SLASH = new Set(['polish', 'picture']);
 export class Suggest {
   constructor(app) {
     this.app = app;
+    // (the page's property names, once asked for: propKeys. Listed here only so the type checker
+    // knows what it holds; this line just reads the property and does nothing.)
+    /** @type {Promise<string[]> | undefined} */ this.keysLoading;
     this.el = h('ul');
     this.el.id = 'ac';
     this.el.hidden = true;
@@ -499,7 +502,7 @@ export function menu(anchor, items, opts = {}) {
   document.body.append(box);
   let shut = false;
   // its button says it's open (screen readers), and Esc puts the keyboard back on it (Build 39)
-  const btn = anchor instanceof Element ? anchor : null;
+  const btn = anchor instanceof Element ? /** @type {HTMLElement} */ (anchor) : null;
   btn?.setAttribute('aria-haspopup', 'menu');
   btn?.setAttribute('aria-expanded', 'true');
   const close = () => { if (shut) return; shut = true; btn?.setAttribute('aria-expanded', 'false'); closeFrom(box); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); document.removeEventListener('beforeinput', close, true); };
@@ -576,7 +579,7 @@ export function noteMenu(r, o) {
     : `<button type="button" role="${it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" class="nm-item${it.danger ? ' danger' : ''}${it.sub ? ' nm-has-sub' : ''}" data-k="${k}"${it.checked === undefined ? '' : ` aria-checked="${!!it.checked}"`}${it.sub ? ' aria-haspopup="menu" aria-expanded="false"' : ''}><span class="nm-l">${esc(it.label)}</span>${it.sub ? '<span class="nm-chev" aria-hidden="true">›</span>' : it.hint ? `<span class="nm-hint">${esc(it.hint)}</span>` : ''}</button>`).join('');
   box.innerHTML = html;
   document.body.append(box);
-  const before = document.activeElement;
+  const before = /** @type {HTMLElement} */ (document.activeElement);
   let open = true;
   // Build 53 (he asked, Nov 20): on a laptop "More commands" opens the "/" list beside the menu when
   // the mouse rests on it (or → / Enter on it), with a filter box; a row runs on the note (pick 'slash')
@@ -776,12 +779,12 @@ export class Preview {
       this.t = setTimeout(() => { shownFor = a; this.show(a); }, 550);
     });
     document.addEventListener('mouseout', (e) => {
-      const to = e.relatedTarget;
-      if (this.el.hidden) { if (e.target.closest?.('a[data-page]')) clearTimeout(this.t); return; } // (not shown yet: not now)
+      const to = /** @type {Element} */ (e.relatedTarget);
+      if (this.el.hidden) { if (/** @type {HTMLElement} */ (e.target).closest?.('a[data-page]')) clearTimeout(this.t); return; } // (not shown yet: not now)
       if (!to) { hideIn(300); return; } // (out of the window)
       if (this.el.classList.contains('pv-wait')) return; // (the pointer's moves decide, above)
       if (this.el.contains(to) || (shownFor && to.closest?.('a[data-page]') === shownFor)) return;
-      if (this.el.contains(e.target) || e.target.closest?.('a[data-page]') === shownFor) hideIn(300);
+      if (this.el.contains(e.target) || /** @type {HTMLElement} */ (e.target).closest?.('a[data-page]') === shownFor) hideIn(300);
     });
     document.addEventListener('pointerdown', (e) => { if (this.el.contains(e.target)) return; clearTimeout(this.t); this.hide(); }, true);
     // the title, or a link in the box: that page opens (the box's words are read-only)
@@ -807,7 +810,7 @@ export class Preview {
     let closedAt = 0, closedFrom = null; // a tap elsewhere only closes it: that tap's click isn't passed on
     const stop = () => { clearTimeout(this.t); from = null; };
     document.addEventListener('touchstart', (e) => {
-      if (!this.el.hidden && !e.target.closest('.preview')) { this.hide(); closedAt = Date.now(); closedFrom = { x: e.touches[0].clientX, y: e.touches[0].clientY }; } // a tap elsewhere closes it
+      if (!this.el.hidden && !/** @type {HTMLElement} */ (e.target).closest('.preview')) { this.hide(); closedAt = Date.now(); closedFrom = { x: e.touches[0].clientX, y: e.touches[0].clientY }; } // a tap elsewhere closes it
       const a = linkAt(e.target);
       if (!a || e.touches.length > 1) { stop(); return; }
       from = { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -822,7 +825,7 @@ export class Preview {
     document.addEventListener('touchend', () => { stop(); if (held) held.at = Date.now(); }, { passive: true });
     document.addEventListener('touchcancel', stop, { passive: true });
     document.addEventListener('click', (e) => {
-      const swallow = (held && e.target.closest?.('a') === held.a && Date.now() - held.at < 800) || Date.now() - closedAt < 800;
+      const swallow = (held && /** @type {HTMLElement} */ (e.target).closest?.('a') === held.a && Date.now() - held.at < 800) || Date.now() - closedAt < 800;
       if (swallow) { e.preventDefault(); e.stopPropagation(); }
       held = null;
       closedAt = 0;
