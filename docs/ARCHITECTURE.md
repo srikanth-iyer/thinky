@@ -108,7 +108,7 @@ never) and when the app pushes new data; everything else runs only when opened.
 | File | Job |
 |---|---|
 | `app.rs` | `App` (an open vault) and **`dispatch(cmd, args)` = the whole API** the UI calls. Index cache, saving, rename/merge, assets, last-vault. |
-| `ai.rs` | The optional AI features (Build 51): the services' presets, both request formats (Claude's, OpenAI-style), reading answers, allowed addresses (`check_base`), `send_with_curl` (used by the Windows shell and the dev server), and Polish note's fixed instructions and answer checks. Never holds a key. |
+| `ai.rs` | The optional AI features (Build 51): the services' presets, both request formats (Claude's, OpenAI-style), reading answers, allowed addresses (`check_base`), where a key may go (`key_header`, `key_may_go`), `send_with_curl`/`send_keyed` (used by the Windows shell and the dev server), and Polish note's fixed instructions and answer checks. Never holds a key. |
 | `app/safety.rs`, `app/history.rs`, `app/pictures.rs` | Safety copies · a page's History · finding/binning unused pictures |
 | `parse.rs` | Text → blocks, properties, links, tags |
 | `vault.rs` | The index: backlinks, tags, properties, to-dos, search, linked/unlinked references |

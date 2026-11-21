@@ -583,8 +583,15 @@ pictureModel, mark, extra: {polish}}, this device's own; never the key). Not tie
 with no key, "Other (OpenAI-style)"), two request formats (`chat_request`: Claude's /messages with x-api-key +
 anthropic-version and max_tokens but no temperature (Build 52: Claude's newer models refuse it), else /chat/completions with a Bearer key, no max_tokens or temperature there: newer models refuse
 them), `models_request`/`read_models` (Settings' lists and Test), `read_chat`, `answer_json` (401/403/404/429 in plain
-words). `check_base`: https anywhere, http only to this computer or a home network (`is_local_host`: localhost, 127.x,
-10.x, 192.168.x, 172.16–31.x, ::1, .local/.lan), no spaces, quotes or `@`. The key never reaches the page or the notes
+words). `check_base`: https anywhere, http only to this computer or a home network (`is_local_name`: localhost,
+.local/.lan/.localhost; number addresses read strictly by std's Ipv4Addr/Ipv6Addr: 127.x, 10.x, 192.168.x, 172.16–31.x,
+::1, so `0127.0.0.1` is refused), the computer's name ends at the first `/`, `?` or `#`, no spaces, quotes, `@`, `{` or
+`}` anywhere (review claim 3: `http://localhost:80@attacker.example`). Where a key may go (review claim 1, the page
+builds the request): `key_header(service)` (x-api-key / bearer / none) is the only source of the key's header, and
+`key_may_go(service, url, other_base)`: a preset service's key only under its fixed `PROVIDERS` base + "/", "Other"'s
+only under the address saved with its key on that device, Ollama/LM Studio/unknown never; else the shell refuses with
+`KEY_ELSEWHERE` (`send_keyed` does both for curl; Android mirrors it in AiKeys.kt). `setup_base`: a service whose key
+is "required" always uses its own address (a typed one is ignored). The key never reaches the page or the notes
 folder (Drive syncs it, a backup pushes it): Windows' Credential Manager (src-tauri `ai_key.rs`: CredWriteW/ReadW/
 DeleteW by hand, target "thinky AI key: <id>", this user, this computer), Android's Keystore (android/kotlin/AiKeys.kt:
 an AES-GCM key of the app's own, the sealed bytes in SharedPreferences `lean_ai`), the dev server's memory. Commands:
@@ -592,7 +599,10 @@ core `ai_providers`, `ai_check_base`, `ai_models_request/read`, `ai_polish_reque
 four); shells `ai_key_set` (empty = remove; `key_ok`: printable, no quotes), `ai_key_has`, `ai_send` {provider, req}.
 Sending: `ai::send_with_curl` (Windows' System32 curl.exe, `update::imp::curl`; the dev server's curl): its settings on
 curl's input (`--config -`, `-q` first), so the key is never on a command line; the body through a file in
-`<cache>/ai`, removed after; `proto =https` (or `=http,https` for a local one), 120 s, 8 MB, `write-out` the status.
+`<cache>/ai`, removed after (`sweep_temp`, once per run, takes away another run's left-over `ai-*.json` or one older
+than 10 minutes; curl that can't take its settings is killed and waited for); the address and whether it is local come
+from `check_base` itself, never the page's `req.local`; `globoff` (no `{a,b}`/`[1-9]` lists); `proto =https` (or
+`=http,https` for a local one), 120 s, 8 MB, `write-out` the status.
 Android: `LeanAndroid.aiKeySet/aiKeyHas/aiSend(id, provider, req)` (a thread; the answer as a `lean-ai` DOM event, its
 detail a JSON string); https only there (http to a home network would need Android's cleartext allowance for the whole
 app). No new library: the app doesn't grow (his choice: "no new library", the same way updates go).
