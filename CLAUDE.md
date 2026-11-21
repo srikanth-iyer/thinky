@@ -602,7 +602,12 @@ folder (Drive syncs it, a backup pushes it): Windows' Credential Manager (src-ta
 DeleteW by hand, target "thinky AI key: <id>", this user, this computer), Android's Keystore (android/kotlin/AiKeys.kt:
 an AES-GCM key of the app's own, the sealed bytes in SharedPreferences `lean_ai`), the dev server's memory. Commands:
 core `ai_providers`, `ai_check_base`, `ai_models_request/read`, `ai_polish_request/read` (no vault needed for the first
-four); shells `ai_key_set` (empty = remove; `key_ok`: printable, no quotes), `ai_key_has`, `ai_send` {provider, req}.
+four); shells `ai_key_set` {provider, key, base} (empty = remove; `key_ok`: printable, no quotes; for "Other" the
+address is checked (`check_base`) and kept with the key: Windows "thinky AI base: other"), `ai_key_has`, `ai_send`
+{provider, req}. A key goes only to its own service (review claim 1, Nov 2026): the shell names the key's header
+from the service (`ai::key_header`, never the page's `auth`) and refuses a request whose address isn't that service's
+(`ai::key_may_go`: the preset's fixed base + "/", or "Other"'s saved address) with "That address isn't the one this
+service's key belongs to, so the key wasn't sent." (src-tauri `ai_key.rs` `prepared`, tests there).
 Sending: `ai::send_with_curl` (Windows' System32 curl.exe, `update::imp::curl`; the dev server's curl): its settings on
 curl's input (`--config -`, `-q` first), so the key is never on a command line; the body through a file in
 `<cache>/ai`, removed after (`sweep_temp`, once per run, takes away another run's left-over `ai-*.json` or one older
@@ -1676,6 +1681,10 @@ window can't be sent to another page.
 
 ## Build & test
 - Here: `cargo test -p outline_core`; speed: `cargo run --release -p outline_core --example bench`.
+  The Windows shell's own decisions (`src-tauri/src/shell_rules.rs`, `ai_key.rs`: closing, the capture box's
+  footer/placing/wheel, links between copies, size limits, which address an AI key may go to) have tests
+  that need no Windows or Tauri: `sh src-tauri/pure_tests.sh` (plain rustc against outline_core); on Windows
+  `cargo test -p lean-outliner` runs them with the rest.
   CI (build.yml `ui-tests`, from Build 37): all of them on every build, in six groups on six machines (every group runs to the end, `fail-fast: false`; t5_long first in its group)
   (Playwright 1.63.0 installed into /opt/npm-tools there, Pillow from apt); main signs only after all six
   pass, then it signs and publishes at once (the `release` environment has no reviewer since Nov 5, 2026 and

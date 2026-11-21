@@ -74,11 +74,11 @@ On Android there is one app (the APK) plus Kotlin extras (section 4). The Google
 | Thing | When it runs | How to spot it | Why it exists |
 |---|---|---|---|
 | **Shortcut-key helper** `lean-outliner.exe --hotkey` | From Windows start-up while a key is set (installed copy only; exits at once if `hotkey.txt` is empty) | Hidden message-only window, class `LeanOutlinerHotkey`, title `Lean Outliner shortcut key: <key>` (or `… (starting)`) | Windows' own shortcut-key way took ~3 s; this answers in ~0.1 s. Uses 52 KB RAM, no CPU, no polling. |
-| **Start-up threads** (inside the main app, every start: `lib.rs` `setup`) | Once per start | — | `hotkey::at_start` (installed copy only) checks and **repairs** the helper: may start one, rewrite the Run value, write `hotkey.txt`, delete the old `.lnk`. `update::tidy` clears an old download. `win::register_link_handler` points `leanoutliner://` at *this* exe. |
+| **Start-up threads** (inside the main app, every start: `lib.rs` `setup`; Windows only) | Once per start | — | `hotkey::at_start` (installed copy only) checks and **repairs** the helper: may start one, rewrite the Run value, write `hotkey.txt`, delete the old `.lnk`. `update::tidy` clears an old download. `win::register_link_handler` points `leanoutliner://` at *this* exe. |
 | **Link listener** (inside the main app) | While the main window is open | Hidden window class `LeanOutlinerLinks`, title "Lean Outliner links" | Lets a clicked `leanoutliner://page/…` link reach the open app instead of opening a second one. |
 | **File watcher** (a thread inside the main app) | While a vault is open | — | Notices `.md` changes in `pages/` and `journals/` (sync apps, the phone, other tools) within ~400 ms and tells the page (`lean-files` event → `rescan`). Windows change notifications / inotify on Android; dot-files ignored. The page *also* rescans when the window regains focus or becomes visible (and polls every 30 s under the dev server). |
 | **Safety-copy thread** (inside the main app) | Once, in the background after a vault opens | — | Copies recently changed notes into `logseq/.safety-<device>/` inside the notes folder (falls back to the app's data folder only when the notes folder can't be written; CLAUDE.md "app/safety.rs"). |
-| **Close guard thread** | When the window is closing | — | Gives the page 5 s to save (`lean-close`), then exits anyway. |
+| **Close guard thread** | When the window is closing | — | Gives the page 5 s to save (`lean-close`), then saves the index cache (if the app's lock is free within a second) and exits anyway. The main window never closes by itself: a second click on × while it saves is ignored (`shell_rules::close_step`). |
 | **AI requests** (Build 51, optional: only once Settings → AI is set up) | Only when the person presses one of the AI features (Polish note, Picture to text, Ask about this page, Suggest links, Suggest aliases and a description), Test, or opens Settings → AI with a key saved. **Never on a timer or by itself.** | `ai_send`: one Windows curl.exe process per request (no console window), gone when it answers; Android: one thread in MainActivity | Sends what that one feature needs (a note with nearby page names and tags in use; a picture; or one page with the notes that link to it) to the AI service the person chose, with their key (Credential Manager / Keystore). |
 | **Update check** (inside the page) | Once at start (skipped if the last answer is under a day old), and from Settings → About. **No timer**: an app left open for days doesn't check again. Laptop and phone. | The check talks to `api.github.com`; "Update now" downloads from `github.com/…/releases/download` (curl.exe on Windows, MainActivity on Android) | Looks for a newer "Build N" among this repo's releases (Build 33 and older: the old downloads repo). |
 
@@ -129,7 +129,8 @@ never) and when the app pushes new data; everything else runs only when opened.
 | File | Job |
 |---|---|
 | `main.rs` | Picks the job from the command line (section 2) |
-| `lib.rs` | Starts Tauri; **one command `call`** that forwards to `dispatch`, plus a few OS-only commands handled before it (`save_asset_path`, `start_link`, `reveal_file`, `set_shortcut`/`get_shortcut`, `update_*`, `browser_setup`/`browser_status`, `quit`, `platform`; see `lib.rs`). Two shared commands are special-cased there: `rescan` reads files without holding the lock, and `open` also starts the file watcher. The `vault://` protocol that serves pictures. Close waits for saves (`lean-close`). The three start-up threads (section 3). |
+| `lib.rs` | Starts Tauri; **one command `call`** that forwards to `dispatch`, plus a few OS-only commands handled before it (`save_asset_path`, `start_link`, `reveal_file`, `set_shortcut`/`get_shortcut`, `update_*`, `browser_setup`/`browser_status`, `quit`, `platform`; see `lib.rs`). Two shared commands are special-cased there: `rescan` reads files without holding the lock, and `open` also starts the file watcher. The `vault://` protocol that serves pictures (four threads in turn, `shell_rules::Pool`; none over 100 MB). Close waits for saves (`lean-close`). The start-up threads (section 3, Windows only). |
+| `shell_rules.rs` | The shell's small decisions with no Windows or Tauri in them (closing, the capture box's footer, placing and wheel, links between copies, file-size limits, the thread pool), so their tests also run where the shell can't be built (`src-tauri/pure_tests.sh`) |
 | `watch.rs` | File-change watcher |
 | `hotkey.rs` | The shortcut-key helper and the app's side of it (`set`, `state`, `at_start`, `stop`) |
 | `capture_box/` | Native Win32 capture box (`mod.rs` the window, `ffi.rs` = Windows functions declared by hand, also used by links.rs; `files.rs` clipboard, file picker, picture → PNG; `selftest.rs` CI) |
@@ -217,7 +218,8 @@ tests (smoke + t1…t15), `run.sh` runs them all.
   back to `"%LOCALAPPDATA%\thinky\lean-outliner.exe" "%1"`.
 
 **Windows Credential Manager** (Build 51, only once a key is saved in Settings → AI): one generic credential per AI
-service, `thinky AI key: <service id>` (user "thinky", this computer only); Settings' Remove key deletes it.
+service, `thinky AI key: <service id>` (user "thinky", this computer only); Settings' Remove key deletes it. "Other
+(OpenAI-style)" also keeps the address its key was saved for, `thinky AI base: other` (its key goes nowhere else).
 Uninstalling leaves it (Windows → Credential Manager → Windows Credentials can remove it).
 
 **Start menu:** `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Lean Outliner capture.lnk` — the
