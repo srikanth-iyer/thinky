@@ -406,3 +406,38 @@ fn a_huge_repeat_never_overflows() {
     let t = "TODO x\nSCHEDULED: <2026-01-31 Sat +9223372036854775807d>";
     assert_eq!(complete(t, today), t);
 }
+
+// ---- sizes checked before reading ----
+
+#[test]
+fn a_picture_over_the_ai_limit_is_refused_by_its_size() {
+    use outline_core::app::{dispatch, App};
+    use serde_json::json;
+    let v = tmp_vault("bigpic");
+    std::fs::create_dir_all(v.join("assets")).unwrap();
+    let limit = outline_core::ai::MAX_PICTURE_BYTES;
+    std::fs::write(v.join("assets/big.png"), vec![0u8; limit + 1]).unwrap();
+    std::fs::write(v.join("assets/ok.png"), vec![0u8; limit]).unwrap();
+    let mut st = Some(App::open(&v).unwrap());
+    let setup = json!({ "provider": "ollama", "base": "http://localhost:11434", "model": "llava" });
+    let err = dispatch(&mut st, "ai_picture_request", json!({ "setup": setup, "text": "![](../assets/big.png)" })).unwrap_err();
+    assert!(err.contains("5.0 MB") && err.contains("at most 5 MB"), "{err}");
+    // exactly at the limit is sent
+    let ok = dispatch(&mut st, "ai_picture_request", json!({ "setup": setup, "text": "![](../assets/ok.png)" }));
+    assert!(ok.is_ok(), "{ok:?}");
+    // a missing picture still says so
+    let err = dispatch(&mut st, "ai_picture_request", json!({ "setup": setup, "text": "![](../assets/none.png)" })).unwrap_err();
+    assert!(err.contains("isn't in the assets folder"), "{err}");
+}
+
+#[test]
+fn a_file_over_25_mb_is_refused_before_it_is_decoded() {
+    use outline_core::app::App;
+    let v = tmp_vault("bigasset");
+    let mut app = App::open(&v).unwrap();
+    let over = format!("data:application/octet-stream;base64,{}", "A".repeat(33_400_000));
+    assert_eq!(app.save_asset("big.bin", &over).unwrap_err(), "That file is over 25 MB; pick a smaller one.");
+    assert!(!v.join("assets").exists() || std::fs::read_dir(v.join("assets")).unwrap().count() == 0);
+    // a small one is still saved
+    assert!(app.save_asset("small.txt", "aGk=").unwrap().starts_with("../assets/small"));
+}

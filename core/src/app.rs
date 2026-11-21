@@ -714,10 +714,36 @@ fn clean_name(s: &str) -> Result<String, String> {
     Ok(n.to_string())
 }
 
+/// A file's bytes when it holds at most `max`, else `Err(its size)`: the size is checked before
+/// reading, and the read stops one byte past the limit, so a file that grows meanwhile is caught too.
+pub(crate) fn read_at_most(path: &Path, max: usize) -> std::io::Result<Result<Vec<u8>, u64>> {
+    let f = std::fs::File::open(path)?;
+    let len = f.metadata()?.len();
+    if len > max as u64 {
+        return Ok(Err(len));
+    }
+    let mut bytes = Vec::with_capacity(len as usize);
+    std::io::Read::read_to_end(&mut std::io::Read::take(f, max as u64 + 1), &mut bytes)?;
+    if bytes.len() > max {
+        return Ok(Err(bytes.len() as u64));
+    }
+    Ok(Ok(bytes))
+}
+
 /// Minimal base64 decoder (standard alphabet, padding optional, whitespace ignored).
 fn b64_decode(s: &str) -> Result<Vec<u8>, String> {
+    b64_decode_max(s, MAX_ASSET_BYTES)
+}
+
+/// `b64_decode`, refusing data that would decode to more than `max` bytes before any of it is
+/// decoded (its size is counted from the letters first, so nothing big is set aside for it).
+fn b64_decode_max(s: &str, max: usize) -> Result<Vec<u8>, String> {
     let s = s.split_once("base64,").map_or(s, |(_, d)| d); // accept data: URLs
-    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let letters = s.bytes().filter(|c| !matches!(c, b'=' | b'\n' | b'\r' | b' ')).count();
+    if letters / 4 * 3 + (letters % 4 * 6 / 8) > max {
+        return Err(format!("That file is over {} MB; pick a smaller one.", max / 1_000_000));
+    }
+    let mut out = Vec::with_capacity(letters * 3 / 4);
     let mut buf = 0u32;
     let mut bits = 0;
     for c in s.bytes() {
@@ -2790,10 +2816,10 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
                 });
             };
             let path = app.asset_file(&format!("assets/{name}")).ok_or_else(|| format!("The picture “{name}” isn't in the assets folder."))?;
-            let bytes = std::fs::read(&path).map_err(|e| format!("The picture couldn't be read: {e}"))?;
-            if bytes.len() > crate::ai::MAX_PICTURE_BYTES {
-                return Err(format!("The picture is {:.1} MB; the AI services take at most 5 MB.", bytes.len() as f64 / 1_048_576.0));
-            }
+            // (its size is looked at before it is read, and no more than the limit is ever read)
+            let bytes = read_at_most(&path, crate::ai::MAX_PICTURE_BYTES)
+                .map_err(|e| format!("The picture couldn't be read: {e}"))?
+                .map_err(|len| format!("The picture is {:.1} MB; the AI services take at most 5 MB.", len as f64 / 1_048_576.0))?;
             let pic = crate::ai::Picture { media_type: kind, data: crate::ai::base64(&bytes) };
             let (system, user) = crate::ai::picture_question(&app.vault, &text);
             to_value(crate::ai::chat_request_with(&setup, &system, &user, Some(&pic), 2048)?)
@@ -3148,7 +3174,45 @@ pub fn check_vault_at(root: &Path, now: u64) -> Result<CheckReport, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::copy_stems;
+    use super::{b64_decode, b64_decode_max, copy_stems, read_at_most};
+
+    /// Review: a file's data was decoded (and a picture read whole) before its size was checked.
+    #[test]
+    fn base64_is_measured_before_it_is_decoded() {
+        // normal: padding, whitespace and data: URLs as before
+        assert_eq!(b64_decode("aGk=").unwrap(), b"hi");
+        assert_eq!(b64_decode("data:text/plain;base64,aGVs\nbG8=").unwrap(), b"hello");
+        assert_eq!(b64_decode("").unwrap(), b"");
+        assert!(b64_decode("a*b").is_err());
+        // at the limit, and one byte past it (counted from the letters, padding or not)
+        assert_eq!(b64_decode_max("AAAA", 3).unwrap().len(), 3);
+        assert_eq!(b64_decode_max("AAAAAA==", 4).unwrap().len(), 4);
+        assert!(b64_decode_max("AAAAAA==", 3).unwrap_err().contains("over"));
+        assert!(b64_decode_max("AAAAAAA", 4).is_err(), "3 letters past a group are 2 more bytes");
+        assert_eq!(b64_decode_max("AAAAAAA", 5).unwrap().len(), 5);
+        assert!(b64_decode_max("A A\nA\rA====", 3).is_ok(), "spaces and = aren't counted");
+        // the app's own limit: one byte over 25 MB is refused with the usual words
+        let over = "A".repeat((super::MAX_ASSET_BYTES + 1).div_ceil(3) * 4);
+        assert_eq!(b64_decode(&over).unwrap_err(), "That file is over 25 MB; pick a smaller one.");
+        let at = "A".repeat(super::MAX_ASSET_BYTES / 3 * 4);
+        assert_eq!(b64_decode(&at).unwrap().len(), super::MAX_ASSET_BYTES / 3 * 3);
+    }
+
+    #[test]
+    fn a_file_is_read_only_up_to_its_limit() {
+        let dir = std::env::temp_dir().join(format!("thinky-read-at-most-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("f.bin");
+        std::fs::write(&p, vec![7u8; 10]).unwrap();
+        assert_eq!(read_at_most(&p, 10).unwrap().unwrap().len(), 10);
+        assert_eq!(read_at_most(&p, 11).unwrap().unwrap().len(), 10);
+        assert_eq!(read_at_most(&p, 9).unwrap().unwrap_err(), 10);
+        assert_eq!(read_at_most(&p, 0).unwrap().unwrap_err(), 10);
+        std::fs::write(&p, b"").unwrap();
+        assert_eq!(read_at_most(&p, 0).unwrap().unwrap(), b"");
+        assert!(read_at_most(&dir.join("missing"), 5).is_err());
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     /// Review claim 9b: the conflict marks were found in `to_lowercase()` of the name and cut from
     /// the name itself; a capital İ (2 bytes) lowers to 3, Kelvin's K (3) to 1, so the cut fell in
