@@ -1566,9 +1566,11 @@ function whatsNew(app) {
       const r = await fetch('https://api.github.com/repos/srikanth-iyer/thinky/releases?per_page=8', { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) });
       if (!r.ok) throw new Error(String(r.status));
       const rel = (await r.json()).filter((x) => !x.draft);
+      // (the Google Play version updates only through Play: nothing here is ready to install; review claim 10d)
+      const play = !!window.LeanAndroid?.fromPlay?.();
       list.innerHTML = rel.map((x, i) => {
         const n = Number(String(x.tag_name).match(/(\d+)$/)?.[1] || 0);
-        const tag = n === mine ? '<span class="wn-tag">this version</span>' : mine && n > mine ? '<span class="wn-tag new">ready to install</span>' : '';
+        const tag = n === mine ? '<span class="wn-tag">this version</span>' : mine && n > mine && !play ? '<span class="wn-tag new">ready to install</span>' : '';
         const day = x.published_at ? new Date(x.published_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
         const v = /\bversion (\d+\.\d+\.\d+)/.exec(x.name || '')?.[1];
         return `<details class="wn-rel"${i < 2 || n >= mine ? ' open' : ''}><summary><b>${v ? `Version ${esc(v)}` : `Build ${n}`}</b>${v ? ` <span class="wn-day">Build ${n}</span>` : ''} ${tag}<span class="wn-day">${esc(day)}</span></summary><div class="wn-body">${notes(x.body)}</div></details>`;
