@@ -1657,7 +1657,7 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
   hiccup `[:…]`, SCHEDULED/DEADLINE line or drawer; the first line no to-do word or priority); addresses only
   http(s), through `clip::safe_url`. `capture::md_link`
   defuses the name. The extension's page.js does the same first (`safe`), skips words the reader
-  can't see, and its toast is in a closed shadow root; background.js answers only its own pages
+  can't see (judged on the page's own nodes in the selection's Range, never a detached copy: review claim 18), and its toast is in a closed shadow root; background.js answers only its own pages
   (`sender.id`, not a tab). (tests/clip.rs `web_words_stay_words`, tests/pages.rs)
 - The native host runs only when Edge or Chrome starts it for one of our extensions (`native_host::is_our_extension` → `clip::is_our_origin`: the unpacked id and the two store ids);
   `LEAN_CLIP_VAULT` works only in debug builds; its errors never name the folder.

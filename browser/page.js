@@ -86,26 +86,42 @@
   }
   const BLOCK = /^(P|DIV|LI|H[1-6]|BLOCKQUOTE|PRE|TR|SECTION|ARTICLE|FIGCAPTION|DD|DT|UL|OL|TABLE)$/;
   const SKIP = /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|SVG|BUTTON|IFRAME|CANVAS|VIDEO|AUDIO|SELECT|INPUT|TEXTAREA)$/;
-  function md(node) {
+  // The passage is read from the page itself (the selection's live Range), not from a copy of it: only
+  // a node on the page has the styles that say whether the reader sees it (a copy's are empty, so
+  // hidden words inside a passage would come along; review claim 18). The first and last words are cut
+  // where the selection starts and ends.
+  // (an element hidden with display: none hides all inside it; one with visibility: hidden only its own
+  // words, as a part inside it can be made visible again)
+  const shown = (n) => !(SKIP.test(n.nodeName.toUpperCase()) || n.getAttribute('aria-hidden') === 'true' || n.hidden || getComputedStyle(n).display === 'none');
+  const seenText = (t) => { const v = t.parentElement ? getComputedStyle(t.parentElement).visibility : 'visible'; return v !== 'hidden' && v !== 'collapse'; };
+  function md(r) {
     let out = '';
+    const inRange = (n) => { try { return r.intersectsNode(n); } catch (e) { return false; } };
+    const words = (n) => {
+      const v = n.nodeValue;
+      return v.slice(n === r.startContainer ? r.startOffset : 0, n === r.endContainer ? r.endOffset : v.length);
+    };
+    // the words the reader sees inside an element (code: no Markdown inside it)
+    const seen = (n) => {
+      if (n.nodeType === 3) return inRange(n) && seenText(n) ? words(n) : '';
+      if (n.nodeType !== 1 || !inRange(n) || !shown(n)) return '';
+      return [...n.childNodes].map(seen).join('');
+    };
     const walk = (n) => {
-      if (n.nodeType === 3) { out += safe(n.nodeValue.replace(/\s+/g, ' ')); return; }
-      if (n.nodeType !== 1 && n.nodeType !== 11) return;
+      if (!inRange(n)) return;
+      if (n.nodeType === 3) { if (seenText(n)) out += safe(words(n).replace(/\s+/g, ' ')); return; }
+      if (n.nodeType !== 1) return;
       const tag = n.nodeName.toUpperCase();
-      if (n.nodeType === 1) {
-        if (SKIP.test(tag) || n.getAttribute('aria-hidden') === 'true' || n.hidden) return;
-        // words the reader can't see aren't taken (a page could hide text inside a passage)
-        const cs = getComputedStyle(n);
-        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return;
-        if (n.matches(MATH)) { const t = tex(n); if (t) { out += t; return; } }
-        if (tag === 'BR') { out += '\n'; return; }
-        if (tag === 'IMG') return;
-      }
+      // words the reader can't see aren't taken (a page could hide text inside a passage)
+      if (!shown(n)) return;
+      if (n.matches(MATH)) { const t = tex(n); if (t) { out += t; return; } }
+      if (tag === 'BR') { out += '\n'; return; }
+      if (tag === 'IMG') return;
       const inner = () => { const before = out; out = ''; n.childNodes.forEach(walk); const got = out; out = before; return got; };
       const wrap = (mark) => { const t = inner(); const m = t.match(/^(\s*)([\s\S]*?)(\s*)$/); out += m[2] ? m[1] + mark + m[2] + mark + m[3] : t; };
       if (tag === 'STRONG' || tag === 'B') return wrap('**');
       if (tag === 'EM' || tag === 'I' || tag === 'CITE') return wrap('*');
-      if (tag === 'CODE' && n.parentNode && n.parentNode.nodeName !== 'PRE') { out += '`' + n.textContent.replace(/`/g, "'") + '`'; return; }
+      if (tag === 'CODE' && n.parentNode && n.parentNode.nodeName !== 'PRE') { const t = seen(n).replace(/\s+/g, ' '); if (t.trim()) out += '`' + t.replace(/`/g, "'") + '`'; return; }
       if (tag === 'A' && /^https?:/i.test(n.href || '')) {
         const label = inner().trim().replace(/[[\]]/g, (c) => (c === '[' ? '(' : ')'));
         // (a "!" just before would make it a picture loaded from the web: keep them apart)
@@ -118,7 +134,7 @@
       n.childNodes.forEach(walk);
       if (block) out += '\n';
     };
-    walk(node);
+    walk(r.commonAncestorContainer);
     // tidy: spaces at line ends, more than one empty line, spaces before punctuation from tags
     return out
       .split('\n').map((l) => l.replace(/[ \t]+/g, ' ').trim()).join('\n')
@@ -224,7 +240,7 @@
       before.setStart(document.body, 0);
       try { before.setEnd(r.startContainer, r.startOffset); } catch (e) { /* outside body */ }
       const pos = squeeze(before.toString()).length;
-      return { plain, text: md(r.cloneContents()) || safe(plain), pos, link: fragment(pageInfo().url, plain), range: r };
+      return { plain, text: md(r) || safe(plain), pos, link: fragment(pageInfo().url, plain), range: r };
     },
     // Is any text selected on the page? (the box offers "Send the selected text…" only then)
     hasSelection() {
