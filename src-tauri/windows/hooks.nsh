@@ -54,6 +54,8 @@ Var LO_OldDesk   ; 1: it had a desktop shortcut
 !macroend
 
 ; A shortcut's target, pushed ("" when it can't be read). Changes $0-$3 (as Tauri's IsShortcutTarget).
+; Flags 0, not SLGP_RAWPATH: a target written with %LOCALAPPDATA% and the like comes back expanded,
+; so ${FileExists} sees the real file (raw, a live shortcut looked dead and was deleted).
 !macro LO_LNK_TARGET shortcut
   StrCpy $3 ""
   !insertmacro ComHlpr_CreateInProcInstance ${CLSID_ShellLink} ${IID_IShellLink} r0 ""
@@ -62,7 +64,7 @@ Var LO_OldDesk   ; 1: it had a desktop shortcut
     ${If} $1 P<> 0
       ${IPersistFile::Load} $1 '("${shortcut}", ${STGM_READ})i.r2'
       ${If} $2 = 0
-        ${IShellLink::GetPath} $0 '(.r3, ${MAX_PATH}, 0, ${SLGP_RAWPATH})'
+        ${IShellLink::GetPath} $0 '(.r3, ${MAX_PATH}, 0, 0)'
       ${EndIf}
       ${IUnknown::Release} $1 ""
     ${EndIf}
@@ -89,6 +91,12 @@ Var LO_OldDesk   ; 1: it had a desktop shortcut
 ; there and nothing was found yet: wait until it isn't open (the one-click update closes it just as
 ; this starts; by hand, he's asked to close it), note his shortcuts, run its uninstaller as an update
 ; and clear what that leaves (its uninstall.exe, the empty folder, the old shortcuts).
+; "Open?" is asked by opening its program for writing (shared, never changed): Windows says 32
+; (ERROR_SHARING_VIOLATION) while it runs, and 5 (ERROR_ACCESS_DENIED) when this user may not write
+; there at all (an all-users install in Program Files, this installer being per-user): then it is
+; left alone (it could never be removed from here, and asking to close it would never end). An old
+; entry that names this very folder is not run either (its uninstaller would take this install's
+; files): only its stale Apps & features entry goes.
 !macro LO_MIGRATE_FROM ROOT
   ${If} $LO_OldDir == ""
     ReadRegStr $R8 ${ROOT} "${LO_OLD_UNINST}" "UninstallString"
@@ -103,19 +111,35 @@ Var LO_OldDesk   ; 1: it had a desktop shortcut
         ${EndIf}
       ${EndIf}
       ${GetParent} $R8 $R7
-      ${If} ${FileExists} "$R7\uninstall.exe"
-        ; open? (a running program can't be opened for writing)
+      ${If} $R7 == $INSTDIR
+        ; (NSIS compares without regard to case, as Windows names folders)
+        DetailPrint "The old ${LO_OLD_NAME} entry names this folder: only the entry is removed."
+        DeleteRegKey ${ROOT} "${LO_OLD_UNINST}"
+      ${ElseIf} ${FileExists} "$R7\uninstall.exe"
+        ; open? (a running program can't be opened for writing: 32; not ours to write: 5)
         StrCpy $R6 0
+        StrCpy $R4 ""
         ${Do}
           ${IfNot} ${FileExists} "$R7\${MAINBINARYNAME}.exe"
             ${Break}
           ${EndIf}
-          ClearErrors
-          FileOpen $R5 "$R7\${MAINBINARYNAME}.exe" a
-          ${IfNot} ${Errors}
-            FileClose $R5
+          ; CreateFileW(name, GENERIC_WRITE, share read+write+delete, -, OPEN_EXISTING, NORMAL, -)
+          System::Call 'kernel32::CreateFileW(w "$R7\${MAINBINARYNAME}.exe", i 0x40000000, i 7, p 0, i 3, i 0x80, p 0) p .R5 ?e'
+          Pop $R4 ; (Windows' last error)
+          ${If} $R5 P<> -1
+            System::Call 'kernel32::CloseHandle(p R5) i'
+            StrCpy $R4 ""
             ${Break}
           ${EndIf}
+          ${If} $R4 = 5
+            ; no access: never ours to change (kept in $R4: left alone below)
+            ${Break}
+          ${ElseIf} $R4 <> 32
+            ; some other answer, not "in use": go on as when it's closed
+            StrCpy $R4 ""
+            ${Break}
+          ${EndIf}
+          StrCpy $R4 ""
           ${If} ${Silent}
           ${OrIf} $PassiveMode = 1
             ; (after 15 s its own uninstaller closes it)
@@ -130,6 +154,10 @@ Var LO_OldDesk   ; 1: it had a desktop shortcut
             ${EndIf}
           ${EndIf}
         ${Loop}
+        ${If} $R4 = 5
+          DetailPrint "${LO_OLD_NAME} in $R7 can't be changed from here (no access): it stays."
+          MessageBox MB_OK|MB_ICONEXCLAMATION "${PRODUCTNAME} is installed, but the old ${LO_OLD_NAME} was installed for all users and can't be removed from here.$\n$\nYour notes and settings are fine. Please uninstall ${LO_OLD_NAME} from Windows Settings > Apps." /SD IDOK
+        ${Else}
         StrCpy $LO_OldStart 0
         StrCpy $LO_OldDesk 0
         ${If} ${FileExists} "$SMPROGRAMS\${LO_OLD_NAME}.lnk"
@@ -169,12 +197,14 @@ Var LO_OldDesk   ; 1: it had a desktop shortcut
           ; said out loud (a passive update hides DetailPrint), so two apps never appear without a word
           MessageBox MB_OK|MB_ICONEXCLAMATION "${PRODUCTNAME} is installed, but the old ${LO_OLD_NAME} couldn't be removed by itself.$\n$\nYour notes and settings are fine. Please uninstall ${LO_OLD_NAME} from Windows Settings > Apps." /SD IDOK
         ${EndIf}
+        ${EndIf}
       ${EndIf}
     ${EndIf}
   ${EndIf}
 !macroend
 
 !macro LO_MIGRATE
+  Push $R4
   Push $R5
   Push $R6
   Push $R7
@@ -188,6 +218,7 @@ Var LO_OldDesk   ; 1: it had a desktop shortcut
   Pop $R7
   Pop $R6
   Pop $R5
+  Pop $R4
 !macroend
 
 !macro NSIS_HOOK_PREINSTALL
