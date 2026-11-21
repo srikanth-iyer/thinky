@@ -3100,6 +3100,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "shell_pure_tests"
+version = "0.1.0"
+dependencies = [
+ "outline_core",
+]
+
+[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1709,7 +1709,7 @@ window can't be sent to another page.
 - Here: `cargo test -p outline_core`; speed: `cargo run --release -p outline_core --example bench`.
   The Windows shell's own decisions (`src-tauri/src/shell_rules.rs`, `ai_key.rs`: closing, the capture box's
   footer/placing/wheel, links between copies, size limits, which address an AI key may go to) have tests
-  that need no Windows or Tauri: `sh src-tauri/pure_tests.sh` (plain rustc against outline_core); on Windows
+  that need no Windows or Tauri: `sh src-tauri/pure_tests.sh` (`cargo test -p shell_pure_tests`, a small package in src-tauri/pure that builds those two files as tests against outline_core alone); on Windows
   `cargo test -p lean-outliner` runs them with the rest.
   CI (build.yml `ui-tests`, from Build 37): all of them on every build, in six groups on six machines (every group runs to the end, `fail-fast: false`; t5_long first in its group)
   (Playwright 1.63.0 installed into /opt/npm-tools there, Pillow from apt); main signs only after all six
