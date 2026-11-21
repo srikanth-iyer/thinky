@@ -196,9 +196,15 @@ write; a broken file is never overwritten); render.js `setPropRules` (with confi
 list), `propsHtml` (quiet row, `.prop-icon` with title), renderBlock's `mark` → editor `div.dataset.mark`
 (`--mk` = the look's `--hl-<colour>`); Settings → Look `propDisplayCard`; `App.loadFolderSettings` on open and
 Refresh. Backups: core app/backup.rs (`backup_zip`: stored zip written by hand (CRC32, no compression,
-under 4 GB), `thinky-backups.json` holds the fingerprint and file list, keep the newest N; `backup_git`: mirror
-into a git clone outside the notes folder, add/commit/push via the `git` program, a failed push is retried next
-time; both refuse a folder inside the notes folder and a notes folder with no notes; ≥ 20 (or a tenth) gone →
+under 4 GB), `thinky-backups.json` holds the fingerprint and file list of what the zip really holds (a file
+`write_zip` couldn't read just then is named and left out, so the next backup tries it again), keep the newest N;
+reading one (`zip_walk`) checks every number against the file (review claim 8); `backup_git`: `mirror`
+into a git clone outside the notes folder (same size and time to the nanosecond = unchanged, else compared;
+each copy takes its file's time; the repository's own `.gitignore`/`.gitattributes`/README*/`.github/` are
+never removed, `repo_own`), add/commit/push via the `git` program, a failed push is retried next
+time; both refuse a folder inside the notes folder (`real_path` + `holds`: the real path also for a folder
+not made yet, in any capitals on Windows/macOS) and a notes folder with no notes; logseq/.safety-* is left
+out; `backup_now_at(root, …)` runs without the App (A2: the shell can let the App's lock go); ≥ 20 (or a tenth) gone →
 warning; `find_in_backup`/`restore_from_backup` with create_new), dispatch `backup_now`/`backup_find`/
 `backup_restore`; UI `App.backupNow`/`backupIfDue` (hourly check, day/week, localStorage `backup` per device),
 Settings → Notes `backupCard` (not on Android), Missing pictures' "Found in your backup: restore". Its Choose… (`folderPicker` mode 'choose'; since Build 50, he asked Nov 18): with the GitHub kind a git clone that looks like a notes folder (a copy of the notes, so it has `pages`) can be used unless it is the open notes folder (`app.summary.root`) or inside a notes folder; a notes folder with no `.git`, and with the zip kind any notes folder, stay refused. Tested by t30_build50 (Build 50, 0.5.11). Android:
