@@ -1,11 +1,13 @@
 //! Pictures and files for the capture box: the file picker, the clipboard (its text, a picture
 //! such as a Win+Shift+S screenshot, or files copied in Explorer), and turning a picture into a
-//! PNG file with Windows' own encoder (GDI+), loaded only when a picture is pasted.
+//! PNG file with Windows' own encoder (GDI+), loaded only when a picture is pasted, and then kept
+//! started until the box closes.
 
 use super::ffi::*;
 use outline_core::capture_box::png_len;
 use std::ffi::c_void;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 /// What pasting brings.
 pub enum Clip {
@@ -20,15 +22,10 @@ pub enum Clip {
     Problem(String),
 }
 
-/// The clipboard, opened (another program may hold it for a moment).
+/// The clipboard, opened (another program may hold it for a moment: win::open_clipboard, which
+/// win::clipboard_text uses too).
 fn open_clipboard(owner: isize) -> bool {
-    for _ in 0..10 {
-        if unsafe { OpenClipboard(owner as *mut c_void) } != 0 {
-            return true;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(15));
-    }
-    false
+    crate::win::open_clipboard(owner)
 }
 
 /// A copy of a block of global memory (the clipboard's and streams' way of holding data).
@@ -120,7 +117,6 @@ pub fn clipboard_items(owner: isize) -> Clip {
 }
 
 type Startup = unsafe extern "system" fn(*mut usize, *const GdiplusStartupInput, *mut c_void) -> i32;
-type Shutdown = unsafe extern "system" fn(usize);
 type FromHbitmap = unsafe extern "system" fn(isize, isize, *mut *mut c_void) -> i32;
 type SaveToStream = unsafe extern "system" fn(*mut c_void, *mut c_void, *const GUID, *const c_void) -> i32;
 type Dispose = unsafe extern "system" fn(*mut c_void) -> i32;
@@ -135,20 +131,40 @@ unsafe fn release(obj: *mut c_void) {
     f(obj);
 }
 
-/// A bitmap as PNG bytes, by Windows' GDI+ (gdiplus.dll, loaded only now).
-pub fn png_from_bitmap(hbm: isize) -> Option<Vec<u8>> {
-    let get = |name: &str| proc_addr("gdiplus.dll", name);
-    unsafe {
-        let startup: Startup = std::mem::transmute(get("GdiplusStartup")?);
-        let shutdown: Shutdown = std::mem::transmute(get("GdiplusShutdown")?);
-        let from_hbitmap: FromHbitmap = std::mem::transmute(get("GdipCreateBitmapFromHBITMAP")?);
-        let save: SaveToStream = std::mem::transmute(get("GdipSaveImageToStream")?);
-        let dispose: Dispose = std::mem::transmute(get("GdipDisposeImage")?);
-        let input = GdiplusStartupInput { version: 1, debug_callback: std::ptr::null(), suppress_background_thread: 0, suppress_external_codecs: 0 };
-        let mut token = 0usize;
-        if startup(&mut token, &input, std::ptr::null_mut()) != 0 {
-            return None;
+/// GDI+'s functions, once it has started.
+struct Gdip {
+    from_hbitmap: FromHbitmap,
+    save: SaveToStream,
+    dispose: Dispose,
+}
+
+/// GDI+ (gdiplus.dll), started the first time a picture is turned into PNG and kept started until
+/// the program ends: starting and stopping it is for the whole program, so two pastes on two
+/// threads must never stop it under each other (review 16d). None if this Windows can't start it.
+fn gdip() -> Option<&'static Gdip> {
+    static G: OnceLock<Option<Gdip>> = OnceLock::new();
+    G.get_or_init(|| {
+        let get = |name: &str| proc_addr("gdiplus.dll", name);
+        unsafe {
+            let startup: Startup = std::mem::transmute(get("GdiplusStartup")?);
+            let g = Gdip {
+                from_hbitmap: std::mem::transmute::<*const c_void, FromHbitmap>(get("GdipCreateBitmapFromHBITMAP")?),
+                save: std::mem::transmute::<*const c_void, SaveToStream>(get("GdipSaveImageToStream")?),
+                dispose: std::mem::transmute::<*const c_void, Dispose>(get("GdipDisposeImage")?),
+            };
+            let input = GdiplusStartupInput { version: 1, debug_callback: std::ptr::null(), suppress_background_thread: 0, suppress_external_codecs: 0 };
+            let mut token = 0usize;
+            (startup(&mut token, &input, std::ptr::null_mut()) == 0).then_some(g)
         }
+    })
+    .as_ref()
+}
+
+/// A bitmap as PNG bytes, by Windows' GDI+.
+pub fn png_from_bitmap(hbm: isize) -> Option<Vec<u8>> {
+    let g = gdip()?;
+    let (from_hbitmap, save, dispose) = (g.from_hbitmap, g.save, g.dispose);
+    unsafe {
         let mut out = None;
         let mut img: *mut c_void = std::ptr::null_mut();
         if from_hbitmap(hbm, 0, &mut img) == 0 && !img.is_null() {
@@ -164,7 +180,6 @@ pub fn png_from_bitmap(hbm: isize) -> Option<Vec<u8>> {
             }
             dispose(img);
         }
-        shutdown(token);
         out
     }
 }
@@ -174,7 +189,9 @@ pub fn pick(owner: isize) -> Vec<PathBuf> {
     type GetOpen = unsafe extern "system" fn(*mut OPENFILENAMEW) -> i32;
     let Some(p) = proc_addr("comdlg32.dll", "GetOpenFileNameW") else { return Vec::new() };
     unsafe {
-        CoInitializeEx(std::ptr::null_mut(), 2); // the dialog's shell parts want this thread ready for COM
+        // the dialog's shell parts want this thread ready for COM; put back as it was afterwards
+        let com = crate::shell_rules::com_started(CoInitializeEx(std::ptr::null_mut(), 2));
+        let _com = Com(com);
         let f: GetOpen = std::mem::transmute(p);
         let mut buf = vec![0u16; 1 << 16];
         let filter: Vec<u16> = "All files\0*.*\0Pictures\0*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp;*.svg;*.avif\0\0".encode_utf16().collect();
@@ -197,6 +214,16 @@ pub fn pick(owner: isize) -> Vec<PathBuf> {
             0 => Vec::new(),
             1 => vec![PathBuf::from(&parts[0])],
             _ => parts[1..].iter().map(|n| PathBuf::from(&parts[0]).join(n)).collect(),
+        }
+    }
+}
+
+/// CoUninitialize when dropped, if CoInitializeEx set COM up (`shell_rules::com_started`).
+struct Com(bool);
+impl Drop for Com {
+    fn drop(&mut self) {
+        if self.0 {
+            unsafe { CoUninitialize() };
         }
     }
 }

@@ -197,6 +197,8 @@ struct Picker {
     rows: Vec<Row>,
     sel: usize,
     top: usize,
+    /// the mouse wheel's leftover, less than a row (a touchpad sends small amounts)
+    wheel: i32,
 }
 
 /// Where notes go, once the notes folder is read.
@@ -548,8 +550,9 @@ unsafe fn open(prefill: Option<(String, String)>, test: Option<selftest::Probe>)
     let owner = CreateWindowExW(0, class.as_ptr(), owner_title.as_ptr(), WS_POPUP, 0, 0, 0, 0, 0, 0, inst, std::ptr::null_mut());
     let quiet = test.is_some(); // the self-test never takes the keyboard
     let ex = WS_EX_TOPMOST | WS_EX_WINDOWEDGE | if quiet { WS_EX_NOACTIVATE } else { 0 };
-    // made on its screen from the start (so it isn't rescaled when moved into place)
-    let (mx, my) = (mi.monitor.left + 8, mi.monitor.top + 8);
+    // made on its screen from the start (so it isn't rescaled when moved into place); within the
+    // work area (the screen less the taskbar)
+    let (mx, my) = (mi.work.left + 8, mi.work.top + 8);
     let hwnd = CreateWindowExW(ex, class.as_ptr(), title.as_ptr(), WS_CAPTION | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, mx, my, 100, 100, owner, 0, inst, std::ptr::null_mut());
     let surface_brush = CreateSolidBrush(colorref(colors.surface));
     let field_brush = CreateSolidBrush(colorref(colors.surface2));
@@ -625,12 +628,11 @@ unsafe fn open(prefill: Option<(String, String)>, test: Option<selftest::Probe>)
     DragAcceptFiles(hwnd, 1);
     DragAcceptFiles(note, 1);
     relayout(true);
-    // centred across the screen, a quarter of the way down
+    // centred across the screen, a quarter of the way down, never behind the taskbar (the work area)
     let (w, h) = with(|ui| (ui.layout.w, ui.layout.h)).unwrap_or((640, 98));
     let ins = insets(dpi);
-    let m = mi.monitor;
-    let x = m.left + (m.right - m.left - w) / 2;
-    let y = m.top + (m.bottom - m.top) / 4;
+    let m = mi.work;
+    let (x, y) = crate::shell_rules::box_origin((m.left + ins.left, m.top + ins.top, m.right - ins.right, m.bottom - ins.bottom), w, h);
     SetWindowPos(hwnd, HWND_TOPMOST, x - ins.left, y - ins.top, w + ins.left + ins.right, h + ins.top + ins.bottom, SWP_NOACTIVATE | SWP_FRAMECHANGED);
     SendMessageW(note, EM_SETSEL, 0, -1);
     if quiet {
@@ -785,10 +787,10 @@ fn relayout_once(first: bool) {
     // a problem wraps over as many lines as it needs (the rest is one line)
     let foot_h = match &say {
         Say::Problem(msg) => {
+            // (the width draw wraps it at: one rectangle for both, shell_rules::foot_message)
             let keys_w = with(|ui| keys_width(&ui.fonts, scale, picking).0).unwrap_or(0);
-            let avail = px(640.0) - px(18.0) - px(14.0) - keys_w - px(14.0) - px(26.0) - px(8.0);
             let w: Vec<u16> = msg.encode_utf16().collect();
-            let mut r = RECT { left: 0, top: 0, right: avail.max(px(120.0)), bottom: 0 };
+            let mut r = RECT { left: 0, top: 0, right: crate::shell_rules::foot_message(scale, keys_w).wrap_w, bottom: 0 };
             unsafe {
                 let dc = GetDC(0);
                 let old = SelectObject(dc, foot_font);
@@ -872,8 +874,13 @@ unsafe fn paint(hwnd: isize) {
     let bmp = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &mut bits, 0, 0);
     if bmp != 0 && !bits.is_null() {
         let old = SelectObject(mem, bmp);
-        let px = std::slice::from_raw_parts_mut(bits as *mut u32, (w * h) as usize);
-        if with(|ui| draw(ui, mem, Canvas { px, w, h })).is_some() {
+        let drawn = with(|ui| {
+            // the pixels are ours (a Canvas) only for the shapes: that hold ends with `shapes`,
+            // before Windows' text writes into the same pixels (review 16b)
+            let d = shapes(ui, Canvas { px: std::slice::from_raw_parts_mut(bits as *mut u32, (w * h) as usize), w, h });
+            words_on_top(ui, mem, &d);
+        });
+        if drawn.is_some() {
             BitBlt(dc, 0, 0, w, h, mem, 0, 0, SRCCOPY);
         } else {
             InvalidateRect(hwnd, std::ptr::null(), 0); // busy right now: paint again soon
@@ -897,9 +904,18 @@ unsafe fn words(dc: isize, font: isize, color: u32, x: i32, y: i32, max_w: i32, 
     sz.cx.min(max_w.max(0))
 }
 
+/// What the shapes leave for the words: each key cap (its x, top, width, its word's x and width),
+/// the key hints' width, and the bottom strip's middle.
+struct Drawn {
+    caps: Vec<(i32, i32, i32, i32, i32)>,
+    keys_w: i32,
+    mid: i32,
+}
+
 /// The box: its background, the + button, the to-do mark, the page list and the bottom strip.
-/// Shapes are painted into the pixels (smooth edges), then the words on top with Windows' text.
-fn draw(ui: &Ui, dc: isize, mut cv: Canvas) {
+/// Shapes are painted into the pixels (smooth edges) here; the words go on top afterwards with
+/// Windows' text (`words_on_top`), once this step and its Canvas are done.
+fn shapes(ui: &Ui, mut cv: Canvas) -> Drawn {
     let c = ui.colors;
     let l = ui.layout;
     let s = ui.dpi as f32 / 96.0;
@@ -972,7 +988,6 @@ fn draw(ui: &Ui, dc: isize, mut cv: Canvas) {
     let mid = (ft.t + line + ft.b) / 2;
     // the app's icon at the strip's left, 16 px, the words after it (Canvas::logo in outline_core)
     cv.logo(pxf(14.0), mid as f32 - pxf(8.0), pxf(16.0));
-    let foot_lh = line_height(ui.fonts.foot);
     let kbd_lh = line_height(ui.fonts.kbd);
     let kx0 = x.l - px(14.0) - keys_w;
     let mut kx = kx0;
@@ -985,7 +1000,21 @@ fn draw(ui: &Ui, dc: isize, mut cv: Canvas) {
         caps.push((kx, kt + 1, *kw, kx + kw + px(3.0), *ww));
         kx += kw + px(3.0) + ww;
     }
-    unsafe {
+    Drawn { caps, keys_w, mid }
+}
+
+/// The words on the box, with Windows' text, over the shapes.
+unsafe fn words_on_top(ui: &Ui, dc: isize, d: &Drawn) {
+    let c = ui.colors;
+    let l = ui.layout;
+    let s = ui.dpi as f32 / 96.0;
+    let px = |v: f32| (v * s).round() as i32;
+    let (ft, p, line) = (l.foot, l.pill, px(1.0).max(1));
+    let picking = ui.picker.is_some();
+    let (caps, mid) = (&d.caps, d.mid);
+    let foot_lh = line_height(ui.fonts.foot);
+    let kbd_lh = line_height(ui.fonts.kbd);
+    {
         GdiFlush();
         SetBkMode(dc, TRANSPARENT);
         let pill_lh = line_height(ui.fonts.pill);
@@ -997,14 +1026,15 @@ fn draw(ui: &Ui, dc: isize, mut cv: Canvas) {
             let ink = if ui.hot == Hot::Tool(i) || (i == 2 && ui.todo) { c.ink } else { c.ink_soft };
             words(dc, ui.fonts.pill, ink, t.l + (t.w() - tw) / 2, (t.t + t.b) / 2 - pill_lh / 2, tw + 2, TOOLS[i]);
         }
-        for ((k, word), (kx, kt, kw, wx, ww)) in keys(picking).iter().zip(&caps) {
+        for ((k, word), (kx, kt, kw, wx, ww)) in keys(picking).iter().zip(caps) {
             let tw = text_width(ui.fonts.kbd, k);
             words(dc, ui.fonts.kbd, c.ink_soft, kx + (kw - tw) / 2, *kt + (mid - kt - kbd_lh / 2), tw + 2, k);
             words(dc, ui.fonts.foot, c.ink_faint, *wx, mid - foot_lh / 2, *ww + 2, word);
         }
-        // the message at the left: where the note goes, a hint, "✓ Added", or a problem
-        let left = px(38.0); // (after the icon)
-        let avail = kx0 - px(14.0) - left;
+        // the message at the left: where the note goes, a hint, "✓ Added", or a problem; its room
+        // as relayout measured it (one rectangle for both)
+        let fm = crate::shell_rules::foot_message(s, d.keys_w);
+        let (left, avail) = (fm.left, fm.avail); // (after the icon)
         let y = mid - foot_lh / 2;
         // over the + button: what it holds (unless there's news to read)
         let hint = match ui.hot {
@@ -1031,7 +1061,7 @@ fn draw(ui: &Ui, dc: isize, mut cv: Canvas) {
                 let w: Vec<u16> = m.encode_utf16().collect();
                 SelectObject(dc, ui.fonts.foot);
                 SetTextColor(dc, colorref(c.danger));
-                let mut r = RECT { left, top: ft.t + line + px(6.0), right: left + avail.max(px(120.0)), bottom: ft.b - px(6.0) };
+                let mut r = RECT { left, top: ft.t + line + px(6.0), right: left + fm.wrap_w, bottom: ft.b - px(6.0) };
                 let mut probe = r;
                 DrawTextW(dc, w.as_ptr(), w.len() as i32, &mut probe, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
                 let th = probe.bottom - probe.top;
@@ -1577,7 +1607,7 @@ fn open_picker() {
     with(|ui| {
         ui.search = search;
         if ui.picker.is_none() {
-            ui.picker = Some(Picker { rows: Vec::new(), sel: 0, top: 0 });
+            ui.picker = Some(Picker { rows: Vec::new(), sel: 0, top: 0, wheel: 0 });
         }
     });
     unsafe { SetWindowTextW(search, wide("").as_ptr()) };
@@ -2187,7 +2217,7 @@ unsafe extern "system" fn wndproc(h: isize, m: u32, w: usize, l: isize) -> isize
                     let pk = ui.picker.as_mut()?;
                     let shown = rules::LIST_ROWS as usize;
                     let max_top = pk.rows.len().saturating_sub(shown);
-                    let steps = -(delta / 40);
+                    let steps = crate::shell_rules::wheel_rows(&mut pk.wheel, delta);
                     pk.top = (pk.top as i32 + steps).clamp(0, max_top as i32) as usize;
                     Some(())
                 })
