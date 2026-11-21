@@ -2567,8 +2567,14 @@ fn run(state: &mut Option<App>, cmd: &str, args: &serde_json::Value) -> Result<s
     let s = |k: &str| args.get(k).and_then(Value::as_str).unwrap_or("").to_string();
     let b = |k: &str| args.get(k).and_then(Value::as_bool).unwrap_or(false);
     let n = |k: &str| args.get(k).and_then(Value::as_u64).unwrap_or(0) as usize;
+    // a day from the page: a real one (month 1-12, a day that month has, years 1-9999), never
+    // passed on to be worked with as it came (review claim 9c)
     let date = |k: &str| -> Result<Date, String> {
-        serde_json::from_value(args.get(k).cloned().unwrap_or(Value::Null)).map_err(|e| format!("bad date: {e}"))
+        let d: Date = serde_json::from_value(args.get(k).cloned().unwrap_or(Value::Null)).map_err(|e| format!("bad date: {e}"))?;
+        if !crate::date::valid(d) || !(1..=9999).contains(&d.0) {
+            return Err(format!("bad date: {d:?} isn't a day"));
+        }
+        Ok(d)
     };
     // commands that work without an open vault
     match cmd {
@@ -2982,7 +2988,9 @@ fn original_of(rel: &str, all: &HashMap<String, Stamp>) -> Option<String> {
 /// "Daily/X (conflict …).md" (folder kept), the likeliest first.
 fn copy_stems(rel: &str) -> Vec<String> {
     let Some(stem) = rel.strip_suffix(".md") else { return vec![] };
-    let lower = stem.to_lowercase();
+    // ASCII capitals only: the marks are ASCII, and the places found must be the stem's own (a full
+    // lowercase changes lengths: "İ" is 2 bytes, "i̇" 3; review claim 9b)
+    let lower = stem.to_ascii_lowercase();
     let mut cands = vec![];
     for mark in [" (conflict", ".sync-conflict", " (sync-conflict", "-conflict", "_conflict", " conflict"] {
         if let Some(k) = lower.rfind(mark) {
@@ -2999,7 +3007,7 @@ fn copy_stems(rel: &str) -> Vec<String> {
 
 fn conflict_copy_of(rel: &str, all: &HashMap<String, Stamp>) -> bool {
     let Some(stem) = rel.strip_suffix(".md") else { return false };
-    let lower = stem.to_lowercase();
+    let lower = stem.to_ascii_lowercase();
     if lower.contains("conflict") || lower.contains("sync-conflict") {
         return true;
     }
@@ -3063,4 +3071,37 @@ pub fn check_vault_at(root: &Path, now: u64) -> Result<CheckReport, String> {
         biggest,
         most_linked,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::copy_stems;
+
+    /// Review claim 9b: the conflict marks were found in `to_lowercase()` of the name and cut from
+    /// the name itself; a capital İ (2 bytes) lowers to 3, Kelvin's K (3) to 1, so the cut fell in
+    /// the wrong place or inside a character (a panic).
+    #[test]
+    fn conflict_copy_names_with_any_letters() {
+        assert_eq!(copy_stems("pages/İstanbul İzmir (conflict 2026-11-08).md"), vec!["pages/İstanbul İzmir"]);
+        assert_eq!(copy_stems("pages/\u{212A}\u{65E5} (conflict 2026-11-08).md"), vec!["pages/\u{212A}\u{65E5}"]);
+        assert_eq!(copy_stems("pages/İİİİx (1).md"), vec!["pages/İİİİx"]);
+        assert_eq!(copy_stems("pages/aİ (conflict x).md"), vec!["pages/aİ"]);
+        assert_eq!(copy_stems("pages/ẞig ẞ.sync-conflict-20261108.md")[0], "pages/ẞig ẞ", "the likeliest first");
+        assert_eq!(copy_stems("pages/Ünïcödé (Conflict 2026).md"), vec!["pages/Ünïcödé"], "the mark in any capitals");
+        assert_eq!(copy_stems("pages/A (CONFLICT).md"), vec!["pages/A"]);
+        // the usual ones still work, and plain pages are no copies
+        assert_eq!(copy_stems("Daily/2026_11_07 (conflict 2026-11-09-07-19-54).md"), vec!["Daily/2026_11_07"]);
+        assert_eq!(copy_stems("pages/Same (1).md"), vec!["pages/Same"]);
+        assert!(copy_stems("pages/İstanbul.md").is_empty());
+        assert!(copy_stems("pages/x (a1).md").is_empty());
+        assert!(copy_stems("pages/ (conflict).md").is_empty(), "nothing left: no page");
+        assert!(copy_stems("pages/x.txt").is_empty());
+        // every char boundary is safe, whatever comes before the mark
+        for name in ["İ", "\u{212A}", "ß", "ǅ", "ﬃ", "😀", "Σ"] {
+            for n in 1..5 {
+                let rel = format!("pages/{} (conflict 1).md", name.repeat(n));
+                assert_eq!(copy_stems(&rel), vec![format!("pages/{}", name.repeat(n))], "{rel}");
+            }
+        }
+    }
 }

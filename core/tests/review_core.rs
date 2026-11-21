@@ -89,3 +89,84 @@ fn adding_a_note_reads_the_settings_strictly() {
     assert_eq!(capture::read_config_to_add(&v).unwrap().journals_dir, "Days");
     let _ = std::fs::remove_dir_all(&v);
 }
+
+// ---------------------------------------------------------------- 9a: a template starting with an emoji
+
+#[test]
+fn a_capture_template_may_start_with_any_character() {
+    // before: `rest[1..]` cut inside the first character and panicked
+    for (t, note, want) in [
+        ("📌 {text}", "📌 hello https://a.org", Some("hello https://a.org")),
+        ("📌{text}", "📌hello", Some("hello")),
+        ("→ {text}", "→ moved", Some("moved")),
+        ("é{text}", "éa", Some("a")),
+        ("📌 {text}", "📍 other pin", None),
+        ("{time}→{text}", "10:30→hello", Some("hello")),
+        ("**{time}** [[quick capture]]: {text}", "**10:30** [[quick capture]]: hi", Some("hi")),
+        ("日本 {time} {text}", "日本 10:30 words", Some("words")),
+        ("✦", "✦", None), // (no {text}: not a capture template)
+    ] {
+        let got = std::panic::catch_unwind(|| clip::capture_rest(t, note).map(str::to_string)).unwrap_or_else(|_| panic!("{t:?} panicked"));
+        assert_eq!(got.as_deref(), want, "{t:?} on {note:?}");
+    }
+    // every template of one to three mixed characters before {text}: never a panic
+    let chars = ["a", "📌", "é", "{", "}", " ", "*", "日"];
+    for a in chars {
+        for b in chars {
+            for c in chars {
+                let t = format!("{a}{b}{c}{{text}}");
+                let note = format!("{a}{b}{c}x");
+                assert!(std::panic::catch_unwind(|| clip::capture_rest(&t, &note).is_some()).is_ok(), "{t:?}");
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- 9c: dates that aren't days
+
+#[test]
+fn a_month_outside_1_to_12_never_panics() {
+    for m in [0u32, 13, 99, u32::MAX] {
+        for d in [0u32, 1, 31, u32::MAX] {
+            assert!(std::panic::catch_unwind(|| date::weekday((2026, m, d))).is_ok(), "weekday month {m} day {d}");
+            assert!(std::panic::catch_unwind(|| date::format("EEEE, MMM do, yyyy", (2026, m, d))).is_ok(), "format month {m} day {d}");
+        }
+    }
+    for y in [i32::MIN, -1, 0, i32::MAX] {
+        assert!(std::panic::catch_unwind(|| date::weekday((y, 2, 29))).is_ok(), "year {y}");
+    }
+    assert!(!date::valid((2026, 0, 1)) && !date::valid((2026, 13, 1)) && !date::valid((2026, 2, 29)) && !date::valid((2026, 4, 31)));
+    assert!(date::valid((2024, 2, 29)) && date::valid((2026, 12, 31)));
+    // real days are still right (Nov 21, 2026 is a Saturday; Jan 1, 2000 a Saturday; Mar 1, 1900 a Thursday)
+    assert_eq!(date::weekday((2026, 11, 21)), 6);
+    assert_eq!(date::weekday((2000, 1, 1)), 6);
+    assert_eq!(date::weekday((1900, 3, 1)), 4);
+    assert_eq!(date::weekday((2024, 2, 29)), 4);
+    for days in 0..3000i64 {
+        // one day after another, the weekday goes round
+        let a = date::civil_from_days(days);
+        let b = date::civil_from_days(days + 1);
+        assert_eq!((date::weekday(a) + 1) % 7, date::weekday(b), "{a:?}");
+    }
+}
+
+#[test]
+fn commands_refuse_a_day_that_isnt_one() {
+    let v = tmp_vault("dates");
+    put(&v, "pages/A.md", "- a\n");
+    let mut st = Some(App::open(&v).unwrap());
+    use serde_json::json;
+    for bad in [json!([2026, 13, 1]), json!([2026, 0, 1]), json!([2026, 2, 30]), json!([2026, 11, 0]), json!([0, 1, 1]), json!([10000, 1, 1]), json!([2026, 4294967295u32, 1])] {
+        for (cmd, key) in [("task_done", "today"), ("journal_name", "date"), ("journals", "end"), ("template", "today"), ("start_notes", "today")] {
+            let mut args = json!({"text": "TODO x", "name": "n", "page": "A", "count": 1, "path": v.join("new").to_str().unwrap()});
+            args[key] = bad.clone();
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| app::dispatch(&mut st, cmd, args)));
+            let r = r.unwrap_or_else(|_| panic!("{cmd} {bad} panicked"));
+            assert!(r.as_ref().is_err_and(|e| e.contains("bad date")), "{cmd} {bad}: {r:?}");
+        }
+    }
+    // a real day still works
+    assert!(app::dispatch(&mut st, "journal_name", json!({"date": [2026, 11, 21]})).is_ok());
+    assert!(app::dispatch(&mut st, "task_done", json!({"text": "TODO x", "today": [2024, 2, 29]})).is_ok());
+    let _ = std::fs::remove_dir_all(&v);
+}

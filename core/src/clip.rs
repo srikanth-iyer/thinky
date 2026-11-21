@@ -590,7 +590,9 @@ fn template_rest<'a>(template: &str, note: &'a str) -> Option<&'a str> {
         } else if rest.starts_with("{url}") {
             return None;
         } else {
-            let n = rest[1..].find('{').map_or(rest.len(), |k| k + 1);
+            // (past the first character, whatever its size: a template may start with "📌"; review claim 9a)
+            let first = rest.chars().next().map_or(1, char::len_utf8);
+            let n = rest[first..].find('{').map_or(rest.len(), |k| k + first);
             let lit = &rest[..n];
             // spaces in the template stand for any spaces in the note
             let want = lit.trim_end();
