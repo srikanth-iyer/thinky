@@ -6,12 +6,18 @@
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
-cargo build -q -p outline_core
+# the library's file as cargo itself names it (a restored CI cache can leave target/debug without
+# its copy of liboutline_core.rlib while cargo counts the build as done, so that path isn't relied on)
+rlib=$(cargo build -q -p outline_core --message-format=json \
+  | grep '"name":"outline_core"' | grep -o '"filenames":\[[^]]*\]' \
+  | grep -o '[^"]*liboutline_core[^"]*\.rlib' | tail -n 1)
+[ -n "$rlib" ] && [ -f "$rlib" ] || { echo "pure_tests.sh: cargo named no liboutline_core.rlib" >&2; exit 1; }
+deps=$(dirname "$rlib")
+[ "$(basename "$deps")" = deps ] || deps="$deps/deps"
 out="${CARGO_TARGET_DIR:-$root/target}/pure-tests"
 mkdir -p "$out"
-lib="${CARGO_TARGET_DIR:-$root/target}/debug"
 for f in shell_rules ai_key; do
   rustc --edition 2021 --test "src-tauri/src/$f.rs" --crate-name "$f" -o "$out/$f" \
-    --extern outline_core="$lib/liboutline_core.rlib" -L dependency="$lib/deps"
+    --extern outline_core="$rlib" -L dependency="$deps"
   "$out/$f"
 done

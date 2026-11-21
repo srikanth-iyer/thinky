@@ -207,8 +207,9 @@ console.log('AI panels: their Esc listeners go with them');
     window.__keys = 0;
     const add = document.addEventListener.bind(document), rem = document.removeEventListener.bind(document);
     const mine = new WeakSet();
-    document.addEventListener = (t, f, o) => { if (t === 'keydown' && o === true && !mine.has(f)) { mine.add(f); window.__keys++; } return add(t, f, o); };
-    document.removeEventListener = (t, f, o) => { if (t === 'keydown' && o === true && mine.has(f)) { mine.delete(f); window.__keys--; } return rem(t, f, o); };
+    window.__held = new Set(); // (the listeners themselves, so one panel's can be asked about by name)
+    document.addEventListener = (t, f, o) => { if (t === 'keydown' && o === true && !mine.has(f)) { mine.add(f); window.__held.add(f); window.__keys++; } return add(t, f, o); };
+    document.removeEventListener = (t, f, o) => { if (t === 'keydown' && o === true && mine.has(f)) { mine.delete(f); window.__held.delete(f); window.__keys--; } return rem(t, f, o); };
   });
   for (let k = 0; k < 3; k++) {
     await page.click('.title-row [data-a="more"]');
@@ -223,10 +224,14 @@ console.log('AI panels: their Esc listeners go with them');
   // a polish closed by the page being drawn again: its listener goes at the next key
   await page.evaluate(async () => { const o = window.leanApp.outlines.find((x) => x.name === 'Review'); const n = o.blocks.findIndex((b) => b.text.startsWith('polish me')); await (await import('/polish.js')).startPolish(o, n); });
   await page.waitForSelector('.pz-bar', { timeout: 8000 });
-  check(await count() === 1, 'a polish open: one listener');
+  // (the polish's own listener, asked about by name: other parts of the page may hold one of
+  // their own just then, as they did on GitHub's runner, which a plain count would take for it)
+  const held = () => page.evaluate(() => window.__held.has(window.__pzEsc));
+  await page.evaluate(() => { window.__pzEsc = window.leanApp.outlines.find((x) => x.name === 'Review').pz?.esc; });
+  check(await held(), 'a polish open: its listener is held', await count());
   await page.evaluate(() => { const o = window.leanApp.outlines.find((x) => x.name === 'Review'); o.pz?.box.remove(); });
   await page.keyboard.press('Shift');
-  check(await count() === 0, 'its note drawn again without it: the listener goes', await count());
+  check(!(await held()), 'its note drawn again without it: the listener goes', await count());
 }
 
 console.log('the medium rows: saves, rescans, calendar, popups');
