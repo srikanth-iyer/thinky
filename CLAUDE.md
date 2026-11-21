@@ -1611,7 +1611,9 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
   on Windows opening one connects there and offers the user's sign-in); served with
   `Content-Security-Policy: sandbox; default-src 'none'…` and `nosniff`, so an SVG or HTML file
   synced into assets/ never runs. render.js/api.js `assetUrl` refuse such addresses too, and web
-  pictures load with `referrerpolicy="no-referrer"`. (tests/features.rs, t18_security)
+  pictures load with `referrerpolicy="no-referrer"`. "Check this folder"'s missing files and "Show attachments"
+  take only names `pictures::asset_links` gives: read (`%2e`, `%5C`, `%3A`) first, then any `..`, `\`, `:` or NUL
+  refused, and looked up only through `asset_file` (review claim 4). (tests/features.rs, tests/pictures.rs, t18_security)
 - Drawing notes: a note that makes a drawing rule throw shows as its plain words (`renderBlock`'s
   catch); math.js looks names up with `Object.hasOwn` (no `\constructor`). (t18_security)
 - config.edn: `:pages-directory`/`:journals-directory` only folders inside the notes folder

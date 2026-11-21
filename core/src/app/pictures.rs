@@ -187,18 +187,18 @@ impl App {
     /// (`asset_links`, the same rule as "Show attachments on this page"); a `#` or `?` after the name
     /// is tried off when the full name isn't there.
     pub fn missing_pictures(&self) -> Vec<(String, String)> {
-        let assets = self.root.join("assets");
         let mut out: Vec<(String, String)> = vec![];
         let mut seen: HashSet<(String, String)> = HashSet::new();
         let mut there: HashMap<String, bool> = HashMap::new();
         for (rel, text) in &self.contents {
             for file in asset_links(text) {
                 // the file itself, or without a "#page=2" / "?v=1" ending a link may carry
+                // (through `asset_file`: plain names inside the notes folder only, checked before the
+                // disk is touched)
                 let ok = *there.entry(file.clone()).or_insert_with(|| {
                     let bare = |c: char| file.find(c).map(|k| file[..k].to_string());
-                    assets.join(&file).exists()
-                        || bare('#').is_some_and(|f| assets.join(f).exists())
-                        || bare('?').is_some_and(|f| assets.join(f).exists())
+                    let is = |f: &str| super::asset_file(&self.root, &format!("assets/{f}")).is_some();
+                    is(&file) || bare('#').is_some_and(|f| is(&f)) || bare('?').is_some_and(|f| is(&f))
                 });
                 if !ok {
                     let page = self.vault.title_from_path(rel).0;
@@ -513,10 +513,17 @@ fn decode(s: &str) -> String {
     String::from_utf8(out).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
 
+/// A name `asset_links` may give: parts of a path inside `assets/` only (review claim 4): no "..",
+/// no `\\` (a Windows share address, `\\\\server\\share`, connects there and offers the user's
+/// sign-in), no `:` (a drive, or a Windows stream), no NUL, not starting with `/`.
+fn plain_asset_name(f: &str) -> bool {
+    !f.contains("..") && !f.contains(['\\', ':', '\0']) && !f.starts_with('/')
+}
+
 /// The files in `assets/` a text links to (Build 48: "Check this folder"'s missing files and "Show
 /// attachments on this page" share it), in order, each once, `%20`-style escapes read: links written
 /// as `…/assets/<name>` (Logseq's `../assets/`, any depth). Not web addresses, not inside code spans,
-/// not names with "..". Where a link ends depends on what opened it (Build 37), so names with
+/// not names with "..", `\\`, `:` or NUL after the escapes are read (`plain_asset_name`). Where a link ends depends on what opened it (Build 37), so names with
 /// brackets, apostrophes or "#" ("Book (2003).pdf", "You'll.epub", "notes #1.pdf") aren't cut short.
 pub fn asset_links(text: &str) -> Vec<String> {
     /// Where a link to a file ends, given the character just before "../assets/": `(` (a Markdown
@@ -562,10 +569,14 @@ pub fn asset_links(text: &str) -> Vec<String> {
             let end = link_end(after, opener);
             let name = after[..end].trim();
             rest = &after[end..];
-            if web || name.is_empty() || name.contains("..") {
+            if web || name.is_empty() {
                 continue;
             }
+            // (read first, then checked: "%2e%2e" is "..", "%5C%5Cserver" a Windows share address)
             let file = crate::vault::percent_decode_pub(name);
+            if !plain_asset_name(&file) {
+                continue;
+            }
             if !out.contains(&file) {
                 out.push(file);
             }
