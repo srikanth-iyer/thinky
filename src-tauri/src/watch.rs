@@ -410,7 +410,7 @@ mod platform {
         fn forget_tree(&mut self, dir: &Path) {
             let gone: Vec<i32> = self.paths.iter().filter(|(_, p)| p.starts_with(dir)).map(|(&wd, _)| wd).collect();
             for wd in gone {
-                unsafe { libc::inotify_rm_watch(self.fd, wd) };
+                unsafe { libc::inotify_rm_watch(self.fd, wd as _) }; // (`wd as _`: the watch id is an i32 in Linux's libc, a u32 in Android's)
                 self.paths.remove(&wd);
             }
         }
