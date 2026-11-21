@@ -63,7 +63,7 @@ There is a single executable, `lean-outliner.exe`. What it does depends on how i
 | `--hotkey-selftest <dir>`, `--capture-box-selftest <dir>` | CI only. **Never run on your own computer** (they press keys / use the clipboard). | — | `hotkey/selftest.rs`, `capture_box/selftest.rs` |
 | *(no arguments)* | The **main app** window. | Yes (WebView2) | `src-tauri/src/lib.rs` + `ui/` |
 
-On Android there is one app (the APK) plus Kotlin extras (section 4). The Google Play version (`thinky-play.aab`, Build 42) is the same app built with `THINKY_PLAY=1`: no one-click updates (Play updates it), `LeanAndroid.fromPlay()` true.
+On Android there is one app (the APK) plus Kotlin extras (section 4). The Google Play version (`thinky-play.aab`, Build 42) is the same app built with `THINKY_PLAY=1`: no one-click updates (Play updates it; the updater's code, permission and receiver are left out of the bundle by `android_overlay.py`), `LeanAndroid.fromPlay()` true.
 
 ---
 
@@ -76,7 +76,7 @@ On Android there is one app (the APK) plus Kotlin extras (section 4). The Google
 | **Shortcut-key helper** `lean-outliner.exe --hotkey` | From Windows start-up while a key is set (installed copy only; exits at once if `hotkey.txt` is empty) | Hidden message-only window, class `LeanOutlinerHotkey`, title `Lean Outliner shortcut key: <key>` (or `… (starting)`) | Windows' own shortcut-key way took ~3 s; this answers in ~0.1 s. Uses 52 KB RAM, no CPU, no polling. |
 | **Start-up threads** (inside the main app, every start: `lib.rs` `setup`; Windows only) | Once per start | — | `hotkey::at_start` (installed copy only) checks and **repairs** the helper: may start one, rewrite the Run value, write `hotkey.txt`, delete the old `.lnk`. `update::tidy` clears an old download. `win::register_link_handler` points `leanoutliner://` at *this* exe. |
 | **Link listener** (inside the main app) | While the main window is open | Hidden window class `LeanOutlinerLinks`, title "Lean Outliner links" | Lets a clicked `leanoutliner://page/…` link reach the open app instead of opening a second one. |
-| **File watcher** (a thread inside the main app) | While a vault is open | — | Notices `.md` changes in `pages/` and `journals/` (sync apps, the phone, other tools) within ~400 ms and tells the page (`lean-files` event → `rescan`). Windows change notifications / inotify on Android; dot-files ignored. The page *also* rescans when the window regains focus or becomes visible (and polls every 30 s under the dev server). |
+| **File watcher** (a thread inside the main app) | While a vault is open | — | Notices `.md` changes in `pages/` and `journals/` (sync apps, the phone, other tools) within ~400 ms and tells the page (`lean-files` event → `rescan`). Windows change notifications / inotify on Android (folders inside, and ones made or moved in later, too); dot-files ignored. A watch replaced by a newer one (another vault, reloaded settings) ends within about a second. The page *also* rescans when the window regains focus or becomes visible (and polls every 30 s under the dev server). |
 | **Safety-copy thread** (inside the main app) | Once, in the background after a vault opens | — | Copies recently changed notes into `logseq/.safety-<device>/` inside the notes folder (falls back to the app's data folder only when the notes folder can't be written; CLAUDE.md "app/safety.rs"). |
 | **Close guard thread** | When the window is closing | — | Gives the page 5 s to save (`lean-close`), then saves the index cache (if the app's lock is free within a second) and exits anyway. The main window never closes by itself: a second click on × while it saves is ignored (`shell_rules::close_step`). |
 | **AI requests** (Build 51, optional: only once Settings → AI is set up) | Only when the person presses one of the AI features (Polish note, Picture to text, Ask about this page, Suggest links, Suggest aliases and a description), Test, or opens Settings → AI with a key saved. **Never on a timer or by itself.** | `ai_send`: one Windows curl.exe process per request (no console window), gone when it answers; Android: one thread in MainActivity | Sends what that one feature needs (a note with nearby page names and tags in use; a picture; or one page with the notes that link to it) to the AI service the person chose, with their key (Credential Manager / Keystore). |
@@ -181,7 +181,9 @@ paths). Other localStorage keys: `tabs`, `updateCheck`, `skin`, `sideW`, `splitA
 | `MainActivity.kt` | Window insets, all-files permission, the **`window.LeanAndroid` bridge** (widget config/colours/tasks, bar colours, print, keyboard, shortcuts, updates), app-icon shortcuts, `leanoutliner://` links |
 | `kotlin/JournalWidget.kt` | Today's-journal widget (notes drawn with their formatting, to-do boxes and small pictures, `Journal.row`), the round "+" widget, and `Journal` (reads today's journal for the widget; the pop-up adds notes through the app's own Rust code, `LeanCore.kt` → `src-tauri/src/android_capture.rs`) |
 | `kotlin/QuickCaptureActivity.kt` | The "Add to journal" pop-up (widgets' "+", share sheet, tile) |
-| `kotlin/AiKeys.kt` | The AI services' keys, sealed by a Keystore key of the app's own, and sending an AI request (https only; Build 51) |
+| `kotlin/AiKeys.kt` | The AI services' keys, sealed by a Keystore key of the app's own, and sending an AI request (https only; Build 51); a key goes only to its own service's address (for "Other", the address saved with it) |
+| `kotlin/SelectionCaptureActivity.kt` | "Add to thinky" over selected text in other apps (PROCESS_TEXT only; ≤ 20,000 characters, ≤ 10 a minute) |
+| `kotlin/Checks.kt` | The rules above with no Android in them (where a key may go, picture sizes, front matter, selection limits), tested on a plain JVM: `android/test/run.sh`; `android/test/overlay_test.py` tests the overlay |
 | `kotlin/AddNoteTile.kt` | Quick Settings tile |
 | `res/` | Widget layouts and info XML, drawables, the pop-up's layout |
 | `release.keystore` | Not in the repo: the signing key is the `ANDROID_KEYSTORE_B64` secret (locked; never replace) |
@@ -190,8 +192,8 @@ Android footprint (put in place by `scripts/android_overlay.py`): permissions MA
 READ/WRITE_EXTERNAL_STORAGE, INTERNET, VIBRATE, REQUEST_INSTALL_PACKAGES; components JournalWidget,
 JournalWidgetService, QuickAddWidget, QuickCaptureActivity, AddNoteTile, UpdateReceiver (class in
 `MainActivity.kt`); a SEND filter (text/plain, image/*) for the share sheet and a VIEW filter for
-`leanoutliner://`; EmojiCompat's start-up removed. SharedPreferences `lean_widget` (vault, folders,
-formats, capture settings, tasks, colours, bar colours); `cacheDir/update-apk`; app-icon shortcuts
+`leanoutliner://`; `allowBackup="false"` (no Android backup of the app's settings or sealed keys); EmojiCompat's start-up removed. SharedPreferences `lean_widget` (vault, folders,
+formats, capture settings, tasks, colours, bar colours, the times of the last "Add to thinky" selections); `lean_update` (the update being installed, for 30 minutes, APK only); `cacheDir/update-apk`; app-icon shortcuts
 re-published at each start.
 
 ### `scripts/` and `ci/`

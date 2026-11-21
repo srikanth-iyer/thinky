@@ -13,9 +13,12 @@ Run from the repo root after init. Idempotent. Touches only src-tauri/gen/androi
   splash (the app's start-up drawing comes right after it), so nothing dark flashes first
 
 THINKY_PLAY=1: the Google Play version (an .aab for the Play Store). Play apps may update only through
-Play, so it has no one-click updates: no permission to install apps, no UpdateReceiver, no
-`LeanAndroid.update`/`installUpdate`, and `LeanAndroid.fromPlay()` is true (the page then doesn't
-check GitHub for updates). Run again without it to go back to the downloadable APK's shape.
+Play, so it has no one-click updates: no permission to install apps, no UpdateReceiver, and none of
+the updater's code at all (the parts of MainActivity.kt between its "updater" and "end of the
+updater" lines, the bridge's update/installUpdate/testInstallSelf and the UpdateReceiver class are
+left out, so no download address or installer call is in the Play bundle's code: build.yml checks
+its dex), and `LeanAndroid.fromPlay()` is true (the page then doesn't check GitHub for updates).
+Run again without it to go back to the downloadable APK's shape.
 """
 import glob, os, re, shutil, sys
 
@@ -38,12 +41,32 @@ body = re.sub(r"^import\s+[\w.]+\s*\n", "", body, flags=re.M).lstrip()
 edge = "enableEdgeToEdge()" if "enableEdgeToEdge" in gen_src else ""
 body = body.replace("__EDGE__", edge)
 body = body.replace("__PLAY__", "true" if PLAY else "false")
+# the updater's parts of MainActivity.kt, each from its first line to its last (or to the file's end)
+UPDATER = [("  // ---- updater (left out of the Play version", "  // ---- end of the updater\n"),
+           ("    // ---- updater bridge (left out of the Play version", "    // ---- end of the updater bridge\n"),
+           ("// ---- UpdateReceiver (left out of the Play version", None)]
+
+
+def without_updater(src):
+    """MainActivity's code with the updater's parts left out (the Google Play version)."""
+    for start, end in UPDATER:
+        if src.count(start) != 1 or (end is not None and src.count(end) != 1):
+            sys.exit(f"MainActivity.kt should have one {start.strip()!r} part to leave out of the Play version")
+        i = src.index(start)
+        j = len(src) if end is None else src.index(end, i) + len(end)
+        src = src[:i] + src[j:]
+    # nothing of the updater may be left behind (build.yml checks the bundle's dex for the same)
+    for word in ("startUpdate", "installUpdate", "downloadUpdate", "UpdateReceiver", "releases/download",
+                 "PackageInstaller", "testInstallSelf", "REQUEST_INSTALL_PACKAGES"):
+        if word in src:
+            sys.exit(f"the Play version's MainActivity.kt still has {word!r}")
+    return src
+
+
 if PLAY:
-    for line in ("    @JavascriptInterface fun update(tag: String) { this@MainActivity.startUpdate(tag) }\n",
-                 "    @JavascriptInterface fun installUpdate() { this@MainActivity.installUpdate() }\n"):
-        if line not in body:
-            sys.exit(f"MainActivity.kt has no line {line.strip()!r} to leave out of the Play version")
-        body = body.replace(line, "")
+    body = without_updater(body)
+if PLAY:  # (the updater's imports go with it: only those the code still names)
+    our_imports = [i for i in our_imports if re.search(r"\b" + re.escape(i.rsplit(".", 1)[1]) + r"\b", body)]
 imports = sorted(set(gen_imports) | set(our_imports))
 open(acts[0], "w").write(f"package {pkg}\n\n" + "\n".join(imports) + "\n\n" + body)
 print("MainActivity ->", acts[0], "package", pkg)
@@ -116,8 +139,10 @@ COMPONENTS = """
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/quick_add_widget_info" />
         </receiver>
+        <!-- (turning the phone keeps the pop-up as it is: what's typed, a note being added) -->
         <activity android:name=".QuickCaptureActivity" android:exported="true" android:label="Add to journal"
             android:theme="@style/Theme.AppCompat.DayNight.Dialog" android:excludeFromRecents="true" android:taskAffinity=""
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation"
             android:windowSoftInputMode="stateVisible|adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -172,6 +197,13 @@ if 'android:scheme="leanoutliner"' not in man:
         man = man[:i] + LINKS + man[i:]
 if "requestLegacyExternalStorage" not in man:
     man = man.replace("<application", '<application android:requestLegacyExternalStorage="true"', 1)
+# no Android backup of the app's own settings to the cloud (or a new phone): they hold the notes
+# folder's place, the widget's settings and the AI keys' sealed bytes (whose Keystore key never leaves
+# this phone anyway); the notes themselves are in the notes folder, which has its own backups
+if "android:allowBackup" in man:
+    man = re.sub(r'android:allowBackup="[^"]*"', 'android:allowBackup="false"', man)
+else:
+    man = man.replace("<application", '<application android:allowBackup="false"', 1)
 if PLAY and (INSTALL in man or ".UpdateReceiver" in man):
     sys.exit("the Play version's manifest still asks to install apps")
 open(man_path, "w").write(man)

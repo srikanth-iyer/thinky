@@ -208,9 +208,12 @@ out; `backup_now_at(root, …)` runs without the App (A2: the shell can let the 
 warning; `find_in_backup`/`restore_from_backup` with create_new), dispatch `backup_now`/`backup_find`/
 `backup_restore`; UI `App.backupNow`/`backupIfDue` (hourly check, day/week, localStorage `backup` per device),
 Settings → Notes `backupCard` (not on Android), Missing pictures' "Found in your backup: restore". Its Choose… (`folderPicker` mode 'choose'; since Build 50, he asked Nov 18): with the GitHub kind a git clone that looks like a notes folder (a copy of the notes, so it has `pages`) can be used unless it is the open notes folder (`app.summary.root`) or inside a notes folder; a notes folder with no `.git`, and with the zip kind any notes folder, stay refused. Tested by t30_build50 (Build 50, 0.5.11). Android:
-`SelectionCaptureActivity.kt` (PROCESS_TEXT, translucent, finishes at once; `LeanCore.addSelected` →
-android_capture.rs `plain` → `clip::defuse` → `capture_to_usual`), manifest entry in android_overlay.py,
-android_test.sh step 5b. Missing pictures: pictures.rs `link_end` ends a link by what opened it (a Markdown
+`SelectionCaptureActivity.kt` (PROCESS_TEXT, translucent, closes once the words are written; `LeanCore.addSelected` →
+android_capture.rs `plain` → `clip::guard(clip::defuse(…))` → `capture_to_usual`), manifest entry in android_overlay.py,
+android_test.sh step 5b. Since the outside review (claims 11a–c): only an `ACTION_PROCESS_TEXT` start counts (other
+apps can start it too), at most `Checks.SELECTED_MAX` = 20,000 characters (android_capture.rs `SELECTED_MAX` refuses
+more as well) and `SELECTED_PER_WINDOW` = 10 a minute (`allowedNow`, kept in `lean_widget` as `selected_times`);
+LeanCore calls the core one at a time (`oneAtATime`), so a quick run of selections loses none; step 5d. Missing pictures: pictures.rs `link_end` ends a link by what opened it (a Markdown
 `(…)` at its own closing bracket, quotes, `<…>`, `[…]`), `#…`/`?…` tried off when the full name isn't there.
 Build 38 (the maintainer's notes of Nov 7; tested by t22_build38, core tests/pages.rs
 `pages_under_a_page_and_its_alias`): a page's end has no line in the looks without cards (`--sheet-page-end: 0`
@@ -349,7 +352,10 @@ Build 42 (0.5.3; he said go, Nov 10; tested by t13_update "the Google Play versi
 `android` job builds the APK, then runs android_overlay.py again with `THINKY_PLAY=1` and builds `thinky-play.aab`
 (Play takes bundles): no REQUEST_INSTALL_PACKAGES, no UpdateReceiver, no `LeanAndroid.update`/`installUpdate` (Play apps
 may update only through Play), `LeanAndroid.fromPlay()` true → app.js `checkUpdate` asks GitHub nothing and About says
-"Updates come from Google Play" (`play` stage). `sign` signs the bundle with jarsigner and the same release key (Play's
+"Updates come from Google Play" (`play` stage). Since the outside review (claim 10a) the updater's code isn't in the Play
+bundle at all: android_overlay.py `without_updater` cuts MainActivity.kt between its `// ---- updater…` / `// ---- end of
+the updater…` markers (and the UpdateReceiver to the end of the file), drops imports no longer used and sets
+`const val PLAY` (`__PLAY__`); android/test/overlay_test.py checks both shapes. `sign` signs the bundle with jarsigner and the same release key (Play's
 upload key; its certificate must equal the APK's; its manifest checked for the install permission); `sign-wip` with the
 throw-away key; `release` publishes it with the others (7 files, 10 with the old names). Play App Signing reuses the
 release key (he chose it, Nov 10): `.github/workflows/play-key.yml` (run by hand on main, environment `release`) exports
@@ -576,6 +582,11 @@ after the last entry's comment; `set_path` uses the file's line end and a new li
 `own_config_written(text)`: the stamp is taken only when memory equals the file, else the next rescan takes the outside
 change (set_shortcut, favourites, reorder, edit_config, merge undo). src-tauri watch.rs `start(root, dirs, config, …)`:
 the `logseq` folder watched on its own, not recursively, `is_config` (Windows: subtree 0; Linux/Android: its own wd).
+Since the outside review (claim 13) a replaced watch (`GEN`) ends within `WAKE_MS` (1 s) and closes its descriptor or
+handle: Linux/Android inotify is IN_NONBLOCK and waited on with poll(), EINTR tried again, `Watches.paths` (wd → folder)
+follows folders made or moved in at any depth and forgets ones moved out, a queue overflow watches everything again;
+Windows reads are overlapped (`finish`: wait, CancelIoEx when stale) and a folder that fails is opened again after
+`backoff` (1 s … 30 s). Tests in watch.rs (`cargo test` on Linux, live inotify).
 attach.js: `again(o)` (from `paint` and `markDirty`, 400 ms) asks `asset_links` again for an outline whose words changed
 and recounts (current hit kept), tips set with `data-att-tip` and removed; app.css `#attbar` 76px up on phones, 53px with
 `html.tb-on` (set by `updateToolbar`). The page ⋯ menu: `menu()` items' `icon` (`.m-icon`, `.m-ic`, 17px, `--icon-ink`;
@@ -614,8 +625,11 @@ curl's input (`--config -`, `-q` first), so the key is never on a command line; 
 than 10 minutes; curl that can't take its settings is killed and waited for); the address and whether it is local come
 from `check_base` itself, never the page's `req.local`; `globoff` (no `{a,b}`/`[1-9]` lists); `proto =https` (or
 `=http,https` for a local one), 120 s, 8 MB, `write-out` the status.
-Android: `LeanAndroid.aiKeySet/aiKeyHas/aiSend(id, provider, req)` (a thread; the answer as a `lean-ai` DOM event, its
-detail a JSON string); https only there (http to a home network would need Android's cleartext allowance for the whole
+Android: `LeanAndroid.aiKeySet/aiKeySetFor(provider, key, base)/aiKeyHas/aiSend(id, provider, req)` (two helper threads,
+`AI_THREADS`; the answer as a `lean-ai` DOM event, its detail a JSON string). Since the outside review (claim 1) the key
+goes only to its own service's address (`Checks.keyMayGo`, as core `ai::key_may_go`: the fixed base + "/", for "Other"
+the https address kept with its key as `other_base`, which `aiKeySetFor` requires), in the header the service takes
+(`Checks.keyHeader`, as `ai::key_header`; a page's Authorization / x-api-key headers are dropped), answers ≤ 8 MB; https only there (http to a home network would need Android's cleartext allowance for the whole
 app). No new library: the app doesn't grow (his choice: "no new library", the same way updates go).
 Polish note: `POLISH_RULES` are fixed (he decided: built in, tested, never breakable; Settings → AI → Advanced's "Your
 own wishes for Polish note" are added after them, ≤2,000 characters, empty = the default). `polish_question`: today
@@ -1528,6 +1542,9 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   `POST /api/<cmd>` → same `dispatch`, `/vault/<path>` files. `cargo run -p devserver -- <vault> [port]`.
 - `android/MainActivity.kt` + `scripts/android_overlay.py`: applied after `tauri android init` in CI
   (insets, All-files-access permission, `window.LeanAndroid` JS bridge). `src-tauri/gen/` is not committed.
+  `android/kotlin/Checks.kt`: the Android code's rules with no Android in them (where a key may go, picture sizes,
+  front matter, selection limits…), tested on a plain JVM by `bash android/test/run.sh` (ChecksTest.kt);
+  `python3 android/test/overlay_test.py` runs the overlay on a stand-in tree (APK and Play). Both run in android-test.yml.
 
 ## File shapes in real notes folders (all must round-trip byte-for-byte; see tests/doc.rs, tests/fuzz.rs)
 Logseq `- ` bullets (tabs), Obsidian `* ` bullets, plain paragraphs before any bullet (one block each;
@@ -1658,7 +1675,9 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
 - Windows file names: Windows' reserved names include COM¹–³, LPT¹–³, CONIN$, CONOUT$ and any of them
   before a dot (`file_stem_for`, `start.rs`).
 - Android's share pop-up opens only `content://` pictures from another app's provider
-  (`QuickCaptureActivity.sharedPicture`; android_test.sh step 6 checks a file:// share is refused).
+  (`QuickCaptureActivity.sharedPicture`; android_test.sh step 6 checks a file:// share is refused): never an
+  authority with an `@` (`Checks.otherAppsAuthority`, claim 15), looked up off the main thread, the preview read
+  with a byte cap (`Checks.readAtMost`, `PREVIEW_MAX`), never trusting the size the other app gives.
 - The dev server answers only requests addressed to 127.0.0.1/localhost on its own port (`Host`; a
   web page renaming itself to 127.0.0.1, "DNS rebinding", is refused), and its API only by POST from
   its own page. It still serves whatever notes folder it is given: never point it at a real one.
@@ -1833,7 +1852,9 @@ a ((reference)) "…"; he asked for the app's graphics too (Nov 12): each row (`
 `item_mark` + `item_text` + `item_pic`) has its to-do box as a drawing (`Journal.drawn` → `box`;
 drawable/widget_box_open|done|cancel, the dot widget_dot, white and tinted by `setColorFilter`: open and
 cancelled in the faint colour, ticked in the accent with the tick cut out) and the note's first picture in
-assets/ as a small copy (`Journal.thumb`: ≤160×72 dp, sampled while decoding, EXIF-turned; `assetName`: a
+assets/ as a small copy (`Journal.thumb`: ≤160×72 dp and ≤ `Checks.THUMB_PIXELS` = 100,000 pixels, sampled while
+decoding until both sides fit (`Checks.sampleSize`: a tall screenshot too), JPEGs as RGB_565, EXIF-turned; `row` sets all
+three views' visibility every time, as rows are reused; `assetName`: a
 plain name right in assets/ only, as app::asset_file; web pictures keep their name), at most `THUMBS` = 6 in
 the list (Android allows a widget's pictures about one screenful of memory); formulas stay their TeX: the home
 screen draws widgets from text, pictures and lists only (RemoteViews); checked by android_test.sh 7c,
@@ -1882,8 +1903,9 @@ called at the end of `start()`, or from `onNewIntent` via evaluateJavascript); `
 brings up the keyboard for the search box (WebView focus() alone doesn't without a tap).
 One-click update: `LeanAndroid.update(tag)` (Android 8+: first opens "Install unknown apps" for the app
 and carries on in `onResume` once allowed) downloads build N's `LeanOutliner.apk` into
-`<cache>/update-apk`, checks it's this package with a higher versionCode and (Android 9+,
-`signedLikeThisApp`) the same signing certificate, reports `lean-update` events (permission, download %,
+`<cache>/update-apk`, checks it's this package with a higher versionCode and (`signedLikeThisApp`, failing closed
+since the outside review's claim 12: Android 9+ every signer of the download among this app's, below 9 the same
+signatures; anything unreadable is a no) the same signing certificate, reports `lean-update` events (permission, download %,
 check, ready, install, confirm, done, error) to the page; the page saves, then `installUpdate()` abandons
 this app's earlier sessions (`mySessions`) and writes a PackageInstaller session; `UpdateReceiver` (not
 exported) starts Android's "Update this app?" box and reports its answer. Android itself refuses an APK
