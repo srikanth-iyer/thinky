@@ -3362,9 +3362,13 @@ class App {
    *  pop-up, not the app). MainActivity keeps the one picked until the page takes it: at the end of
    *  start(), or straight away (from onNewIntent) when the app was already open. */
   async openShortcut() {
-    // still starting, or no notes folder open yet: the shortcut stays with MainActivity until it is
-    // (start() asks, and again once the folder opens: reopen)
-    if (!this.started || !this.vaultOpen) return;
+    if (!this.started) return; // still starting: start() asks once the notes are open
+    if (!this.vaultOpen) {
+      // a folder chosen but not open yet (waiting for access): the shortcut stays with MainActivity
+      // until it is (reopen asks again); none chosen yet: the welcome screen, the shortcut used up
+      if (!store.get('vault', '')) window.LeanAndroid?.takeShortcut?.();
+      return;
+    }
     const kind = window.LeanAndroid?.takeShortcut?.();
     if (!kind) return;
     if (/^leanoutliner:/i.test(kind)) { this.openLink(kind); return; } // (a page or note link)

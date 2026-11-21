@@ -338,7 +338,7 @@ console.log('Android: a video opens outside the app; no Ollama; shortcuts wait f
   check(toast.includes('by: claude') && await p.locator('textarea.ed').count() === 0, 'a tap on a property’s icon says what it is (and doesn’t start editing)', toast);
   // shortcuts: none taken while no folder is open
   const taken = await p.evaluate(async () => { const a = window.leanApp; const was = a.vaultOpen; const n0 = window.__taken; a.vaultOpen = false; await a.openShortcut(); const closed = window.__taken - n0; a.vaultOpen = was; await a.openShortcut(); return [closed, window.__taken - n0]; });
-  check(taken[0] === 0 && taken[1] === 1, 'a shortcut is left with Android until a folder is open, then taken', JSON.stringify(taken));
+  check(taken[0] === 0 && taken[1] === 1, 'a folder chosen but not open yet: the shortcut is left with Android until it is, then taken (none chosen: t10_shortcuts)', JSON.stringify(taken));
   // Settings → AI: no program "on this computer" on the phone
   await go(p, '#/settings/ai');
   await p.waitForSelector('.ai-card');
