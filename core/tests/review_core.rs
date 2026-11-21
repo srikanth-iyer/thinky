@@ -343,3 +343,66 @@ fn folder_settings_are_written_like_a_note() {
     assert_eq!(k.get(), 3);
     let _ = std::fs::remove_dir_all(&v);
 }
+
+// ---- text::unlink_unknown: links inside links ----
+
+#[test]
+fn a_link_inside_a_link_never_survives_unlinking() {
+    use outline_core::text::unlink_unknown;
+    let known = |n: &str| n == "Known";
+    // bad input: an unknown name wrapped in extra brackets, at any depth
+    for t in ["[[[[Invented]]]]", "[[[[[[Invented]]]]]]", "#[[[[Invented]]]]", "see [[[[Invented]]]] now"] {
+        let (out, gone) = unlink_unknown(t, &known);
+        assert!(!out.contains("[["), "{t:?} left a link: {out:?}");
+        assert!(out.contains("Invented"), "{t:?} lost the words: {out:?}");
+        assert_eq!(gone, vec!["Invented".to_string()], "{t:?}");
+    }
+    // normal case: one layer, known and unknown side by side
+    let (out, gone) = unlink_unknown("[[Known]] and [[Other]] and #tag", &known);
+    assert_eq!(out, "[[Known]] and Other and tag");
+    assert_eq!(gone, vec!["Other".to_string(), "tag".to_string()]);
+    // a known name in extra brackets keeps one live link, and nothing is reported gone
+    let (out, gone) = unlink_unknown("[[[[Known]]]]", &known);
+    assert_eq!(out, "[[Known]]");
+    assert!(gone.is_empty(), "{gone:?}");
+    // code and addresses stay as written; nothing to do gives the text back
+    for t in ["`[[[[Invented]]]]`", "plain words", "", "https://x.org/[[a]]"] {
+        assert_eq!(unlink_unknown(t, &known).0, t);
+    }
+    // the same unknown name twice is named once
+    let (_, gone) = unlink_unknown("[[A]] [[A]]\n[[[[A]]]]", &known);
+    assert_eq!(gone, vec!["A".to_string()]);
+}
+
+// ---- task::next_repeat: huge repeaters ----
+
+#[test]
+fn a_huge_repeat_never_overflows() {
+    use outline_core::task::{complete, next_repeat, When};
+    let w = |r: &str| When { date: (2026, 1, 31), time: None, repeat: Some(r.into()) };
+    let today = (2026, 3, 1);
+    // bad input: steps far past the calendar are not repeats (and never panic)
+    for r in [
+        "+9223372036854775807d", "+999999999999999y", "+3000000000000000w", "++9223372036854775807m",
+        ".+9223372036854775807d", "+99999999999999999999d", "+3660001d", "+523001w", "+120001m", "+10001y",
+        "+9000y", "++8000y", "+0d", "+-1d", "+d", "+1x", "+", "",
+    ] {
+        assert_eq!(next_repeat(&w(r), today), None, "{r:?}");
+    }
+    // normal cases stay as they were
+    assert_eq!(next_repeat(&w("+1d"), today), Some((2026, 2, 1)));
+    assert_eq!(next_repeat(&w("++1w"), today), Some((2026, 3, 7)));
+    assert_eq!(next_repeat(&w(".+2d"), today), Some((2026, 3, 3)));
+    assert_eq!(next_repeat(&w("+1m"), today), Some((2026, 2, 28)));
+    assert_eq!(next_repeat(&w("+1y"), today), Some((2027, 1, 31)));
+    assert_eq!(next_repeat(&w("+3h"), today), Some((2026, 1, 31)));
+    // edges: the longest steps allowed still work while they stay within year 9999
+    assert_eq!(next_repeat(&w("+7000y"), today), Some((9026, 1, 31)));
+    assert_eq!(next_repeat(&w("++5000y"), today), Some((7026, 1, 31)));
+    assert_eq!(next_repeat(&w("+10000y"), today), None);
+    assert!(next_repeat(&w("+2000000d"), today).is_some());
+    assert_eq!(next_repeat(&w("+3660000d"), today), None);
+    // and a repeating task with a huge repeater is left as written instead of panicking
+    let t = "TODO x\nSCHEDULED: <2026-01-31 Sat +9223372036854775807d>";
+    assert_eq!(complete(t, today), t);
+}
