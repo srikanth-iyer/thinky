@@ -19,7 +19,7 @@ function targetAt(app, x, y) {
   const el = document.elementFromPoint(x, y);
   if (!el) return null;
   const ok = (o) => o && !o.readonly && !o.preview && !o.conflict && !o.locked;
-  const blk = el.closest('.blk');
+  const blk = /** @type {HTMLElement} */ (el.closest('.blk'));
   const o = blk && app.outlines.find((x) => x.el.contains(blk));
   if (ok(o)) return { o, i: +blk.dataset.i, blk };
   const sheet = el.closest('.sheet');

@@ -54,7 +54,7 @@ export async function keyHas(provider) {
 const waiting = new Map(); // (Android: request id → its promise's resolve)
 if (isAndroid) {
   document.addEventListener('lean-ai', (e) => {
-    let d = e.detail;
+    let d = /** @type {CustomEvent} */ (e).detail;
     try { if (typeof d === 'string') d = JSON.parse(d); } catch { return; }
     const done = waiting.get(d.id);
     if (done) { waiting.delete(d.id); done(d); }

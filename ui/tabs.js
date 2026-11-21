@@ -49,6 +49,9 @@ export function parsePlace(place) {
   return { kind, arg: rest.length ? dec(rest.join('/')) : null, line: null };
 }
 
+/** A tab in the strip, with the tab it stands for ({hist, at, top}) kept on it (paint).
+ *  @typedef {HTMLElement & { tab?: object }} TabEl */
+
 export class Tabs {
   constructor(app) {
     this.app = app;
@@ -357,7 +360,7 @@ export class Tabs {
     document.getElementById('app').classList.toggle('split', two); // (the top strip, across the window, splits too)
     this.els[1].hidden = !two;
     for (const el of this.els) el.classList.toggle('act', el === this.pane.el);
-    document.querySelectorAll('#histbar .tabs').forEach((b) => b.classList.toggle('act', +b.dataset.p === this.act));
+    (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#histbar .tabs'))).forEach((b) => b.classList.toggle('act', +b.dataset.p === this.act));
     const nav = document.querySelector('#histbar .hb-nav[data-p="1"]'); // the right side's own Home, Back, Forward, Go to date
     if (nav && two !== !!nav.firstChild) nav.innerHTML = two ? sideNav(1) : '';
   }
@@ -371,29 +374,29 @@ export class Tabs {
     // each tab was, by the tab itself, before the strip is drawn again)
     const moving = motionOn() && this.drawn;
     const was = new Map();
-    if (moving) for (const box of document.querySelectorAll('#histbar .tabs')) {
+    if (moving) for (const box of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#histbar .tabs'))) {
       const p = this.panes[+box.dataset.p];
-      box.querySelectorAll('.tab').forEach((el) => { const t = p?.tabs[+el.dataset.k]; if (t && el.tab === t) was.set(t, el.getBoundingClientRect().left); });
+      (/** @type {NodeListOf<TabEl>} */ (box.querySelectorAll('.tab'))).forEach((el) => { const t = p?.tabs[+el.dataset.k]; if (t && el.tab === t) was.set(t, el.getBoundingClientRect().left); });
     }
     this.drawn = true;
-    document.querySelectorAll('#histbar .tabs').forEach((box) => {
-      const p = this.panes[+box.dataset.p], plus = box.nextElementSibling;
+    (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#histbar .tabs'))).forEach((box) => {
+      const p = this.panes[+box.dataset.p], plus = /** @type {HTMLElement} */ (box.nextElementSibling);
       // Build 37 (he asked, Nov 5): the "+" always shows (as in browsers), just right of the sidebar
       // with one tab, after the last tab with several; the tabs themselves only when there are several
       plus.hidden = !p || !this.on; // (not on phones or in narrow windows, where there are no tabs)
       if ((!many || !p) && box.hidden && !box.firstChild) return; // (one tab: no tabs to show, as before)
       box.hidden = !many || !p;
       box.innerHTML = box.hidden ? '' : p.tabs.map((t, k) => this.tabHtml(t, k, k === p.cur, p.el.id)).join('');
-      box.querySelectorAll('.tab').forEach((el) => { el.tab = p.tabs[+el.dataset.k]; });
+      (/** @type {NodeListOf<TabEl>} */ (box.querySelectorAll('.tab'))).forEach((el) => { el.tab = p.tabs[+el.dataset.k]; });
       const cur = box.querySelector('.tab.cur'); // very many tabs scroll sideways: the shown one stays in sight
       if (!cur) return;
       const b = box.getBoundingClientRect(), c = cur.getBoundingClientRect();
       if (c.left < b.left) box.scrollLeft -= b.left - c.left;
       else if (c.right > b.right) box.scrollLeft += c.right - b.right;
     });
-    if (had && !had.isConnected) document.querySelector(`#histbar .tabs[data-p="${this.act}"] .tab.cur`)?.focus({ preventScroll: true });
+    if (had && !had.isConnected) /** @type {HTMLElement} */ (document.querySelector(`#histbar .tabs[data-p="${this.act}"] .tab.cur`))?.focus({ preventScroll: true });
     this.alignStrip();
-    if (moving) for (const el of document.querySelectorAll('#histbar .tab')) {
+    if (moving) for (const el of /** @type {NodeListOf<TabEl>} */ (document.querySelectorAll('#histbar .tab'))) {
       const from = was.get(el.tab), now = el.getBoundingClientRect().left;
       if (from === undefined) {
         // (a strip of many tabs that scrolls: once it has its width, the shown tab is brought into sight again)
@@ -406,7 +409,7 @@ export class Tabs {
   }
   /** Each side's shown tab in sight in its strip (very many tabs scroll sideways). */
   curInSight() {
-    document.querySelectorAll('#histbar .tabs').forEach((box) => {
+    (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#histbar .tabs'))).forEach((box) => {
       const cur = box.hidden ? null : box.querySelector('.tab.cur');
       if (!cur) return;
       const b = box.getBoundingClientRect(), c = cur.getBoundingClientRect();
@@ -418,7 +421,7 @@ export class Tabs {
    *  Build 41 (he asked: nothing in the strip moves when the sidebar opens or closes) at that same place
    *  with the sidebar hidden: by its width, not where it is. Done again when it or the window changes size. */
   alignStrip() {
-    const box = document.querySelector('#histbar .tabs[data-p="0"]'), plus = box?.nextElementSibling;
+    const box = /** @type {HTMLElement} */ (document.querySelector('#histbar .tabs[data-p="0"]')), plus = /** @type {HTMLElement} */ (box?.nextElementSibling);
     if (!box || !plus) return;
     const first = !box.hidden ? box : !plus.hidden ? plus : null;
     for (const el of [box, plus]) if (el !== first) el.style.marginLeft = '';
@@ -474,36 +477,36 @@ export class Tabs {
     hb.addEventListener('pointerdown', (e) => {
       // a side's part of the strip (its Home/Back/Forward, tabs, "+") makes that side the active one;
       // the keyboard leaves the other side (as a click on this side's page would take it)
-      const part = e.target.closest('.hb-nav, .tabs, .tab-new');
+      const part = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('.hb-nav, .tabs, .tab-new'));
       if (!part) return;
       const pi = +part.dataset.p, a = document.activeElement;
-      if (a && a !== document.body && !hb.contains(a) && !this.panes[pi]?.el.contains(a)) a.blur();
+      if (a && a !== document.body && !hb.contains(a) && !this.panes[pi]?.el.contains(a)) /** @type {HTMLElement} */ (a).blur();
       this.activate(pi);
-      if (e.button === 0 && e.target.closest('.tab') && !e.target.closest('.tab-x')) this.drag(e);
+      if (e.button === 0 && /** @type {HTMLElement} */ (e.target).closest('.tab') && !/** @type {HTMLElement} */ (e.target).closest('.tab-x')) this.drag(e);
     });
     // a click doesn't put the keyboard on a tab (Space and the arrows go on scrolling the page); Tab does
-    hb.addEventListener('mousedown', (e) => { if (e.target.closest('.tab')) e.preventDefault(); });
-    hb.addEventListener('focusin', (e) => { const box = e.target.closest('.tabs'); if (box) this.activate(+box.dataset.p); });
+    hb.addEventListener('mousedown', (e) => { if (/** @type {HTMLElement} */ (e.target).closest('.tab')) e.preventDefault(); });
+    hb.addEventListener('focusin', (e) => { const box = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('.tabs')); if (box) this.activate(+box.dataset.p); });
     hb.addEventListener('wheel', (e) => { // the mouse wheel moves very many tabs sideways
-      const box = e.target.closest('.tabs');
+      const box = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('.tabs'));
       if (box && box.scrollWidth > box.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { box.scrollLeft += e.deltaY; e.preventDefault(); }
     }, { passive: false });
     hb.addEventListener('click', (e) => {
       if (this.dragged) return;
-      const plus = e.target.closest('.tab-new');
+      const plus = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('.tab-new'));
       if (plus) { this.activate(+plus.dataset.p); this.open('#/journals'); return; }
-      const tab = e.target.closest('.tab');
+      const tab = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('.tab'));
       if (!tab) return;
       const pi = +tab.parentElement.dataset.p;
-      if (e.target.closest('.tab-x')) this.close(pi, +tab.dataset.k); else this.show(pi, +tab.dataset.k);
+      if (/** @type {HTMLElement} */ (e.target).closest('.tab-x')) this.close(pi, +tab.dataset.k); else this.show(pi, +tab.dataset.k);
     });
     // the middle button closes a tab, and opens a link in a new tab (not the browser's autoscroll)
-    document.addEventListener('mousedown', (e) => { if (e.button === 1 && this.on && e.target.closest?.('a[data-page], a[href^="#/"], #histbar .tab')) e.preventDefault(); }, true);
+    document.addEventListener('mousedown', (e) => { if (e.button === 1 && this.on && /** @type {HTMLElement} */ (e.target).closest?.('a[data-page], a[href^="#/"], #histbar .tab')) e.preventDefault(); }, true);
     document.addEventListener('auxclick', (e) => {
       if (e.button !== 1 || !this.on) return;
-      const tab = e.target.closest?.('#histbar .tab');
-      const a = !tab && e.target.closest?.('a[data-page], a[href^="#/"]');
-      if (tab) this.close(+tab.closest('.tabs').dataset.p, +tab.dataset.k);
+      const tab = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest?.('#histbar .tab'));
+      const a = !tab && /** @type {HTMLElement} */ (e.target).closest?.('a[data-page], a[href^="#/"]');
+      if (tab) this.close(+/** @type {HTMLElement} */ (tab.closest('.tabs')).dataset.p, +tab.dataset.k);
       else if (a) a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true, clientX: e.clientX, clientY: e.clientY, view: window }));
       if (tab || a) e.preventDefault();
     });
@@ -512,10 +515,10 @@ export class Tabs {
     // (the sidebar's) are opened here.
     document.addEventListener('click', (e) => {
       const how = e.button !== 0 || !(e.ctrlKey || e.metaKey || e.shiftKey) || !this.on ? null : e.ctrlKey || e.metaKey ? 'tab' : 'side';
-      if (!how || e.target.closest?.('#histbar, .modal-back, #search input')) return;
+      if (!how || /** @type {HTMLElement} */ (e.target).closest?.('#histbar, .modal-back, #search input')) return;
       this.how = how;
       setTimeout(() => { this.how = null; }, 0);
-      const a = e.target.closest?.('a');
+      const a = /** @type {HTMLElement} */ (e.target).closest?.('a');
       const href = a?.getAttribute('href') || '';
       if (!a || !(href === '#' || href.startsWith('#/'))) return; // a web link opens as always
       e.preventDefault(); // (not in a window of its own)
@@ -526,7 +529,7 @@ export class Tabs {
     // command, a recent search or "New page"): a small menu to open it in a new tab or on the other side
     document.addEventListener('contextmenu', (e) => {
       if (e.defaultPrevented) return; // (a note's own menu opened: a right-click on its dot, or in the selected notes)
-      const a = this.on && e.target.closest?.('a[data-page], a[href^="#/"], #search .results li:is(.r-page, .r-recent, .r-hit)');
+      const a = this.on && /** @type {HTMLElement} */ (e.target).closest?.('a[data-page], a[href^="#/"], #search .results li:is(.r-page, .r-recent, .r-hit)');
       if (!a || a.closest('#histbar, .pop, .modal-back')) return;
       e.preventDefault();
       this.linkMenu(a, new DOMRect(e.clientX, e.clientY, 0, 0));
@@ -646,7 +649,7 @@ export class Tabs {
   }
   /** Where a dragged tab would go: {p, at, line} in a strip, {p, at: null, zone} on a side of the notes. */
   spotAt(x, y) {
-    for (const box of document.querySelectorAll('#histbar .tabs:not([hidden])')) {
+    for (const box of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#histbar .tabs:not([hidden])'))) {
       const r = box.getBoundingClientRect();
       if (y < r.top - 8 || y > r.bottom + 8 || x < r.left - 8 || x > r.right + 48) continue;
       const tabs = [...box.querySelectorAll('.tab')];

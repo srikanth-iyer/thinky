@@ -92,8 +92,8 @@ export class Find {
         <button type="button" class="fb-txt" data-f="one">Replace</button>
         <button type="button" class="fb-txt" data-f="all">Replace all</button>
       </div>`;
-    this.q = this.el.querySelector('.fb-q');
-    this.r = this.el.querySelector('.fb-r');
+    this.q = /** @type {HTMLInputElement} */ (this.el.querySelector('.fb-q'));
+    this.r = /** @type {HTMLInputElement} */ (this.el.querySelector('.fb-r'));
     this.n = this.el.querySelector('.fb-n');
     let t = 0;
     this.q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => this.fresh(), 120); });
@@ -108,13 +108,13 @@ export class Find {
       else if (e.target === this.q) { clearTimeout(t); this.step(e.shiftKey ? -1 : 1); }
     });
     // the buttons don't take the focus from the boxes (keeps a phone's keyboard open)
-    this.el.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
+    this.el.addEventListener('pointerdown', (e) => { if (/** @type {HTMLElement} */ (e.target).closest('button')) e.preventDefault(); });
     this.el.addEventListener('click', (e) => {
-      const f = e.target.closest('button')?.dataset.f;
+      const f = /** @type {HTMLElement} */ (e.target).closest('button')?.dataset.f;
       if (!f) return;
       if (f === 'prev' || f === 'next') { clearTimeout(t); this.step(f === 'prev' ? -1 : 1); }
-      if (f === 'case') { this.caseOn = !this.caseOn; e.target.closest('button').setAttribute('aria-pressed', String(this.caseOn)); this.fresh(); }
-      if (f === 'rep') this.showReplace(this.el.querySelector('.fb-rep').hidden);
+      if (f === 'case') { this.caseOn = !this.caseOn; /** @type {HTMLElement} */ (e.target).closest('button').setAttribute('aria-pressed', String(this.caseOn)); this.fresh(); }
+      if (f === 'rep') this.showReplace(/** @type {HTMLElement} */ (this.el.querySelector('.fb-rep')).hidden);
       if (f === 'close') this.close();
       if (f === 'one') this.replaceOne();
       if (f === 'all') this.replaceAll();
@@ -145,11 +145,11 @@ export class Find {
     this.k = -1;
     this.unreveal();
     this.paint();
-    if (this.el.contains(document.activeElement)) document.activeElement.blur();
+    if (this.el.contains(document.activeElement)) /** @type {HTMLElement} */ (document.activeElement).blur();
     this.app.pinSoon();
   }
   showReplace(on) {
-    this.el.querySelector('.fb-rep').hidden = !on;
+    /** @type {HTMLElement} */ (this.el.querySelector('.fb-rep')).hidden = !on;
     this.el.querySelector('[data-f="rep"]').setAttribute('aria-expanded', String(on));
     if (on) (this.q.value ? this.r : this.q).focus();
   }
@@ -372,7 +372,7 @@ function rangesIn(el, re) {
   let flat = '';
   const made = [...el.querySelectorAll(MADE)]; // (most notes have none: then no filter at all)
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, made.length ? { acceptNode: (t) => (made.some((m) => m.contains(t)) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) } : null);
-  for (let t = w.nextNode(); t; t = w.nextNode()) { nodes.push([t, flat.length]); flat += t.data; }
+  for (let t = w.nextNode(); t; t = w.nextNode()) { nodes.push([t, flat.length]); flat += /** @type {Text} */ (t).data; }
   const out = [];
   if (!nodes.length) return out;
   const at = (pos) => { // the text node and offset of a position in flat
