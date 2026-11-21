@@ -5,6 +5,9 @@
 //! front and shows the page (the "lean-link" event, App.openLink in app.js). Otherwise the app
 //! starts as usual and its page takes the link once its notes are open (`set_start`, the
 //! "start_link" command). Android: the manifest's VIEW filter, MainActivity.takeIntent.
+//! Only between copies of this same program: a link goes only to a window whose program is this
+//! one (`same_program`), and the open app takes only page and note links (`handed_link`), so a
+//! stray message from elsewhere neither shows anything nor brings the window forward.
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use std::sync::Mutex;
@@ -80,22 +83,52 @@ mod imp {
     }
 
     unsafe extern "system" fn link_proc(h: isize, m: u32, w: usize, l: isize) -> isize {
-        if m == WM_COPYDATA && l != 0 {
-            let cd = &*(l as *const COPYDATASTRUCT);
-            if cd.data == TAG && !cd.ptr.is_null() && cd.size <= 64 * 1024 {
-                let bytes = std::slice::from_raw_parts(cd.ptr as *const u8, cd.size as usize);
-                if let (Ok(link), Some(app)) = (std::str::from_utf8(bytes), APP.get()) {
-                    if let Some(win) = app.get_webview_window("main") {
-                        let _ = win.unminimize();
-                        let _ = win.show();
-                        let _ = win.set_focus();
-                    }
-                    let _ = app.emit("lean-link", link.to_string());
-                    return 1;
-                }
-            }
+        // a panic must never unwind into Windows (that would end the program)
+        let took = std::panic::catch_unwind(|| m == WM_COPYDATA && l != 0 && take(&*(l as *const COPYDATASTRUCT))).unwrap_or(false);
+        if took {
+            return 1;
         }
         DefWindowProcW(h, m, w, l)
+    }
+
+    /// A link from another copy: shown, and the window brought forward, only for a page or note link.
+    unsafe fn take(cd: &COPYDATASTRUCT) -> bool {
+        if cd.data != TAG || cd.ptr.is_null() || cd.size == 0 || cd.size > 64 * 1024 {
+            return false;
+        }
+        let bytes = std::slice::from_raw_parts(cd.ptr as *const u8, cd.size as usize);
+        let (Some(link), Some(app)) = (crate::shell_rules::handed_link(bytes), APP.get()) else { return false };
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.unminimize();
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
+        let _ = app.emit("lean-link", link);
+        true
+    }
+
+    /// The program a process runs, by its full path ("" if Windows doesn't say).
+    fn program_of(pid: u32) -> String {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn QueryFullProcessImageNameW(process: isize, flags: u32, name: *mut u16, size: *mut u32) -> i32;
+        }
+        const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+        unsafe {
+            let p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if p == 0 {
+                return String::new();
+            }
+            let mut buf = vec![0u16; 32768];
+            let mut n = buf.len() as u32;
+            let ok = QueryFullProcessImageNameW(p, 0, buf.as_mut_ptr(), &mut n) != 0;
+            CloseHandle(p as *mut std::ffi::c_void);
+            if ok {
+                String::from_utf16_lossy(&buf[..(n as usize).min(buf.len())])
+            } else {
+                String::new()
+            }
+        }
     }
 
     pub fn send(link: &str) -> bool {
@@ -104,12 +137,15 @@ mod imp {
         if h == 0 {
             return false;
         }
-        // (clicking the link gave this copy the right to bring a window forward: pass it on)
+        // only to this same program (another one may have made a window of the same class)
         let mut pid = 0;
-        unsafe {
-            GetWindowThreadProcessId(h, &mut pid);
-            AllowSetForegroundWindow(pid);
+        unsafe { GetWindowThreadProcessId(h, &mut pid) };
+        let me = std::env::current_exe().map(|e| e.display().to_string()).unwrap_or_default();
+        if pid == 0 || !crate::shell_rules::same_program(&me, &program_of(pid)) {
+            return false;
         }
+        // (clicking the link gave this copy the right to bring a window forward: pass it on)
+        unsafe { AllowSetForegroundWindow(pid) };
         let cd = COPYDATASTRUCT { data: TAG, size: link.len() as u32, ptr: link.as_ptr().cast() };
         let mut answer = 0usize;
         let sent = unsafe { SendMessageTimeoutW(h, WM_COPYDATA, 0, &cd as *const COPYDATASTRUCT as isize, SMTO_ABORTIFHUNG, 5000, &mut answer) };
