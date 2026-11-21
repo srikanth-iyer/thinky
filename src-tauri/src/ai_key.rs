@@ -343,7 +343,7 @@ mod tests {
         if !cfg!(windows) {
             assert!(set("claude", "sk-1", "").is_err());
             assert!(!has("claude").unwrap());
-            assert_eq!(set("claude", "", "").unwrap(), false);
+            assert!(!set("claude", "", "").unwrap());
         }
         assert!(set("nope", "sk-1", "").is_err());
         assert!(has("nope").is_err());

@@ -346,7 +346,7 @@ mod tests {
         assert_eq!(max_download("LeanOutliner-setup.exe.sig"), SIG_MAX);
         assert_eq!(max_download("THINKY-UPDATE.SIG"), SIG_MAX);
         assert_eq!(max_download("thinky-setup.exe"), SETUP_MAX);
-        assert!(SIG_MAX < 1024 * 1024);
+        assert!(max_download("x.sig") < 1024 * 1024);
     }
 
     #[test]
