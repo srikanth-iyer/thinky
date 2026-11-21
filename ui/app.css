@@ -426,7 +426,7 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
 /* a done or cancelled to-do (as Logseq): its words faded, a clear line through them in their own colour;
    links stay link-coloured, faded the same; a heading (inline-block) gets the line too, its
    properties box (inline-block across the note) doesn't */
-.blk.marker-done > .bc, .todo-item.marker-done .bc, .refhit.marker-done > .bc { color: var(--done-ink); text-decoration: line-through; text-decoration-color: var(--done-line); }
+.blk.marker-done > .bc, .todo-item.marker-done .bc, .refhit.marker-done > .bc, .pz-item.marker-done > .bc { color: var(--done-ink); text-decoration: line-through; text-decoration-color: var(--done-line); }
 .blk.marker-done > .bc a.pl, .blk.marker-done > .bc a.ext, .todo-item.marker-done .bc a.pl, .refhit.marker-done > .bc a.pl { color: color-mix(in srgb, var(--link) var(--done-fade), transparent); }
 .blk.marker-done > .bc .h { text-decoration: inherit; }
 .blk.marker-done > .bc > .props { display: inline-block; width: 100%; vertical-align: top; }
