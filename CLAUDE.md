@@ -191,7 +191,7 @@ by its newest subpage and isn't a link). "Pages tagged with …": `.tagged-sec`,
 `tagged:<page>`, filter box, sort menu, names `text-overflow: ellipsis`. Tags list: vault.rs `all_tags` keys by
 `resolve`, shown under the page's own name. Property display: `logseq/thinky.json` ("propertyDisplay": {key:
 {show: show|quiet|icon|hidden, icon, mark}}) via `App::folder_settings`/`set_folder_setting` (re-read before a
-write; a broken file is never overwritten); render.js `setPropRules` (with config.rs `hidden_props` from
+write, written like a note: hidden temp file, only over what was read, `rewrite`; a broken file is never overwritten); render.js `setPropRules` (with config.rs `hidden_props` from
 `:block-hidden-properties`), `hiddenKey` includes rule-hidden and config-hidden keys (`builtinHidden` = the fixed
 list), `propsHtml` (quiet row, `.prop-icon` with title), renderBlock's `mark` → editor `div.dataset.mark`
 (`--mk` = the look's `--hl-<colour>`); Settings → Look `propDisplayCard`; `App.loadFolderSettings` on open and
@@ -1596,6 +1596,11 @@ it; the first save of a new page writes only where no file is: one that turned u
   unused pictures are moved to the bin, and only after checking
   each again right before (when unsure, a picture counts as used; pictures from the last 3 days are
   never moved); its bin name says its exact path, and putting one back never overwrites a picture.
+  A page's bin name is Logseq's ("pages_sub_a.md", " (2)" when taken); where it came from is noted in
+  the bin's hidden `.thinky-bin.json` (`bin_index`), so it goes back to `pages/sub/a.md`, and a real
+  "X (2)" stays "X (2)"; a file not noted there is worked out from its name as before. Only a plain
+  file right in the bin is shown or put back (`bin_entry`: no `/ \ :` or NUL, not a link, its real
+  path in the bin; review claim 5).
   The one exception: the app deletes (or trims) its OWN old safety copies in `logseq/.safety-<this
   device>/` (Build 32, the maintainer agreed to keep them in the cloud): only `<id>.copy` files there, only this
   device's folder, never another device's, never through a link or junction (`real_chain`, real files

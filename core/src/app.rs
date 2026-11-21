@@ -379,7 +379,6 @@ pub fn write_atomic_checked(path: &Path, text: &str, expect: Expect) -> Result<b
         (_, Err(e)) if e.kind() == std::io::ErrorKind::NotFound => Some(matches!(expect, Expect::Missing)),
         (_, Err(_)) => None,
     };
-    let mut last = None;
     for i in 0..6 {
         if i > 0 {
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -392,18 +391,23 @@ pub fn write_atomic_checked(path: &Path, text: &str, expect: Expect) -> Result<b
             }
             None => continue,
         }
-        match std::fs::rename(&tmp, path) {
-            Ok(()) => return Ok(true),
-            Err(e) => last = Some(e),
+        if std::fs::rename(&tmp, path).is_ok() {
+            return Ok(true);
         }
     }
     // some synced drives refuse to replace a file by renaming: write it in place (checked first too;
-    // one that still can't be read is never written over blindly)
-    let _ = std::fs::remove_file(&tmp);
+    // one that still can't be read is never written over blindly). Renaming is tried once more first:
+    // when every try above found the file unreadable for a moment, no rename was tried at all, and
+    // the direct write (which empties the file before writing) is only for a drive that refuses it
     if still() != Some(true) {
+        let _ = std::fs::remove_file(&tmp);
         return Ok(false);
     }
-    let e = last.map(|e| e.to_string()).unwrap_or_default();
+    let e = match std::fs::rename(&tmp, path) {
+        Ok(()) => return Ok(true),
+        Err(e) => e,
+    };
+    let _ = std::fs::remove_file(&tmp);
     write_flushed(path, text).map_err(|e2| format!("Couldn't save the page: {e} / {e2}"))?;
     Ok(true)
 }
@@ -577,7 +581,9 @@ fn scan(root: &Path, cfg: &Config) -> (HashMap<String, Stamp>, HashMap<String, u
                 let Ok(ft) = e.file_type() else { continue };
                 if ft.is_dir() {
                     stack.push(e.path());
-                } else if name.ends_with(".md") {
+                } else if ft.is_file() && name.ends_with(".md") {
+                    // (a real file only: a link named .md is never followed out of the folder into
+                    // search, the cache or an AI question; review claim 6, as backup.rs and pictures.rs)
                     let Ok(md) = e.metadata() else { continue };
                     if let Ok(rel) = e.path().strip_prefix(root) {
                         let rel = rel.to_string_lossy().replace('\\', "/");
@@ -1110,32 +1116,35 @@ impl App {
     }
 
     /// Change one of those settings (`value` null removes it), read fresh from the file right before, so
-    /// a change another device synced meanwhile isn't lost. Written whole to a temporary file first,
-    /// then put in place. Returns the settings as saved.
+    /// a change another device synced meanwhile isn't lost; written like a note (`rewrite`: a hidden
+    /// temporary file, put in place only if the file still holds what was read, else read again and
+    /// redone, 3 times). Returns the settings as saved.
     pub fn set_folder_setting(&self, key: &str, value: serde_json::Value) -> Result<serde_json::Value, String> {
         let key = key.trim();
         if key.is_empty() || key.len() > 64 {
             return Err("That setting has no name.".into());
         }
         let p = self.root.join(FOLDER_SETTINGS_REL);
-        if p.exists() && std::fs::read_to_string(&p).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(t.trim_start_matches('\u{feff}')).ok()).is_none() {
-            return Err("The notes folder's thinky settings file (logseq/thinky.json) can't be read, so it wasn't changed.".into());
+        let broken = "The notes folder's thinky settings file (logseq/thinky.json) can't be read, so it wasn't changed.";
+        let mut all = serde_json::json!({});
+        let done = rewrite(&p, "logseq/thinky.json", 3, |cur| {
+            all = match cur {
+                None => serde_json::json!({}),
+                Some(t) => serde_json::from_str::<serde_json::Value>(t.trim_start_matches('\u{feff}')).ok().filter(serde_json::Value::is_object).ok_or(broken)?,
+            };
+            let map = all.as_object_mut().expect("an object");
+            if value.is_null() {
+                map.remove(key);
+            } else {
+                map.insert(key.to_string(), value.clone());
+            }
+            Ok(Some(serde_json::to_string_pretty(&all).map_err(|e| e.to_string())? + "\n"))
+        })
+        .map_err(|e| if e == broken { e } else { format!("Couldn't save the setting: {e}") })?;
+        match done {
+            Rewrite::Busy => Err("logseq/thinky.json kept changing (another device is saving it), so the setting wasn't saved. Try again in a moment.".into()),
+            _ => Ok(all),
         }
-        let mut all = self.folder_settings();
-        let map = all.as_object_mut().expect("an object");
-        if value.is_null() {
-            map.remove(key);
-        } else {
-            map.insert(key.to_string(), value);
-        }
-        let text = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())? + "\n";
-        std::fs::create_dir_all(p.parent().unwrap_or(Path::new("."))).map_err(|e| format!("Couldn't save the setting: {e}"))?;
-        let tmp = p.with_extension("json.tmp");
-        std::fs::write(&tmp, text.as_bytes()).and_then(|_| std::fs::rename(&tmp, &p)).map_err(|e| {
-            let _ = std::fs::remove_file(&tmp);
-            format!("Couldn't save the setting: {e}")
-        })?;
-        Ok(all)
     }
 
     pub fn summary(&self) -> VaultSummary {
@@ -2062,8 +2071,30 @@ impl App {
         self.root.join("logseq").join(".recycle")
     }
 
+    /// Where the pages this app put in the bin came from, by their bin names (`BIN_INDEX`, hidden in
+    /// the bin): "pages_sub_a.md" → "pages/sub/a.md", "pages_Notes (2).md" → "pages/Notes.md". A bin
+    /// name alone can't say whether "_" was a folder or " (2)" the bin's own (the review's medium row:
+    /// "pages/sub/a.md" came back as "pages/sub_a.md", a real "X (2)" as "X"). A missing or broken
+    /// index is empty: `restore_rel` then works it out from the name, as before.
+    fn bin_index(&self) -> HashMap<String, String> {
+        std::fs::read_to_string(self.recycle_dir().join(BIN_INDEX)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    }
+
+    /// Change the bin's index (best effort: without it a page still goes back by its name).
+    fn edit_bin_index(&self, f: impl Fn(&mut HashMap<String, String>)) {
+        let p = self.recycle_dir().join(BIN_INDEX);
+        let _ = rewrite(&p, "the bin's list", 3, |cur| {
+            let mut m: HashMap<String, String> = cur.and_then(|t| serde_json::from_str(t).ok()).unwrap_or_default();
+            f(&mut m);
+            // (only names still in the bin: the list never grows past what the bin holds)
+            m.retain(|k, _| self.recycle_dir().join(k).is_file());
+            Ok(Some(serde_json::to_string_pretty(&m).map_err(|e| e.to_string())? + "\n"))
+        });
+    }
+
     /// Move a page's file to `logseq/.recycle` (Logseq's bin), named by its path ("/" → "_", as
-    /// Logseq names them; " (2)"… when the bin has that name). Returns where it went.
+    /// Logseq names them; " (2)"… when the bin has that name), and noted in the bin's index
+    /// (`bin_index`) with the path it came from. Returns where it went.
     fn bin_file(&self, rel: &str) -> Result<PathBuf, String> {
         let bin = self.recycle_dir();
         std::fs::create_dir_all(&bin).map_err(|e| format!("Couldn't make the bin folder: {e}"))?;
@@ -2071,17 +2102,46 @@ impl App {
         let stem = flat.strip_suffix(".md").unwrap_or(&flat).to_string();
         let mut dest = bin.join(&flat);
         let mut k = 2;
-        while dest.exists() {
+        while dest.symlink_metadata().is_ok() {
             dest = bin.join(format!("{stem} ({k}).md"));
             k += 1;
         }
         let src = self.root.join(rel);
         let moved = std::fs::rename(&src, &dest).is_ok() || (std::fs::copy(&src, &dest).is_ok() && std::fs::remove_file(&src).is_ok());
         if moved {
+            if let Some(name) = dest.file_name().map(|n| n.to_string_lossy().into_owned()) {
+                self.edit_bin_index(|m| {
+                    m.insert(name.clone(), rel.to_string());
+                });
+            }
             Ok(dest)
         } else {
             Err("the file couldn't be moved".into())
         }
+    }
+
+    /// A file right in the bin, by the name the page sends (review claim 5): one plain name (no
+    /// folder, no `\`, no drive or stream `:`, no NUL, not hidden), checked before the disk is
+    /// touched; then a real file (not a link) whose real path is inside the bin. On Windows
+    /// `recycle_dir().join("C:secret.md")` would otherwise leave the bin.
+    fn bin_entry(&self, file: &str) -> Result<PathBuf, String> {
+        let plain = !file.is_empty()
+            && !file.starts_with('.')
+            && !file.contains(['/', '\\', ':', '\0'])
+            && matches!(Path::new(file).components().collect::<Vec<_>>().as_slice(), [std::path::Component::Normal(_)]);
+        if !plain {
+            return Err("Not a file in the bin.".into());
+        }
+        let bin = self.recycle_dir();
+        let p = bin.join(file);
+        if !std::fs::symlink_metadata(&p).is_ok_and(|m| m.is_file()) {
+            return Err("That file is gone from the bin.".into());
+        }
+        let inside = p.canonicalize().ok().zip(bin.canonicalize().ok()).is_some_and(|(f, b)| f.parent() == Some(b.as_path()));
+        if !inside {
+            return Err("Not a file in the bin.".into());
+        }
+        Ok(p)
     }
 
     /// Move pages' files to `logseq/.recycle` (Logseq's bin). Returns how many were moved.
@@ -2128,9 +2188,18 @@ impl App {
         v
     }
 
-    /// Where a file from the bin goes back to.
+    /// Where a file from the bin goes back to: where the bin's index says it came from (a page file in
+    /// the pages or journals folder, plain parts only), else worked out from its name.
     fn restore_rel(&self, file: &str) -> String {
         let cfg = &self.vault.config;
+        if let Some(rel) = self.bin_index().remove(file) {
+            let ok = rel.ends_with(".md")
+                && [&cfg.pages_dir, &cfg.journals_dir].iter().any(|d| rel.starts_with(&format!("{d}/")))
+                && rel.split('/').all(|p| !p.is_empty() && p != "." && p != ".." && !p.contains(['\\', ':', '\0']));
+            if ok {
+                return rel;
+            }
+        }
         // drop a " (2)"-style suffix added when the bin already had that name
         let stem = file.strip_suffix(".md").unwrap_or(file);
         let stem = match stem.rsplit_once(" (") {
@@ -2151,23 +2220,21 @@ impl App {
     /// before restoring): its name, its notes as the editor reads a page, and its page properties.
     /// Only a plain `.md` file right in the bin; nothing is changed.
     pub fn recycled_page(&self, file: &str) -> Result<serde_json::Value, String> {
-        if file.contains(['/', '\\']) || file.starts_with('.') || !file.ends_with(".md") {
+        if !file.ends_with(".md") {
             return Err("Not a page in the bin.".into());
         }
-        let text = read_text(&self.recycle_dir().join(file)).ok().flatten().ok_or("That file is gone or isn't plain text.")?;
+        let path = self.bin_entry(file)?;
+        let text = read_text(&path).ok().flatten().ok_or("That file is gone or isn't plain text.")?;
         let name = self.vault.title_from_path(&self.restore_rel(file)).0;
         let props = crate::parse_page(&text, &self.vault.config.comma_props).props;
         Ok(serde_json::json!({ "name": name, "doc": split_doc(&text), "props": props }))
     }
 
     pub fn restore(&mut self, file: &str) -> Result<String, String> {
-        if file.contains(['/', '\\']) || file.starts_with('.') {
-            return Err("Not a file in the bin.".into());
-        }
+        let src = self.bin_entry(file)?;
         if pictures::is_picture(file) {
             return self.restore_picture(file);
         }
-        let src = self.recycle_dir().join(file);
         let rel = self.restore_rel(file);
         let (name, _) = self.vault.title_from_path(&rel);
         let to = self.root.join(&rel);
@@ -2179,6 +2246,9 @@ impl App {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
         std::fs::rename(&src, &to).map_err(|e| format!("Couldn't restore: {e}"))?;
+        self.edit_bin_index(|m| {
+            m.remove(file);
+        });
         self.record_write(&rel, &text);
         self.write_cache();
         Ok(self.vault.page_info(&name).name)
@@ -2403,6 +2473,9 @@ impl App {
         asset_file(&self.root, p)
     }
 }
+
+/// The bin's index of where this app's binned pages came from (`App::bin_index`), hidden in the bin.
+const BIN_INDEX: &str = ".thinky-bin.json";
 
 /// The largest picture or file added to `assets/` (the app's editor says so before reading one).
 pub const MAX_ASSET_BYTES: usize = 25_000_000;
