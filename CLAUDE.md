@@ -790,7 +790,9 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     the app waits, so `quick`: only its own folder's trimming, not `cap_all`, which reads the other
     device's copies that Google Drive may first have to fetch; the next background copy does it; if that
     copy can't be made, the cache isn't written: the one on disk still has them, tried again next
-    time), so an old text is always in the cache or in a copy (`check_vault` never writes the cache).
+    time; the same when a copy is being made in the background just then: `keep_replaced`, held with the
+    app, waits at most a second for the copies' lock, then defers, review A2, tests/safety_defer.rs;
+    `start_safety_copy` at opening still waits), so an old text is always in the cache or in a copy (`check_vault` never writes the cache).
     At start-up `load` leaves the cache unwritten when there are earlier texts; `start_safety_copy`
     keeps them right away, then writes the cache, then moves local copies and makes the copy of recent
     notes in the background. `<data>` = `set_data_dir` (Tauri `app_local_data_dir`: Windows `%LOCALAPPDATA%\com.srikanth.leanoutliner`, Android

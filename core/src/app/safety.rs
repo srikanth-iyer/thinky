@@ -226,6 +226,20 @@ pub(super) struct CopyHit {
 /// One copy being written (or moved) at a time (two folders opened quickly).
 static BUSY: Mutex<()> = Mutex::new(());
 
+/// What `write` says when, asked not to wait (`keep_replaced`, called with the app held), another
+/// copy is still being made after `DEFER_AFTER`: the earlier texts stay and are kept the next time
+/// (review A2).
+const DEFERRED: &str = "another safety copy is being made just now";
+/// How long `keep_replaced` waits for a copy being made before it defers.
+const DEFER_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Hold the lock copies are made under, as a copy being made in the background does (tests: a
+/// save while it's held goes on without waiting for it).
+#[doc(hidden)]
+pub fn hold_safety_copies() -> std::sync::MutexGuard<'static, ()> {
+    BUSY.lock().unwrap_or_else(|p| p.into_inner())
+}
+
 /// The app's data folder, for the commands that read copies.
 pub fn folder() -> Result<PathBuf, String> {
     super::data_dir().ok_or_else(|| "Safety copies aren’t kept here.".to_string())
@@ -708,13 +722,28 @@ impl SafetyPlan {
 
     /// `run`, keeping all the copies together within `cap` bytes of texts (tests use a small one).
     pub fn run_within(self, data: &Path, cap: u64) -> Result<Option<String>, String> {
-        self.write(data, cap, false)
+        self.write(data, cap, false, true)
     }
 
     /// `run`; `quick`: without the clean-up over both devices' copies (`prune`), for the earlier
     /// texts kept while the app waits (`keep_replaced`); the next copy made in the background does it.
-    fn write(self, data: &Path, cap: u64, quick: bool) -> Result<Option<String>, String> {
-        let _one = BUSY.lock().unwrap_or_else(|p| p.into_inner());
+    fn write(self, data: &Path, cap: u64, quick: bool, wait: bool) -> Result<Option<String>, String> {
+        // `keep_replaced` runs with the app held (every command waits for it): it never waits for a
+        // copy being made in the background, it says so and is tried again later
+        let _one = if !wait {
+            // (a short copy being made is waited for, up to a second; a long one isn't)
+            let until = std::time::Instant::now() + DEFER_AFTER;
+            loop {
+                match BUSY.try_lock() {
+                    Ok(g) => break g,
+                    Err(std::sync::TryLockError::Poisoned(p)) => break p.into_inner(),
+                    Err(std::sync::TryLockError::WouldBlock) if std::time::Instant::now() < until => std::thread::sleep(std::time::Duration::from_millis(10)),
+                    Err(std::sync::TryLockError::WouldBlock) => return Err(DEFERRED.into()),
+                }
+            }
+        } else {
+            BUSY.lock().unwrap_or_else(|p| p.into_inner())
+        };
         if self.is_empty() {
             return Ok(None);
         }
@@ -798,7 +827,11 @@ impl App {
     /// is made. Problems go to the problems log.
     pub fn start_safety_copy(&mut self) {
         if !self.replaced.is_empty() {
-            self.write_cache();
+            // (here, once as the folder opens, it waits for a copy being made: they're kept before
+            // "open" returns; a save later never waits, `keep_replaced`)
+            if self.keep_replaced_waiting(true) {
+                self.write_cache();
+            }
         }
         let Some(data) = super::data_dir() else { return };
         let plan = self.safety_plan(now_secs()); // (with the earlier texts too, if they couldn't be kept)
@@ -825,9 +858,14 @@ impl App {
     /// The earlier texts that changes made elsewhere replaced (`replaced`) into a copy of their own,
     /// right away (they're small): called before the index cache, which forgets them, is written.
     /// False when the copy couldn't be made: they stay here, the cache isn't written (the one on disk
-    /// still has them), and it's tried again the next time. (Where no copies are kept, there's
-    /// nothing to wait for.)
+    /// still has them), and it's tried again the next time; so too when a copy is being made in the
+    /// background just then (never waited for: the app is held meanwhile). (Where no copies are
+    /// kept, there's nothing to wait for.)
     pub(super) fn keep_replaced(&mut self) -> bool {
+        self.keep_replaced_waiting(false)
+    }
+
+    fn keep_replaced_waiting(&mut self, wait: bool) -> bool {
         if self.replaced.is_empty() {
             return true;
         }
@@ -835,11 +873,13 @@ impl App {
             self.replaced.clear();
             return true;
         };
-        match self.before_plan(now_secs()).write(&data, MAX_ALL, true) {
+        match self.before_plan(now_secs()).write(&data, MAX_ALL, true, wait) {
             Ok(_) => {
                 self.replaced.clear();
                 true
             }
+            // (another copy being made: nothing wrong, kept the next time the cache is written)
+            Err(e) if e == DEFERRED => false,
             Err(e) => {
                 crate::log::record(&format!("safety copy (earlier texts): {e}"));
                 false
