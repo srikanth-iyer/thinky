@@ -55,9 +55,13 @@ object LeanCore {
       .put("time", String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)))
   }
 
+  /** One call into the core at a time: an add reads the page and writes it back, so two at once (a
+   *  quick run of "Add to thinky" selections, each on its own helper thread) could lose one. */
+  private val oneAtATime = Any()
+
   private fun call(args: JSONObject, bytes: ByteArray? = null): JSONObject {
     load()?.let { throw Failed(it) }
-    val out: String = (try { capture(args.toString(), bytes) } catch (e: Throwable) {
+    val out: String = (try { synchronized(oneAtATime) { capture(args.toString(), bytes) } } catch (e: Throwable) {
       throw Failed("Couldn't add it (${e.message ?: e.javaClass.simpleName}), so nothing was added.")
     }) ?: throw Failed("Couldn't add it, so nothing was added.")
     val r = try { JSONObject(out) } catch (e: Exception) { throw Failed("Couldn't add it ($out).") }
