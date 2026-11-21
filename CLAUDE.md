@@ -231,7 +231,9 @@ history; app.css "Closing" (.fading, pop-out/sink-out ~0.1 s). Settings → Look
 too). YouTube: Logseq's `{{video <address>}}` / `{{youtube …}}` (render.js `youtube()` takes watch, youtu.be,
 shorts, embed, live, m./music., t=/start=) drawn as the video's picture (i.ytimg.com, no referrer) with a play
 button (`.yt`); a click (editor.js, before editing) puts `https://www.youtube-nocookie.com/embed/<id>?autoplay=1`
-there (`playVideo`, sandbox without popups); the CSP's only frame-src is that address. Anything else stays a macro.
+there (`playVideo`, sandbox without popups); the CSP's only frame-src is that address. On Android the click opens
+`https://www.youtube.com/watch?v=<id>` outside the app instead (`App.openUrl`): Android gives every frame the
+`LeanAndroid` bridge, a cross-origin one too (review claim 2; t34_review). Anything else stays a macro.
 Build 39 (the maintainer's note of Nov 8; tested by t23_build39, every opener pressed three times where it is,
 laptop and phone): a button that opened something closes it when pressed again. The phone toolbar acts on
 pointerup, after the pop-up's own outside-press listener has closed it, so a window capture listener notes

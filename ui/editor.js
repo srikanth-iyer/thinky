@@ -693,7 +693,7 @@ export class Outline {
       const thread = this.threadAt(e, blk);
       if (thread !== null) { e.preventDefault(); this.toggleBranch(thread); return; }
       const yt = t.closest('.yt'); // a YouTube video's picture: its player, here (render.js)
-      if (yt) { e.preventDefault(); if (!yt.classList.contains('playing')) playVideo(yt); return; }
+      if (yt) { e.preventDefault(); if (!yt.classList.contains('playing')) playVideo(yt, (u) => this.app.openUrl(u)); return; }
       const ref = t.closest('.bref[data-page]'); // a block reference: to the note it names
       if (ref) { e.preventDefault(); this.flush(); this.app.go('zoom', ref.dataset.page, { line: +ref.dataset.line }); return; }
       const a = t.closest('a');

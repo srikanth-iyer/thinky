@@ -541,11 +541,18 @@ function videoHtml({ id, start }) {
   return `<span class="yt" data-yt="${id}" data-start="${start}"><img class="yt-pic" src="https://i.ytimg.com/vi/${id}/hqdefault.jpg" alt="YouTube video" loading="lazy" referrerpolicy="no-referrer" draggable="false"><button type="button" class="yt-play" aria-label="Play the video"><svg viewBox="0 0 68 48" aria-hidden="true"><path d="M66.5 7.7a8.5 8.5 0 0 0-6-6C55.3.3 34 .3 34 .3S12.7.3 7.5 1.7a8.5 8.5 0 0 0-6 6C.2 13 .2 24 .2 24s0 11 1.3 16.3a8.5 8.5 0 0 0 6 6C12.7 47.7 34 47.7 34 47.7s21.3 0 26.5-1.4a8.5 8.5 0 0 0 6-6C67.8 35 67.8 24 67.8 24s0-11-1.3-16.3z"/><path d="M27 34l18-10-18-10z" fill="#fff"/></svg></button></span>`;
 }
 
-/** Swap a video's picture for YouTube's player, playing (a click on it, editor.js). */
-export function playVideo(el) {
+/** Swap a video's picture for YouTube's player, playing (a click on it, editor.js). On Android the
+ *  video opens outside the app instead, with `openOutside` (the app's own open-a-link route): Android
+ *  gives every frame of the page the app's LeanAndroid bridge, a YouTube player's frame too (review
+ *  claim 2). */
+export function playVideo(el, openOutside) {
   if (!el?.dataset.yt || el.querySelector('iframe')) return;
   const id = el.dataset.yt;
   if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return;
+  if (window.LeanAndroid) {
+    openOutside?.(`https://www.youtube.com/watch?v=${id}${+el.dataset.start ? '&t=' + +el.dataset.start + 's' : ''}`);
+    return;
+  }
   const f = document.createElement('iframe');
   f.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0${+el.dataset.start ? '&start=' + +el.dataset.start : ''}`;
   f.title = 'YouTube video';
