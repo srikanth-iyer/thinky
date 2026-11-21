@@ -131,21 +131,21 @@ function show(st, res) {
   box.addEventListener('pointerdown', (e) => e.stopPropagation()); // (not a press on the note: no editing, no drag)
   box.addEventListener('click', (e) => {
     e.stopPropagation();
-    const b = e.target.closest('[data-pz]');
+    const b = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('[data-pz]'));
     const a = b?.dataset.pz;
     if (a === 'diff') { const d = box.querySelector('.pz-diff'); d.classList.toggle('open'); b.setAttribute('aria-pressed', String(d.classList.contains('open'))); return; }
     if (a === 'undo') { close(st); return; }
     if (a === 'retry') { close(st); startPolish(o, i); return; }
     if (a === 'keep') { keep(st, res); return; }
     // a click on the AI's words: edit them in place before keeping (he asked, Nov 20)
-    const v = e.target.closest('.pz-note');
+    const v = /** @type {HTMLElement} */ (e.target).closest('.pz-note');
     if (v && !st.editing) { e.preventDefault(); editNotes(st, res, [...st.notesEl.children].indexOf(v)); }
   });
   box.addEventListener('keydown', (e) => { // (typing here is its own: not the page's keys)
-    if (!e.target.closest('.pz-ed')) return;
+    if (!/** @type {HTMLElement} */ (e.target).closest('.pz-ed')) return;
     e.stopPropagation();
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); keep(st, res); }
-    else if (e.key === 'Escape') { e.preventDefault(); drawNotes(st, res, false); box.querySelector('.pz-keep')?.focus(); }
+    else if (e.key === 'Escape') { e.preventDefault(); drawNotes(st, res, false); /** @type {HTMLElement} */ (box.querySelector('.pz-keep'))?.focus(); }
   });
   st.esc = (e) => {
     if (!st.box?.isConnected || o.pz !== st) { document.removeEventListener('keydown', st.esc, true); return; } // (the note was drawn again, or another started)
@@ -181,7 +181,7 @@ function drawNotes(st, res, fade) {
   for (const v of st.notesEl.querySelectorAll('.pz-note')) {
     const walk = document.createTreeWalker(v, NodeFilter.SHOW_TEXT);
     const texts = [];
-    while (walk.nextNode()) texts.push(walk.currentNode);
+    while (walk.nextNode()) texts.push(/** @type {Text} */ (walk.currentNode));
     for (const tn of texts) {
       const parts = tn.nodeValue.split(/(\s+)/);
       if (parts.length === 1 && !parts[0]) continue;
@@ -307,7 +307,7 @@ export async function startPicture(o, i) {
   if (res.unlinked?.length) box.insertAdjacentHTML('beforeend', `<p class="note small pz-why">Left as plain words (no such page): ${res.unlinked.map(esc).join(', ')}</p>`);
   box.addEventListener('click', (e) => {
     e.stopPropagation();
-    const b = e.target.closest('[data-pz]');
+    const b = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('[data-pz]'));
     if (!b) return;
     if (b.dataset.pz === 'undo') close(st);
     else if (b.dataset.pz === 'retry') { close(st); startPicture(o, i); } else if (b.dataset.pz === 'keep') {

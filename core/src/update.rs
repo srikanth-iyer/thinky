@@ -1,6 +1,8 @@
 //! The rules of one-click updates (Settings → About → "Update now"), apart from the platform code
-//! (src-tauri/src/update.rs on Windows, android/MainActivity.kt on Android) so they can be tested:
-//! where a build's files are, what exactly is signed, and which versions are accepted.
+//! (src-tauri/src/update.rs on Windows) so they can be tested: where a build's files are, what
+//! exactly is signed, and which versions are accepted. Android checks its APK's signature file
+//! (`thinky-apk.sig`, the same kind as [`UPDATE_SIG_FILE`] and the same key, since Nov 21, 2026) with
+//! these same rules written again in Kotlin (android/kotlin/Checks.kt `apkSigProblem`): keep them alike.
 //!
 //! A release "build-N" carries `thinky-setup.exe` and signature files: JSON `{"file", "version",
 //! ["build",] "sha256", "sig"}` made by CI (scripts/update_sig.py), where `sig` is an ECDSA P-256 /

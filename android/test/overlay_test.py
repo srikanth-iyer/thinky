@@ -77,11 +77,17 @@ def make_tree(root):
     open(os.path.join(main, "res/values/themes.xml"), "w").write(THEMES)
 
 
-def overlay(play):
+TEST_KEY = "GujNI3y9EL2II7ODeal1Npt7J82Fnpclbsh8TiJmf8L+zsL+2wqRHDMc95BPM59ERcb8vf65V7SN8GcspvjpjQ=="
+
+
+def overlay(play, key=TEST_KEY):
     root = tempfile.mkdtemp(prefix="overlay-test-")
     make_tree(root)
     env = dict(os.environ)
     env.pop("THINKY_PLAY", None)
+    env.pop("LEAN_UPDATE_KEY", None)
+    if key is not None:
+        env["LEAN_UPDATE_KEY"] = key
     if play:
         env["THINKY_PLAY"] = "1"
     r = subprocess.run([sys.executable, "scripts/android_overlay.py"], cwd=root, env=env, capture_output=True, text=True)
@@ -121,13 +127,27 @@ def main():
     play_root, play, play_man = overlay(play=True)
     # the downloadable APK: the whole updater
     for word in ("fun startUpdate", "fun installUpdate", "fun downloadUpdate", "class UpdateReceiver", "releases/download",
-                 "PackageInstaller.SessionParams", "fun testInstallSelf", "fun signedLikeThisApp", "fun onResume"):
+                 "PackageInstaller.SessionParams", "fun testInstallSelf", "fun signedLikeThisApp", "fun onResume",
+                 "Checks.apkSigProblem(key, sig", "Checks.APK_SIG_FILE"):
         check(f"the APK keeps {word!r}", word in apk)
     check("the APK may install updates", "REQUEST_INSTALL_PACKAGES" in apk_man and ".UpdateReceiver" in apk_man)
     check("the APK isn't the Play version", "const val PLAY = false" in apk)
+    # the update key's public half is written in (the APK checks each update's signature file with it)
+    check("the APK holds the update key", f'private val UPDATE_KEY = "{TEST_KEY}"' in apk and "__UPDATE_KEY__" not in apk)
+    no_root, no_key, _ = overlay(play=False, key=None)
+    check("without LEAN_UPDATE_KEY the key is empty (every update refused)", 'private val UPDATE_KEY = ""' in no_key)
+    shutil.rmtree(no_root, ignore_errors=True)
+    for bad in ("not-base64!", TEST_KEY[:-4], TEST_KEY + "AAAA", "A" * 88):
+        r = tempfile.mkdtemp(prefix="overlay-test-")
+        make_tree(r)
+        env = {k: v for k, v in os.environ.items() if k != "THINKY_PLAY"}
+        env["LEAN_UPDATE_KEY"] = bad
+        p = subprocess.run([sys.executable, "scripts/android_overlay.py"], cwd=r, env=env, capture_output=True, text=True)
+        check(f"a wrong LEAN_UPDATE_KEY ({bad[:10]}…) stops the build", p.returncode != 0 and "LEAN_UPDATE_KEY" in p.stderr)
+        shutil.rmtree(r, ignore_errors=True)
     # the Play bundle: none of it (claim 10a), the rest as in the APK
     for word in ("startUpdate", "installUpdate", "downloadUpdate", "UpdateReceiver", "releases/download", "PackageInstaller",
-                 "testInstallSelf", "signedLikeThisApp", "keepUpdateTag", "github.com", "fun onResume", "import android.app.PendingIntent",
+                 "testInstallSelf", "signedLikeThisApp", "keepUpdateTag", "github.com", "UPDATE_KEY", TEST_KEY, "apkSigProblem", "fun onResume", "import android.app.PendingIntent",
                  "import java.net.HttpURLConnection"):
         check(f"the Play version has no {word!r}", word not in play)
     check("the Play version may not install apps", "REQUEST_INSTALL_PACKAGES" not in play_man and "UpdateReceiver" not in play_man)

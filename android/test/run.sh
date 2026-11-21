@@ -20,5 +20,5 @@ else
   java -cp "$CP" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -no-reflect -cp "$STDLIB" "${SRC[@]}" -d "$OUT" 2>&1 | grep -v -e '^warning:' -e '^Picked up' || true
 fi
 [ -f "$OUT/ChecksTestKt.class" ] || { echo "FAIL the tests didn't compile"; exit 1; }
-java -cp "$OUT:$STDLIB" ChecksTestKt 2>&1 | grep -v '^Picked up'
+java -Drepo="$HERE/../.." -cp "$OUT:$STDLIB" ChecksTestKt 2>&1 | grep -v '^Picked up'
 exit "${PIPESTATUS[0]}"

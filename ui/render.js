@@ -259,7 +259,9 @@ export const stampText = ([y, m, d], time, repeat) => {
   return `<${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')} ${DAYS[dt.getDay()]}${time ? ' ' + time : ''}${repeat ? ' ' + repeat : ''}>`;
 };
 
-const dayNum = ([y, m, d]) => Math.round(new Date(y, m - 1, d) / 864e5);
+/** Day number of a date, to count the days between two.
+ *  @param {number[]} ymd  a date as [year, month, day] */
+const dayNum = ([y, m, d]) => Math.round(new Date(y, m - 1, d).getTime() / 864e5);
 
 /** A time (seconds since 1970, local) in few words: "Today 14:05", "Yesterday 09:12", else "Oct 24"
  *  (", 2025" in another year, or always with `year`), then ", 14:05" with `time`. */

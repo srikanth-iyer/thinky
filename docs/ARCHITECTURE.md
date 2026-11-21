@@ -193,12 +193,13 @@ READ/WRITE_EXTERNAL_STORAGE, INTERNET, VIBRATE, REQUEST_INSTALL_PACKAGES; compon
 JournalWidgetService, QuickAddWidget, QuickCaptureActivity, AddNoteTile, UpdateReceiver (class in
 `MainActivity.kt`); a SEND filter (text/plain, image/*) for the share sheet and a VIEW filter for
 `leanoutliner://`; `allowBackup="false"` (no Android backup of the app's settings or sealed keys); EmojiCompat's start-up removed. SharedPreferences `lean_widget` (vault, folders,
-formats, capture settings, tasks, colours, bar colours, the times of the last "Add to thinky" selections); `lean_update` (the update being installed, for 30 minutes, APK only); `cacheDir/update-apk`; app-icon shortcuts
+formats, capture settings, tasks, colours, bar colours, the times of the last "Add to thinky" selections); `lean_update` (the update being installed, for 30 minutes, APK only); `cacheDir/update-apk` (the downloaded
+`thinky-apk.sig` and `thinky.apk`; the signature is checked with the update key before the APK is opened); app-icon shortcuts
 re-published at each start.
 
 ### `scripts/` and `ci/`
 `android_overlay.py` (above) · `android_test.sh` and helpers (the emulator test) · `update_sig.py`
-(sign/check updates) · `ci_version.py` (build N → version 0.1.N) · `ci_report.py` (sizes) ·
+(sign/check updates, and `apk-check` for the APK's `thinky-apk.sig`; tested by `update_sig_test.py`) · `ci_version.py` (build N → version 0.1.N) · `ci_report.py` (sizes) ·
 `make_test_vault.py`. `ci/baseline.json` (agreed sizes), `ci/update-key.pub` (the update key's public half; the
 locked keys themselves are secrets, never files in the repo).
 

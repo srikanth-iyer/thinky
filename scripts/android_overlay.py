@@ -41,6 +41,21 @@ body = re.sub(r"^import\s+[\w.]+\s*\n", "", body, flags=re.M).lstrip()
 edge = "enableEdgeToEdge()" if "enableEdgeToEdge" in gen_src else ""
 body = body.replace("__EDGE__", edge)
 body = body.replace("__PLAY__", "true" if PLAY else "false")
+# the update key's public half (base64 of the P-256 point X‖Y, 88 characters: ci/update-key.pub on main,
+# the run's throw-away key on wip), which the APK checks each update's signature file with (the same
+# LEAN_UPDATE_KEY the Windows app is built with). Without it the APK refuses every update (fails closed).
+UPDATE_KEY = os.environ.get("LEAN_UPDATE_KEY", "").strip()
+if UPDATE_KEY:
+    import base64, binascii
+    try:
+        point = base64.b64decode(UPDATE_KEY, validate=True)
+    except binascii.Error:
+        point = b""
+    if len(UPDATE_KEY) != 88 or len(point) != 64:
+        sys.exit("LEAN_UPDATE_KEY must be the update key's public half: base64 of 64 bytes (88 characters)")
+else:
+    print("no LEAN_UPDATE_KEY: this APK will refuse every one-click update")
+body = body.replace("__UPDATE_KEY__", UPDATE_KEY)
 # the updater's parts of MainActivity.kt, each from its first line to its last (or to the file's end)
 UPDATER = [("  // ---- updater (left out of the Play version", "  // ---- end of the updater\n"),
            ("    // ---- updater bridge (left out of the Play version", "    // ---- end of the updater bridge\n"),
@@ -57,7 +72,7 @@ def without_updater(src):
         src = src[:i] + src[j:]
     # nothing of the updater may be left behind (build.yml checks the bundle's dex for the same)
     for word in ("startUpdate", "installUpdate", "downloadUpdate", "UpdateReceiver", "releases/download",
-                 "PackageInstaller", "testInstallSelf", "REQUEST_INSTALL_PACKAGES"):
+                 "PackageInstaller", "testInstallSelf", "REQUEST_INSTALL_PACKAGES", "UPDATE_KEY"):
         if word in src:
             sys.exit(f"the Play version's MainActivity.kt still has {word!r}")
     return src

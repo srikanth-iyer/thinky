@@ -1,5 +1,5 @@
 # Pull requests (also from forks): the core's, the dev server's, the shell's pure rules' and the page's
-# plain-Node tests, and Clippy only. No secrets, a
+# plain-Node tests, the page's type check, the Android code's plain rules and Clippy only. No secrets, a
 # read-only token, and never `pull_request_target` (which would run a fork's code with this repo's
 # rights). First-time contributors' runs also wait for the maintainer's approval (repository setting).
 name: pull request
@@ -23,5 +23,19 @@ jobs:
       - run: sh src-tauri/pure_tests.sh
       # the page's modules that load on their own (math.js, render.js), in plain Node
       - run: node dev/ui-tests/unit.mjs
+      # the page's JavaScript type-checked (jsconfig.json: TypeScript's checker reads the code and its
+      # JSDoc types and stops the build on a type mistake, e.g. a number where text is expected)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22 }
+      - run: npm ci --ignore-scripts # (the Tauri command line and TypeScript; no install scripts)
+      - run: npm run typecheck
+      # the update signature files' script (scripts/update_sig.py, thinky-apk.sig among them), then the
+      # Android code's plain rules on a plain JVM (android/kotlin/Checks.kt: the phone's check of an
+      # update's signature file among them) and the overlay in both shapes (APK, Play bundle)
+      - run: python3 scripts/update_sig_test.py
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with: { distribution: temurin, java-version: '17' }
+      - run: bash android/test/run.sh
+      - run: python3 android/test/overlay_test.py
       # Clippy: its correctness and suspicious lints stop the check; the rest only show (review A4)
       - run: cargo clippy -p outline_core -p devserver --all-targets --locked -- -D clippy::correctness -D clippy::suspicious

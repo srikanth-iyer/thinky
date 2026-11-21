@@ -1,0 +1,32 @@
+// Settings for checking the page's JavaScript (the files in ui/) for type mistakes.
+// Run the check with:  npm run typecheck
+// It only reads the files and reports problems; it never changes or builds anything.
+// Editors such as VS Code also read this file and underline the same problems as you type.
+{
+  "compilerOptions": {
+    // Look at plain .js files (not only TypeScript files).
+    "allowJs": true,
+    // Report type mistakes in those .js files too, not just read them.
+    "checkJs": true,
+    // Only check: write no output files. The app runs the .js files as they are.
+    "noEmit": true,
+    // The JavaScript language level the code is written in (ES2022: classes with fields, ?. and ??, etc.).
+    "target": "es2022",
+    // Which built-in names the checker knows about:
+    // es2023 = the language's own built-ins (es2023 adds Array.findLast / findLastIndex, used in find.js);
+    // dom = the browser's page objects (document, window, HTMLElement, events);
+    // dom.iterable = lets `for (const x of someNodeList)` loops type-check.
+    "lib": ["es2023", "dom", "dom.iterable"],
+    // The files use `import` / `export` (ES modules), loaded directly by the page with no bundler.
+    "module": "esnext",
+    // How `import './x.js'` paths are found: the way modern tools and browsers do it.
+    "moduleResolution": "bundler",
+    // Non-strict for now: values may be null/undefined without the checker complaining,
+    // and untyped parameters are allowed. Stricter checks can be turned on later, one at a time.
+    "strict": false
+  },
+  // The files to check: every .js file in ui/, plus our type descriptions in dev/types/
+  // (globals.d.ts describes things the app reads from `window`, such as the Android bridge).
+  // They live outside ui/ because everything in ui/ is packed into the app, and the app never needs them.
+  "include": ["ui/**/*.js", "dev/types/**/*.d.ts"]
+}

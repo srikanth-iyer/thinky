@@ -14,6 +14,13 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 56 · version 0.6.5 (November 2026)
+
+The rest of the outside code review (Nov 21): two more of its suggestions.
+
+- Android updates from GitHub are now checked with a signature file too, as on Windows: the phone downloads `thinky-apk.sig` first and installs nothing unless it is signed with thinky's update key and matches the download. Phones on Build 55 or older update to this build the old way; from this build on, every update is checked.
+- Under the hood: the page's JavaScript is now type-checked (`npm run typecheck`, TypeScript's checker reading ui/ with jsconfig.json; 0 errors, no checks switched off). CI's test job also runs the Android checks, the overlay test and a new signature test (scripts/update_sig_test.py). A browser test that sometimes failed on CI (t34) now waits for the menu to close.
+
 ## Build 55 · version 0.6.4 (November 2026)
 
 Fixes from an outside code review (Nov 21): safety and security first, then smaller things.

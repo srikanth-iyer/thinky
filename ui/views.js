@@ -394,8 +394,9 @@ function propShowRow(app, key) {
 }
 
 // ---------------------------------------------------------------------------
-/** Day number of a [y, m, d] date (for comparing dates). */
-export const num = ([y, m, d]) => Math.round(new Date(y, m - 1, d) / 864e5);
+/** Day number of a [y, m, d] date (for comparing dates).
+ *  @param {number[]} ymd  [year, month, day] */
+export const num = ([y, m, d]) => Math.round(new Date(y, m - 1, d).getTime() / 864e5);
 const GROUPS = { DOING: 'doing', NOW: 'doing', 'IN-PROGRESS': 'doing', STARTED: 'doing', TODO: 'todo', LATER: 'todo', WAITING: 'todo', WAIT: 'todo', DONE: 'done', CANCELED: 'canceled', CANCELLED: 'canceled' };
 /** Finished: done or cancelled. */
 const closed = (x) => ['done', 'canceled'].includes(GROUPS[x.marker]);
@@ -419,7 +420,11 @@ export function taskRow(x) {
 /** Long lists (Build 44; a review found the To-dos list drawing all 2,290 rows of a big notes folder at
  *  once): `items` are drawn into `host` a part at a time, `first` of them now and the next part whenever
  *  the end of what's drawn comes near the screen, so a list of thousands opens as fast as a short one.
- *  A short list is drawn whole, as before. `done()`: every row is drawn. Returns how many are drawn. */
+ *  A short list is drawn whole, as before. `done()`: every row is drawn. Returns how many are drawn.
+ *  @param {HTMLElement} host
+ *  @param {any[]} items
+ *  @param {(item: any) => string} html  makes one item's row (its HTML)
+ *  @param {{ first?: number, each?: number, done?: () => void }} [opts] */
 export function drawInParts(host, items, html, { first = 150, each = 300, done } = {}) {
   let at = 0;
   const tail = h('div', 'more-tail'); // (invisible, over the last screenful of rows: app.css)
@@ -588,6 +593,7 @@ export async function todosView(app, view) {
     const q = input.value.trim().toLowerCase();
     const t = num(today());
     const list = tasks.filter((x) => ofKind(x) && typed(x, q) && chips.passes(names(x)));
+    /** @type {[string, any[]][]} */ // (heading, its to-dos)
     let groups;
     if (opt.sort === 'due') {
       const ahead = app.summary?.config?.future_days ?? 7; // (config.edn :scheduled/future-days, as today's box)

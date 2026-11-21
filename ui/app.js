@@ -123,8 +123,8 @@ function litWords(el, words, hl) {
   const fold = (x) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   for (let n = walk.nextNode(); n; n = walk.nextNode()) {
-    const t = fold(n.data);
-    if (t.length !== n.data.length) continue; // (letters with accents written as two: places would differ)
+    const t = fold(/** @type {Text} */ (n).data);
+    if (t.length !== /** @type {Text} */ (n).data.length) continue; // (letters with accents written as two: places would differ)
     for (const w of words) {
       for (let i = t.indexOf(w); i >= 0; i = t.indexOf(w, i + w.length)) {
         const r = new Range();
@@ -309,6 +309,15 @@ class App {
     this.opening = new Set(); // notes waiting to open (editAfterSave): { done, keep }, for saveAll
     this.keyMap = { ...DEFAULT_KEYS };
     this.steps = []; this.redoSteps = []; // which outline each Undo step is in, newest last (undo below)
+    // Kept on the app later, when first needed (each is undefined until then). They are listed here
+    // only so the type checker knows what they hold: a line like `this.attach;` just reads the
+    // property and does nothing, so it doesn't change how the app runs.
+    /** @type {import('./attach.js').Attachments | undefined} */ this.attach; // the attachments bar (showAttachments)
+    /** @type {Set<HTMLElement> | undefined} */ this.refWait; // block references waiting to be filled in (blockRefs)
+    /** @type {Map<string, any> | undefined} */ this.refCache; // note id → the note found for it (any: as the Rust side sends it)
+    /** @type {MediaQueryList | undefined} */ this.narrowMQ; // whether the window is narrow (as app.css decides)
+    /** @type {HTMLElement | undefined} */ this.savedMark; // the small "saved" mark
+    /** @type {Map<string, boolean> | undefined} */ this.homeStates; // place → is it the Journals list (updateHome)
   }
   /** The outlines (editors) on screen, on both sides. */
   get outlines() { return this.tabs.panes.flatMap((p) => p.outlines); }
@@ -358,7 +367,7 @@ class App {
     const t = this.tabs.tab();
     if (!t) return;
     const { kind, arg } = parsePlace(placeOf(t));
-    document.querySelectorAll('.nav a').forEach((a) => (a.dataset.view === kind ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
+    (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.nav a'))).forEach((a) => (a.dataset.view === kind ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
     const bar = $('#topbar .t');
     if (bar) bar.textContent = VIEW_NAMES[kind] ?? (arg || '');
     // the phone bar's Go to date shows on the Journals list only: on a page, its name keeps the room
@@ -409,7 +418,7 @@ class App {
     if (this.refT) return;
     this.refT = setTimeout(async () => {
       this.refT = 0;
-      const spans = [...this.refWait].flatMap((x) => [...x.querySelectorAll('.bref[data-ref]:not([data-page])')]);
+      const spans = [...this.refWait].flatMap((x) => [.../** @type {NodeListOf<HTMLElement>} */ (x.querySelectorAll('.bref[data-ref]:not([data-page])'))]);
       this.refWait.clear();
       const cache = (this.refCache ??= new Map());
       const ask = [...new Set(spans.map((x) => x.dataset.ref))].filter((id) => !cache.has(id));
@@ -740,7 +749,7 @@ class App {
     const r = p.el.getBoundingClientRect();
     let blk = null;
     for (let y = r.top + 12; !blk && y < r.top + 240; y += 24) { // (below any pinned parents)
-      const b = document.elementFromPoint(r.left + r.width / 2, y)?.closest('.blk');
+      const b = /** @type {HTMLElement} */ (document.elementFromPoint(r.left + r.width / 2, y)?.closest('.blk'));
       if (b && p.el.contains(b) && !b.closest('.pins')) blk = b;
     }
     if (!blk) return null;
@@ -830,8 +839,8 @@ class App {
   // The strip's are each side's own; the phone bar's, the active side's.
   updateHistBar() {
     const T = this.tabs;
-    document.querySelectorAll('[data-h="back"], [data-h="forward"]').forEach((b) => {
-      const nav = b.closest('.hb-nav'), p = nav ? T.panes[+nav.dataset.p] : T.pane, t = p?.tabs[p.cur];
+    (/** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-h="back"], [data-h="forward"]'))).forEach((b) => {
+      const nav = /** @type {HTMLElement} */ (b.closest('.hb-nav')), p = nav ? T.panes[+nav.dataset.p] : T.pane, t = p?.tabs[p.cur];
       b.disabled = b.dataset.h === 'back' ? !(t?.at > 0) : !(t && t.at < t.hist.length - 1);
     });
     this.updateHome();
@@ -848,8 +857,8 @@ class App {
     // (only the two bars are searched, not the whole page: a 3,000-note page made a page-wide search
     // ~20 ms a frame on a phone)
     const bars = [document.getElementById('histbar'), document.getElementById('topbar')];
-    bars.flatMap((bar) => (bar ? [...bar.querySelectorAll('[data-a="home"]')] : [])).forEach((b) => {
-      const nav = b.closest('.hb-nav'), p = nav ? T.panes[+nav.dataset.p] : T.pane, t = p?.tabs[p.cur];
+    bars.flatMap((bar) => (bar ? [.../** @type {NodeListOf<HTMLButtonElement>} */ (bar.querySelectorAll('[data-a="home"]'))] : [])).forEach((b) => {
+      const nav = /** @type {HTMLElement} */ (b.closest('.hb-nav')), p = nav ? T.panes[+nav.dataset.p] : T.pane, t = p?.tabs[p.cur];
       const top = p ? (narrow.matches ? scrollY : p.el.scrollTop) : 0;
       const key = t ? placeOf(t) : '';
       let journals = states.get(key);
@@ -1155,6 +1164,7 @@ class App {
     if (!host.isConnected) return;
     const t = num(today());
     const ahead = this.summary?.config?.future_days ?? 7;
+    /** @type {[string, string, any[]][]} */ // (key, heading, its to-dos)
     const groups = [['overdue', 'Overdue', []], ['today', 'Today', []], ['soon', ahead === 1 ? 'Tomorrow' : `Next ${ahead} days`, []]];
     for (const x of tasks) {
       const w = taskDay(x);
@@ -1515,7 +1525,7 @@ class App {
     const [by, way] = REF_SORTS[refPrefs(host).sort];
     if (by === 'name') { // (days by their date, after the pages: a date's words don't sort; Z to A turns both round)
       const day = (g) => (g.journal ? g.journal[0] * 400 + g.journal[1] * 32 + g.journal[2] : 0);
-      return [...groups].sort((a, b) => way * ((!!a.journal - !!b.journal) || (day(b) - day(a)) || a.page.localeCompare(b.page, undefined, { sensitivity: 'base', numeric: true })));
+      return [...groups].sort((a, b) => way * ((Number(!!a.journal) - Number(!!b.journal)) || (day(b) - day(a)) || a.page.localeCompare(b.page, undefined, { sensitivity: 'base', numeric: true })));
     }
     let t = null; // (only when the answer had no times: the pages list's)
     const at = (g) => g[by] ?? (t ??= new Map((this.names || []).map((x) => [String(x.name).toLowerCase(), x]))).get(g.page.toLowerCase())?.[by] ?? 0;
@@ -2161,7 +2171,7 @@ class App {
     try {
       this.summary.config.favorites = await call('set_favorite', { name, on });
       this.renderSideLists();
-      for (const b of document.querySelectorAll('.title-row [data-a="fav"]')) { // (the page may be open on both sides)
+      for (const b of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.title-row [data-a="fav"]'))) { // (the page may be open on both sides)
         if (b.dataset.name?.toLowerCase() !== name.toLowerCase()) continue;
         b.classList.toggle('on', on);
         b.setAttribute('aria-label', on ? 'Remove from favourites' : 'Add to favourites');
@@ -2296,7 +2306,7 @@ class App {
     // drawn once more, so the browser notes its new height, and marked far again by its list's watcher
     for (const d of document.querySelectorAll('.sheet.day.far')) {
       d.classList.remove('far');
-      const obs = d.parentNode?.farObs;
+      const obs = /** @type {HTMLElement & { farObs?: IntersectionObserver }} */ (d.parentNode)?.farObs;
       if (obs) { obs.unobserve(d); obs.observe(d); }
     }
     return s;
@@ -2455,7 +2465,7 @@ class App {
     // after a click, like a window's own buttons, so Space or Enter afterwards scroll instead of
     // pressing them again; Tab still reaches them. (The message's button, e.g. Undo, neither: the note
     // being typed in stays open, the keyboard up.)
-    document.addEventListener('mousedown', (e) => { if (e.target.closest?.(QUIET_BUTTONS)) e.preventDefault(); });
+    document.addEventListener('mousedown', (e) => { if (/** @type {HTMLElement} */ (e.target).closest?.(QUIET_BUTTONS)) e.preventDefault(); });
     // The window got narrow or wide (e.g. snapped to half the screen): a different part of the
     // screen scrolls now (see app.css). Keep what was at the top of the notes there, and let the
     // journals watch the right part for loading older days.
@@ -2517,7 +2527,7 @@ class App {
       // the maximise button turns into "restore" while the window is maximised
       const syncMax = async () => {
         const m = await win.isMaximized().catch(() => false);
-        document.querySelectorAll('[data-w="max"]').forEach((b) => {
+        (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-w="max"]'))).forEach((b) => {
           b.innerHTML = m ? ICON.winRestore : ICON.winMax;
           b.title = m ? 'Restore' : 'Maximise';
           b.setAttribute('aria-label', b.title);
@@ -2576,7 +2586,7 @@ class App {
       if (top.classList.contains('away') && e.touches[0]?.clientY < 28) { top.classList.remove('away'); this.barUp = 0; }
     }, { passive: true });
     document.addEventListener('click', (e) => {
-      if (document.body.classList.contains('drawer') && !e.target.closest('#side, #topbar, .pop, .modal-back')) document.body.classList.remove('drawer');
+      if (document.body.classList.contains('drawer') && !/** @type {HTMLElement} */ (e.target).closest('#side, #topbar, .pop, .modal-back')) document.body.classList.remove('drawer');
     });
     // the menu button says whether the menu (drawer) is open, whatever opened or closed it
     const menuBtn = $('[data-a="menu"]', top);
@@ -2607,6 +2617,9 @@ class App {
       ['link', 'Link'], ['tag', 'Tag'], ['check', 'To-do'], ['date', 'Date: a link to a day, or scheduled / deadline'], ['polish', 'Polish note (AI)'], ['bold', 'Bold'], ['italic', 'Italics'], ['mark', 'Highlight'], ['heading', 'Heading'],
       ['image', 'Add image'], ['more', 'Note menu: colour, heading, cut, copy…'], ['outdent', 'Outdent'], ['indent', 'Indent'], ['up', 'Move up'], ['down', 'Move down'], ['slash', 'Commands (/)']];
     const POPS = { more: 'menu', date: 'menu', slash: 'listbox' }; // (what each opens, for screen readers)
+    /** One button of the toolbar.
+     *  @param {string[]} tool  its [key, label]
+     *  @param {string} [cls]  an extra CSS class */
     const tbBtn = ([k, label], cls = '') => `<button data-t="${k}"${cls ? ` class="${cls}"` : ''}${POPS[k] ? ` aria-haspopup="${POPS[k]}"${k === 'slash' ? '' : ' aria-expanded="false"'}` : ''} aria-label="${label}" title="${label}">${ICON[k]}</button>`;
     tb.innerHTML = `<div class="tb-scroll">${tools.map((t) => tbBtn(t)).join('')}</div>${tbBtn(['done', 'Close keyboard'], 'tb-pin')}`;
     // Build 44 (he said go: the last tool before "close keyboard" showed cut in half, which looked
@@ -2636,7 +2649,7 @@ class App {
     const OPENS = { more: '.note-menu', date: '.pop.tb-menu', polish: '.pop.tb-menu', slash: '#ac:not([hidden])' };
     let shut = null;
     addEventListener('pointerdown', (e) => {
-      const b = e.target.closest?.('#toolbar button');
+      const b = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest?.('#toolbar button'));
       shut = b && OPENS[b.dataset.t] && document.querySelector(OPENS[b.dataset.t]) ? b : null;
     }, true);
     tb.addEventListener('pointerdown', (e) => {
@@ -2683,7 +2696,7 @@ class App {
           const watch = new MutationObserver(() => { if (!document.querySelector('.note-menu')) { b.setAttribute('aria-expanded', 'false'); watch.disconnect(); } });
           watch.observe(document.body, { childList: true });
         },
-        done: () => { o.stopEdit(); o.clearSel(); document.activeElement?.blur(); this.updateToolbar(); },
+        done: () => { o.stopEdit(); o.clearSel(); /** @type {HTMLElement} */ (document.activeElement)?.blur(); this.updateToolbar(); },
       })[b.dataset.t]?.();
       // the toolbar went away (Close keyboard): the click that comes with this tap mustn't land on
       // what's under the finger now (the "+", a note)
@@ -3000,7 +3013,7 @@ class App {
     });
   }
   /** The favourites as the sidebar lists them. */
-  favNames() { return [...document.querySelectorAll('#favs .side-list a')].map((a) => a.dataset.page); }
+  favNames() { return [.../** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#favs .side-list a'))].map((a) => a.dataset.page); }
   /** Drag a favourite (a, pressed with event e) up or down the list: it moves among the others as the
    *  pointer goes; let go to keep that order, Esc to put it back. A mouse moves it at once; a finger
    *  holds it first (450 ms, as for a note's dot), so a swipe still scrolls the list. */
@@ -3068,7 +3081,7 @@ class App {
       if (this.summary?.config) this.summary.config.favorites = favs;
     } catch (e) { this.toast(`The favourites couldn’t be put in that order: ${e?.message ?? e}`, 5000); }
     this.renderSideLists();
-    if (had) [...document.querySelectorAll('#favs .side-list a')].find((x) => x.dataset.page === had)?.focus();
+    if (had) [.../** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#favs .side-list a'))].find((x) => x.dataset.page === had)?.focus();
   }
   /** A drag handle (role separator) for a size: the sidebar's width, or where two sides meet.
    *  o: pos(clientX) → the size the pointer means, get() → the size now, min()/max(), set(v) (each frame
@@ -3144,7 +3157,7 @@ class App {
   /** Favourites and Recent can be folded away (clicking their heading); the choice is remembered. */
   applySideFolds() {
     const shut = store.get('sideShut', {});
-    document.querySelectorAll('#side .side-sec').forEach((sec) => {
+    (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#side .side-sec'))).forEach((sec) => {
       const closed = !!shut[sec.dataset.sec];
       sec.classList.toggle('folded', closed);
       sec.querySelector('.side-fold')?.setAttribute('aria-expanded', String(!closed));
@@ -3250,7 +3263,7 @@ class App {
     const reset = () => { y0 = null; d = 0; mark.style.removeProperty('--pull'); mark.classList.remove('ready', 'on'); };
     addEventListener('touchstart', (e) => {
       reset();
-      const t = e.target;
+      const t = /** @type {HTMLElement} */ (e.target);
       if (e.touches.length !== 1 || !atTop() || t.closest?.('textarea, input, .bul, .pop, .modal-back, #search, #side, .menu')) return;
       y0 = e.touches[0].clientY; x0 = e.touches[0].clientX;
     }, { passive: true });
@@ -3294,8 +3307,8 @@ class App {
     const wlBack = $('.welcome .wl-back'); // (the welcome screen's folder picker: back to its first step)
     if (wlBack) { wlBack.click(); return true; }
     const o = this.outlines.find((x) => x.cur !== null || x.sel);
-    if (o) { o.stopEdit(); o.clearSel(); document.activeElement?.blur(); this.updateToolbar(); return true; }
-    const a = document.activeElement; // e.g. the page properties box, a filter
+    if (o) { o.stopEdit(); o.clearSel(); /** @type {HTMLElement} */ (document.activeElement)?.blur(); this.updateToolbar(); return true; }
+    const a = /** @type {HTMLElement} */ (document.activeElement); // e.g. the page properties box, a filter
     if (a?.matches?.('.pt-name[contenteditable]')) { esc(); return true; } // (a page's name being changed: as it was)
     if (a?.matches?.('input, textarea')) { a.blur(); return true; }
     return false;
@@ -3473,7 +3486,8 @@ class App {
   /** Is there a newer build on the public repo’s releases page? Asked at start, every 2 hours while
    *  open and when the window comes back (Build 40: once a day was too seldom, he kept going to About to
    *  check), each at most every 30 minutes; maxAge: how old an answer may be (About asks again when
-   *  the last answer is over a minute old, its "Check" button always: true). */
+   *  the last answer is over a minute old, its "Check" button always: true).
+   *  @param {number | true} [maxAge]  milliseconds, or true: always ask again */
   async checkUpdate(maxAge = 18e5) {
     // (the Google Play version updates through Play only: no checking GitHub, nothing offered)
     if (!isApp || window.LeanAndroid?.fromPlay?.()) return null;

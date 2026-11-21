@@ -3,6 +3,8 @@
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DOW = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+/** The key a date is kept under in `marks`, e.g. "2026-11-21".
+ *  @param {number[]} ymd  a date as [year, month, day] */
 export const keyOf = ([y, m, d]) => `${y}-${m}-${d}`;
 const same = (a, b) => a && b && a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
 
@@ -52,12 +54,12 @@ export function createCalendar(host, opts) {
     const dt = new Date(focus[0], focus[1] - 1, focus[2] + delta);
     focus = [dt.getFullYear(), dt.getMonth() + 1, dt.getDate()];
     if (focus[0] !== y || focus[1] !== m) setMonth(focus[0], focus[1]); else draw();
-    el.querySelector('.day.focus')?.focus();
+    /** @type {HTMLElement} */ (el.querySelector('.day.focus'))?.focus();
   };
   el.addEventListener('click', (e) => {
-    const nav = e.target.closest('[data-nav]');
+    const nav = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('[data-nav]'));
     if (nav) { setMonth(y, m + Number(nav.dataset.nav)); return; }
-    const b = e.target.closest('[data-d]');
+    const b = /** @type {HTMLElement} */ (/** @type {Element} */ (e.target).closest('[data-d]'));
     if (b) { focus = b.dataset.d.split('-').map(Number); opts.onPick?.(focus); }
   });
   el.addEventListener('keydown', (e) => {
@@ -70,15 +72,15 @@ export function createCalendar(host, opts) {
       const last = new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
       focus = [dt.getFullYear(), dt.getMonth() + 1, Math.min(focus[2], last)];
       setMonth(focus[0], focus[1]);
-      el.querySelector('.day.focus')?.focus();
+      /** @type {HTMLElement} */ (el.querySelector('.day.focus'))?.focus();
       return;
     }
-    if (e.key === 'Enter' && e.target.closest('[data-d]')) { e.preventDefault(); opts.onPick?.(focus); }
+    if (e.key === 'Enter' && /** @type {HTMLElement} */ (e.target).closest('[data-d]')) { e.preventDefault(); opts.onPick?.(focus); }
   });
   draw();
   return {
     el,
-    focusDay() { el.querySelector('.day.focus')?.focus(); },
+    focusDay() { /** @type {HTMLElement} */ (el.querySelector('.day.focus'))?.focus(); },
     setMarks(marks) { opts.marks = marks; draw(); },
     show(date) { focus = date.slice(); setMonth(date[0], date[1]); },
   };

@@ -47,7 +47,7 @@ function markWords(root, words) {
   if (words.some((w) => w.length > 1)) words = words.filter((w) => w.length > 1); // (not every "a" of "a model")
   const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes = [];
-  while (walk.nextNode()) nodes.push(walk.currentNode);
+  while (walk.nextNode()) nodes.push(/** @type {Text} */ (walk.currentNode));
   for (const n of nodes) {
     if (n.parentElement?.closest('.mk')) continue; // (the to-do word label)
     const { text, a, z } = foldMap(n.data);
@@ -82,7 +82,7 @@ function trimBefore(root, mark, keep = 28) {
   const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let left = cut;
   while (walk.nextNode()) {
-    const n = walk.currentNode;
+    const n = /** @type {Text} */ (walk.currentNode);
     if (left <= n.data.length) {
       let off = left;
       if (off > 0 && off < n.data.length && /[\uD800-\uDBFF]/.test(n.data[off - 1])) off++; // (not inside an emoji)
@@ -181,7 +181,7 @@ export class SearchBox {
       // (the magnifier is under the box's own: a press there is a press on it, and closes it)
       const m = this.ic.getBoundingClientRect(), onMag = e.clientX >= m.left && e.clientX < m.right && e.clientY >= m.top && e.clientY < m.bottom;
       if (this.box.contains(e.target) && !onMag) return;
-      if (onMag || e.target.closest?.('#histbar .hb-app [data-a="search"]')) {
+      if (onMag || /** @type {HTMLElement} */ (e.target).closest?.('#histbar .hb-app [data-a="search"]')) {
         e.preventDefault();
         eatThisClick();
       }
@@ -191,7 +191,7 @@ export class SearchBox {
   }
   /** The strip's magnifier, when search can open out of it (a laptop window with the strip showing). */
   get mag() {
-    const b = document.querySelector('#histbar .hb-app [data-a="search"]');
+    const b = /** @type {HTMLElement} */ (document.querySelector('#histbar .hb-app [data-a="search"]'));
     return b && b.offsetParent && !matchMedia('(pointer: coarse)').matches ? b : null;
   }
   placeInPlace() {
@@ -219,7 +219,7 @@ export class SearchBox {
       // (Build 39) the look list closes under it; the search buttons say it's open; a button that had the
       // keyboard gets it back when it's closed
       this.app.closeLooks?.();
-      this.opener = document.activeElement?.closest?.('button, a') ?? null;
+      this.opener = /** @type {HTMLElement} */ (document.activeElement?.closest?.('button, a')) ?? null;
       for (const b of document.querySelectorAll('[data-a="search"]')) b.setAttribute('aria-expanded', 'true');
       this.setInPlace(mode === 'search' && !!this.mag);
       this.el.hidden = false;
@@ -352,7 +352,7 @@ export class SearchBox {
       }
       scored.push({ c, score, k });
     });
-    scored.sort((a, b) => !!a.c.more - !!b.c.more || b.score - a.score || a.k - b.k); // (the looks one by one after the rest)
+    scored.sort((a, b) => Number(!!a.c.more) - Number(!!b.c.more) || b.score - a.score || a.k - b.k); // (the looks one by one after the rest)
     for (const { c } of scored) rows.push({ kind: 'cmd', c, words });
     if (!rows.length) rows.push({ kind: 'note', html: 'No command has those words.' });
     return rows;

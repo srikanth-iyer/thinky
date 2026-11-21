@@ -83,7 +83,7 @@ function rangeIn(el, start, end) {
   const r = document.createRange();
   let pos = 0, set = false;
   for (let n = walk.nextNode(); n; n = walk.nextNode()) {
-    const len = n.data.length;
+    const len = /** @type {Text} */ (n).data.length;
     if (!set && start < pos + len) { r.setStart(n, start - pos); set = true; }
     if (set && end <= pos + len) { r.setEnd(n, end - pos); return r; }
     pos += len;
@@ -325,7 +325,8 @@ export async function openClash(o, copy = null) {
 /** Build the page from the choices, back up what loses something, then save. `asked`: the version
  *  that was compared; `close(done)` takes the screen away (once the backups are made, so nothing
  *  can be typed meanwhile). False if nothing was changed (a backup couldn't be made: the page's
- *  banner still offers the choice). */
+ *  banner still offers the choice).
+ *  @param {(done: boolean) => void} [close]  (the other parameters have no type written down) */
 async function keep(o, c, asked, wholeSide, items, picks, sides, close = () => {}, copy = null) {
   let doc;
   if (wholeSide) doc = wholeSide === 'mine' ? o.doc : c.theirs;

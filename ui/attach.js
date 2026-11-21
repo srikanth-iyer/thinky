@@ -32,9 +32,9 @@ export class Attachments {
         <button type="button" data-f="close" aria-label="Clear" title="Clear (Esc)">${ICON.winClose}</button>
       </div>`;
     document.body.append(this.el);
-    this.el.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
+    this.el.addEventListener('pointerdown', (e) => { if (/** @type {HTMLElement} */ (e.target).closest('button')) e.preventDefault(); });
     this.el.addEventListener('click', (e) => {
-      const f = e.target.closest('button')?.dataset.f;
+      const f = /** @type {HTMLElement} */ (e.target).closest('button')?.dataset.f;
       if (f === 'prev' || f === 'next') this.step(f === 'prev' ? -1 : 1);
       if (f === 'close') this.close();
     });
@@ -140,7 +140,7 @@ export class Attachments {
     this.el.querySelector('.ab-what').textContent = this.hits.length
       ? `${plural(this.hits.length, 'note')} with ${plural(many, 'attachment')}`
       : 'No note on this page links to a file in assets';
-    this.el.querySelectorAll('[data-f="prev"], [data-f="next"]').forEach((b) => { b.disabled = !this.hits.length; });
+    (/** @type {NodeListOf<HTMLButtonElement>} */ (this.el.querySelectorAll('[data-f="prev"], [data-f="next"]'))).forEach((b) => { b.disabled = !this.hits.length; });
   }
 
   step(dir) {

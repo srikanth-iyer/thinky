@@ -179,10 +179,18 @@ class MainActivity : TauriActivity() {
 
   // ---- updater (left out of the Play version by android_overlay.py, up to "end of the updater")
   // One-click updates (Settings → About → "Update now"). The page passes only the build
-  // ("build-24"); the address is made here. The APK is checked to be this app and newer, then
-  // handed to Android's own installer, which accepts it only if it's signed with the same key as
-  // this app: that is the check that it's genuine. Android asks "Do you want to update this
-  // app?" itself, and doesn't start the app again afterwards.
+  // ("build-24"); the address is made here. Since the outside review's item 3 (Nov 21, 2026) the
+  // release's signature file (thinky-apk.sig) is checked first, with the update key's public half
+  // built into the app (UPDATE_KEY), the same key and kind of file the Windows installer is checked
+  // with: the APK must be the one the release job signed, made for this build, and newer
+  // (Checks.apkSigProblem). Then it's checked to be this app, newer and signed like it, and handed to
+  // Android's own installer, which also accepts it only if it's signed with the same key as this
+  // app. Android asks "Do you want to update this app?" itself, and doesn't start the app again
+  // afterwards.
+  /** The update key's public half (base64 X‖Y, ci/update-key.pub), written in by
+   *  scripts/android_overlay.py from LEAN_UPDATE_KEY; empty in a build made without it, which then
+   *  refuses every update (Checks.updateKey gives null). */
+  private val UPDATE_KEY = "__UPDATE_KEY__"
   @Volatile private var updateTag: String? = null // waiting for "Install unknown apps" to be allowed
   @Volatile private var updateApk: File? = null   // downloaded and checked, ready to install
   private val updating = AtomicBoolean(false)
@@ -248,21 +256,36 @@ class MainActivity : TauriActivity() {
     val dir = File(cacheDir, "update-apk")
     dir.deleteRecursively()
     dir.mkdirs()
-    val apk = File(dir, "thinky.apk")
+    val apk = File(dir, Checks.APK_FILE)
+    // the key first: a build made without it can't check any update, so nothing is downloaded
+    val key = Checks.updateKey(UPDATE_KEY)
+    if (key == null) {
+      updateEvent("error", "Nothing was installed: ${Checks.apkSigProblem(null, null, n.toLong(), null, "")}.")
+      return
+    }
+    var sig: Checks.UpdateSig? = null // the release's signature file, read (null: it has none)
     var c: HttpURLConnection? = null
     try {
       updateEvent("download")
-      // thinky.apk since Build 35; a release before it has only its old name
-      var code = 404
-      for (name in listOf("thinky.apk", "LeanOutliner.apk")) {
-        c?.disconnect()
-        c = URL("https://github.com/srikanth-iyer/thinky/releases/download/build-$n/$name").openConnection() as HttpURLConnection
-        c.connectTimeout = 20000
-        c.readTimeout = 30000
-        code = c.responseCode // after GitHub's redirect to its download server (https only)
-        if (code != 404) break
+      // 1. the signature file (small): read whole, at most SIG_MAX_BYTES
+      val sigConn = httpsTo("https://github.com/srikanth-iyer/thinky/releases/download/build-$n/${Checks.APK_SIG_FILE}")
+      c = sigConn
+      val sigCode = sigConn.responseCode // after GitHub's redirect to its download server (https only)
+      if (sigCode == 404) {
+        // a release without one (Build 55 and older) can't be checked, so there's no point downloading it
+        dir.deleteRecursively()
+        updateEvent("error", "Nothing was installed: ${Checks.apkSigProblem(key, null, n.toLong(), null, "")}.")
+        return
       }
-      val conn = c!!
+      if (sigCode != 200) throw Exception("the downloads page answered $sigCode")
+      if (sigConn.url.protocol != "https") throw Exception("not a secure connection")
+      val bytes = sigConn.inputStream.use { Checks.readAtMost(it, Checks.SIG_MAX_BYTES) } ?: throw Exception("its signature file is far too big")
+      sig = readSig(bytes)
+      sigConn.disconnect()
+      // 2. the APK (thinky.apk since Build 35; every release with a signature file has it)
+      val conn = httpsTo("https://github.com/srikanth-iyer/thinky/releases/download/build-$n/${Checks.APK_FILE}")
+      c = conn
+      val code = conn.responseCode
       if (code != 200) throw Exception(if (code == 404) "it isn’t on the downloads page" else "the downloads page answered $code")
       if (conn.url.protocol != "https") throw Exception("not a secure connection")
       val total = conn.contentLengthLong
@@ -292,10 +315,15 @@ class MainActivity : TauriActivity() {
       c?.disconnect()
     }
     updateEvent("check")
-    @Suppress("DEPRECATION")
-    val got = try { packageManager.getPackageArchiveInfo(apk.path, 0) } catch (e: Exception) { null }
+    // 3. the signature file must check out for exactly these bytes, before Android reads the file at all
+    val sha = try { apk.inputStream().use { Checks.sha256Hex(it) } } catch (e: Exception) { "" }
     val mine = packageManager.getPackageInfo(packageName, 0)
+    val sigProblem = Checks.apkSigProblem(key, sig, n.toLong(), mine.versionName, sha)
+    // 4. then that it's this app, newer and signed like it (Android checks the last one again)
+    @Suppress("DEPRECATION")
+    val got = if (sigProblem != null) null else try { packageManager.getPackageArchiveInfo(apk.path, 0) } catch (e: Exception) { null }
     val problem = when {
+      sigProblem != null -> sigProblem
       got == null -> "the download isn’t an app (it may be damaged)"
       got.packageName != packageName -> "the download is a different app"
       versionOf(got) <= versionOf(mine) -> "the download isn’t newer than this version"
@@ -310,6 +338,23 @@ class MainActivity : TauriActivity() {
     updateApk = apk
     updateEvent("ready")
   }
+
+  /** An https connection to a download address (made here from the build number, never from the page). */
+  private fun httpsTo(address: String): HttpURLConnection =
+    (URL(address).openConnection() as HttpURLConnection).apply {
+      connectTimeout = 20000
+      readTimeout = 30000
+    }
+
+  /** The signature file's fields (Checks.apkSigProblem judges them): null for a field that is missing
+   *  or of the wrong kind, and the whole file unreadable → every field null (then it is refused). */
+  private fun readSig(bytes: ByteArray): Checks.UpdateSig = try {
+    val d = JSONObject(String(bytes, Charsets.UTF_8).removePrefix("\uFEFF"))
+    fun text(k: String): String? = d.opt(k) as? String
+    // the build must be a whole number (JSON 56, not "56" or 56.5)
+    val build = when (val b = d.opt("build")) { is Int -> b.toLong(); is Long -> b; else -> null }
+    Checks.UpdateSig(text("file"), text("version"), build, text("sha256"), text("sig"))
+  } catch (e: Exception) { Checks.UpdateSig(null, null, null, null, null) }
 
   private fun versionOf(p: PackageInfo): Long = PackageInfoCompat.getLongVersionCode(p)
 

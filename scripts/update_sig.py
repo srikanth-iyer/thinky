@@ -17,6 +17,10 @@
       write thinky-update.sig (Build 41 on): the version people see, made for build N
   python3 scripts/update_sig.py check-update <public key> <file.sig>
       does a thinky-update.sig check out with that key (from what the file itself says)?
+  python3 scripts/update_sig.py apk-check <public key> <thinky.apk> <thinky-apk.sig> <N>
+      would the phone accept this APK as build N? The phone's own checks of its signature file
+      (android/kotlin/Checks.kt apkSigProblem) except "newer than the installed app": it is for
+      thinky.apk and build N, its checksum is this file's, and its signature is good with that key
 
 A locked key's password comes from the KEY_PASS environment variable, never the command line.
 openssl is the one named by the OPENSSL environment variable (CI gives its full path, so making,
@@ -118,6 +122,20 @@ def check(pub_b64, sig_path, newer=False):
         return r.returncode == 0
 
 
+def apk_check(pub_b64, apk, sig_path, n):
+    """None if the phone would accept `apk` as build n with this signature file, else why not."""
+    d = json.load(open(sig_path, encoding="utf-8-sig"))
+    if d.get("file") != "thinky.apk":
+        return f"the signature file is for {d.get('file')}, not thinky.apk"
+    if not (type(d.get("build")) is int and str(d["build"]) == str(n)):
+        return f"the signature file isn't for build {n}"
+    if d.get("sha256", "").lower() != hashlib.sha256(open(apk, "rb").read()).hexdigest():
+        return "the APK doesn't match its signature file"
+    if not check(pub_b64, sig_path, newer=True):
+        return "the signature doesn't check out with that key"
+    return None
+
+
 def sign(key, path, out, version, build=None):
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         sys.exit(f"not a version: {version!r}")
@@ -160,6 +178,10 @@ if __name__ == "__main__":
         print(app_version())
     elif a[:1] == ["sign-update"] and len(a) == 6:
         sign(*a[1:])
+    elif a[:1] == ["apk-check"] and len(a) == 5:
+        why = apk_check(*a[1:])
+        print(why or "ok")
+        sys.exit(1 if why else 0)
     elif a[:1] in (["check"], ["check-update"]) and len(a) == 3:
         ok = check(a[1], a[2], newer=a[0] == "check-update")
         print("ok" if ok else "the signature doesn't match this key")
