@@ -113,7 +113,16 @@ pub fn next_repeat(w: &When, today: Date) -> Option<Date> {
     };
     let unit = rest.chars().last()?;
     let n: i64 = rest[..rest.len() - unit.len_utf8()].parse().ok()?;
-    if n <= 0 {
+    // a step longer than the calendar (about 10,000 years) is no repeat: it can't overflow
+    let most = match unit {
+        'h' => i64::MAX,
+        'd' => 3_660_000,
+        'w' => 523_000,
+        'm' => 120_000,
+        'y' => 10_000,
+        _ => return None,
+    };
+    if n <= 0 || n > most {
         return None;
     }
     // k steps from `from` (months are counted from the start date, so Jan 31 stays the 31st)
@@ -127,7 +136,7 @@ pub fn next_repeat(w: &When, today: Date) -> Option<Date> {
             _ => return None,
         })
     };
-    match kind {
+    let next = match kind {
         '.' => steps(today, 1),
         '+' => {
             let mut k = 1;
@@ -139,7 +148,9 @@ pub fn next_repeat(w: &When, today: Date) -> Option<Date> {
             Some(d)
         }
         _ => steps(w.date, 1),
-    }
+    }?;
+    // only a day a timestamp can be written with (years 1 to 9999)
+    (1..=9999).contains(&next.0).then_some(next)
 }
 
 /// Mark a block's text done (or cycle a repeating task): returns the new text.

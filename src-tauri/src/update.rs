@@ -118,8 +118,9 @@ fn download(tag: &str, own: &str) -> Result<(), String> {
         std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn’t make a folder for the download ({e})."))?;
         // the small signature file first: without it there's no point fetching the installer
         // (thinky-update.sig since Build 41: the version people see, any part of which may go up)
+        // (each within its own limit: a few KB for the signature file)
         for file in [rules::UPDATE_SIG_FILE, rules::SETUP_FILE] {
-            imp::fetch(&rules::asset_url(n, file), &dir.join(file))?;
+            imp::fetch(&rules::asset_url(n, file), &dir.join(file), crate::shell_rules::max_download(file))?;
         }
         Ok(())
     })();
@@ -206,7 +207,7 @@ pub fn verify_update_files(setup: &Path, sig: &Path, n: u32, own: Option<rules::
 
 fn verify_update_bytes(bytes: &[u8], sig: &Path, n: u32, own: Option<rules::Version>) -> Result<(), String> {
     let key = key().ok_or("this copy has no update key")?;
-    let sig = rules::parse_sig_file(&std::fs::read_to_string(sig).map_err(|e| format!("the signature file can’t be read: {e}"))?)?;
+    let sig = rules::parse_sig_file(&read_sig(sig)?)?;
     let text = rules::update_text_to_verify(&sig, rules::SETUP_FILE, n, own, &rules::hex(&imp::sha256(bytes)?))?;
     if imp::verify(&key, &imp::sha256(text.as_bytes())?, &sig.sig)? {
         Ok(())
@@ -215,9 +216,15 @@ fn verify_update_bytes(bytes: &[u8], sig: &Path, n: u32, own: Option<rules::Vers
     }
 }
 
+/// The signature file's words: a few hundred bytes, never more than SIG_MAX read.
+fn read_sig(sig: &Path) -> Result<String, String> {
+    let bytes = crate::shell_rules::read_capped(sig, crate::shell_rules::SIG_MAX).map_err(|e| format!("the signature file can’t be read: {e}"))?;
+    String::from_utf8(bytes).map_err(|_| "the signature file isn’t text".to_string())
+}
+
 fn verify_bytes(bytes: &[u8], sig: &Path, n: u32, own: Option<rules::Version>) -> Result<(), String> {
     let key = key().ok_or("this copy has no update key")?;
-    let sig = rules::parse_sig_file(&std::fs::read_to_string(sig).map_err(|e| format!("the signature file can’t be read: {e}"))?)?;
+    let sig = rules::parse_sig_file(&read_sig(sig)?)?;
     let text = rules::text_to_verify(&sig, rules::SETUP_FILE, n, own, &rules::hex(&imp::sha256(bytes)?))?;
     if imp::verify(&key, &imp::sha256(text.as_bytes())?, &sig.sig)? {
         Ok(())
@@ -372,10 +379,26 @@ pub(crate) mod imp {
 
     /// The installer, opened so that until the handle is dropped nothing else can change, rename or
     /// delete it (others may only read it, as starting it does), and its bytes read through it.
+    /// Only a plain file: never a link (or other reparse point) to somewhere else, before opening
+    /// or after (the link itself is what gets opened, never what it points at).
     pub fn open_held(path: &Path) -> Result<(std::fs::File, Vec<u8>), String> {
         use std::io::Read;
-        use std::os::windows::fs::OpenOptionsExt;
-        let mut f = std::fs::OpenOptions::new().read(true).share_mode(0x1).open(path).map_err(|e| format!("the installer can’t be opened: {e}"))?; // FILE_SHARE_READ
+        use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        let plain = |m: &std::fs::Metadata| m.is_file() && crate::shell_rules::plain_file_attrs(m.file_attributes());
+        let m = std::fs::symlink_metadata(path).map_err(|e| format!("the installer can’t be opened: {e}"))?;
+        if !plain(&m) {
+            return Err("the installer isn’t a plain file".into());
+        }
+        let mut f = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0x1) // FILE_SHARE_READ
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(path)
+            .map_err(|e| format!("the installer can’t be opened: {e}"))?;
+        if !f.metadata().is_ok_and(|m| plain(&m)) {
+            return Err("the installer isn’t a plain file".into());
+        }
         let mut bytes = Vec::new();
         f.read_to_end(&mut bytes).map_err(|e| format!("the installer can’t be read: {e}"))?;
         Ok((f, bytes))
@@ -389,13 +412,14 @@ pub(crate) mod imp {
         dir.join("curl.exe")
     }
 
-    /// Download `url` to `to` with curl.exe: https only (redirects too), retried, within limits.
-    /// `-q` first: no settings file (.curlrc) can change what it does.
-    pub fn fetch(url: &str, to: &Path) -> Result<(), String> {
+    /// Download `url` to `to` with curl.exe: https only (redirects too), retried, within limits
+    /// (`max` bytes at most). `-q` first: no settings file (.curlrc) can change what it does.
+    pub fn fetch(url: &str, to: &Path, max: u64) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
+        let max = max.to_string();
         let run = |extra: &[&str]| {
             Command::new(curl())
-                .args(["-q", "-fsSL", "--proto", "=https", "--proto-redir", "=https", "--retry", "2", "--connect-timeout", "30", "--max-time", "900", "--max-filesize", "300000000"])
+                .args(["-q", "-fsSL", "--proto", "=https", "--proto-redir", "=https", "--retry", "2", "--connect-timeout", "30", "--max-time", "900", "--max-filesize", max.as_str()])
                 .args(extra)
                 .arg("-o")
                 .arg(to)
@@ -420,6 +444,7 @@ pub(crate) mod imp {
         outline_core::log::record(&format!("update download {url}: curl.exe {code}: {}", String::from_utf8_lossy(&out.stderr).trim()));
         Err(match code {
             6 | 7 | 28 | 35 | 52 | 56 => "Couldn’t reach GitHub to download the update. Are you online?".into(),
+            63 => "The download was bigger than it can be, so it was stopped.".into(),
             22 => "The update isn’t on the downloads page (yet).".into(),
             _ => format!("The download didn’t work (curl.exe stopped with code {code})."),
         })
@@ -452,7 +477,7 @@ mod imp {
         let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
         Ok((std::fs::File::open(path).map_err(|e| e.to_string())?, bytes))
     }
-    pub fn fetch(_url: &str, _to: &Path) -> Result<(), String> {
+    pub fn fetch(_url: &str, _to: &Path, _max: u64) -> Result<(), String> {
         Err(ONLY.into())
     }
     pub fn sha256(_data: &[u8]) -> Result<[u8; 32], String> {

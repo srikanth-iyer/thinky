@@ -14,6 +14,21 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 55 · version 0.6.4 (November 2026)
+
+Fixes from an outside code review (Nov 21): safety and security first, then smaller things.
+
+- AI keys: a key goes only to the service it was saved for. A key for "Other" is now saved together with its address, so after updating, type the Other service's key in Settings → AI once more (OpenAI, Anthropic and the rest keep theirs).
+- The phone no longer offers Ollama or LM Studio (they run on a computer, and the phone reaches only https services).
+- On the phone, a YouTube video opens in its own app or the browser, outside thinky.
+- Updates from GitHub on Android install only when the download is signed with the same key as the app on the phone; anything it can't check counts as "no".
+- When a page changed on another device while you were editing it, thinky now shows the "which one to keep" screen in more of those cases instead of writing over the other copy.
+- Backups no longer pause typing while they run, and closing the Windows window twice in a row no longer cuts a save short.
+- Add to thinky (the Edge extension): up to 20,000 characters at a time and 10 sends a minute.
+- Formulas that would draw far too much are refused; a link's label can't hold another link; code is never read as a formula.
+- The calendar's PageUp and PageDown move by a month across a year's end; page names with & or < show as typed in breadcrumbs and questions.
+- Under the hood: the dev server serves only ui/ and answers its API only to its own page; tests t34_review, core review_core and ai_keys, Android Checks and watch tests; CI builds the shell's plain tests as the package shell_pure_tests.
+
 ## Build 54 · version 0.6.3 (November 2026)
 
 - Polish note: a click on the AI's words lets you change them by hand before keeping them (each of its notes becomes a text box; Keep or Ctrl+Enter keeps them as typed, Esc shows them drawn again). Nothing is saved before Keep, and a note emptied by hand isn't kept.

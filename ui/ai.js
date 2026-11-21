@@ -33,13 +33,17 @@ export async function providers() {
 }
 
 // ---------- keys (kept by the system, never by the page) ----------
-export async function keySet(provider, key) {
+// "Other"'s key is saved with the address it belongs to (this device's own address for it): the shells
+// send a key only to its own service's address (core ai.rs `key_may_go`), so a changed address needs
+// the key saved again.
+export async function keySet(provider, key, base = provider === 'other' ? aiSettings().base || '' : '') {
   if (isAndroid) {
-    const why = window.LeanAndroid.aiKeySet(provider, key);
+    const A = window.LeanAndroid;
+    const why = typeof A.aiKeySetFor === 'function' ? A.aiKeySetFor(provider, key, base) : A.aiKeySet(provider, key);
     if (why) throw new Error(why);
     return !!key.trim();
   }
-  return call('ai_key_set', { provider, key });
+  return call('ai_key_set', { provider, key, base });
 }
 export async function keyHas(provider) {
   if (isAndroid) return !!window.LeanAndroid.aiKeyHas(provider);
@@ -57,11 +61,20 @@ if (isAndroid) {
   });
 }
 let seq = 0;
+/** How long to wait for the phone's answer (its own request gives up after 120 s; an answer that never
+ *  comes back must not leave the page waiting for ever). */
+export const REPLY_MS = 150_000;
 /** Send one request built by the Rust side; {status, body}. */
 async function send(provider, req) {
   if (isAndroid) {
     const id = 'ai' + (++seq) + '-' + Date.now();
-    const d = await new Promise((resolve) => { waiting.set(id, resolve); window.LeanAndroid.aiSend(id, provider, JSON.stringify(req)); });
+    let timer;
+    const d = await new Promise((resolve) => {
+      waiting.set(id, resolve);
+      timer = setTimeout(() => { waiting.delete(id); resolve({ error: 'The AI service didn’t answer in time. Try again.' }); }, REPLY_MS);
+      try { window.LeanAndroid.aiSend(id, provider, JSON.stringify(req)); } catch (e) { waiting.delete(id); resolve({ error: String(e.message || e) }); }
+    });
+    clearTimeout(timer);
     if (d.error) throw new Error(d.error);
     return { status: d.status, body: d.body };
   }

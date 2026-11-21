@@ -426,7 +426,7 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
 /* a done or cancelled to-do (as Logseq): its words faded, a clear line through them in their own colour;
    links stay link-coloured, faded the same; a heading (inline-block) gets the line too, its
    properties box (inline-block across the note) doesn't */
-.blk.marker-done > .bc, .todo-item.marker-done .bc, .refhit.marker-done > .bc { color: var(--done-ink); text-decoration: line-through; text-decoration-color: var(--done-line); }
+.blk.marker-done > .bc, .todo-item.marker-done .bc, .refhit.marker-done > .bc, .pz-item.marker-done > .bc { color: var(--done-ink); text-decoration: line-through; text-decoration-color: var(--done-line); }
 .blk.marker-done > .bc a.pl, .blk.marker-done > .bc a.ext, .todo-item.marker-done .bc a.pl, .refhit.marker-done > .bc a.pl { color: color-mix(in srgb, var(--link) var(--done-fade), transparent); }
 .blk.marker-done > .bc .h { text-decoration: inherit; }
 .blk.marker-done > .bc > .props { display: inline-block; width: 100%; vertical-align: top; }
@@ -516,6 +516,7 @@ a.tag .hash { display: var(--hash); }
 .m-big { font-size: 1.35em; vertical-align: -0.15em; margin: 0 1px; }
 .m-acc { display: inline-block; }
 .m-unknown { color: var(--ink-faint); font-family: var(--font-mono); font-size: .85em; }
+.m-src { font-family: var(--font-mono); font-size: .85em; font-style: normal; white-space: pre-wrap; overflow-wrap: anywhere; } /* a formula too big to draw (math.js) */
 .m-mat { display: inline-grid; grid-template-columns: repeat(var(--cols), auto); gap: 2px 12px; vertical-align: middle; padding: 2px 8px; margin: 2px 4px; text-align: center; border: 0 solid currentColor; }
 .m-mat.m-left { text-align: left; }
 .m-b { border-left: 1.5px solid; border-right: 1.5px solid;

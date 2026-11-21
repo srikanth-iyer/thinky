@@ -264,10 +264,14 @@ fn renames_and_merges_change_links_in_the_version_saved_meanwhile() {
     assert_eq!(get(&v, "pages/B.md"), "- also [[New]] (3)\n");
     assert_eq!(get(&v, "pages/A.md"), "- see [[Newer]]\r\n- more\r\n- from the phone");
     assert!(v.join("pages/Newer.md").exists() && !v.join("pages/New.md").exists());
-    // a page with the new name syncs in while the links change: never replaced by the renamed file
+    // a page with the new name syncs in while the page's own file changes (its own file goes
+    // first since the review, so no link changes before the rename is sure): never replaced by
+    // the renamed file, and nothing else changed either
+    put(&v, "pages/Newer.md", "- old page, [[Newer]]\n");
+    app.rescan();
     let phone = v.join("pages/Newest.md");
     set_write_hook(Some(Box::new(move |p: &Path| {
-        if p.ends_with("A.md") && !phone.exists() {
+        if p.ends_with("Newer.md") && !phone.exists() {
             std::fs::write(&phone, "- made on the phone\n").unwrap();
         }
     })));
@@ -275,8 +279,9 @@ fn renames_and_merges_change_links_in_the_version_saved_meanwhile() {
     quiet();
     assert!(err.contains("turned up"), "{err}");
     assert_eq!(get(&v, "pages/Newest.md"), "- made on the phone\n");
-    assert_eq!(get(&v, "pages/Newer.md"), "- old page\n", "the page itself as it was");
-    assert_eq!(get(&v, "pages/A.md"), "- see [[Newest]]\r\n- more\r\n- from the phone", "(the links did change: the message says so)");
+    assert_eq!(get(&v, "pages/Newer.md"), "- old page, [[Newer]]\n", "the page itself as it was");
+    assert_eq!(get(&v, "pages/A.md"), "- see [[Newer]]\r\n- more\r\n- from the phone", "the links didn't change: the message says so");
+    assert!(err.contains("weren't changed"), "{err}");
     std::fs::remove_file(v.join("pages/Newest.md")).unwrap();
     put(&v, "pages/A.md", "- see [[Newer]]\r\n- more\r\n- from the phone");
     app.rescan();

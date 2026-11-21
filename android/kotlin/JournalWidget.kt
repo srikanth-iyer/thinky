@@ -237,7 +237,7 @@ object Journal {
     val out = mutableListOf<Item>()
     val f = todayFile(ctx) ?: return out
     if (!f.exists()) return out
-    val text = readUtf8(f) ?: return out
+    val text = Checks.withoutFrontMatter((readUtf8(f) ?: return out).removePrefix("\uFEFF"))
     var inFence = false
     var inDrawer = false
     var started = false
@@ -378,31 +378,34 @@ object Journal {
   }
 
   /** A small copy of a picture in the notes folder for a widget row (Build 46, he asked for pictures in
-   *  the widget): at most 160 x 72 dp, decoded at about that size and turned as the camera held it.
-   *  Android lets a widget's pictures together take about one screenful of memory, so the list keeps
-   *  only a few (Factory, THUMBS). Null when it isn't a picture this phone can read. */
+   *  the widget): at most 160 x 72 dp (and Checks.THUMB_PIXELS), decoded at about that size and turned
+   *  as the camera held it. Android lets a widget's pictures together take about one screenful of
+   *  memory, and sends each row in a message of about 1 MB at most, so the list keeps only a few
+   *  (Factory, THUMBS) and each is small: a tall or wide picture is read small in both directions
+   *  (Checks.sampleSize: the outside review's claim 14c), a JPEG with 2 bytes a pixel (RGB_565, it has
+   *  no see-through parts). Null when it isn't a picture this phone can read. */
   fun thumb(ctx: Context, address: String): Bitmap? {
     val name = assetName(address) ?: return null
     val f = File(File(vault(ctx) ?: return null, "assets"), name)
     if (!f.isFile) return null
     return try {
-      val dp = ctx.resources.displayMetrics.density
-      val maxW = (160 * dp).toInt()
-      val maxH = (72 * dp).toInt()
+      val (maxW, maxH) = Checks.thumbBox(ctx.resources.displayMetrics.density)
       val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
       BitmapFactory.decodeFile(f.path, o)
       if (o.outWidth <= 0 || o.outHeight <= 0) return null
-      var sample = 1
-      while (o.outWidth / (sample * 2) >= maxW && o.outHeight / (sample * 2) >= maxH) sample *= 2
-      var b = BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+      val read = BitmapFactory.Options().apply {
+        inSampleSize = Checks.sampleSize(o.outWidth, o.outHeight, maxW, maxH)
+        if (Checks.opaqueType(o.outMimeType)) inPreferredConfig = Bitmap.Config.RGB_565
+      }
+      var b = BitmapFactory.decodeFile(f.path, read) ?: return null
       val turn = try {
         when (ExifInterface(f.path).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
           ExifInterface.ORIENTATION_ROTATE_90 -> 90f; ExifInterface.ORIENTATION_ROTATE_180 -> 180f; ExifInterface.ORIENTATION_ROTATE_270 -> 270f; else -> 0f
         }
       } catch (e: Exception) { 0f }
       if (turn != 0f) b = Bitmap.createBitmap(b, 0, 0, b.width, b.height, Matrix().apply { postRotate(turn) }, true)
-      val k = minOf(maxW.toFloat() / b.width, maxH.toFloat() / b.height, 1f)
-      if (k < 1f) Bitmap.createScaledBitmap(b, maxOf(1, (b.width * k).toInt()), maxOf(1, (b.height * k).toInt()), true) else b
+      val (w, h) = Checks.fitIn(b.width, b.height, maxW, maxH)
+      if (w != b.width || h != b.height) Bitmap.createScaledBitmap(b, w, h, true) else b
     } catch (e: Throwable) { null } // (a picture too big for memory, or broken: the row shows its name)
   }
 
@@ -412,8 +415,12 @@ object Journal {
   fun row(ctx: Context, item: Item, c: Ink, thumbs: MutableMap<String, Bitmap?>, room: () -> Boolean): RemoteViews {
     val rv = RemoteViews(ctx.packageName, R.layout.widget_item)
     val dp = ctx.resources.displayMetrics.density
+    // every view's visibility is set in both kinds of row: the home screen reuses rows, and a row
+    // set up as a note before must not keep its dot or picture as a heading (the review's claim 14b)
     if (item.kind == HEADER) { // "DUE TODAY", "NOTES": small and pale, no dot
       rv.setViewVisibility(R.id.item_mark, View.GONE)
+      rv.setViewVisibility(R.id.item_text, View.VISIBLE)
+      rv.setViewVisibility(R.id.item_pic, View.GONE)
       rv.setTextViewText(R.id.item_text, item.text)
       rv.setTextColor(R.id.item_text, c.faint)
       rv.setTextViewTextSize(R.id.item_text, TypedValue.COMPLEX_UNIT_SP, 11f)
@@ -431,12 +438,14 @@ object Journal {
       }
       rv.setImageViewResource(R.id.item_mark, mark)
       rv.setInt(R.id.item_mark, "setColorFilter", tint)
+      rv.setViewVisibility(R.id.item_mark, View.VISIBLE)
       rv.setTextViewText(R.id.item_text, d.text)
       rv.setViewVisibility(R.id.item_text, if (d.text.isEmpty()) View.GONE else View.VISIBLE)
       rv.setTextColor(R.id.item_text, c.ink)
       rv.setTextViewTextSize(R.id.item_text, TypedValue.COMPLEX_UNIT_SP, 14f)
       val pic = d.picture?.let { thumbs[it] }
       if (pic != null) { rv.setImageViewBitmap(R.id.item_pic, pic); rv.setViewVisibility(R.id.item_pic, View.VISIBLE) }
+      else rv.setViewVisibility(R.id.item_pic, View.GONE)
       rv.setViewPadding(R.id.item_root, (item.depth * 16 * dp).toInt(), (3 * dp).toInt(), 0, (3 * dp).toInt())
     }
     rv.setOnClickFillInIntent(R.id.item_root, Intent())
@@ -560,7 +569,8 @@ class JournalWidget : AppWidgetProvider() {
       rv.setEmptyView(R.id.widget_list, R.id.widget_empty)
       val immutable = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
       val mutable = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
-      val openApp = Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      // a tap opens today's journal in the app (as the app icon's Today shortcut: MainActivity.OPEN)
+      val openApp = Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra(MainActivity.OPEN, "today")
       val openPi = PendingIntent.getActivity(ctx, 0, openApp, immutable)
       rv.setOnClickPendingIntent(R.id.widget_title, openPi)
       rv.setOnClickPendingIntent(R.id.widget_logo, openPi) // (thinky's icon before the day)

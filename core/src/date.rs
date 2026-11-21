@@ -53,11 +53,13 @@ pub fn ordinal(d: u32) -> String {
     format!("{d}{suf}")
 }
 
-/// 0 = Sunday (Sakamoto's method).
+/// 0 = Sunday (Sakamoto's method). Never panics: a month outside 1-12 is taken as the nearest one
+/// (review claim 9c; `valid` says whether a date is real), and any year or day is worked out in i64.
 pub fn weekday((y, m, d): Date) -> usize {
-    const T: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
-    let y = if m < 3 { y - 1 } else { y };
-    ((y + y / 4 - y / 100 + y / 400 + T[(m - 1) as usize] + d as i32).rem_euclid(7)) as usize
+    const T: [i64; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+    let m = m.clamp(1, 12);
+    let y = if m < 3 { y as i64 - 1 } else { y as i64 };
+    ((y + y.div_euclid(4) - y.div_euclid(100) + y.div_euclid(400) + T[(m - 1) as usize] + d as i64).rem_euclid(7)) as usize
 }
 
 pub fn format(fmt: &str, date: Date) -> String {

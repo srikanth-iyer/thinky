@@ -100,10 +100,33 @@ fn aligned(oc: &[Key], xc: &[Key]) -> bool {
     oc.iter().zip(xc).all(|(o, x)| o == x || (!os.contains(x) && !xs.contains(o)))
 }
 
+/// The notes of a stretch as whole subtrees: each note whose parent is outside the stretch, with
+/// the notes under it.
+fn subtrees(v: &[DocBlock]) -> Vec<&[DocBlock]> {
+    let mut out = vec![];
+    let (mut start, mut min) = (0, usize::MAX);
+    for (i, b) in v.iter().enumerate() {
+        if b.depth <= min {
+            if i > 0 {
+                out.push(&v[start..i]);
+            }
+            start = i;
+            min = b.depth;
+        }
+    }
+    if !v.is_empty() {
+        out.push(&v[start..]);
+    }
+    out
+}
+
 /// Both sides added notes at the same place (nothing was there before), e.g. a note typed at the end
 /// of today's journal while the phone's widget or Claude added one: keep both, this device's first.
-/// Their notes that are exactly like one of ours (same text and depth: the same note made twice) are
-/// kept once. The order must leave every note under the same parent as before: ours first if none of
+/// A subtree of theirs (a note with the notes under it) exactly like one of ours (same texts and
+/// depths: the same notes made twice) is kept once; one whose first note is like one of ours but
+/// with other notes under it is None (he chooses): dropping only the like notes would lose theirs
+/// under another parent ("TODO review" under both "Project A" and "Project B") or put theirs under
+/// the wrong note ("Eggs" under whatever came before "Groceries"; review claim 7). The order must leave every note under the same parent as before: ours first if none of
 /// ours is shallower than their first note (it would otherwise take ours' last notes as its parent),
 /// else theirs first the same way round; if neither fits, None (he chooses). Also None when one of
 /// the notes has the words of a note the page already had (`was`: its texts; empty notes don't count):
@@ -118,14 +141,16 @@ fn both_added(mine: &[DocBlock], theirs: &[DocBlock], was: Option<&HashSet<&str>
     if added().any(|x| (!x.text.trim().is_empty() && was.contains(x.text.as_str())) || next.is_some_and(|d| x.depth < d)) {
         return None;
     }
-    let mut left: Vec<&DocBlock> = mine.iter().collect();
+    let like = |a: &DocBlock, b: &DocBlock| a.depth == b.depth && a.text == b.text;
+    let mut left: Vec<&[DocBlock]> = subtrees(mine);
     let mut extra: Vec<DocBlock> = vec![];
-    for t in theirs {
-        match left.iter().position(|m| m.depth == t.depth && m.text == t.text) {
-            Some(i) => {
-                left.remove(i);
-            }
-            None => extra.push(t.clone()),
+    for t in subtrees(theirs) {
+        if let Some(i) = left.iter().position(|m| m.len() == t.len() && m.iter().zip(t).all(|(x, y)| like(x, y))) {
+            left.remove(i);
+        } else if left.iter().any(|m| like(&m[0], &t[0])) {
+            return None;
+        } else {
+            extra.extend_from_slice(t);
         }
     }
     let Some(t0) = extra.first() else { return Some(mine.to_vec()) };
@@ -152,12 +177,13 @@ fn side(o: Key, a: Key, b: Key) -> Option<bool> {
     }
 }
 
-/// One side only edited blocks in place (same count, same order); the other only added
-/// blocks (the original ones are all still there, in order). Combine: the added blocks, with
-/// the edits applied to the original ones. E.g. a block edited on the laptop while the phone
-/// appended a new bullet right after it.
+/// One side only edited blocks' words in place (same count, same order, same depths, `aligned`);
+/// the other only added blocks (the original ones are all still there, in order). Combine: the added
+/// blocks, with the edits applied to the original ones. E.g. a block edited on the laptop while the
+/// phone appended a new bullet right after it. A block moved in or out on the edited side is None
+/// (review claim 7): the other side's notes added under it would end up beside it instead.
 fn edits_and_insertions(oc: &[Key], ec: &[Key], edited: &[DocBlock], ic: &[Key], inserted: &[DocBlock]) -> Option<Vec<DocBlock>> {
-    if oc.len() != ec.len() || oc.iter().zip(ec).any(|(x, y)| x.0 != y.0 && x.1 == y.1) {
+    if oc.len() != ec.len() || oc.iter().zip(ec).any(|(x, y)| x.0 != y.0) || !aligned(oc, ec) {
         return None;
     }
     // where each original block sits among the other side's blocks

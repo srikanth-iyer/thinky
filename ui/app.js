@@ -3188,8 +3188,11 @@ class App {
   }
 
   async rescan() {
-    if (!this.vaultOpen || this.scanning) return;
+    if (!this.vaultOpen) return;
+    // (one at a time: a change told of meanwhile is looked at once this one is done, not dropped)
+    if (this.scanning) { this.rescanAgain = true; return; }
     this.scanning = true;
+    this.rescanAgain = false;
     try {
       const changed = await call('rescan');
       if (changed.length) {
@@ -3208,6 +3211,7 @@ class App {
       }
     } catch { /* ignore */ }
     this.scanning = false;
+    if (this.rescanAgain) return this.rescan();
   }
 
   /** The Android widget shows to-dos due today (scheduled for today or with today's deadline), sent
@@ -3343,6 +3347,7 @@ class App {
       if (this.vaultOpen && !(this.noAccess && window.LeanAndroid.hasAllFilesAccess())) return;
       if (store.get('vault', '')) await this.openVault();
       this.route();
+      this.openShortcut(); // (one picked while the folder couldn't be opened)
     };
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reopen(); });
     document.addEventListener('lean-access', reopen);
@@ -3358,8 +3363,14 @@ class App {
    *  start(), or straight away (from onNewIntent) when the app was already open. */
   async openShortcut() {
     if (!this.started) return; // still starting: start() asks once the notes are open
+    if (!this.vaultOpen) {
+      // a folder chosen but not open yet (waiting for access): the shortcut stays with MainActivity
+      // until it is (reopen asks again); none chosen yet: the welcome screen, the shortcut used up
+      if (!store.get('vault', '')) window.LeanAndroid?.takeShortcut?.();
+      return;
+    }
     const kind = window.LeanAndroid?.takeShortcut?.();
-    if (!kind || !this.vaultOpen) return;
+    if (!kind) return;
     if (/^leanoutliner:/i.test(kind)) { this.openLink(kind); return; } // (a page or note link)
     if (kind === 'today') { this.closeSearch(); this.go('page', await call('journal_name', { date: today() })); }
     else if (kind === 'search') { this.openSearch(); window.LeanAndroid.showKeyboard?.(); }

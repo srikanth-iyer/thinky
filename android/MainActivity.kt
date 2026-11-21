@@ -48,7 +48,14 @@ import org.json.JSONObject
 class MainActivity : TauriActivity() {
   companion object {
     const val OPEN = "open" // the shortcuts' extra: "today" or "search"
-    /** The app's window, for UpdateReceiver to report to. */
+    /** The Google Play version (android_overlay.py fills it in: THINKY_PLAY=1). Play apps may update
+     *  only through Play, so that version has no updater at all (the overlay leaves its code out). */
+    const val PLAY = __PLAY__
+    /** The AI requests' helper threads: two at a time, the rest wait their turn (each may take up to
+     *  two minutes); idle ones end after a minute. */
+    private val AI_THREADS = java.util.concurrent.ThreadPoolExecutor(2, 2, 60L, java.util.concurrent.TimeUnit.SECONDS,
+      java.util.concurrent.LinkedBlockingQueue<Runnable>()).apply { allowCoreThreadTimeOut(true) }
+    /** The app's window, for the updater's installer report to reach. */
     @Volatile var live: WeakReference<MainActivity>? = null
   }
   private var web: WebView? = null
@@ -170,7 +177,8 @@ class MainActivity : TauriActivity() {
     }
   }
 
-  // ---- One-click updates (Settings → About → "Update now"). The page passes only the build
+  // ---- updater (left out of the Play version by android_overlay.py, up to "end of the updater")
+  // One-click updates (Settings → About → "Update now"). The page passes only the build
   // ("build-24"); the address is made here. The APK is checked to be this app and newer, then
   // handed to Android's own installer, which accepts it only if it's signed with the same key as
   // this app: that is the check that it's genuine. Android asks "Do you want to update this
@@ -191,11 +199,13 @@ class MainActivity : TauriActivity() {
     // Android 8 and later ask once whether this app may install apps
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
       updateTag = tag
+      keepUpdateTag(tag)
       updateEvent("permission")
       runOnUiThread {
         try { startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))) }
         catch (e: Exception) {
           updateTag = null
+          keepUpdateTag(null)
           updateEvent("error", "Android’s “Install unknown apps” screen didn’t open. Allow it for thinky in Android’s settings, then try again.")
         }
       }
@@ -205,11 +215,29 @@ class MainActivity : TauriActivity() {
     Thread { try { downloadUpdate(n) } finally { updating.set(false) } }.start()
   }
 
+  /** The build waiting for "Install unknown apps", kept in the app's settings too: Android may stop
+   *  the app while that screen is open, and the update then carries on when it comes back. */
+  private fun keepUpdateTag(tag: String?) {
+    val e = getSharedPreferences("lean_update", Context.MODE_PRIVATE).edit()
+    if (tag == null) e.remove("tag").remove("at") else e.putString("tag", tag).putLong("at", System.currentTimeMillis())
+    e.apply()
+  }
+
+  /** The kept build, if it was asked for in the last half hour (an older one isn't carried on). */
+  private fun keptUpdateTag(): String? {
+    val p = getSharedPreferences("lean_update", Context.MODE_PRIVATE)
+    val tag = p.getString("tag", null) ?: return null
+    val age = System.currentTimeMillis() - p.getLong("at", 0L)
+    return tag.takeIf { age in 0..30 * 60_000L }
+  }
+
   override fun onResume() {
     super.onResume()
-    // back from Android's "Install unknown apps" screen: carry on if it was allowed
-    val tag = updateTag ?: return
+    // back from Android's "Install unknown apps" screen: carry on if it was allowed (also when Android
+    // started the app again meanwhile: the build was kept)
+    val tag = updateTag ?: keptUpdateTag() ?: return
     updateTag = null
+    keepUpdateTag(null)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls())
       updateEvent("error", "thinky wasn’t allowed to install apps, so it can’t update itself.")
     else startUpdate(tag)
@@ -221,10 +249,10 @@ class MainActivity : TauriActivity() {
     dir.deleteRecursively()
     dir.mkdirs()
     val apk = File(dir, "thinky.apk")
+    var c: HttpURLConnection? = null
     try {
       updateEvent("download")
       // thinky.apk since Build 35; a release before it has only its old name
-      var c: HttpURLConnection? = null
       var code = 404
       for (name in listOf("thinky.apk", "LeanOutliner.apk")) {
         c?.disconnect()
@@ -260,6 +288,8 @@ class MainActivity : TauriActivity() {
       dir.deleteRecursively()
       updateEvent("error", "The update couldn’t be downloaded (${e.message ?: e.javaClass.simpleName}). Check the internet connection and try again.")
       return
+    } finally {
+      c?.disconnect()
     }
     updateEvent("check")
     @Suppress("DEPRECATION")
@@ -284,17 +314,34 @@ class MainActivity : TauriActivity() {
   private fun versionOf(p: PackageInfo): Long = PackageInfoCompat.getLongVersionCode(p)
 
   /** Is the APK signed with this app's key? Android checks that too when it installs; this says so
-   *  plainly, before asking him. Android 9 and later (before that, Android's own check only). */
+   *  plainly, before asking him. Fails closed (the outside review's claim 12): whatever can't be read,
+   *  on either side, means "no", and nothing is installed. Android 9 and later read the signing
+   *  certificates (which may list a key's older ones); before that, the signatures (GET_SIGNATURES). */
   @Suppress("DEPRECATION")
-  private fun signedLikeThisApp(apk: File): Boolean {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return true
-    val flags = PackageManager.GET_SIGNING_CERTIFICATES
-    val theirs = (try { packageManager.getPackageArchiveInfo(apk.path, flags)?.signingInfo } catch (e: Exception) { null }) ?: return true
-    val ours = packageManager.getPackageInfo(packageName, flags).signingInfo ?: return true
-    // this app's current certificate(s) must be among the download's (which may also list older ones)
-    val now = (if (ours.hasMultipleSigners()) ours.apkContentsSigners?.toList() else ours.signingCertificateHistory?.lastOrNull()?.let { listOf(it) }) ?: return true
-    val theirSet = (if (theirs.hasMultipleSigners()) theirs.apkContentsSigners else theirs.signingCertificateHistory)?.toSet() ?: return true
-    return now.isNotEmpty() && now.all { it in theirSet }
+  private fun signedLikeThisApp(apk: File): Boolean = try {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      val flags = PackageManager.GET_SIGNING_CERTIFICATES
+      val theirs = packageManager.getPackageArchiveInfo(apk.path, flags)?.signingInfo
+      val ours = packageManager.getPackageInfo(packageName, flags).signingInfo
+      // some Android 9 builds don't fill in a downloaded file's signingInfo: then compare the older way (still both directions, still false if unknown)
+      if (theirs == null && ours != null) sameOldStyleSigners(apk)
+      else if (theirs == null || ours == null) false
+      else {
+        // this app's current certificate(s) must be among the download's (which may also list older ones)
+        val now = if (ours.hasMultipleSigners()) ours.apkContentsSigners?.toList() else ours.signingCertificateHistory?.lastOrNull()?.let { listOf(it) }
+        val theirSet = (if (theirs.hasMultipleSigners()) theirs.apkContentsSigners else theirs.signingCertificateHistory)?.toList()
+        Checks.allAmong(now, theirSet)
+      }
+    } else sameOldStyleSigners(apk)
+  } catch (e: Exception) { false }
+
+  /** The pre-Android-9 comparison: the download's signers and this app's must be the same set. */
+  @Suppress("DEPRECATION")
+  private fun sameOldStyleSigners(apk: File): Boolean {
+    val theirs = packageManager.getPackageArchiveInfo(apk.path, PackageManager.GET_SIGNATURES)?.signatures?.toList()
+    val ours = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES).signatures?.toList()
+    // (one set of signers on each side: every one of ours among theirs, and every one of theirs among ours)
+    return Checks.allAmong(ours, theirs) && Checks.allAmong(theirs, ours)
   }
 
   /** Hand the checked APK to Android's installer (the page saved everything first). */
@@ -329,6 +376,7 @@ class MainActivity : TauriActivity() {
       }
     }.start()
   }
+  // ---- end of the updater
 
   @SuppressLint("JavascriptInterface", "AddJavascriptInterface")
   override fun onWebViewCreate(webView: WebView) {
@@ -383,24 +431,29 @@ class MainActivity : TauriActivity() {
         pm.print(name, w.createPrintDocumentAdapter(name), PrintAttributes.Builder().build())
       }
     }
+    /** The optional AI features (AiKeys.kt, Build 51): a service's key (kept encrypted, never handed
+     *  back), and a request sent on a background thread; its answer comes as a "lean-ai" event.
+     *  aiKeySetFor: with the address an "Other" service's key may go to (kept with it; the others'
+     *  addresses are fixed); aiKeySet is the same with no address (an "Other" key then isn't kept). */
+    @JavascriptInterface fun aiKeySet(service: String, key: String): String = aiKeySetFor(service, key, "")
+    @JavascriptInterface fun aiKeySetFor(service: String, key: String, base: String): String = AiKeys.set(applicationContext, service, key, base)
+    @JavascriptInterface fun aiKeyHas(service: String): Boolean = AiKeys.has(applicationContext, service)
+    @JavascriptInterface fun aiSend(id: String, service: String, req: String) {
+      // a few at a time on the app's own helper threads (not a new thread for each), holding only the
+      // app, not this screen, while the service answers (up to two minutes)
+      val ctx = applicationContext
+      val screen = WeakReference(this@MainActivity)
+      AI_THREADS.execute {
+        val r = AiKeys.send(ctx, service, req).put("id", id)
+        val js = "document.dispatchEvent(new CustomEvent('lean-ai',{detail:${JSONObject.quote(r.toString())}}))"
+        screen.get()?.let { a -> a.runOnUiThread { a.web?.evaluateJavascript(js, null) } }
+      }
+    }
+    // ---- updater bridge (left out of the Play version by android_overlay.py)
     /** "Update now": download build `tag` ("build-24") and check it; the page hears how it goes
      *  ("lean-update" events) and, once it has saved everything, calls installUpdate. */
-    /** The optional AI features (AiKeys.kt, Build 51): a service's key (kept encrypted, never handed
-     *  back), and a request sent on a background thread; its answer comes as a "lean-ai" event. */
-    @JavascriptInterface fun aiKeySet(service: String, key: String): String = AiKeys.set(this@MainActivity, service, key)
-    @JavascriptInterface fun aiKeyHas(service: String): Boolean = AiKeys.has(this@MainActivity, service)
-    @JavascriptInterface fun aiSend(id: String, service: String, req: String) {
-      Thread {
-        val r = AiKeys.send(this@MainActivity, service, req).put("id", id)
-        val js = "document.dispatchEvent(new CustomEvent('lean-ai',{detail:${JSONObject.quote(r.toString())}}))"
-        runOnUiThread { web?.evaluateJavascript(js, null) }
-      }.start()
-    }
     @JavascriptInterface fun update(tag: String) { this@MainActivity.startUpdate(tag) }
     @JavascriptInterface fun installUpdate() { this@MainActivity.installUpdate() }
-    /** The Google Play version (android_overlay.py with THINKY_PLAY=1 fills this in, and leaves out
-     *  update/installUpdate above): Play updates it, so the page neither checks GitHub nor offers updates. */
-    @JavascriptInterface fun fromPlay(): Boolean = __PLAY__
     /** Test builds only (debuggable: the emulator test): hand this app's own APK to Android's
      *  installer, to check the steps after "ready" (the test then cancels). Does nothing in a release. */
     @JavascriptInterface fun testInstallSelf() {
@@ -411,6 +464,10 @@ class MainActivity : TauriActivity() {
       updateApk = apk
       this@MainActivity.installUpdate()
     }
+    // ---- end of the updater bridge
+    /** The Google Play version (android_overlay.py with THINKY_PLAY=1 sets PLAY, and leaves out the
+     *  updater bridge above): Play updates it, so the page neither checks GitHub nor offers updates. */
+    @JavascriptInterface fun fromPlay(): Boolean = PLAY
     /** Test builds only (the emulator test, step 7b): the widgets' colours as they come out, made
      *  from the same RemoteViews the home screen gets (JournalWidget.paint, a row from the list's
      *  factory, QuickAddWidget.paint), applied to real views here: JSON of "#rrggbb" for the journal
@@ -509,6 +566,7 @@ class MainActivity : TauriActivity() {
   }
 }
 
+// ---- UpdateReceiver (left out of the Play version by android_overlay.py, to the end of this file)
 /** Android's installer reports here how the update went (see MainActivity.installUpdate). Not
  *  exported: only Android's installer, through the app's own PendingIntent, can reach it. */
 class UpdateReceiver : BroadcastReceiver() {

@@ -171,7 +171,7 @@ unsaved typing or a clash (`refresh` for one being edited), place kept, "Up to d
 buttons and the filter, shown as "· under …" (`taskRow`). Note menu: "Show hidden properties" when the
 note has some (`hiddenProps`, render.js `hiddenKey`), a read-only box with Copy (`showHidden`).
 Properties: a key's page has "Rename or merge…" → `rename_property` (app.rs; `rename_prop_in_text`:
-whole `key:: value` lines, the first line too, as Logseq reads them; a note with both merges the values
+whole `key:: value` lines, the first line too, as Logseq reads them, never inside a code block; a note with both merges the values
 into its existing line, the file's shape kept; id, collapsed, title, alias, heading, background-color
 refused). Check this folder: `missing_pictures` (pictures.rs; `…/assets/<name>` links in pages and
 journals whose file isn't there; code spans skipped) → Settings' "Missing pictures" (`missingBox`).
@@ -191,20 +191,29 @@ by its newest subpage and isn't a link). "Pages tagged with …": `.tagged-sec`,
 `tagged:<page>`, filter box, sort menu, names `text-overflow: ellipsis`. Tags list: vault.rs `all_tags` keys by
 `resolve`, shown under the page's own name. Property display: `logseq/thinky.json` ("propertyDisplay": {key:
 {show: show|quiet|icon|hidden, icon, mark}}) via `App::folder_settings`/`set_folder_setting` (re-read before a
-write; a broken file is never overwritten); render.js `setPropRules` (with config.rs `hidden_props` from
+write, written like a note: hidden temp file, only over what was read, `rewrite`; a broken file is never overwritten); render.js `setPropRules` (with config.rs `hidden_props` from
 `:block-hidden-properties`), `hiddenKey` includes rule-hidden and config-hidden keys (`builtinHidden` = the fixed
 list), `propsHtml` (quiet row, `.prop-icon` with title), renderBlock's `mark` → editor `div.dataset.mark`
 (`--mk` = the look's `--hl-<colour>`); Settings → Look `propDisplayCard`; `App.loadFolderSettings` on open and
 Refresh. Backups: core app/backup.rs (`backup_zip`: stored zip written by hand (CRC32, no compression,
-under 4 GB), `thinky-backups.json` holds the fingerprint and file list, keep the newest N; `backup_git`: mirror
-into a git clone outside the notes folder, add/commit/push via the `git` program, a failed push is retried next
-time; both refuse a folder inside the notes folder and a notes folder with no notes; ≥ 20 (or a tenth) gone →
+under 4 GB), `thinky-backups.json` holds the fingerprint and file list of what the zip really holds (a file
+`write_zip` couldn't read just then is named and left out, so the next backup tries it again), keep the newest N;
+reading one (`zip_walk`) checks every number against the file (review claim 8); `backup_git`: `mirror`
+into a git clone outside the notes folder (same size and time to the nanosecond = unchanged, else compared;
+each copy takes its file's time; the repository's own `.gitignore`/`.gitattributes`/README*/`.github/` are
+never removed, `repo_own`), add/commit/push via the `git` program, a failed push is retried next
+time; both refuse a folder inside the notes folder (`real_path` + `holds`: the real path also for a folder
+not made yet, in any capitals on Windows/macOS) and a notes folder with no notes; logseq/.safety-* is left
+out; `backup_now_at(root, …)` runs without the App (A2: the shell can let the App's lock go); ≥ 20 (or a tenth) gone →
 warning; `find_in_backup`/`restore_from_backup` with create_new), dispatch `backup_now`/`backup_find`/
 `backup_restore`; UI `App.backupNow`/`backupIfDue` (hourly check, day/week, localStorage `backup` per device),
 Settings → Notes `backupCard` (not on Android), Missing pictures' "Found in your backup: restore". Its Choose… (`folderPicker` mode 'choose'; since Build 50, he asked Nov 18): with the GitHub kind a git clone that looks like a notes folder (a copy of the notes, so it has `pages`) can be used unless it is the open notes folder (`app.summary.root`) or inside a notes folder; a notes folder with no `.git`, and with the zip kind any notes folder, stay refused. Tested by t30_build50 (Build 50, 0.5.11). Android:
-`SelectionCaptureActivity.kt` (PROCESS_TEXT, translucent, finishes at once; `LeanCore.addSelected` →
-android_capture.rs `plain` → `clip::defuse` → `capture_to_usual`), manifest entry in android_overlay.py,
-android_test.sh step 5b. Missing pictures: pictures.rs `link_end` ends a link by what opened it (a Markdown
+`SelectionCaptureActivity.kt` (PROCESS_TEXT, translucent, closes once the words are written; `LeanCore.addSelected` →
+android_capture.rs `plain` → `clip::guard(clip::defuse(…))` → `capture_to_usual`), manifest entry in android_overlay.py,
+android_test.sh step 5b. Since the outside review (claims 11a–c): only an `ACTION_PROCESS_TEXT` start counts (other
+apps can start it too), at most `Checks.SELECTED_MAX` = 20,000 characters (android_capture.rs `SELECTED_MAX` refuses
+more as well) and `SELECTED_PER_WINDOW` = 10 a minute (`allowedNow`, kept in `lean_widget` as `selected_times`);
+LeanCore calls the core one at a time (`oneAtATime`), so a quick run of selections loses none; step 5d. Missing pictures: pictures.rs `link_end` ends a link by what opened it (a Markdown
 `(…)` at its own closing bracket, quotes, `<…>`, `[…]`), `#…`/`?…` tried off when the full name isn't there.
 Build 38 (the maintainer's notes of Nov 7; tested by t22_build38, core tests/pages.rs
 `pages_under_a_page_and_its_alias`): a page's end has no line in the looks without cards (`--sheet-page-end: 0`
@@ -222,7 +231,9 @@ history; app.css "Closing" (.fading, pop-out/sink-out ~0.1 s). Settings → Look
 too). YouTube: Logseq's `{{video <address>}}` / `{{youtube …}}` (render.js `youtube()` takes watch, youtu.be,
 shorts, embed, live, m./music., t=/start=) drawn as the video's picture (i.ytimg.com, no referrer) with a play
 button (`.yt`); a click (editor.js, before editing) puts `https://www.youtube-nocookie.com/embed/<id>?autoplay=1`
-there (`playVideo`, sandbox without popups); the CSP's only frame-src is that address. Anything else stays a macro.
+there (`playVideo`, sandbox without popups); the CSP's only frame-src is that address. On Android the click opens
+`https://www.youtube.com/watch?v=<id>` outside the app instead (`App.openUrl`): Android gives every frame the
+`LeanAndroid` bridge, a cross-origin one too (review claim 2; t34_review). Anything else stays a macro.
 Build 39 (the maintainer's note of Nov 8; tested by t23_build39, every opener pressed three times where it is,
 laptop and phone): a button that opened something closes it when pressed again. The phone toolbar acts on
 pointerup, after the pop-up's own outside-press listener has closed it, so a window capture listener notes
@@ -343,12 +354,18 @@ Build 42 (0.5.3; he said go, Nov 10; tested by t13_update "the Google Play versi
 `android` job builds the APK, then runs android_overlay.py again with `THINKY_PLAY=1` and builds `thinky-play.aab`
 (Play takes bundles): no REQUEST_INSTALL_PACKAGES, no UpdateReceiver, no `LeanAndroid.update`/`installUpdate` (Play apps
 may update only through Play), `LeanAndroid.fromPlay()` true → app.js `checkUpdate` asks GitHub nothing and About says
-"Updates come from Google Play" (`play` stage). `sign` signs the bundle with jarsigner and the same release key (Play's
-upload key; its certificate must equal the APK's; its manifest checked for the install permission); `sign-wip` with the
+"Updates come from Google Play" (`play` stage). Since the outside review (claim 10a) the updater's code isn't in the Play
+bundle at all: android_overlay.py `without_updater` cuts MainActivity.kt between its `// ---- updater…` / `// ---- end of
+the updater…` markers (and the UpdateReceiver to the end of the file), drops imports no longer used and sets
+`const val PLAY` (`__PLAY__`); android/test/overlay_test.py checks both shapes. `sign` signs the bundle with jarsigner and the same release key (Play's
+upload key; its certificate must equal the APK's; its manifest checked for the install permission; `android` also
+searches its DEX for the updater's code, `releases/download` and `PackageInstaller$Session`, review claim 10c); `sign-wip` with the
 throw-away key; `release` publishes it with the others (7 files, 10 with the old names). Play App Signing reuses the
 release key (he chose it, Nov 10): `.github/workflows/play-key.yml` (run by hand on main, environment `release`) exports
 it with Google's PEPK, encrypted with Play Console's key saved as `ci/play-encryption-key.pem`, as the artifact
-`thinky-play-key.zip` for Play Console's App signing page. Package name on Play: `com.srikanth.leanoutliner`.
+`thinky-play-key.zip` for Play Console's App signing page. pepk.jar must match the SHA-256 pinned in the workflow's
+`PEPK_SHA256` (empty until the maintainer checks the file: the workflow stops before the keystore is unpacked), and the
+passwords go to PEPK on its input, never its command line (review claim 21a). Package name on Play: `com.srikanth.leanoutliner`.
 Build 43 (0.5.4; the maintainer's notes of Nov 10; tested by t25_build43): a hidden sidebar peeks out on the mouse (as in
 Notion; `App.peekSidebar`: pointerover on the strip's sidebar button, 120 ms, adds `body.side-peek` (+ `.peeking` for the
 slide when `motionOn()`), the sidebar floats over the notes (z 30, shadow; app.css "peeking out"), its links work; leaving
@@ -477,7 +494,7 @@ the missing pictures' file names under their page from the left (`.missing-box .
 The edge swipe that opens the phone's menu stays as it is (he asked, Nov 12).
 Also Build 46 (he asked, Nov 12: "Can't I just also see what is already highlighted?"; he said yes to all, and
 "anyone can use this feature… we need a way to show them how"): highlights shown again, read only. Core clip.rs
-`article_urls(app)` (every page's `source::` address, `normalize_url`, sorted, ≤20,000) and `kept_highlights(app,
+`article_urls(app)` (every page's `source::` address, `normalize_url`, sorted, ≤20,000 and ≤900 KB as JSON, under the browser's 1 MB a message) and `kept_highlights(app,
 url)` → `Kept {page, highlights: [{plain, link}]}` (the notes of each page whose `source::` is that article, date
 bullets `[[…]]` left out; `plain_words`: property lines, pictures, Markdown marks and invisible spaces go, links as
 their words except one to the article itself, the ` [↗](…)` link handed back; ≤500, each once); native messages
@@ -570,6 +587,11 @@ after the last entry's comment; `set_path` uses the file's line end and a new li
 `own_config_written(text)`: the stamp is taken only when memory equals the file, else the next rescan takes the outside
 change (set_shortcut, favourites, reorder, edit_config, merge undo). src-tauri watch.rs `start(root, dirs, config, …)`:
 the `logseq` folder watched on its own, not recursively, `is_config` (Windows: subtree 0; Linux/Android: its own wd).
+Since the outside review (claim 13) a replaced watch (`GEN`) ends within `WAKE_MS` (1 s) and closes its descriptor or
+handle: Linux/Android inotify is IN_NONBLOCK and waited on with poll(), EINTR tried again, `Watches.paths` (wd → folder)
+follows folders made or moved in at any depth and forgets ones moved out, a queue overflow watches everything again;
+Windows reads are overlapped (`finish`: wait, CancelIoEx when stale) and a folder that fails is opened again after
+`backoff` (1 s … 30 s). Tests in watch.rs (`cargo test` on Linux, live inotify).
 attach.js: `again(o)` (from `paint` and `markDirty`, 400 ms) asks `asset_links` again for an outline whose words changed
 and recounts (current hit kept), tips set with `data-att-tip` and removed; app.css `#attbar` 76px up on phones, 53px with
 `html.tb-on` (set by `updateToolbar`). The page ⋯ menu: `menu()` items' `icon` (`.m-icon`, `.m-ic`, 17px, `--icon-ink`;
@@ -583,18 +605,36 @@ pictureModel, mark, extra: {polish}}, this device's own; never the key). Not tie
 with no key, "Other (OpenAI-style)"), two request formats (`chat_request`: Claude's /messages with x-api-key +
 anthropic-version and max_tokens but no temperature (Build 52: Claude's newer models refuse it), else /chat/completions with a Bearer key, no max_tokens or temperature there: newer models refuse
 them), `models_request`/`read_models` (Settings' lists and Test), `read_chat`, `answer_json` (401/403/404/429 in plain
-words). `check_base`: https anywhere, http only to this computer or a home network (`is_local_host`: localhost, 127.x,
-10.x, 192.168.x, 172.16–31.x, ::1, .local/.lan), no spaces, quotes or `@`. The key never reaches the page or the notes
+words). `check_base`: https anywhere, http only to this computer or a home network (`is_local_name`: localhost,
+.local/.lan/.localhost; number addresses read strictly by std's Ipv4Addr/Ipv6Addr: 127.x, 10.x, 192.168.x, 172.16–31.x,
+::1, so `0127.0.0.1` is refused), the computer's name ends at the first `/`, `?` or `#`, no spaces, quotes, `@`, `{` or
+`}` anywhere (review claim 3: `http://localhost:80@attacker.example`). Where a key may go (review claim 1, the page
+builds the request): `key_header(service)` (x-api-key / bearer / none) is the only source of the key's header, and
+`key_may_go(service, url, other_base)`: a preset service's key only under its fixed `PROVIDERS` base + "/", "Other"'s
+only under the address saved with its key on that device, Ollama/LM Studio/unknown never; else the shell refuses with
+`KEY_ELSEWHERE` (`send_keyed` does both for curl; Android mirrors it in AiKeys.kt). `setup_base`: a service whose key
+is "required" always uses its own address (a typed one is ignored). The key never reaches the page or the notes
 folder (Drive syncs it, a backup pushes it): Windows' Credential Manager (src-tauri `ai_key.rs`: CredWriteW/ReadW/
 DeleteW by hand, target "thinky AI key: <id>", this user, this computer), Android's Keystore (android/kotlin/AiKeys.kt:
 an AES-GCM key of the app's own, the sealed bytes in SharedPreferences `lean_ai`), the dev server's memory. Commands:
 core `ai_providers`, `ai_check_base`, `ai_models_request/read`, `ai_polish_request/read` (no vault needed for the first
-four); shells `ai_key_set` (empty = remove; `key_ok`: printable, no quotes), `ai_key_has`, `ai_send` {provider, req}.
+four); shells `ai_key_set` {provider, key, base} (empty = remove; `key_ok`: printable, no quotes; for "Other" the
+address is checked (`check_base`) and kept with the key: Windows "thinky AI base: other"), `ai_key_has`, `ai_send`
+{provider, req}. A key goes only to its own service (review claim 1, Nov 2026): the shell names the key's header
+from the service (`ai::key_header`, never the page's `auth`) and refuses a request whose address isn't that service's
+(`ai::key_may_go`: the preset's fixed base + "/", or "Other"'s saved address) with "That address isn't the one this
+service's key belongs to, so the key wasn't sent." (src-tauri `ai_key.rs` `prepared`, tests there).
 Sending: `ai::send_with_curl` (Windows' System32 curl.exe, `update::imp::curl`; the dev server's curl): its settings on
 curl's input (`--config -`, `-q` first), so the key is never on a command line; the body through a file in
-`<cache>/ai`, removed after; `proto =https` (or `=http,https` for a local one), 120 s, 8 MB, `write-out` the status.
-Android: `LeanAndroid.aiKeySet/aiKeyHas/aiSend(id, provider, req)` (a thread; the answer as a `lean-ai` DOM event, its
-detail a JSON string); https only there (http to a home network would need Android's cleartext allowance for the whole
+`<cache>/ai`, removed after (`sweep_temp`, once per run, takes away another run's left-over `ai-*.json` or one older
+than 10 minutes; curl that can't take its settings is killed and waited for); the address and whether it is local come
+from `check_base` itself, never the page's `req.local`; `globoff` (no `{a,b}`/`[1-9]` lists); `proto =https` (or
+`=http,https` for a local one), 120 s, 8 MB, `write-out` the status.
+Android: `LeanAndroid.aiKeySet/aiKeySetFor(provider, key, base)/aiKeyHas/aiSend(id, provider, req)` (two helper threads,
+`AI_THREADS`; the answer as a `lean-ai` DOM event, its detail a JSON string). Since the outside review (claim 1) the key
+goes only to its own service's address (`Checks.keyMayGo`, as core `ai::key_may_go`: the fixed base + "/", for "Other"
+the https address kept with its key as `other_base`, which `aiKeySetFor` requires), in the header the service takes
+(`Checks.keyHeader`, as `ai::key_header`; a page's Authorization / x-api-key headers are dropped), answers ≤ 8 MB; https only there (http to a home network would need Android's cleartext allowance for the whole
 app). No new library: the app doesn't grow (his choice: "no new library", the same way updates go).
 Polish note: `POLISH_RULES` are fixed (he decided: built in, tested, never breakable; Settings → AI → Advanced's "Your
 own wishes for Polish note" are added after them, ≤2,000 characters, empty = the default). `polish_question`: today
@@ -667,7 +707,10 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     `aliases` (not one that's a page of its own or another page's; `search_pages` the same), so the
     `[[`/`#` list (popups.js `Suggest.pages`) shows "SB → Sourdough Bread" and never "New page: SB",
     like the search box; tests: tests/vault.rs `aliases_count_as_the_page`, t16_alias; block
-    references: `search_blocks`, `blocks_by_id`, a pass over the notes, no index of their own)
+    references: `search_blocks`, a pass over the notes; `blocks_by_id` from `Vault::ids`, an index of
+    `id::` kept by `upsert`/`unindex`, one id on two notes gives the first file's by path; `names_of`
+    from `aliases_of`, the alias map turned round; `all_tags` from each page's `#tags`, read once a
+    file version (`Page::hash_tags`); review A3, tests/vault_index.rs)
   - `search.rs` the Ctrl+K search's rules (tests in `tests/search.rs`): `fold` (small letters, Latin
     accents dropped by two tables; ui/search.js has the same), words in any order, page names (and
     `alias::`) forgive typos (`allowed_typos`: 0 under 5 letters, 1 from 5, 2 from 8; `prefix_distance`,
@@ -774,7 +817,9 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     the app waits, so `quick`: only its own folder's trimming, not `cap_all`, which reads the other
     device's copies that Google Drive may first have to fetch; the next background copy does it; if that
     copy can't be made, the cache isn't written: the one on disk still has them, tried again next
-    time), so an old text is always in the cache or in a copy (`check_vault` never writes the cache).
+    time; the same when a copy is being made in the background just then: `keep_replaced`, held with the
+    app, waits at most a second for the copies' lock, then defers, review A2, tests/safety_defer.rs;
+    `start_safety_copy` at opening still waits), so an old text is always in the cache or in a copy (`check_vault` never writes the cache).
     At start-up `load` leaves the cache unwritten when there are earlier texts; `start_safety_copy`
     keeps them right away, then writes the cache, then moves local copies and makes the copy of recent
     notes in the background. `<data>` = `set_data_dir` (Tauri `app_local_data_dir`: Windows `%LOCALAPPDATA%\com.srikanth.leanoutliner`, Android
@@ -1372,11 +1417,14 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     merge-pages!): the old page's notes go at the end of the target (raw None, the target's indent and
     line ends; paragraphs become bullets; depth at most one below the note before), its page
     properties first as a note of their own (`moved_notes`: Logseq lines as written, YAML as `k:: v`,
-    `title::` dropped; or its properties-only first note; a YAML header with values over several lines
+    `title::` dropped, `alias::` too: its names join the target's own `alias::` (`add_aliases`: at the
+    end of its line, else a new line after its last page property), so links to them still lead to
+    its notes; or its properties-only first note; a YAML header with values over several lines
     or nested keys is refused, `yaml_header_simple`; so is a name another file also claims,
     `Vault::has_duplicate`, and a journal day's alias as the target), links to the old name in every file (the
     target's own notes too, `rename_doc`) point at the target's name, the old file to the bin
-    (`bin_file`, as `delete_pages`). The target is written with `Expect::Bytes` (nobody saved it
+    (`bin_file`, as `delete_pages`; read again first: one changed meanwhile isn't binned, and the
+    target is put back). The target is written with `Expect::Bytes` (nobody saved it
     meanwhile), before the old file moves (if that fails, it's put back): its other bytes, BOM, CRLF,
     no final newline stay. A link file that can't be written is listed (`skipped`), the merge still
     finishes. A favourite follows a rename or merge (`rename_favorite`: only its entry's text changes in
@@ -1499,15 +1547,23 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   `POST /api/<cmd>` → same `dispatch`, `/vault/<path>` files. `cargo run -p devserver -- <vault> [port]`.
 - `android/MainActivity.kt` + `scripts/android_overlay.py`: applied after `tauri android init` in CI
   (insets, All-files-access permission, `window.LeanAndroid` JS bridge). `src-tauri/gen/` is not committed.
+  `android/kotlin/Checks.kt`: the Android code's rules with no Android in them (where a key may go, picture sizes,
+  front matter, selection limits…), tested on a plain JVM by `bash android/test/run.sh` (ChecksTest.kt);
+  `python3 android/test/overlay_test.py` runs the overlay on a stand-in tree (APK and Play). Both run in android-test.yml.
 
 ## File shapes in real notes folders (all must round-trip byte-for-byte; see tests/doc.rs, tests/fuzz.rs)
 Logseq `- ` bullets (tabs), Obsidian `* ` bullets, plain paragraphs before any bullet (one block each;
 once one is edited, later ones are written as bullets), YAML `---` headers (page props; YAML `title`
 never renames), `key::` props, files without a final newline, CRLF, BOM, duplicate page names (first
 file wins, `Vault::duplicates`), emoji/curly quotes in names (never slice strings by byte index),
-unclosed code fences (end at the next bullet that isn't deeper). File names: Logseq triple-lowbar rules
+unclosed code fences (end at the next bullet that isn't deeper; ```code``` closed on its own line is inline
+code, never a fence: `doc::fence_line`, also used by parse and text). A note's later line that would read
+as a bullet (`- x`, `* x`, `+ x`, a lone `-`) is written as `\- x` outside code blocks and read back
+without the backslash (one more backslash in front of lines that already start with some). File names: Logseq triple-lowbar rules
 (`file_stem_for`, Windows' reserved names in any capitals); names a file can't hold get `title::` (new
-pages, and renames: `add_title_prop`). A new page never takes another page's file: when its file name
+pages, and renames: `add_title_prop`, after a YAML header; only a `title::` line counts, not `subtitle::`).
+A rename changes the page's own file and its name first, then links in other files (a rename that
+fails, or whose new file name turns up meanwhile, changes no links and puts its words back). A new page never takes another page's file: when its file name
 is already used (by a page named by its `title::`; capitals ignored, as Windows and Android do), it gets
 the next free `<name> (2).md` with `title::` (`Vault::free_rel`, used by `page_info` for pages without
 a file, so the editor's page view and first save, renames, quick capture and the capture box all follow
@@ -1519,10 +1575,13 @@ it; the first save of a new page writes only where no file is: one that turned u
   block by block (`merge.rs`, one `stretch` rule for both `merge_blocks` and `clash_parts`: between
   notes both left alone, one side's change wins; notes edited in place on both sides merge note by note
   only when every note resolves and both line up (`aligned`); notes added at the same place on both
-  sides are both kept, this device's first, unless that re-parents a note (the order, or an added note
-  shallower than the next note both still have), one of them has words that were on the page (moved,
-  or a repeat), or both took a note away from its place (`both_added`); else the whole stretch is one
-  clash). A real clash opens the clash screen (`ui/clash.js`, from `Outline.showConflict`): `clash`
+  sides are both kept, this device's first, a subtree made the same on both kept once, unless that
+  re-parents a note (the order, or an added note shallower than the next note both still have), one
+  side's subtree starts with the same note as one of the other's but has other notes under it (review
+  claim 7), one of them has words that were on the page (moved, or a repeat), or both took a note away
+  from its place (`both_added`); words edited on one side next to notes added on the other combine only
+  when the edited notes kept their depths and line up (`edits_and_insertions`); else the whole stretch
+  is one clash). A real clash opens the clash screen (`ui/clash.js`, from `Outline.showConflict`): `clash`
   (app.rs, `merge::clash_parts`; checks `path` like `save`) gives the file's version and the page in
   parts; only the clashing stretches (and the page properties, if both changed them) are shown, this
   device's and the other copy's side by side with how they were before, one pre-picked as suggested
@@ -1561,12 +1620,16 @@ it; the first save of a new page writes only where no file is: one that turned u
   program saving at the worst moment).
 - The settings (config.edn) are never guessed (Build 32): `capture::read_config` is the one rule for
   opening (`App::open`, `open_read_only`) and adding notes: missing → Logseq's defaults (and on Android
-  a PermissionDenied: without "all files access" the folder opens empty, `App.noAccess`); any other read
+  a PermissionDenied when opening: without "all files access" the folder opens empty, `App.noAccess`; adding
+  a note uses `read_config_to_add`, where that is an error too, never the defaults); a UTF-8 BOM at the
+  start is skipped (`edn::parse`, kept by rewrites; review claim 9d); any other read
   problem, or text that isn't whole EDN, is tried again ~0.5 s, then the folder isn't opened (a file
   that stays unparseable still gives the defaults). Settings → Notes folder shows why with "Try again"
   (`.btn-row.retry`, finger-sized on touch; a fresh page load, as at a start). While open, a rescan
   stats config.edn (`App::config_stamp`; the app's own writes record theirs) and reads it when it
-  changed, whole files only (`collect_changes`); `take_config` takes favourites, shortcuts, capture…
+  changed, whole files only (`collect_changes`; its `Changes` name the folder, `root`, and the opening
+  of it they were read for, and `apply_changes` ignores ones from another: a folder switched while a
+  rescan read the old one never gets the old one's files); `take_config` takes favourites, shortcuts, capture…
   in place, and for other folders, date formats or comma properties opens the index again (`load`,
   from the cache); `"logseq/config.edn"` in rescan's list → the UI takes the settings
   (`App.useSettings`) and redraws both sides if journals moved; the Windows app watches the new
@@ -1575,6 +1638,11 @@ it; the first save of a new page writes only where no file is: one that turned u
   unused pictures are moved to the bin, and only after checking
   each again right before (when unsure, a picture counts as used; pictures from the last 3 days are
   never moved); its bin name says its exact path, and putting one back never overwrites a picture.
+  A page's bin name is Logseq's ("pages_sub_a.md", " (2)" when taken); where it came from is noted in
+  the bin's hidden `.thinky-bin.json` (`bin_index`), so it goes back to `pages/sub/a.md`, and a real
+  "X (2)" stays "X (2)"; a file not noted there is worked out from its name as before. Only a plain
+  file right in the bin is shown or put back (`bin_entry`: no `/ \ :` or NUL, not a link, its real
+  path in the bin; review claim 5).
   The one exception: the app deletes (or trims) its OWN old safety copies in `logseq/.safety-<this
   device>/` (Build 32, the maintainer agreed to keep them in the cloud): only `<id>.copy` files there, only this
   device's folder, never another device's, never through a link or junction (`real_chain`, real files
@@ -1592,7 +1660,7 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
   hiccup `[:…]`, SCHEDULED/DEADLINE line or drawer; the first line no to-do word or priority); addresses only
   http(s), through `clip::safe_url`. `capture::md_link`
   defuses the name. The extension's page.js does the same first (`safe`), skips words the reader
-  can't see, and its toast is in a closed shadow root; background.js answers only its own pages
+  can't see (judged on the page's own nodes in the selection's Range, never a detached copy: review claim 18), and its toast is in a closed shadow root; background.js answers only its own pages
   (`sender.id`, not a tab). (tests/clip.rs `web_words_stay_words`, tests/pages.rs)
 - The native host runs only when Edge or Chrome starts it for one of our extensions (`native_host::is_our_extension` → `clip::is_our_origin`: the unpacked id and the two store ids);
   `LEAN_CLIP_VAULT` works only in debug builds; its errors never name the folder.
@@ -1601,16 +1669,22 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
   on Windows opening one connects there and offers the user's sign-in); served with
   `Content-Security-Policy: sandbox; default-src 'none'…` and `nosniff`, so an SVG or HTML file
   synced into assets/ never runs. render.js/api.js `assetUrl` refuse such addresses too, and web
-  pictures load with `referrerpolicy="no-referrer"`. (tests/features.rs, t18_security)
+  pictures load with `referrerpolicy="no-referrer"`. "Check this folder"'s missing files and "Show attachments"
+  take only names `pictures::asset_links` gives: read (`%2e`, `%5C`, `%3A`) first, then any `..`, `\`, `:` or NUL
+  refused, and looked up only through `asset_file` (review claim 4). (tests/features.rs, tests/pictures.rs, t18_security)
 - Drawing notes: a note that makes a drawing rule throw shows as its plain words (`renderBlock`'s
-  catch); math.js looks names up with `Object.hasOwn` (no `\constructor`). (t18_security)
+  catch); math.js looks names up with `Object.hasOwn` (no `\constructor`); a formula of more than 2,000
+  matrix cells or nested more than 40 deep shows as its source (`.m-src`); a link's label holds no other link
+  (`inline(label, true)`). (t18_security, unit.mjs)
 - config.edn: `:pages-directory`/`:journals-directory` only folders inside the notes folder
   (`config::inside_folder`), a journal file name with `/`, `\`, `:` or a leading `.` falls back to
   `yyyy_MM_dd` (`journal_rel_path`). (tests/features.rs `folder_settings_stay_inside_the_notes_folder`)
 - Windows file names: Windows' reserved names include COM¹–³, LPT¹–³, CONIN$, CONOUT$ and any of them
   before a dot (`file_stem_for`, `start.rs`).
 - Android's share pop-up opens only `content://` pictures from another app's provider
-  (`QuickCaptureActivity.sharedPicture`; android_test.sh step 6 checks a file:// share is refused).
+  (`QuickCaptureActivity.sharedPicture`; android_test.sh step 6 checks a file:// share is refused): never an
+  authority with an `@` (`Checks.otherAppsAuthority`, claim 15), looked up off the main thread, the preview read
+  with a byte cap (`Checks.readAtMost`, `PREVIEW_MAX`), never trusting the size the other app gives.
 - The dev server answers only requests addressed to 127.0.0.1/localhost on its own port (`Host`; a
   web page renaming itself to 127.0.0.1, "DNS rebinding", is refused), and its API only by POST from
   its own page. It still serves whatever notes folder it is given: never point it at a real one.
@@ -1633,11 +1707,18 @@ window can't be sent to another page.
 
 ## Build & test
 - Here: `cargo test -p outline_core`; speed: `cargo run --release -p outline_core --example bench`.
+  The Windows shell's own decisions (`src-tauri/src/shell_rules.rs`, `ai_key.rs`: closing, the capture box's
+  footer/placing/wheel, links between copies, size limits, which address an AI key may go to) have tests
+  that need no Windows or Tauri: `sh src-tauri/pure_tests.sh` (`cargo test -p shell_pure_tests`, a small package in src-tauri/pure that builds those two files as tests against outline_core alone); on Windows
+  `cargo test -p lean-outliner` runs them with the rest.
   CI (build.yml `ui-tests`, from Build 37): all of them on every build, in six groups on six machines (every group runs to the end, `fail-fast: false`; t5_long first in its group)
   (Playwright 1.63.0 installed into /opt/npm-tools there, Pillow from apt); main signs only after all six
   pass, then it signs and publishes at once (the `release` environment has no reviewer since Nov 5, 2026 and
   no wait since Nov 15, 2026, Build 49, he asked: a push to main that passes is a release; build.yml's header
   comments still mention the old 30 minutes until the next build changes them). A new test goes into run.sh's list AND one of the six groups.
+  Page modules that load on their own (math.js, render.js; ai.js as on the phone, in a process of its own):
+  `node dev/ui-tests/unit.mjs` (plain Node, no server; CI's `test` job and pr.yml). Dev server: `cargo test -p devserver`
+  (its paths, Origin, AI keys). The outside review's fixes (Nov 21) in the browser: t34_review.
   UI: `dev/ui-tests/run.sh [test…]` (Playwright against the dev server, fresh sample vault per test,
   screenshots in `$UI_TEST_DIR/shots`; Playwright import `/opt/npm-tools/node_modules/playwright/index.mjs`).
   Run them all after UI changes; they catch CSP blocks too. Two copies of the project (git worktrees)
@@ -1765,10 +1846,12 @@ window can't be sent to another page.
   sizes; `release` (main only, environment `publish`) publishes here (and on the old downloads repo while
   `RELEASES_TOKEN` exists). Build numbers follow the newest release here or on the old downloads repo
   (`number` refuses to start below build 33; so does `prev-cert` look in both). Pull requests run
-  only `pr.yml` (the core's tests; no secrets, never `pull_request_target`). Every action is pinned to a
+  only `pr.yml` (the core's and the dev server's tests, `src-tauri/pure_tests.sh`, `node dev/ui-tests/unit.mjs`,
+  Clippy with its correctness and suspicious lints stopping it; no secrets, never `pull_request_target`). Every action is pinned to a
   commit; Dependabot proposes updates; Cargo.lock is used as is (`--locked`, `cargo fetch --locked`) and
-  npm installs without install scripts; `deny` runs cargo-deny (deny.toml) and reports without holding
-  a build back. The first build with updates is installed by hand.
+  npm installs without install scripts; `deny` runs cargo-deny (deny.toml): a security advisory holds the
+  release back (`sign` needs `deny`), licences, bans and sources only report. Release lists are read with
+  `gh api --paginate` (all pages, not only the newest 100). The first build with updates is installed by hand.
 - Pull before pushing.
 
 ## Android extras
@@ -1781,7 +1864,9 @@ a ((reference)) "…"; he asked for the app's graphics too (Nov 12): each row (`
 `item_mark` + `item_text` + `item_pic`) has its to-do box as a drawing (`Journal.drawn` → `box`;
 drawable/widget_box_open|done|cancel, the dot widget_dot, white and tinted by `setColorFilter`: open and
 cancelled in the faint colour, ticked in the accent with the tick cut out) and the note's first picture in
-assets/ as a small copy (`Journal.thumb`: ≤160×72 dp, sampled while decoding, EXIF-turned; `assetName`: a
+assets/ as a small copy (`Journal.thumb`: ≤160×72 dp and ≤ `Checks.THUMB_PIXELS` = 100,000 pixels, sampled while
+decoding until both sides fit (`Checks.sampleSize`: a tall screenshot too), JPEGs as RGB_565, EXIF-turned; `row` sets all
+three views' visibility every time, as rows are reused; `assetName`: a
 plain name right in assets/ only, as app::asset_file; web pictures keep their name), at most `THUMBS` = 6 in
 the list (Android allows a widget's pictures about one screenful of memory); formulas stay their TeX: the home
 screen draws widgets from text, pictures and lists only (RemoteViews); checked by android_test.sh 7c,
@@ -1830,8 +1915,9 @@ called at the end of `start()`, or from `onNewIntent` via evaluateJavascript); `
 brings up the keyboard for the search box (WebView focus() alone doesn't without a tap).
 One-click update: `LeanAndroid.update(tag)` (Android 8+: first opens "Install unknown apps" for the app
 and carries on in `onResume` once allowed) downloads build N's `LeanOutliner.apk` into
-`<cache>/update-apk`, checks it's this package with a higher versionCode and (Android 9+,
-`signedLikeThisApp`) the same signing certificate, reports `lean-update` events (permission, download %,
+`<cache>/update-apk`, checks it's this package with a higher versionCode and (`signedLikeThisApp`, failing closed
+since the outside review's claim 12: Android 9+ every signer of the download among this app's, below 9 the same
+signatures; anything unreadable is a no) the same signing certificate, reports `lean-update` events (permission, download %,
 check, ready, install, confirm, done, error) to the page; the page saves, then `installUpdate()` abandons
 this app's earlier sessions (`mySessions`) and writes a PackageInstaller session; `UpdateReceiver` (not
 exported) starts Android's "Update this app?" box and reports its answer. Android itself refuses an APK

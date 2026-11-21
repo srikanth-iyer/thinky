@@ -55,9 +55,13 @@ object LeanCore {
       .put("time", String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)))
   }
 
+  /** One call into the core at a time: an add reads the page and writes it back, so two at once (a
+   *  quick run of "Add to thinky" selections, each on its own helper thread) could lose one. */
+  private val oneAtATime = Any()
+
   private fun call(args: JSONObject, bytes: ByteArray? = null): JSONObject {
     load()?.let { throw Failed(it) }
-    val out: String = (try { capture(args.toString(), bytes) } catch (e: Throwable) {
+    val out: String = (try { synchronized(oneAtATime) { capture(args.toString(), bytes) } } catch (e: Throwable) {
       throw Failed("Couldn't add it (${e.message ?: e.javaClass.simpleName}), so nothing was added.")
     }) ?: throw Failed("Couldn't add it, so nothing was added.")
     val r = try { JSONObject(out) } catch (e: Exception) { throw Failed("Couldn't add it ($out).") }
@@ -65,10 +69,11 @@ object LeanCore {
     return r
   }
 
-  /** Where notes go now (config.edn as it is): today's journal's title or the page's name. */
-  fun where(ctx: Context): String {
+  /** Where notes go now (config.edn as it is): today's journal's title or the page's name, and the
+   *  word a to-do starts with there (TODO, or LATER with `:preferred-workflow :now`). */
+  fun where(ctx: Context): Pair<String, String> {
     val r = call(base(ctx).put("cmd", "where"))
-    return r.optString("page")
+    return r.optString("page") to r.optString("todo", "TODO").ifEmpty { "TODO" }
   }
 
   /** The passages of the web page at `url` already in the notes (Build 46; read only): the page's name
@@ -84,7 +89,8 @@ object LeanCore {
   fun addText(ctx: Context, text: String): String = call(base(ctx).put("text", text)).optString("rel")
 
   /** Words selected in another app ("Add to thinky", SelectionCaptureActivity): added the same way,
-   *  but kept as plain words (the core's clip::defuse), as the Edge extension's highlights are. */
+   *  but kept as plain words and lines (the core's clip::defuse and guard, at most 20,000
+   *  characters), as the Edge extension's highlights are. */
   fun addSelected(ctx: Context, text: String): String = call(base(ctx).put("text", text).put("plain", true)).optString("rel")
 
   /** A shared picture: copied into assets/ by the core (Logseq's name; its own extension, else its

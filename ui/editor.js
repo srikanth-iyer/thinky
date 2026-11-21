@@ -660,7 +660,9 @@ export class Outline {
     if (this.root === null || this.embed) { this.crumbs.hidden = true; return; }
     const chain = [];
     for (let j = this.parentOf(this.root); j >= 0; j = this.parentOf(j)) chain.unshift(j);
-    const label = (k) => esc(renderBlock(this.blocks[k].text.split('\n')[0]).html.replace(/<[^>]+>/g, '').slice(0, 40) || '…');
+    // (the note's drawn words as plain text, escaped once: its HTML already escapes & and <)
+    const words = (html) => { const t = document.createElement('template'); t.innerHTML = html; return t.content.textContent; };
+    const label = (k) => esc(words(renderBlock(this.blocks[k].text.split('\n')[0]).html).slice(0, 40) || '…');
     this.crumbs.innerHTML = `<a href="#" data-z="page">${esc(this.name)}</a>` + chain.map((k) => ` › <a href="#" data-z="${k}">${label(k)}</a>`).join('');
     this.crumbs.hidden = false;
   }
@@ -692,8 +694,11 @@ export class Outline {
       const i = +blk.dataset.i;
       const thread = this.threadAt(e, blk);
       if (thread !== null) { e.preventDefault(); this.toggleBranch(thread); return; }
+      // a property shown as an icon: on a touch screen (no hover, so no title) a tap says what it is
+      const pi = t.closest('.prop-icon');
+      if (pi && matchMedia('(pointer: coarse)').matches) { e.preventDefault(); this.app.toast(pi.getAttribute('aria-label'), 3000); return; }
       const yt = t.closest('.yt'); // a YouTube video's picture: its player, here (render.js)
-      if (yt) { e.preventDefault(); if (!yt.classList.contains('playing')) playVideo(yt); return; }
+      if (yt) { e.preventDefault(); if (!yt.classList.contains('playing')) playVideo(yt, (u) => this.app.openUrl(u)); return; }
       const ref = t.closest('.bref[data-page]'); // a block reference: to the note it names
       if (ref) { e.preventDefault(); this.flush(); this.app.go('zoom', ref.dataset.page, { line: +ref.dataset.line }); return; }
       const a = t.closest('a');
@@ -2715,7 +2720,8 @@ export class Outline {
 
   save(force = false) {
     // one save at a time: another asked for meanwhile follows it (still forced if it was)
-    if (this.saving) { this.again = true; this.againForce ||= force; return this.saving; }
+    // (its promise is the whole chain's: it resolves once the save asked for here is done too)
+    if (this.saving) { this.again = true; this.againForce ||= force; return this.savingAll || this.saving; }
     if ((!this.dirty && !force) || this.readonly) return Promise.resolve();
     if (this.conflict && !force) return Promise.resolve(); // waiting for his choice (clash.js): trying again would only clash again
     this.saving = (async () => {
@@ -2759,14 +2765,17 @@ export class Outline {
         this.app.toast('Could not save “' + this.name + '”: ' + err, 6000);
       }
     })();
-    return this.saving.finally(() => {
+    const all = this.saving.finally(() => {
       this.saving = null;
+      if (this.savingAll === all) this.savingAll = null;
       if (this.again) {
         const f = this.againForce;
         this.again = this.againForce = false;
         return this.save(f);
       }
     });
+    this.savingAll = all;
+    return all;
   }
 
   /** Take over the typing of x, the same file open on the other side, before it is saved (App.takeOver):

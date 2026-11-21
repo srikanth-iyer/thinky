@@ -18,7 +18,7 @@ const VAULT_CSP: &str = "sandbox; default-src 'none'; img-src data:; style-src '
 
 fn mime(p: &std::path::Path) -> &'static str {
     match p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
-        Some("html") => "text/html; charset=utf-8",
+        Some("html" | "htm") => "text/html; charset=utf-8",
         Some("css") => "text/css",
         Some("js") => "text/javascript",
         Some("woff2") => "font/woff2",
@@ -119,7 +119,31 @@ struct Server {
     trace: Option<std::time::Instant>,
 }
 
-static AI_KEYS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+/// Saved keys: (service, key, the address saved with it: only "Other"'s, whose address the person types).
+static AI_KEYS: Mutex<Vec<(String, String, String)>> = Mutex::new(Vec::new());
+
+/// Said when a request would carry a service's key to an address that isn't that service's (the
+/// same words as the Windows and Android shells).
+const KEY_ELSEWHERE: &str = "That address isn't the one this service's key belongs to, so the key wasn't sent.";
+
+/// The key to send with `req` for `service` (from `saved`: its key and the address saved with it), and
+/// where it goes. Like the app's shells: where the key goes comes from the service (core
+/// `ai::key_header`), never from the page's request, and a key goes only to its own service's
+/// address (`ai::key_may_go`; review claim 1).
+fn key_for(service: &str, req: &mut outline_core::ai::Request, saved: Option<(String, String)>) -> Result<Option<String>, String> {
+    let header = outline_core::ai::key_header(service);
+    req.auth = header.map(String::from);
+    match (header, saved) {
+        (Some(_), Some((key, base))) => {
+            let other = (!base.is_empty()).then_some(base.as_str());
+            if !outline_core::ai::key_may_go(service, &req.url, other) {
+                return Err(KEY_ELSEWHERE.into());
+            }
+            Ok(Some(key))
+        }
+        _ => Ok(None),
+    }
+}
 
 fn ai_command(cmd: &str, args: &serde_json::Value) -> Option<Result<serde_json::Value, String>> {
     use serde_json::json;
@@ -128,25 +152,60 @@ fn ai_command(cmd: &str, args: &serde_json::Value) -> Option<Result<serde_json::
     Some(match cmd {
         "ai_key_set" => {
             let (p, k) = (s("provider"), s("key").trim().to_string());
-            keys().retain(|(q, _)| *q != p);
+            // "Other": the address the key belongs to, kept with it (the app keeps it next to the key)
+            let base = if p == "other" { s("base").trim().to_string() } else { String::new() };
+            keys().retain(|(q, ..)| *q != p);
             if k.is_empty() {
                 Ok(json!(false))
             } else if !outline_core::ai::key_ok(&k) {
                 Err("That key has spaces, quotes or line breaks in it.".into())
             } else {
-                keys().push((p, k));
+                keys().push((p, k, base));
                 Ok(json!(true))
             }
         }
-        "ai_key_has" => Ok(json!(keys().iter().any(|(q, _)| *q == s("provider")))),
+        "ai_key_has" => Ok(json!(keys().iter().any(|(q, ..)| *q == s("provider")))),
         "ai_send" => (|| {
-            let req: outline_core::ai::Request = serde_json::from_value(args.get("req").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
-            let key = keys().iter().find(|(q, _)| *q == s("provider")).map(|x| x.1.clone());
+            let mut req: outline_core::ai::Request = serde_json::from_value(args.get("req").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let service = s("provider");
+            let saved = keys().iter().find(|(q, ..)| *q == service).map(|(_, k, b)| (k.clone(), b.clone()));
+            let key = key_for(&service, &mut req, saved)?;
             let (status, body) = outline_core::ai::send_with_curl(Path::new("curl"), &req, key.as_deref(), &std::env::temp_dir().join("thinky-dev-ai"))?;
             Ok(json!({ "status": status, "body": body }))
         })(),
         _ => return None,
     })
+}
+
+/// The file in `ui` a page address names, or None. Decoded first, then every part must be a plain
+/// name (no "..", ".", empty part, drive, `\`, `:` or NUL), so `/%2fetc/passwd` or
+/// `/%5cWindows%5cwin.ini` never leave the folder; and the file found must really be inside it (no
+/// link out). Checked before anything is read (review claim 20).
+fn ui_file(ui: &Path, url: &str) -> Option<PathBuf> {
+    let rel = if url == "/" { "index.html".to_string() } else { decode(url.strip_prefix('/')?) };
+    let mut path = ui.to_path_buf();
+    for part in rel.split('/') {
+        let plain = !part.is_empty() && part != "." && part != ".." && !part.contains(['\\', ':', '\0']);
+        let mut c = Path::new(part).components();
+        if !plain || !matches!((c.next(), c.next()), (Some(std::path::Component::Normal(_)), None)) {
+            return None;
+        }
+        path.push(part);
+    }
+    let (root, file) = (ui.canonicalize().ok()?, path.canonicalize().ok()?);
+    (file.starts_with(&root) && file.is_file()).then_some(file)
+}
+
+/// A file the browser would run as a page (by its type, so `/index.HTML` too) gets the app's
+/// Content-Security-Policy.
+fn runs_as_page(mime: &str) -> bool {
+    mime.starts_with("text/html") || mime.starts_with("image/svg+xml")
+}
+
+/// The API answers only POSTs that say they come from this server's own page: one with no Origin
+/// (another program, or a page that hides where it is from) is refused too.
+fn api_allowed(method: &str, origin: Option<&str>, me: &[String]) -> bool {
+    method == "POST" && origin.is_some_and(|o| me.iter().any(|m| m == o))
 }
 
 fn handle(sv: &Server, stream: TcpStream) {
@@ -162,8 +221,9 @@ fn handle(sv: &Server, stream: TcpStream) {
         return respond(&stream, 403, &[], b"forbidden");
     }
     if let Some(cmd) = url.strip_prefix("/api/") {
-        // only this page may call the API (another web page open in the browser can't), and only by POST
-        if req.method != "POST" || req.origin.as_ref().is_some_and(|o| !sv.me.contains(o)) {
+        // only this page may call the API (another web page open in the browser can't, nor a request
+        // that names no page), and only by POST
+        if !api_allowed(&req.method, req.origin.as_deref(), &sv.me) {
             return respond(&stream, 403, &[], b"forbidden");
         }
         let args = serde_json::from_slice(&req.body).unwrap_or(serde_json::Value::Null);
@@ -207,18 +267,15 @@ fn handle(sv: &Server, stream: TcpStream) {
             None => respond(&stream, 404, &[], b"not found"),
         };
     }
-    let rel = if url == "/" { "index.html".to_string() } else { decode(url.trim_start_matches('/')) };
-    let safe = !rel.split(['/', '\\']).any(|c| c == ".." || c.contains(':'));
-    let path = sv.ui.join(&rel);
-    match std::fs::read(&path) {
-        Ok(bytes) if safe => {
+    match ui_file(&sv.ui, &url).and_then(|f| std::fs::read(&f).ok().map(|b| (f, b))) {
+        Some((path, bytes)) => {
             let mut headers = vec![("Content-Type", mime(&path))];
-            if let (Some(c), true) = (&sv.csp, rel.ends_with(".html")) {
+            if let (Some(c), true) = (&sv.csp, runs_as_page(mime(&path))) {
                 headers.push(("Content-Security-Policy", c));
             }
             respond(&stream, 200, &headers, &bytes)
         }
-        _ => respond(&stream, 404, &[], b"not found"),
+        None => respond(&stream, 404, &[], b"not found"),
     }
 }
 
@@ -258,5 +315,169 @@ fn main() {
     for stream in listener.incoming().flatten() {
         let sv = sv.clone();
         std::thread::spawn(move || handle(&sv, stream));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use outline_core::ai::Request;
+
+    fn req(url: &str, auth: Option<&str>) -> Request {
+        Request { method: "POST".into(), url: url.into(), auth: auth.map(String::from), headers: vec![], body: None, local: false, key_required: true }
+    }
+    fn saved(key: &str, base: &str) -> Option<(String, String)> {
+        Some((key.into(), base.into()))
+    }
+
+    #[test]
+    fn a_key_goes_only_to_its_own_service() {
+        // the preset services: their own address, with where the key goes taken from the service
+        let mut r = req("https://api.anthropic.com/v1/messages", Some("bearer"));
+        assert_eq!(key_for("claude", &mut r, saved("sk-a", "")), Ok(Some("sk-a".into())));
+        assert_eq!(r.auth.as_deref(), Some("x-api-key"), "the page's own `auth` is not used");
+        let mut r = req("https://api.openai.com/v1/chat/completions", Some("x-api-key"));
+        assert_eq!(key_for("openai", &mut r, saved("sk-o", "")), Ok(Some("sk-o".into())));
+        assert_eq!(r.auth.as_deref(), Some("bearer"));
+        let mut r = req("https://openrouter.ai/api/v1/models", None);
+        assert_eq!(key_for("openrouter", &mut r, saved("k", "")), Ok(Some("k".into())));
+        assert_eq!(r.auth.as_deref(), Some("bearer"), "a request that names no auth still gets the service's");
+        let mut r = req("https://generativelanguage.googleapis.com/v1beta/openai/models", None);
+        assert_eq!(key_for("gemini", &mut r, saved("g", "")), Ok(Some("g".into())));
+        // the review's case: the page points a preset service's key somewhere else
+        for bad in [
+            "https://attacker.example/v1/messages",
+            "https://api.anthropic.com.attacker.example/v1/messages",
+            "https://api.anthropic.com@attacker.example/v1/messages",
+            "http://api.anthropic.com/v1/messages",
+            "HTTPS://api.anthropic.com/v1/messages",
+            "https://api.anthropic.com/v10/messages",
+            " https://api.anthropic.com/v1/messages",
+            "https://api.openai.com/v1/messages",
+            "",
+        ] {
+            let mut r = req(bad, Some("x-api-key"));
+            assert_eq!(key_for("claude", &mut r, saved("sk-a", "")), Err(KEY_ELSEWHERE.into()), "{bad}");
+        }
+        // a saved base never widens a preset service's own address
+        let mut r = req("https://attacker.example/v1/messages", None);
+        assert!(key_for("claude", &mut r, saved("sk-a", "https://attacker.example/v1")).is_err());
+    }
+
+    #[test]
+    fn other_keeps_the_address_saved_with_its_key() {
+        let mut r = req("https://ai.example.org/v1/chat/completions", None);
+        assert_eq!(key_for("other", &mut r, saved("k", "https://ai.example.org/v1")), Ok(Some("k".into())));
+        assert_eq!(r.auth.as_deref(), Some("bearer"));
+        let mut r = req("http://127.0.0.1:9/v1/models", None);
+        assert_eq!(key_for("other", &mut r, saved("k", "http://127.0.0.1:9/v1/")), Ok(Some("k".into())), "the saved address as check_base gives it");
+        let mut r = req("https://attacker.example/v1/models", None);
+        assert_eq!(key_for("other", &mut r, saved("k", "https://ai.example.org/v1")), Err(KEY_ELSEWHERE.into()), "the address changed after the key was saved");
+        let mut r = req("https://ai.example.org/v1/models", None);
+        assert_eq!(key_for("other", &mut r, saved("k", "")), Err(KEY_ELSEWHERE.into()), "a key saved with no address goes nowhere");
+        let mut r = req("https://ai.example.org/v1/models", None);
+        assert_eq!(key_for("other", &mut r, None), Ok(None), "no key saved: the request goes without one");
+    }
+
+    #[test]
+    fn local_programs_and_unknown_services_get_no_key() {
+        for s in ["ollama", "lmstudio", "nosuch", ""] {
+            let mut r = req("http://localhost:11434/v1/models", Some("bearer"));
+            assert_eq!(key_for(s, &mut r, saved("k", "http://localhost:11434/v1")), Ok(None), "{s}");
+            assert_eq!(r.auth, None, "{s}: nothing tells curl to send a key");
+        }
+    }
+
+    #[test]
+    fn the_key_commands_keep_others_address() {
+        use serde_json::json;
+        let set = |p: &str, k: &str, b: &str| ai_command("ai_key_set", &json!({ "provider": p, "key": k, "base": b })).unwrap();
+        assert_eq!(set("other", "sk-x", "https://ai.example.org/v1"), Ok(json!(true)));
+        assert_eq!(set("claude", "sk-c", "https://attacker.example/v1"), Ok(json!(true)));
+        let keys = AI_KEYS.lock().unwrap().clone();
+        assert!(keys.contains(&("other".into(), "sk-x".into(), "https://ai.example.org/v1".into())));
+        assert!(keys.contains(&("claude".into(), "sk-c".into(), String::new())), "only Other keeps an address");
+        assert_eq!(set("claude", "has space", ""), Err("That key has spaces, quotes or line breaks in it.".into()));
+        assert_eq!(set("other", "", ""), Ok(json!(false)));
+        assert_eq!(ai_command("ai_key_has", &json!({ "provider": "other" })).unwrap(), Ok(json!(false)), "an empty key removes it");
+        // a request to another address is refused before anything is sent
+        assert_eq!(set("openai", "sk-o", ""), Ok(json!(true)));
+        let out = ai_command("ai_send", &json!({ "provider": "openai", "req": { "method": "GET", "url": "https://attacker.example/v1/models", "auth": "bearer" } })).unwrap();
+        assert_eq!(out, Err(KEY_ELSEWHERE.into()));
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("devserver-test-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("ui/sub")).unwrap();
+        std::fs::write(d.join("ui/index.html"), "<p>").unwrap();
+        std::fs::write(d.join("ui/app.js"), "x").unwrap();
+        std::fs::write(d.join("ui/sub/a b.js"), "y").unwrap();
+        std::fs::write(d.join("secret.txt"), "no").unwrap();
+        d
+    }
+
+    #[test]
+    fn page_files_come_only_from_the_ui_folder() {
+        let d = scratch("ui");
+        let ui = d.join("ui");
+        let real = |p: &str| ui.join(p).canonicalize().unwrap();
+        assert_eq!(ui_file(&ui, "/"), Some(real("index.html")));
+        assert_eq!(ui_file(&ui, "/app.js"), Some(real("app.js")));
+        assert_eq!(ui_file(&ui, "/sub/a%20b.js"), Some(real("sub/a b.js")), "decoded");
+        for bad in [
+            "/%2fetc/passwd",
+            "/%2Fetc%2Fpasswd",
+            "//etc/passwd",
+            "/%5cWindows%5cwin.ini",
+            "/%5C%5Cserver%5Cshare%5Ca.js",
+            "/..%2fsecret.txt",
+            "/%2e%2e/secret.txt",
+            "/../secret.txt",
+            "/sub/../index.html",
+            "/sub/%2e%2e/index.html",
+            "/./index.html",
+            "/C:/Windows/win.ini",
+            "/C%3a/Windows/win.ini",
+            "/index.html%00.js",
+            "/sub/",
+            "/sub",
+            "/nosuch.js",
+            "app.js",
+            "",
+        ] {
+            assert_eq!(ui_file(&ui, bad), None, "{bad}");
+        }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(d.join("secret.txt"), ui.join("link.txt")).unwrap();
+            std::os::unix::fs::symlink(&d, ui.join("up")).unwrap();
+            assert_eq!(ui_file(&ui, "/link.txt"), None, "a link out of the folder");
+            assert_eq!(ui_file(&ui, "/up/secret.txt"), None);
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn pages_get_the_policy_whatever_the_case_of_their_name() {
+        for name in ["index.html", "index.HTML", "a.Html", "a.htm", "a.HTM", "logo.svg", "logo.SVG"] {
+            assert!(runs_as_page(mime(Path::new(name))), "{name}");
+        }
+        for name in ["app.js", "app.css", "font.woff2", "a.png", "a", "a.html.txt"] {
+            assert!(!runs_as_page(mime(Path::new(name))), "{name}");
+        }
+    }
+
+    #[test]
+    fn only_this_page_may_call_the_api() {
+        let me = ["http://127.0.0.1:8766".to_string(), "http://localhost:8766".to_string()];
+        assert!(api_allowed("POST", Some("http://127.0.0.1:8766"), &me));
+        assert!(api_allowed("POST", Some("http://localhost:8766"), &me));
+        assert!(!api_allowed("POST", None, &me), "no Origin: refused");
+        assert!(!api_allowed("POST", Some("null"), &me));
+        assert!(!api_allowed("POST", Some("http://127.0.0.1:8767"), &me));
+        assert!(!api_allowed("POST", Some("https://evil.example"), &me));
+        assert!(!api_allowed("POST", Some(""), &me));
+        assert!(!api_allowed("GET", Some("http://127.0.0.1:8766"), &me), "only by POST");
     }
 }

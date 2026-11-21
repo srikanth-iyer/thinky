@@ -59,7 +59,7 @@ pub fn parse_page(content: &str, comma_props: &[String]) -> ParsedPage {
         let mut kept: Vec<&str> = vec![];
         for l in db.text.split('\n') {
             let t = l.trim_start().trim_end_matches('\r');
-            let fence = t.starts_with("```");
+            let fence = crate::doc::fence_line(t);
             if !in_fence && !fence {
                 if let Some(kv) = property(t) {
                     b.props.push(kv);
@@ -278,7 +278,7 @@ pub fn hash_tags(text: &str) -> Vec<String> {
     let mut out = vec![];
     let mut fence = false;
     for line in text.lines() {
-        if line.trim_start().starts_with("```") {
+        if crate::doc::fence_line(line.trim_start()) {
             fence = !fence;
             continue;
         }

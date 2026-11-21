@@ -79,7 +79,11 @@ pub struct Request {
 }
 
 /// A web address the requests may go to: https anywhere, http only to this computer or the home
-/// network (Ollama, LM Studio). No spaces, quotes or line breaks (the curl settings written from it).
+/// network (Ollama, LM Studio). No spaces, quotes or line breaks (the curl settings written from it),
+/// and no `@`, `{` or `}` anywhere (review claim 3: `http://localhost:80@attacker.example` names
+/// attacker.example to curl, and curl reads `{a,b}` as a list of addresses). The computer's name ends
+/// at the first `/`, `?` or `#`; a number address is read strictly (`0127.0.0.1` is refused, not
+/// taken as 127.0.0.1), and one in `[ ]` must be a real IPv6 address.
 /// Gives it without a final "/", and whether it is such a local address.
 pub fn check_base(base: &str) -> Result<(String, bool), String> {
     let b = base.trim().trim_end_matches('/');
@@ -89,6 +93,9 @@ pub fn check_base(base: &str) -> Result<(String, bool), String> {
     if b.chars().any(|c| c.is_whitespace() || c.is_control() || c == '"' || c == '\\' || c == '\'') {
         return Err("That web address has spaces or quotes in it.".into());
     }
+    if b.contains(['@', '{', '}']) {
+        return Err("That web address has a character it can't have (@, { or }).".into());
+    }
     let (http, rest) = if let Some(r) = b.strip_prefix("https://") {
         (false, r)
     } else if let Some(r) = b.strip_prefix("http://") {
@@ -96,33 +103,99 @@ pub fn check_base(base: &str) -> Result<(String, bool), String> {
     } else {
         return Err("The address must start with https:// (or http:// for a program on this computer).".into());
     };
-    let host_port = rest.split('/').next().unwrap_or("");
-    let host = if let Some(h) = host_port.strip_prefix('[') { h.split(']').next().unwrap_or("") } else { host_port.split(':').next().unwrap_or("") };
-    let host = host.to_ascii_lowercase();
-    if host.is_empty() || host.contains('@') {
-        return Err("That web address has no name of a computer in it.".into());
+    let no_host = || "That web address has no name of a computer in it.".to_string();
+    let host_port = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let (host, port) = if let Some(h) = host_port.strip_prefix('[') {
+        let (h, after) = h.split_once(']').ok_or_else(no_host)?;
+        let ip: std::net::Ipv6Addr = h.parse().map_err(|_| no_host())?;
+        if !after.is_empty() && !after.starts_with(':') {
+            return Err(no_host());
+        }
+        (Host::V6(ip), after.strip_prefix(':'))
+    } else {
+        let (h, port) = match host_port.split_once(':') {
+            Some((h, p)) => (h, Some(p)),
+            None => (host_port, None),
+        };
+        let h = h.to_ascii_lowercase();
+        if h.is_empty() || !h.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_') {
+            return Err(no_host());
+        }
+        if h.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            // a number address: four plain numbers 0-255, no leading zeros (std's strict reading)
+            (Host::V4(h.parse().map_err(|_| "That web address's number (IP address) isn't a usual one.".to_string())?), port)
+        } else {
+            (Host::Name(h), port)
+        }
+    };
+    if let Some(p) = port {
+        if p.is_empty() || p.len() > 5 || !p.chars().all(|c| c.is_ascii_digit()) || p.parse::<u32>().map_or(true, |n| n == 0 || n > 65535) {
+            return Err("That web address's port (the number after \":\") isn't a usual one.".into());
+        }
     }
-    let local = is_local_host(&host);
+    let local = match &host {
+        Host::V4(ip) => ip.is_loopback() || ip.is_private(),
+        Host::V6(ip) => ip.is_loopback(),
+        Host::Name(h) => is_local_name(h),
+    };
     if http && !local {
         return Err("Only a program on this computer or your home network may use http://. Use https:// for a service on the internet.".into());
     }
     Ok((b.to_string(), http && local))
 }
 
-fn is_local_host(h: &str) -> bool {
-    if h == "localhost" || h == "::1" || h.ends_with(".local") || h.ends_with(".lan") || h.ends_with(".localhost") {
-        return true;
-    }
-    let parts: Vec<u32> = h.split('.').filter_map(|p| p.parse().ok()).collect();
-    if parts.len() != 4 || h.split('.').count() != 4 {
-        return false;
-    }
-    matches!(parts.as_slice(), [127, ..] | [10, ..] | [192, 168, ..]) || (parts[0] == 172 && (16..=31).contains(&parts[1]))
+enum Host {
+    V4(std::net::Ipv4Addr),
+    V6(std::net::Ipv6Addr),
+    Name(String),
 }
 
+fn is_local_name(h: &str) -> bool {
+    h == "localhost" || h.ends_with(".local") || h.ends_with(".lan") || h.ends_with(".localhost")
+}
+
+/// Where a service's key goes in a request: "x-api-key" (Claude) or "bearer" (the OpenAI style), or
+/// nothing for a service that takes no key (Ollama, LM Studio) or one this app doesn't know. The
+/// shells take this from the service the key was saved for, never from the page's `Request::auth`
+/// (review claim 1).
+pub fn key_header(service: &str) -> Option<&'static str> {
+    match service {
+        "claude" => Some("x-api-key"),
+        "openai" | "gemini" | "openrouter" | "other" => Some("bearer"),
+        _ => None,
+    }
+}
+
+/// What a shell says when it doesn't send a key (`key_may_go` is false).
+pub const KEY_ELSEWHERE: &str = "That address isn't the one this service's key belongs to, so the key wasn't sent.";
+
+/// May the key saved for `service` go with a request to `url`? (review claim 1: the page builds the
+/// request, so a page that isn't ours, or a changed address, must not get a key sent somewhere else.)
+/// A preset service's key goes only under its own fixed address (`PROVIDERS`' base + "/", exactly,
+/// capitals and all); "Other"'s key only under the address saved with it on this device
+/// (`other_base`, which must itself pass `check_base`); Ollama, LM Studio and unknown services take
+/// no key. Mirrored in Kotlin (android/kotlin/AiKeys.kt `keyMayGo`).
+pub fn key_may_go(service: &str, url: &str, other_base: Option<&str>) -> bool {
+    let Some(p) = provider(service) else { return false };
+    if key_header(service).is_none() || check_base(url).is_err() {
+        return false;
+    }
+    let base = if p.id == "other" {
+        match other_base.map(check_base) {
+            Some(Ok((b, _))) => b,
+            _ => return false,
+        }
+    } else {
+        p.base.to_string()
+    };
+    url.starts_with(&format!("{base}/"))
+}
+
+/// A service's address: a service that needs a key always uses its own fixed address (a typed one
+/// is ignored, review claim 1); Ollama, LM Studio and "Other" take the typed one.
 fn setup_base(s: &Setup) -> Result<(String, bool, &'static Provider), String> {
     let p = provider(&s.provider).ok_or("Pick an AI service in Settings → AI.")?;
-    let base = if p.id == "other" || !s.base.trim().is_empty() { s.base.as_str() } else { p.base };
+    let base = if p.key != "required" && (p.id == "other" || !s.base.trim().is_empty()) { s.base.as_str() } else { p.base };
     let (b, local) = check_base(base)?;
     Ok((b, local, p))
 }
@@ -143,11 +216,7 @@ pub fn models_request(s: &Setup) -> Result<Request, String> {
 }
 
 fn auth_of(p: &Provider) -> Option<String> {
-    match (p.format, p.key) {
-        (_, "none") => None,
-        ("claude", _) => Some("x-api-key".into()),
-        _ => Some("bearer".into()),
-    }
+    key_header(p.id).map(str::to_string)
 }
 
 /// The models in a service's answer to `models_request`, sorted by name.
@@ -246,19 +315,45 @@ pub fn key_ok(key: &str) -> bool {
     !key.is_empty() && key.len() <= 512 && key.chars().all(|c| c.is_ascii_graphic() && c != '"' && c != '\\')
 }
 
+/// How long a request's body file may stay in `tmp` before `sweep_temp` takes it away: longer than
+/// any request runs (curl's `max-time` is 120 s).
+const TEMP_AGE: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// Takes away request body files (`ai-<pid>-<n>.json`) left in `tmp` by a run that stopped before
+/// removing its own (a crash, a power cut): they hold note text, unencrypted. Only files of another
+/// run, or older than `TEMP_AGE`, so a request on its way is never touched. `send_with_curl` calls it
+/// once per run; a shell may call it at start.
+pub fn sweep_temp(tmp: &Path) {
+    let Ok(rd) = std::fs::read_dir(tmp) else { return };
+    let mine = format!("ai-{}-", std::process::id());
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if !name.starts_with("ai-") || !name.ends_with(".json") || !e.file_type().is_ok_and(|t| t.is_file()) {
+            continue;
+        }
+        let old = e.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age > TEMP_AGE);
+        if !name.starts_with(&mine) || old {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
 /// Send `req` with a curl program (Windows' own curl.exe; the dev server's): its settings come in on
 /// curl's input, so the key never shows in the list of running programs; the body goes through a
-/// file in `tmp`, removed after. https only, or http to a local program. Gives the answer's status
-/// and words.
+/// file in `tmp`, removed after. https only, or http to a local program: the address and whether it
+/// is local come from `check_base` itself, never from the page's `req.local` (review claim 3), and
+/// curl reads it literally (`globoff`: no `{a,b}` or `[1-9]` lists). Gives the answer's status and
+/// words. The key goes in the header `req.auth` names: a shell sets that from `key_header` of the
+/// service the key belongs to, after `key_may_go` (or uses `send_keyed`, which does both).
 pub fn send_with_curl(curl: &Path, req: &Request, key: Option<&str>, tmp: &Path) -> Result<(u16, String), String> {
     use std::io::Write;
     use std::process::{Command, Stdio};
-    check_base(&req.url)?;
+    let (url, local) = check_base(&req.url)?;
     let mut cfg = String::new();
-    cfg.push_str(&format!("url = {}\n", quoted(&req.url)));
+    cfg.push_str(&format!("url = {}\n", quoted(&url)));
     cfg.push_str(&format!("request = {}\n", quoted(if req.method == "GET" { "GET" } else { "POST" })));
-    cfg.push_str("silent\nshow-error\nmax-time = 120\nconnect-timeout = 15\nmax-filesize = 8000000\n");
-    cfg.push_str(if req.local { "proto = \"=http,https\"\nproto-redir = \"=http,https\"\n" } else { "proto = \"=https\"\nproto-redir = \"=https\"\n" });
+    cfg.push_str("globoff\nsilent\nshow-error\nmax-time = 120\nconnect-timeout = 15\nmax-filesize = 8000000\n");
+    cfg.push_str(if local { "proto = \"=http,https\"\nproto-redir = \"=http,https\"\n" } else { "proto = \"=https\"\nproto-redir = \"=https\"\n" });
     cfg.push_str("write-out = \"\\n%{http_code}\"\n");
     cfg.push_str("header = \"Accept: application/json\"\n");
     for (k, v) in &req.headers {
@@ -273,6 +368,8 @@ pub fn send_with_curl(curl: &Path, req: &Request, key: Option<&str>, tmp: &Path)
         (Some(_), None) if req.key_required => return Err("No key is saved for this service yet. Add it in Settings → AI.".into()),
         _ => {}
     }
+    static SWEPT: std::sync::Once = std::sync::Once::new();
+    SWEPT.call_once(|| sweep_temp(tmp));
     let body_file = match &req.body {
         Some(b) => {
             static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -294,7 +391,16 @@ pub fn send_with_curl(curl: &Path, req: &Request, key: Option<&str>, tmp: &Path)
     }
     let run = (|| {
         let mut child = c.spawn().map_err(|e| format!("Couldn't start the download tool (curl) ({e})."))?;
-        child.stdin.take().ok_or("no input")?.write_all(cfg.as_bytes()).map_err(|e| e.to_string())?;
+        let fed = match child.stdin.take() {
+            Some(mut input) => input.write_all(cfg.as_bytes()).map_err(|e| e.to_string()),
+            None => Err("no input".to_string()),
+        };
+        if let Err(e) = fed {
+            // never leave curl running (or a zombie) behind: stop it and wait for it
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("Couldn't start the download tool (curl) ({e})."));
+        }
         child.wait_with_output().map_err(|e| e.to_string())
     })();
     if let Some(f) = body_file {
@@ -304,8 +410,8 @@ pub fn send_with_curl(curl: &Path, req: &Request, key: Option<&str>, tmp: &Path)
     let text = String::from_utf8_lossy(&out.stdout).into_owned();
     if !out.status.success() {
         let why = String::from_utf8_lossy(&out.stderr).trim().trim_start_matches("curl: ").lines().last().unwrap_or("").to_string();
-        let host = req.url.split('/').nth(2).unwrap_or("");
-        return Err(if req.local {
+        let host = url.split('/').nth(2).unwrap_or("");
+        return Err(if local {
             format!("Couldn't reach the program at {host}. Is it running? ({why})")
         } else {
             format!("Couldn't reach {host}. Are you online? ({why})")
@@ -313,6 +419,20 @@ pub fn send_with_curl(curl: &Path, req: &Request, key: Option<&str>, tmp: &Path)
     }
     let (body, code) = text.rsplit_once('\n').unwrap_or(("", text.as_str()));
     Ok((code.trim().parse().unwrap_or(0), body.to_string()))
+}
+
+/// The shells' one way to send with a saved key (Windows' ai_key, the dev server): the header comes
+/// from the service (`key_header`), never from the page, and the key goes only where `key_may_go`
+/// allows; elsewhere it isn't sent and the request is refused (`KEY_ELSEWHERE`). A request without a
+/// key (no key saved, or a service that takes none) goes as `send_with_curl` sends it.
+pub fn send_keyed(curl: &Path, service: &str, req: &Request, key: Option<&str>, other_base: Option<&str>, tmp: &Path) -> Result<(u16, String), String> {
+    let mut req = req.clone();
+    req.auth = key_header(service).map(str::to_string);
+    let key = if req.auth.is_some() { key } else { None };
+    if key.is_some() && !key_may_go(service, &req.url, other_base) {
+        return Err(KEY_ELSEWHERE.into());
+    }
+    send_with_curl(curl, &req, key, tmp)
 }
 
 // ------------------------------------------------------------------ Polish note
@@ -786,9 +906,12 @@ First read the page and the notes that already link to it, to learn what or who 
 <number>: no - <a short reason, under 12 words>
 Nothing before or after these lines. When unsure, say no.";
 
-/// The mentions a page's link suggestions look at: its unlinked references (at most 40).
+/// The most mentions one link suggestion asks about.
+pub const MAX_MENTIONS: usize = 40;
+
+/// The mentions a page's link suggestions look at: its unlinked references (at most `MAX_MENTIONS`).
 pub fn link_mentions(v: &Vault, page: &str) -> Vec<Value> {
-    let (groups, _) = v.unlinked_refs(page, 40);
+    let (groups, _) = v.unlinked_refs(page, MAX_MENTIONS);
     let mut out = vec![];
     for g in groups {
         for h in g.hits {
@@ -817,6 +940,8 @@ pub fn links_question(v: &Vault, page: &str, mentions: &[Value]) -> Result<(Stri
 
 /// One `{link, why}` per mention, in order; a mention the AI didn't answer is a "no".
 pub fn links_answer(answer: &str, count: usize) -> Result<Value, String> {
+    // (the count comes from the page: never more than `link_mentions` gives, before anything is made)
+    let count = count.min(MAX_MENTIONS);
     let a = unfence(answer);
     let mut out: Vec<Value> = (0..count).map(|_| json!({ "link": false, "why": "The AI didn't say." })).collect();
     let mut any = false;

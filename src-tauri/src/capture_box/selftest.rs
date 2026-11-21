@@ -208,6 +208,19 @@ fn light(step: usize, ms: u64) -> Go {
             let (mut a, mut b) = (0u32, 0u32);
             unsafe { SendMessageW(note(), EM_GETSEL, &mut a as *mut u32 as usize, &mut b as *mut u32 as isize) };
             check(a == 0 && b as usize == note_text().encode_utf16().count(), "…and selected, so typing replaces them", format!("{a}..{b}"));
+            // on its screen's work area: never under the taskbar (shell_rules::box_origin)
+            let mut wr = RECT::default();
+            let mut mi = MONITORINFO { size: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+            unsafe {
+                GetWindowRect(hwnd(), &mut wr);
+                GetMonitorInfoW(MonitorFromWindow(hwnd(), MONITOR_DEFAULTTONEAREST), &mut mi);
+            }
+            let w = mi.work;
+            check(
+                wr.left >= w.left && wr.top >= w.top && wr.right <= w.right && wr.bottom <= w.bottom,
+                "The box opens inside the screen's work area (not behind the taskbar)",
+                format!("box {},{}..{},{}; work area {},{}..{},{}", wr.left, wr.top, wr.right, wr.bottom, w.left, w.top, w.right, w.bottom),
+            );
             shot("1-light");
             Go::Next
         }
@@ -278,6 +291,21 @@ fn dark(step: usize, ms: u64) -> Go {
             let Some(ok) = waited(ms, 5000, note_text().contains("![image](../assets/image_")) else { return Go::Wait };
             check(ok, "A pasted picture is linked in the note", format!("{} / {}", note_text(), say_text(&saying())));
             check(assets().is_empty(), "…but not copied into assets/ before the note is added", assets().join(", "));
+            // two pictures turned into PNG on two threads at once: GDI+ is started once and kept,
+            // never stopped under the other (review 16d)
+            let both = (0..2)
+                .map(|_| {
+                    std::thread::spawn(|| {
+                        let b = files::test_bitmap();
+                        let png = files::png_from_bitmap(b);
+                        unsafe { DeleteObject(b) };
+                        png.is_some()
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .all(|t| t.join().unwrap_or(false));
+            check(both, "Two pictures turned into PNG at once both work", "a PNG was missing");
             Go::Next
         }
         5 => {

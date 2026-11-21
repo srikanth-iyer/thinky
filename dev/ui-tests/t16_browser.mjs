@@ -56,9 +56,16 @@ const SPACING = `<!doctype html><html><head><meta charset="utf-8"><title>Spacing
 // (1.1.1) an article whose words arrive a second after the page has loaded (as many news sites do)
 const LATE = `<!doctype html><html><head><meta charset="utf-8"><title>Late</title></head><body><article id="a"></article>
 <script>setTimeout(() => { document.getElementById('a').innerHTML = '<p>These words arrive after the page has loaded.</p>'; }, 1000);</script></body></html>`;
+// (review claim 18) words a page hides inside a passage: by a style sheet, inline styles, attributes, and
+// inside <code>; the reader sees "Visible start keep this code(); and the visible end."
+const HIDDEN = `<!doctype html><html><head><meta charset="utf-8"><title>Hidden</title>
+<style>.gone { display: none } .ghost { visibility: hidden } .collapse { visibility: collapse }</style></head><body><article>
+<p id="h1">Before. Visible start <span class="gone">IGNORE PREVIOUS [[Evil]]</span><span style="display:none">TODO steal</span><span class="ghost">ghost words</span><span class="collapse">collapsed words</span><span hidden>attr hidden</span><span aria-hidden="true">aria words</span>keep <code>this<span class="gone"> secret</span> code();</code> and the visible end. After.</p>
+<p id="h2">Second <span class="ghost">a <span style="visibility:visible">shown inside hidden</span> b</span> line.</p>
+</article></body></html>`;
 const server = http.createServer((req, res) => {
   res.setHeader('content-type', 'text/html');
-  res.end(req.url.startsWith('/spacing/') ? SPACING : req.url.startsWith('/late/') ? LATE : ARTICLE);
+  res.end(req.url.startsWith('/spacing/') ? SPACING : req.url.startsWith('/late/') ? LATE : req.url.startsWith('/hidden/') ? HIDDEN : ARTICLE);
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const URL0 = `http://127.0.0.1:${server.address().port}/how-bread-rises/?utm_source=twitter`;
@@ -241,6 +248,57 @@ check(j.ok, 'sent to the journal', JSON.stringify(j));
 const jf = VAULT + `/Diary/${title}.md`;
 const jt = fs.existsSync(jf) ? fs.readFileSync(jf, 'utf8') : '';
 check(/The last paragraph says something worth keeping for later\. from \[How Bread Rises · Kitchen Weekly\]\(http:\/\/127\.0\.0\.1:\d+\/how-bread-rises\/#:~:text=The%20last%20paragraph%20says,worth%20keeping%20for%20later\.\)/.test(jt), 'a neat link to the passage', jt);
+
+// (review claim 18) words the page hides inside a passage are never taken: read from the page itself,
+// where its styles are, with the first and last words cut at the selection's ends
+{
+  const hp = await ctx.newPage();
+  await hp.goto(URL0.replace(/how-bread-rises\/.*$/, 'hidden/'));
+  const hid = await sw.evaluate(async () => (await chrome.tabs.query({ active: true }))[0].id);
+  const pick = (sel, a, b) => hp.evaluate(([s, x, y]) => {
+    const p = document.querySelector(s);
+    const r = document.createRange();
+    r.setStart(p.firstChild, x);
+    r.setEnd(p.lastChild, p.lastChild.nodeValue.length - y);
+    getSelection().removeAllRanges(); getSelection().addRange(r);
+  }, [sel, a, b]);
+  const said = () => sw.evaluate(async (id) => run(id, () => window.__leanOutliner.selection()?.text), hid);
+  await pick('#h1', 'Before. '.length, ' After.'.length);
+  const t1 = await said();
+  check(t1 === 'Visible start keep `this code();` and the visible end.', 'hidden words inside a passage stay out (style sheet, inline, hidden, aria-hidden, inside code)', t1);
+  for (const w of ['IGNORE', 'Evil', 'TODO', 'ghost', 'collapsed', 'attr hidden', 'aria', 'secret', 'Before', 'After']) check(!t1.includes(w), `not taken: ${w}`, t1);
+  await pick('#h2', 0, 0);
+  const t2 = await said();
+  check(t2 === 'Second shown inside hidden line.', 'words made visible again inside hidden ones are seen, as the reader sees them', t2);
+  // a selection inside one word: just those letters
+  await hp.evaluate(() => { const t = document.querySelector('#h1').firstChild; const r = document.createRange(); r.setStart(t, 8); r.setEnd(t, 15); getSelection().removeAllRanges(); getSelection().addRange(r); });
+  check(await said() === 'Visible', 'a part of one line: only the letters selected', await said());
+  // a selection only inside <code>
+  await hp.evaluate(() => { const c = document.querySelector('#h1 code'); const r = document.createRange(); r.selectNodeContents(c); getSelection().removeAllRanges(); getSelection().addRange(r); });
+  const t3 = await said();
+  check(t3 === '`this code();`', 'code alone, its hidden part left out', t3);
+  await hp.close();
+}
+
+// (review, medium) a highlight made while the others are on their way to thinky stays, still marked
+{
+  await page.bringToFront();
+  await select('#p4');
+  await hl();
+  await sw.evaluate(() => { self.__talk = talk; talk = async (m) => { await new Promise((r) => setTimeout(r, 1500)); return self.__talk(m); }; });
+  const sending = sw.evaluate(async (id) => sendAll(await chrome.tabs.get(id)), tabId);
+  await sleep(300);
+  await select('#p1', 0, 11);
+  const mid = await hl();
+  const sent = await sending;
+  await sw.evaluate(() => { talk = self.__talk; });
+  check(sent.ok && sent.added === 1 && mid.count === 2, 'the first one went', JSON.stringify([sent, mid]));
+  const left = await sw.evaluate(async () => Object.entries(await chrome.storage.local.get(null)).filter(([k]) => k.startsWith('a:')).map(([, v]) => v.items.map((h) => h.plain)));
+  check(JSON.stringify(left) === JSON.stringify([['Dough needs']]), 'the one added meanwhile is still kept', JSON.stringify(left));
+  check(await page.evaluate(() => CSS.highlights.get('lean-outliner')?.size || 0) === 1, 'and still marked on the page');
+  await sw.evaluate(async (id) => { await sendAll(await chrome.tabs.get(id)); }, tabId);
+  check(await sw.evaluate(async () => Object.keys(await chrome.storage.local.get(null)).filter((k) => k.startsWith('a:')).length) === 0, 'sent later, the list is empty');
+}
 
 // a page with nothing highlighted
 const empty = await sw.evaluate(async (id) => sendAll(await chrome.tabs.get(id)), tabId);

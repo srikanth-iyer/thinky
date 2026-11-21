@@ -193,3 +193,112 @@ fn logseq_file_names() {
         }
     }
 }
+
+// ---- review: one-line ``` code and continuation lines that look like bullets ----
+
+fn shape(d: &Doc) -> Vec<(usize, String)> {
+    d.blocks.iter().map(|b| (b.depth, b.text.clone())).collect()
+}
+
+#[test]
+fn inline_code_in_backticks_never_opens_a_code_block() {
+    let t = "- ```inline code```\n  - child one\n  - child two\n- next\n";
+    let d = split_doc(t);
+    assert_eq!(
+        shape(&d),
+        vec![(0, "```inline code```".into()), (1, "child one".into()), (1, "child two".into()), (0, "next".into())]
+    );
+    // edit the first note: its children stay separate notes after saving and reading again
+    let mut d2 = d.clone();
+    d2.blocks[0].text.push_str(" edited");
+    let back = split_doc(&join_doc(&d2));
+    assert_eq!(
+        shape(&back),
+        vec![(0, "```inline code``` edited".into()), (1, "child one".into()), (1, "child two".into()), (0, "next".into())]
+    );
+    // the same on a plain paragraph before the first bullet
+    let p = split_doc("```x```\n- a\n");
+    assert_eq!(shape(&p), vec![(0, "```x```".into()), (0, "a".into())]);
+}
+
+#[test]
+fn a_real_code_block_still_keeps_bullets_inside_it() {
+    // normal case: ``` alone, or ```lang, opens a block that holds "- " lines
+    for open in ["```", "```rust", "````", "``` js"] {
+        let t = format!("- {open}\n  - inside\n  ```\n- after\n");
+        let d = split_doc(&t);
+        assert_eq!(d.blocks.len(), 2, "{open:?}: {:?}", shape(&d));
+        assert_eq!(d.blocks[0].text, format!("{open}\n- inside\n```"));
+        assert_eq!(join_doc(&d), t);
+        // edited, it still reads back the same
+        let mut d2 = d.clone();
+        d2.blocks[0].text = format!("{open}\n- inside\n- two\n```");
+        let back = split_doc(&join_doc(&d2));
+        assert_eq!(shape(&back), vec![(0, format!("{open}\n- inside\n- two\n```")), (0, "after".into())]);
+    }
+}
+
+#[test]
+fn a_line_that_looks_like_a_bullet_stays_in_its_note() {
+    for line in ["- not a bullet, a line", "* star", "+ plus", "-", "  - indented", "\t- tabbed"] {
+        let mut d = split_doc("- parent\n- sibling\n");
+        d.blocks[0].text = format!("parent\n{line}");
+        let out = join_doc(&d);
+        let back = split_doc(&out);
+        assert_eq!(shape(&back), vec![(0, format!("parent\n{line}")), (0, "sibling".into())], "{line:?} wrote {out:?}");
+        // and saving again writes the same file
+        assert_eq!(join_doc(&back), out);
+    }
+}
+
+#[test]
+fn backslashes_before_a_bullet_shape_come_back_exactly() {
+    // a line that already starts with backslashes gets one more, and reading drops just one
+    for line in ["\\- typed escape", "\\\\- two", "\\x not escaped", "\\", "a \\- b", "-x", "--", "-- x"] {
+        let mut d = split_doc("- parent\n");
+        d.blocks[0].text = format!("parent\n{line}\nlast");
+        let out = join_doc(&d);
+        let back = split_doc(&out);
+        assert_eq!(shape(&back), vec![(0, format!("parent\n{line}\nlast"))], "{line:?} wrote {out:?}");
+    }
+    // lines that don't look like bullets are written as typed
+    let mut d = split_doc("- p\n");
+    d.blocks[0].text = "p\n\\x\n-x\na - b".into();
+    assert_eq!(join_doc(&d), "- p\n  \\x\n  -x\n  a - b\n");
+}
+
+#[test]
+fn an_escaped_line_reads_as_markdown_does() {
+    // a file written by hand with "\- " reads as the words "- …", and is kept verbatim if unedited
+    let t = "- note\n  \\- dash line\n- next\n";
+    let d = split_doc(t);
+    assert_eq!(shape(&d), vec![(0, "note\n- dash line".into()), (0, "next".into())]);
+    assert_eq!(join_doc(&d), t);
+    // inside a code block a backslash is code and stays
+    let c = "- ```\n  \\- code\n  ```\n";
+    let d = split_doc(c);
+    assert_eq!(d.blocks[0].text, "```\n\\- code\n```");
+    assert_eq!(join_doc(&d), c);
+}
+
+#[test]
+fn deeper_notes_and_crlf_keep_their_lines_too() {
+    let mut d = split_doc("- a\r\n\t- b\r\n");
+    d.blocks[1].text = "b\n- line\n* other".into();
+    let out = join_doc(&d);
+    assert!(out.contains("\r\n\t  \\- line\r\n"), "{out:?}");
+    let back = split_doc(&out);
+    assert_eq!(shape(&back), vec![(0, "a".into()), (1, "b\n- line\n* other".into())]);
+    let mut s = split_doc("- a\n  - b\n");
+    s.blocks[1].text = "b\n- line".into();
+    let back = split_doc(&join_doc(&s));
+    assert_eq!(shape(&back), vec![(0, "a".into()), (1, "b\n- line".into())]);
+}
+
+#[test]
+fn page_parse_and_tags_see_one_line_code_as_inline() {
+    // the line after ```x``` is prose again: its property and tag count
+    let p = parse_page("- ```x```\n  owner:: Ann\n  #real\n", &[]);
+    assert!(p.blocks[0].props.iter().any(|(k, _)| k == "owner"), "{:?}", p.blocks[0].props);
+    assert!(p.blocks[0].refs.iter().any(|r| r == "real"), "{:?}", p.blocks[0].refs);
+}

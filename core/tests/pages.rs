@@ -228,9 +228,12 @@ fn merging_appends_the_notes_and_moves_the_links() {
     let mut app = App::open(&v).unwrap();
     let r = app.merge_pages("Foo", "Bar").unwrap();
     assert_eq!((r.name.as_str(), r.notes, r.props, r.files_changed), ("Bar", 5, true, 1));
-    // Bar: every byte as it was, then Foo's notes with Bar's tabs (its properties first, no title::)
-    let want = format!("{bar}- tags:: idea, [[reading]]\n  alias:: F\n- Foo's note about [[Bar]] and [[Bar]]\n\t- deeper\n\t\t- deepest #Bar\n- second\n  with a second line\n");
+    // Bar: every byte as it was, then Foo's notes with Bar's tabs (its properties first, no title::);
+    // Foo's alias joins Bar's own (review: it was left in a note, so [[F]] led nowhere)
+    let bar_aliased = bar.replace("tags:: work\n", "tags:: work\nalias:: F\n");
+    let want = format!("{bar_aliased}- tags:: idea, [[reading]]\n- Foo's note about [[Bar]] and [[Bar]]\n\t- deeper\n\t\t- deepest #Bar\n- second\n  with a second line\n");
     assert_eq!(get(&v, "pages/Bar.md"), want);
+    assert_eq!(app.vault.resolve("F"), outline_core::key("Bar"));
     // Foo's file in the bin, as Logseq names it
     assert!(!v.join("pages/Foo.md").exists());
     assert!(get(&v, "logseq/.recycle/pages_Foo.md").starts_with("title:: Foo\n"));

@@ -135,8 +135,24 @@ export function withPictureSize(text, md, k, w, h) {
   return text.slice(0, end) + map + text.slice(end + (old?.[0].length ?? 0));
 }
 
-export function inline(s) {
-  const maths = findMath(s);
+/** Inline code's places in `s` ([start, end) of each `…`), as inline() reads them. */
+function codeSpans(s) {
+  const out = [];
+  for (let i = s.indexOf('`'); i >= 0; i = s.indexOf('`', i)) {
+    const m = s.slice(i).match(/^(`+)([\s\S]*?)\1/);
+    if (!m) { i += s.slice(i).match(/^`+/)[0].length; continue; }
+    out.push([i, i + m[0].length]);
+    i += m[0].length;
+  }
+  return out;
+}
+
+/** A note's words as HTML. `nolink`: inside a link's own label, where another link can't go (an <a>
+ *  inside an <a>): pages, tags and addresses there are plain words. */
+export function inline(s, nolink = false) {
+  // (a formula and inline code that overlap: the code wins, as `$x$` is code)
+  const code = s.includes('`') ? codeSpans(s) : [];
+  const maths = findMath(s).filter((m) => !code.some(([a, b]) => m.start < b && a < m.end));
   let mk = 0;
   let out = '';
   let i = 0;
@@ -155,25 +171,25 @@ export function inline(s) {
       out += `<code>${esc(m[2])}</code>`; i += m[0].length; prev = '`'; continue;
     }
     if (rest.startsWith('{{cloze') && (m = rest.match(/^\{\{cloze\s+([\s\S]*?)\}\}/))) { // a flashcard's hidden words
-      out += `<span class="cloze">${inline(m[1])}</span>`; i += m[0].length; prev = '}'; continue;
+      out += `<span class="cloze">${inline(m[1], nolink)}</span>`; i += m[0].length; prev = '}'; continue;
     }
-    if (rest.startsWith('{{') && (m = rest.match(/^\{\{(?:video|youtube)\s+(\S+?)\s*\}\}/)) && youtube(m[1])) { // Logseq's video, as its picture
+    if (!nolink && rest.startsWith('{{') && (m = rest.match(/^\{\{(?:video|youtube)\s+(\S+?)\s*\}\}/)) && youtube(m[1])) { // Logseq's video, as its picture
       out += videoHtml(youtube(m[1])); i += m[0].length; prev = '}'; continue;
     }
     if (rest.startsWith('{{') && (m = rest.match(/^\{\{[\s\S]*?\}\}/))) {
       out += `<span class="macro">${esc(m[0])}</span>`; i += m[0].length; prev = '}'; continue;
     }
-    if (rest.startsWith('((') && (m = rest.match(/^\(\(([0-9a-fA-F-]{36})\)\)/))) {
+    if (!nolink && rest.startsWith('((') && (m = rest.match(/^\(\(([0-9a-fA-F-]{36})\)\)/))) {
       // the note it names shows here once found (App.blockRefs fills data-ref; a click goes to it)
       out += `<span class="macro bref" data-auto data-ref="${m[1].toLowerCase()}" title="Block reference">↗ block</span>`; i += m[0].length; prev = ')'; continue;
     }
     // underline, as Logseq's / menu writes it (<ins>…</ins>; <u> too)
-    if (c === '<' && (m = rest.match(/^<(ins|u)>([\s\S]*?)<\/\1>/i))) { out += `<ins>${inline(m[2])}</ins>`; i += m[0].length; prev = '>'; continue; }
+    if (c === '<' && (m = rest.match(/^<(ins|u)>([\s\S]*?)<\/\1>/i))) { out += `<ins>${inline(m[2], nolink)}</ins>`; i += m[0].length; prev = '>'; continue; }
     if (rest.startsWith('[[')) {
       const end = closeBrackets(s, i);
-      if (end > 0) { out += link(s.slice(i + 2, end - 2).trim()); i = end; prev = ']'; continue; }
+      if (end > 0) { const n = s.slice(i + 2, end - 2).trim(); out += nolink ? esc(n) : link(n); i = end; prev = ']'; continue; }
     }
-    if (c === '#' && /[\s(,]/.test(prev)) {
+    if (c === '#' && !nolink && /[\s(,]/.test(prev)) {
       if (rest.startsWith('#[[')) {
         const end = closeBrackets(s, i + 1);
         if (end > 0) { const n = s.slice(i + 3, end - 2).trim(); out += tagLink(n); i = end; prev = ']'; continue; }
@@ -195,15 +211,16 @@ export function inline(s) {
         if (am) { attrs = am[1]; after = close + am[0].length; }
         const page = url.match(/^\[\[(.+)\]\]$/);
         if (c === '!') out += image(label, url, attrs, s.slice(i, close));
-        else if (page) out += link(page[1].trim(), inline(label) || esc(page[1]), 'pl lbl'); // (its own words: no [[ ]] shown)
+        else if (nolink) out += inline(label, true) || esc(url);
+        else if (page) out += link(page[1].trim(), inline(label, true) || esc(page[1]), 'pl lbl'); // (its own words: no [[ ]] shown)
         else {
           const href = safeHref(url);
-          out += href ? `<a class="ext" href="${esc(href)}" target="_blank" rel="noopener">${inline(label) || esc(url)}</a>` : `<span class="ext-off" title="${esc(url)}">${inline(label) || esc(url)}</span>`;
+          out += href ? `<a class="ext" href="${esc(href)}" target="_blank" rel="noopener">${inline(label, true) || esc(url)}</a>` : `<span class="ext-off" title="${esc(url)}">${inline(label) || esc(url)}</span>`;
         }
         i = after; prev = ')'; continue;
       }
     }
-    if (/[\s(]/.test(prev) && (m = rest.match(/^(?:https?|leanoutliner):\/\/[^\s<>]+/))) {
+    if (!nolink && /[\s(]/.test(prev) && (m = rest.match(/^(?:https?|leanoutliner):\/\/[^\s<>]+/))) {
       let u = m[0];
       // trailing punctuation isn't part of the address; ')' only when unbalanced
       for (;;) {
@@ -215,14 +232,14 @@ export function inline(s) {
       i += u.length; prev = 'x'; continue;
     }
     if ((m = rest.match(/^\*\*([\s\S]+?)\*\*/)) || (m = rest.match(/^__([\s\S]+?)__/))) {
-      out += `<strong>${inline(m[1])}</strong>`; i += m[0].length; prev = '*'; continue;
+      out += `<strong>${inline(m[1], nolink)}</strong>`; i += m[0].length; prev = '*'; continue;
     }
-    if ((m = rest.match(/^~~([\s\S]+?)~~/))) { out += `<s>${inline(m[1])}</s>`; i += m[0].length; prev = '~'; continue; }
+    if ((m = rest.match(/^~~([\s\S]+?)~~/))) { out += `<s>${inline(m[1], nolink)}</s>`; i += m[0].length; prev = '~'; continue; }
     if ((m = rest.match(/^\^\^([\s\S]+?)\^\^/)) || (m = rest.match(/^==([\s\S]+?)==/))) {
-      out += `<mark>${inline(m[1])}</mark>`; i += m[0].length; prev = '='; continue;
+      out += `<mark>${inline(m[1], nolink)}</mark>`; i += m[0].length; prev = '='; continue;
     }
     if (/[\s(]/.test(prev) && ((m = rest.match(/^\*([^\s*][^*]*?)\*/)) || (m = rest.match(/^_([^\s_][^_]*?)_(?![\p{L}\p{N}])/u)))) {
-      out += `<em>${inline(m[1])}</em>`; i += m[0].length; prev = '*'; continue;
+      out += `<em>${inline(m[1], nolink)}</em>`; i += m[0].length; prev = '*'; continue;
     }
     out += esc(c);
     prev = c;
@@ -541,11 +558,18 @@ function videoHtml({ id, start }) {
   return `<span class="yt" data-yt="${id}" data-start="${start}"><img class="yt-pic" src="https://i.ytimg.com/vi/${id}/hqdefault.jpg" alt="YouTube video" loading="lazy" referrerpolicy="no-referrer" draggable="false"><button type="button" class="yt-play" aria-label="Play the video"><svg viewBox="0 0 68 48" aria-hidden="true"><path d="M66.5 7.7a8.5 8.5 0 0 0-6-6C55.3.3 34 .3 34 .3S12.7.3 7.5 1.7a8.5 8.5 0 0 0-6 6C.2 13 .2 24 .2 24s0 11 1.3 16.3a8.5 8.5 0 0 0 6 6C12.7 47.7 34 47.7 34 47.7s21.3 0 26.5-1.4a8.5 8.5 0 0 0 6-6C67.8 35 67.8 24 67.8 24s0-11-1.3-16.3z"/><path d="M27 34l18-10-18-10z" fill="#fff"/></svg></button></span>`;
 }
 
-/** Swap a video's picture for YouTube's player, playing (a click on it, editor.js). */
-export function playVideo(el) {
+/** Swap a video's picture for YouTube's player, playing (a click on it, editor.js). On Android the
+ *  video opens outside the app instead, with `openOutside` (the app's own open-a-link route): Android
+ *  gives every frame of the page the app's LeanAndroid bridge, a YouTube player's frame too (review
+ *  claim 2). */
+export function playVideo(el, openOutside) {
   if (!el?.dataset.yt || el.querySelector('iframe')) return;
   const id = el.dataset.yt;
   if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return;
+  if (window.LeanAndroid) {
+    openOutside?.(`https://www.youtube.com/watch?v=${id}${+el.dataset.start ? '&t=' + +el.dataset.start + 's' : ''}`);
+    return;
+  }
   const f = document.createElement('iframe');
   f.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0${+el.dataset.start ? '&start=' + +el.dataset.start : ''}`;
   f.title = 'YouTube video';

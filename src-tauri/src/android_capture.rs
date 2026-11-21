@@ -7,11 +7,12 @@
 //!
 //! One call, JSON in and out, so the Java side has a single plain signature:
 //! in  {cache, data, vault, y, m, d, time, text, plain?} for words (plain: words selected in another
-//!     app, kept as plain words), or {…, name, typeExt} + the picture's
+//!     app, kept as plain words and lines, at most SELECTED_MAX characters), or {…, name, typeExt} + the picture's
 //!     bytes, or {…, link} for a picture copied by an earlier try (not copied twice), or
 //!     {…, cmd: "where"} for where notes go, or {…, cmd: "kept", url} for the passages of that web
 //!     page already in the notes;
-//! out {ok: true, rel} ({ok: true, today, page} for "where", {ok: true, page, highlights:
+//! out {ok: true, rel} ({ok: true, today, page, todo} for "where", todo: the workflow's to-do word,
+//!     TODO or LATER; {ok: true, page, highlights:
 //!     [{plain, link}]} for "kept") or {ok: false, error, link?}
 //!     (`link`: the Markdown of a picture already copied).
 //! The JNI name follows the Kotlin class: package com.srikanth.leanoutliner (checked by
@@ -26,6 +27,10 @@ use jni::{
 };
 use serde_json::{json, Value};
 use std::path::PathBuf;
+
+/// The most characters one "Add to thinky" may add (words selected in another app; the Kotlin side,
+/// Checks.SELECTED_MAX, refuses more first): a page can't fill the notes with one selection.
+pub const SELECTED_MAX: usize = 20_000;
 
 #[cfg(target_os = "android")]
 #[no_mangle]
@@ -50,6 +55,11 @@ pub extern "system" fn Java_com_srikanth_leanoutliner_LeanCore_capture<'local>(m
         }
     }))
     .unwrap_or_else(|_| json!({ "ok": false, "error": "Something went wrong while adding it, so nothing was added." }));
+    // a Java exception left by a failed read (out of memory, a bad string) must be cleared first:
+    // calling into Java with one pending is not allowed, and the answer would never arrive
+    if env.exception_check().unwrap_or(true) {
+        let _ = env.exception_clear();
+    }
     env.new_string(out.to_string()).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
 }
 
@@ -78,10 +88,10 @@ pub fn capture(a: &Value, bytes: Option<&[u8]>) -> Value {
     }
     if s("cmd") == "where" {
         // the pop-up's "to …" line: today's journal or the quick capture page, as config.edn says now
-        return match outline_core::capture::read_config(&root) {
+        return match outline_core::capture::read_config_to_add(&root) {
             Ok(cfg) => {
                 let (journal, page) = outline_core::capture::default_place(&cfg, today);
-                json!({ "ok": true, "today": journal, "page": page })
+                json!({ "ok": true, "today": journal, "page": page, "todo": cfg.todo_marker() })
             }
             Err(e) => json!({ "ok": false, "error": format!("Couldn't read logseq/config.edn ({e}).") }),
         };
@@ -97,15 +107,25 @@ pub fn capture(a: &Value, bytes: Option<&[u8]>) -> Value {
         };
     }
     let res = match bytes {
-        // words selected in another app ("Add to thinky", Build 37): kept as plain words
+        // words selected in another app ("Add to thinky", Build 37): kept as plain words, and as
+        // plain lines (the review's claim 11b: clip::guard, as the Edge extension's highlights): no
+        // line of theirs can start a note, a to-do, a property, a code block, a drawer or a date
         None if s("link").is_empty() => {
-            let text = if a.get("plain").and_then(Value::as_bool) == Some(true) { outline_core::clip::defuse(&s("text")) } else { s("text") };
+            let text = if a.get("plain").and_then(Value::as_bool) == Some(true) {
+                let words = s("text");
+                if words.chars().count() > SELECTED_MAX {
+                    return json!({ "ok": false, "error": format!("That's more than {SELECTED_MAX} characters, so nothing was added. Select less.") });
+                }
+                outline_core::clip::guard(&outline_core::clip::defuse(&words))
+            } else {
+                s("text")
+            };
             outline_core::capture::capture_to_usual(&root, &text, "", false, today, &time)
         }
         None => outline_core::capture::capture_media_to_usual(&root, &s("link"), today, &time),
         Some(bytes) => {
             // as the Windows box does: config.edn readable before anything is copied
-            if let Err(e) = outline_core::capture::read_config(&root) {
+            if let Err(e) = outline_core::capture::read_config_to_add(&root) {
                 return json!({ "ok": false, "error": format!("Couldn't read logseq/config.edn ({e}), so nothing was added.") });
             }
             let name = with_type_ext(&s("name"), &s("typeExt"));
@@ -164,11 +184,11 @@ mod tests {
         // the reviewer's case: pages/inbox.md is the page "Mail" (title::): a new Inbox (2).md, Mail untouched
         let v = vault("inbox", INBOX);
         std::fs::write(v.join("pages/inbox.md"), "title:: Mail\n- mail").unwrap();
-        assert_eq!(capture(&args(&v, json!({ "cmd": "where" })), None), json!({ "ok": true, "today": false, "page": "Inbox" }));
+        assert_eq!(capture(&args(&v, json!({ "cmd": "where" })), None), json!({ "ok": true, "today": false, "page": "Inbox", "todo": "TODO" }));
         let r = capture(&args(&v, json!({ "text": "Shared https://example.com/a" })), None);
         assert_eq!(r, json!({ "ok": true, "rel": "pages/Inbox (2).md" }));
         assert_eq!(std::fs::read_to_string(v.join("pages/inbox.md")).unwrap(), "title:: Mail\n- mail");
-        assert_eq!(std::fs::read_to_string(v.join("pages/Inbox (2).md")).unwrap(), "title:: Inbox\n- [[quick capture]] **09:15**: Shared from https://example.com/a\n");
+        assert_eq!(std::fs::read_to_string(v.join("pages/Inbox (2).md")).unwrap(), "title:: Inbox\n- [[quick capture]] **09:15**: Shared from [example.com](https://example.com/a)\n");
         // a picture without an extension of its own gets its type's; the media template
         let r = capture(&args(&v, json!({ "name": "1000012345", "typeExt": "JPG" })), Some(b"jpeg"));
         assert_eq!(r["ok"], true, "{r}");
@@ -199,6 +219,67 @@ mod tests {
         // without "plain" (typed in the pop-up): as typed
         let r = capture(&args(&v, json!({ "text": "a [[Real Link]]" })), None);
         assert!(std::fs::read_to_string(v.join(r["rel"].as_str().unwrap())).unwrap().contains("[[Real Link]]"));
+        let _ = std::fs::remove_dir_all(&v);
+    }
+
+    /// The review's claim 11b: selected words were made inert inline only (defuse), so their lines
+    /// could still start notes, to-dos, properties, dates, drawers, blocks and code in the notes.
+    /// Now each line is kept plain (clip::guard, as the Edge extension's highlights).
+    #[test]
+    fn selected_lines_stay_plain_lines() {
+        let v = vault("guard", r#"{:quick-capture-options {:insert-today? true} :quick-capture-templates {:text "{text}"}}"#);
+        let words = "TODO pay attacker\n- a new note\n\t- a child\n* star bullet\nkey:: value\nSCHEDULED: <2026-11-01 Sun>\nDEADLINE: <2026-11-02 Mon>\n:LOGBOOK:\nCLOCK: [2026-11-01]\n:END:\n#+BEGIN_QUOTE\n[:div {:class \"x\"}]\n```js\nalert(1)\n```\n\n\n\nlast words";
+        let r = capture(&args(&v, json!({ "text": words, "plain": true })), None);
+        assert_eq!(r, json!({ "ok": true, "rel": "journals/2026_10_28.md" }));
+        let text = std::fs::read_to_string(v.join("journals/2026_10_28.md")).unwrap();
+        let page = outline_core::parse_page(&text, &[]);
+        assert_eq!(page.blocks.len(), 1, "one note, its lines kept inside it: {text:?}");
+        let note = &page.blocks[0];
+        assert!(outline_core::task::parse(&note.text).is_none(), "not a to-do: {:?}", note.text);
+        assert!(note.props.is_empty() && page.props.is_empty(), "no properties: {:?} {:?}", note.props, page.props);
+        for line in text.lines().skip(1) {
+            let t = line.trim_start();
+            for risky in ["- ", "* ", "key::", "SCHEDULED:", "DEADLINE:", ":LOGBOOK:", ":END:", "#+BEGIN", "[:div", "```"] {
+                assert!(!t.starts_with(risky), "a line starts with {risky:?}: {line:?} in {text:?}");
+            }
+        }
+        // the same words, one empty line at most between them
+        assert!(text.replace('\u{200b}', "").contains("pay attacker") && text.contains("last words"), "{text:?}");
+        assert!(!text.contains("\n\n\n"), "{text:?}");
+        // typed words (not "plain") stay as typed: a to-do typed in the pop-up is a to-do
+        let r = capture(&args(&v, json!({ "text": "TODO typed in the pop-up" })), None);
+        assert_eq!(r["ok"], true, "{r}");
+        assert!(std::fs::read_to_string(v.join("journals/2026_10_28.md")).unwrap().contains("\n- TODO typed in the pop-up"));
+        let _ = std::fs::remove_dir_all(&v);
+    }
+
+    /// At most SELECTED_MAX characters in one selection (characters, not bytes: 20,000 "é" is fine).
+    #[test]
+    fn a_selection_has_a_length_cap() {
+        let v = vault("cap", r#"{:quick-capture-options {:insert-today? true} :quick-capture-templates {:text "{text}"}}"#);
+        let file = v.join("journals/2026_10_28.md");
+        let r = capture(&args(&v, json!({ "text": "a".repeat(SELECTED_MAX + 1), "plain": true })), None);
+        assert_eq!(r["ok"], false, "{r}");
+        assert!(r["error"].as_str().unwrap().contains("20000"), "{r}");
+        assert!(!file.exists(), "nothing written");
+        let r = capture(&args(&v, json!({ "text": "é".repeat(SELECTED_MAX), "plain": true })), None);
+        assert_eq!(r["ok"], true, "{r}");
+        assert!(std::fs::read_to_string(&file).unwrap().contains(&"é".repeat(SELECTED_MAX)));
+        // typed words have no such cap (he types them himself)
+        let r = capture(&args(&v, json!({ "text": "b".repeat(SELECTED_MAX + 1) })), None);
+        assert_eq!(r["ok"], true, "{r}");
+        let _ = std::fs::remove_dir_all(&v);
+    }
+
+    /// "where" also says which word starts a to-do (the pop-up's to-do button): LATER with
+    /// `:preferred-workflow :now`, else TODO.
+    #[test]
+    fn where_says_the_to_do_word() {
+        let v = vault("todo-now", r#"{:preferred-workflow :now}"#);
+        assert_eq!(capture(&args(&v, json!({ "cmd": "where" })), None)["todo"], "LATER");
+        let _ = std::fs::remove_dir_all(&v);
+        let v = vault("todo-todo", r#"{:preferred-workflow :todo}"#);
+        assert_eq!(capture(&args(&v, json!({ "cmd": "where" })), None)["todo"], "TODO");
         let _ = std::fs::remove_dir_all(&v);
     }
 

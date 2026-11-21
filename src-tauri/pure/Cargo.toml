@@ -1,0 +1,23 @@
+# The shell's tests that need neither Windows nor Tauri (src-tauri/src/shell_rules.rs and
+# ai_key.rs), built by cargo against outline_core alone, so they run where the shell itself can't
+# be built (Linux without WebKitGTK, GitHub's test job, the cloud workspace): `cargo test -p
+# shell_pure_tests` (src-tauri/pure_tests.sh). On Windows `cargo test -p lean-outliner` runs them
+# with the rest. Nothing here is built into the app.
+[package]
+name = "shell_pure_tests"
+version = "0.1.0"
+license = "AGPL-3.0-only"
+publish = false
+edition = "2021"
+autotests = false
+
+[dependencies]
+outline_core = { path = "../../core" }
+
+[[test]]
+name = "shell_rules"
+path = "../src/shell_rules.rs"
+
+[[test]]
+name = "ai_key"
+path = "../src/ai_key.rs"

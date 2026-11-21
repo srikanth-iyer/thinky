@@ -103,9 +103,13 @@ async function sendAll(tab, title) {
   const msg = { cmd: 'clip', url: list.url, title: title || list.title, site: list.site, highlights: list.items.map((h) => ({ text: h.text, link: h.link })) };
   const res = await talk(msg);
   if (res.ok) {
-    await putList(key, null);
-    await badge(tab.id, 0);
-    await run(tab.id, () => window.__leanOutliner.clear()).catch(() => {});
+    // only the highlights sent: one added while thinky was still answering stays, still yellow
+    const sent = new Set(list.items.map((h) => h.id));
+    const now = await getList(key);
+    const left = now ? now.items.filter((h) => !sent.has(h.id)) : [];
+    await putList(key, left.length ? { ...now, items: left } : null);
+    await badge(tab.id, left.length);
+    await run(tab.id, (its) => window.__leanOutliner.paint(its), [left]).catch(() => {});
     // they're in his notes now: the article is on the list, and its passages marked as kept
     await articles(true);
     const k = await kept(info.url);

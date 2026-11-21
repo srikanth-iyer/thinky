@@ -420,3 +420,78 @@ fn links_to_files_in_assets_in_one_note() {
     assert!(asset_links("no files here, just [[assets]]").is_empty());
     assert_eq!(asset_links("![x](../../assets/sub/x.jpg)"), vec!["sub/x.jpg"]);
 }
+
+/// Review claim 4: a link's name is read (`%2e`, `%5C`, `%3A`) BEFORE it is checked, and a name that
+/// could leave `assets/` (a "..", a Windows share address `\\server\share`, a drive or a stream
+/// `C:`, a NUL) is never given, so the missing-files check never looks it up on the disk.
+#[test]
+fn asset_links_refuse_escapes_after_reading_them() {
+    use outline_core::app::pictures::asset_links;
+    for bad in [
+        "![](../assets/%2e%2e/%2e%2e/etc/passwd)",
+        "![](../assets/%2E%2E/pages/secret.md)",
+        "![](../assets/sub/%2e%2e/%2e%2e/x.png)",
+        "![](../assets/.%2e/x.png)",
+        "![](../assets/%5C%5Cattacker%5Cshare%5Ca.png)",
+        "![](../assets/%5c%5cattacker.example%5cshare%5ca.png)",
+        "![](../assets/sub%5C..%5Cx.png)",
+        "![](../assets/C%3A%5CWindows%5Cwin.ini)",
+        "![](../assets/C%3Asecret.png)",
+        "![](../assets/pic.png%3Astream)",
+        "![](../assets/a%00.png)",
+        "![](../assets/%2Fetc%2Fpasswd)",
+        "![](../assets/..)",
+        "![](../assets/a\\b.png)",
+        "![](../assets/C:x.png)",
+    ] {
+        assert!(asset_links(bad).is_empty(), "{bad} -> {:?}", asset_links(bad));
+    }
+    // plain names, escapes and all, still come through
+    assert_eq!(asset_links("![](../assets/a%20b.png)"), vec!["a b.png"]);
+    assert_eq!(asset_links("![](../assets/sub/deeper/x%2Fy.png)"), vec!["sub/deeper/x/y.png"]);
+    assert_eq!(asset_links("![](../assets/caf%C3%A9.png) ![](../assets/日本.png)"), vec!["café.png", "日本.png"]);
+    assert_eq!(asset_links("![](../assets/v1.2.png) ![](../assets/.hidden.png)"), vec!["v1.2.png", ".hidden.png"]);
+    assert_eq!(asset_links("![](../assets/50%25.png)"), vec!["50%.png"]);
+    // a bad link next to a good one: only the good one
+    assert_eq!(asset_links("![](../assets/%2e%2e/x.png) ![](../assets/ok.png)"), vec!["ok.png"]);
+    // the same text after the web extension's defuse/guard (a clipped passage): still nothing
+    let clipped = outline_core::clip::guard(&outline_core::clip::defuse("mentions ../assets/%5C%5Cattacker.example%5Cshare%5Cx.png in words"));
+    assert!(asset_links(&clipped).is_empty(), "{clipped:?}");
+}
+
+#[test]
+fn missing_files_look_only_inside_assets() {
+    let v = tmp_vault("missing_escape");
+    pic(&v, "assets/here.png", 10);
+    put(&v, "pages/secret.md", b"- a page\n");
+    pic(&v, "outside.png", 10);
+    // a file elsewhere in the notes folder, reached by an escaped "..": never looked at, so never
+    // reported (neither "missing" nor "there")
+    put(
+        &v,
+        "pages/Escapes.md",
+        b"- ![](../assets/%2e%2e/outside.png) ![](../assets/%2e%2e/pages/secret.md) ![](../assets/%5C%5Cattacker%5Cshare%5Ca.png)\n- ![](../assets/C%3A%5Cx.png) ![](../assets/here.png) ![](../assets/gone.png)\n",
+    );
+    let r = check_vault(&v).unwrap();
+    let files: Vec<&str> = r.missing_pictures.iter().map(|(_, f)| f.as_str()).collect();
+    assert_eq!(files, vec!["gone.png"], "{:?}", r.missing_pictures);
+    let _ = std::fs::remove_dir_all(&v);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_out_of_assets_counts_as_missing() {
+    // a link in assets/ to a file outside the notes folder: asset_file (what vault:// serves) refuses
+    // it, so it isn't "there" either
+    let v = tmp_vault("missing_link");
+    let outside = std::env::temp_dir().join(format!("outline_pics_outside_{}.png", std::process::id()));
+    std::fs::write(&outside, [7u8; 10]).unwrap();
+    std::os::unix::fs::symlink(&outside, v.join("assets/linked.png")).unwrap();
+    std::fs::create_dir_all(v.join("assets/folder.png")).unwrap();
+    put(&v, "pages/L.md", b"- ![](../assets/linked.png) ![](../assets/folder.png)\n");
+    let r = check_vault(&v).unwrap();
+    let files: Vec<&str> = r.missing_pictures.iter().map(|(_, f)| f.as_str()).collect();
+    assert_eq!(files, vec!["folder.png", "linked.png"], "{:?}", r.missing_pictures);
+    let _ = std::fs::remove_file(&outside);
+    let _ = std::fs::remove_dir_all(&v);
+}

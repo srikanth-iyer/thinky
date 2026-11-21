@@ -22,7 +22,7 @@ impl LineKinds {
     }
     fn kind(&mut self, line: &str) -> Kind {
         let t = line.trim();
-        if t.starts_with("```") {
+        if crate::doc::fence_line(t) {
             self.in_fence = !self.in_fence;
             return Kind::Other;
         }
@@ -222,6 +222,36 @@ fn rename_inline(s: &str, old: &[String], new: &str) -> String {
 /// (the AI's Polish note may only link pages and use tags that exist, Build 51); code, web
 /// addresses and Markdown links stay as written. Gives the new text and the names taken out.
 pub fn unlink_unknown(text: &str, known: &dyn Fn(&str) -> bool) -> (String, Vec<String>) {
+    // a link written inside a link (`[[[[x]]]]`) leaves a link when its outer brackets go, so
+    // go round again until nothing changes; each round makes the text shorter, so it ends
+    let (mut out, mut gone) = unlink_once(text, known);
+    loop {
+        let (next, more) = unlink_once(&out, known);
+        if more.is_empty() {
+            break;
+        }
+        out = next;
+        gone.extend(more);
+    }
+    // name what went in plain words: `[[x]]` (an outer layer) is the same name as x
+    let mut names: Vec<String> = vec![];
+    for g in &gone {
+        let mut n = g.as_str();
+        while let Some(inner) = n.strip_prefix("[[").and_then(|r| r.strip_suffix("]]")) {
+            n = inner;
+        }
+        // an outer layer round a known name only took the extra brackets away: the link stays
+        if n != g && known(n) {
+            continue;
+        }
+        if !names.iter().any(|x| x == n) {
+            names.push(n.to_string());
+        }
+    }
+    (out, names)
+}
+
+fn unlink_once(text: &str, known: &dyn Fn(&str) -> bool) -> (String, Vec<String>) {
     let mut gone = vec![];
     let mut out = String::with_capacity(text.len());
     for (n, line) in text.split('\n').enumerate() {

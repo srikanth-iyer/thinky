@@ -63,7 +63,7 @@ There is a single executable, `lean-outliner.exe`. What it does depends on how i
 | `--hotkey-selftest <dir>`, `--capture-box-selftest <dir>` | CI only. **Never run on your own computer** (they press keys / use the clipboard). | — | `hotkey/selftest.rs`, `capture_box/selftest.rs` |
 | *(no arguments)* | The **main app** window. | Yes (WebView2) | `src-tauri/src/lib.rs` + `ui/` |
 
-On Android there is one app (the APK) plus Kotlin extras (section 4). The Google Play version (`thinky-play.aab`, Build 42) is the same app built with `THINKY_PLAY=1`: no one-click updates (Play updates it), `LeanAndroid.fromPlay()` true.
+On Android there is one app (the APK) plus Kotlin extras (section 4). The Google Play version (`thinky-play.aab`, Build 42) is the same app built with `THINKY_PLAY=1`: no one-click updates (Play updates it; the updater's code, permission and receiver are left out of the bundle by `android_overlay.py`), `LeanAndroid.fromPlay()` true.
 
 ---
 
@@ -74,11 +74,11 @@ On Android there is one app (the APK) plus Kotlin extras (section 4). The Google
 | Thing | When it runs | How to spot it | Why it exists |
 |---|---|---|---|
 | **Shortcut-key helper** `lean-outliner.exe --hotkey` | From Windows start-up while a key is set (installed copy only; exits at once if `hotkey.txt` is empty) | Hidden message-only window, class `LeanOutlinerHotkey`, title `Lean Outliner shortcut key: <key>` (or `… (starting)`) | Windows' own shortcut-key way took ~3 s; this answers in ~0.1 s. Uses 52 KB RAM, no CPU, no polling. |
-| **Start-up threads** (inside the main app, every start: `lib.rs` `setup`) | Once per start | — | `hotkey::at_start` (installed copy only) checks and **repairs** the helper: may start one, rewrite the Run value, write `hotkey.txt`, delete the old `.lnk`. `update::tidy` clears an old download. `win::register_link_handler` points `leanoutliner://` at *this* exe. |
+| **Start-up threads** (inside the main app, every start: `lib.rs` `setup`; Windows only) | Once per start | — | `hotkey::at_start` (installed copy only) checks and **repairs** the helper: may start one, rewrite the Run value, write `hotkey.txt`, delete the old `.lnk`. `update::tidy` clears an old download. `win::register_link_handler` points `leanoutliner://` at *this* exe. |
 | **Link listener** (inside the main app) | While the main window is open | Hidden window class `LeanOutlinerLinks`, title "Lean Outliner links" | Lets a clicked `leanoutliner://page/…` link reach the open app instead of opening a second one. |
-| **File watcher** (a thread inside the main app) | While a vault is open | — | Notices `.md` changes in `pages/` and `journals/` (sync apps, the phone, other tools) within ~400 ms and tells the page (`lean-files` event → `rescan`). Windows change notifications / inotify on Android; dot-files ignored. The page *also* rescans when the window regains focus or becomes visible (and polls every 30 s under the dev server). |
+| **File watcher** (a thread inside the main app) | While a vault is open | — | Notices `.md` changes in `pages/` and `journals/` (sync apps, the phone, other tools) within ~400 ms and tells the page (`lean-files` event → `rescan`). Windows change notifications / inotify on Android (folders inside, and ones made or moved in later, too); dot-files ignored. A watch replaced by a newer one (another vault, reloaded settings) ends within about a second. The page *also* rescans when the window regains focus or becomes visible (and polls every 30 s under the dev server). |
 | **Safety-copy thread** (inside the main app) | Once, in the background after a vault opens | — | Copies recently changed notes into `logseq/.safety-<device>/` inside the notes folder (falls back to the app's data folder only when the notes folder can't be written; CLAUDE.md "app/safety.rs"). |
-| **Close guard thread** | When the window is closing | — | Gives the page 5 s to save (`lean-close`), then exits anyway. |
+| **Close guard thread** | When the window is closing | — | Gives the page 5 s to save (`lean-close`), then saves the index cache (if the app's lock is free within a second) and exits anyway. The main window never closes by itself: a second click on × while it saves is ignored (`shell_rules::close_step`). |
 | **AI requests** (Build 51, optional: only once Settings → AI is set up) | Only when the person presses one of the AI features (Polish note, Picture to text, Ask about this page, Suggest links, Suggest aliases and a description), Test, or opens Settings → AI with a key saved. **Never on a timer or by itself.** | `ai_send`: one Windows curl.exe process per request (no console window), gone when it answers; Android: one thread in MainActivity | Sends what that one feature needs (a note with nearby page names and tags in use; a picture; or one page with the notes that link to it) to the AI service the person chose, with their key (Credential Manager / Keystore). |
 | **Update check** (inside the page) | Once at start (skipped if the last answer is under a day old), and from Settings → About. **No timer**: an app left open for days doesn't check again. Laptop and phone. | The check talks to `api.github.com`; "Update now" downloads from `github.com/…/releases/download` (curl.exe on Windows, MainActivity on Android) | Looks for a newer "Build N" among this repo's releases (Build 33 and older: the old downloads repo). |
 
@@ -108,7 +108,7 @@ never) and when the app pushes new data; everything else runs only when opened.
 | File | Job |
 |---|---|
 | `app.rs` | `App` (an open vault) and **`dispatch(cmd, args)` = the whole API** the UI calls. Index cache, saving, rename/merge, assets, last-vault. |
-| `ai.rs` | The optional AI features (Build 51): the services' presets, both request formats (Claude's, OpenAI-style), reading answers, allowed addresses (`check_base`), `send_with_curl` (used by the Windows shell and the dev server), and Polish note's fixed instructions and answer checks. Never holds a key. |
+| `ai.rs` | The optional AI features (Build 51): the services' presets, both request formats (Claude's, OpenAI-style), reading answers, allowed addresses (`check_base`), where a key may go (`key_header`, `key_may_go`), `send_with_curl`/`send_keyed` (used by the Windows shell and the dev server), and Polish note's fixed instructions and answer checks. Never holds a key. |
 | `app/safety.rs`, `app/history.rs`, `app/pictures.rs` | Safety copies · a page's History · finding/binning unused pictures |
 | `parse.rs` | Text → blocks, properties, links, tags |
 | `vault.rs` | The index: backlinks, tags, properties, to-dos, search, linked/unlinked references |
@@ -129,7 +129,8 @@ never) and when the app pushes new data; everything else runs only when opened.
 | File | Job |
 |---|---|
 | `main.rs` | Picks the job from the command line (section 2) |
-| `lib.rs` | Starts Tauri; **one command `call`** that forwards to `dispatch`, plus a few OS-only commands handled before it (`save_asset_path`, `start_link`, `reveal_file`, `set_shortcut`/`get_shortcut`, `update_*`, `browser_setup`/`browser_status`, `quit`, `platform`; see `lib.rs`). Two shared commands are special-cased there: `rescan` reads files without holding the lock, and `open` also starts the file watcher. The `vault://` protocol that serves pictures. Close waits for saves (`lean-close`). The three start-up threads (section 3). |
+| `lib.rs` | Starts Tauri; **one command `call`** that forwards to `dispatch`, plus a few OS-only commands handled before it (`save_asset_path`, `start_link`, `reveal_file`, `set_shortcut`/`get_shortcut`, `update_*`, `browser_setup`/`browser_status`, `quit`, `platform`; see `lib.rs`). Two shared commands are special-cased there: `rescan` reads files without holding the lock, and `open` also starts the file watcher. The `vault://` protocol that serves pictures (four threads in turn, `shell_rules::Pool`; none over 100 MB). Close waits for saves (`lean-close`). The start-up threads (section 3, Windows only). |
+| `shell_rules.rs` | The shell's small decisions with no Windows or Tauri in them (closing, the capture box's footer, placing and wheel, links between copies, file-size limits, the thread pool), so their tests also run where the shell can't be built (`src-tauri/pure_tests.sh`) |
 | `watch.rs` | File-change watcher |
 | `hotkey.rs` | The shortcut-key helper and the app's side of it (`set`, `state`, `at_start`, `stop`) |
 | `capture_box/` | Native Win32 capture box (`mod.rs` the window, `ffi.rs` = Windows functions declared by hand, also used by links.rs; `files.rs` clipboard, file picker, picture → PNG; `selftest.rs` CI) |
@@ -180,7 +181,9 @@ paths). Other localStorage keys: `tabs`, `updateCheck`, `skin`, `sideW`, `splitA
 | `MainActivity.kt` | Window insets, all-files permission, the **`window.LeanAndroid` bridge** (widget config/colours/tasks, bar colours, print, keyboard, shortcuts, updates), app-icon shortcuts, `leanoutliner://` links |
 | `kotlin/JournalWidget.kt` | Today's-journal widget (notes drawn with their formatting, to-do boxes and small pictures, `Journal.row`), the round "+" widget, and `Journal` (reads today's journal for the widget; the pop-up adds notes through the app's own Rust code, `LeanCore.kt` → `src-tauri/src/android_capture.rs`) |
 | `kotlin/QuickCaptureActivity.kt` | The "Add to journal" pop-up (widgets' "+", share sheet, tile) |
-| `kotlin/AiKeys.kt` | The AI services' keys, sealed by a Keystore key of the app's own, and sending an AI request (https only; Build 51) |
+| `kotlin/AiKeys.kt` | The AI services' keys, sealed by a Keystore key of the app's own, and sending an AI request (https only; Build 51); a key goes only to its own service's address (for "Other", the address saved with it) |
+| `kotlin/SelectionCaptureActivity.kt` | "Add to thinky" over selected text in other apps (PROCESS_TEXT only; ≤ 20,000 characters, ≤ 10 a minute) |
+| `kotlin/Checks.kt` | The rules above with no Android in them (where a key may go, picture sizes, front matter, selection limits), tested on a plain JVM: `android/test/run.sh`; `android/test/overlay_test.py` tests the overlay |
 | `kotlin/AddNoteTile.kt` | Quick Settings tile |
 | `res/` | Widget layouts and info XML, drawables, the pop-up's layout |
 | `release.keystore` | Not in the repo: the signing key is the `ANDROID_KEYSTORE_B64` secret (locked; never replace) |
@@ -189,8 +192,8 @@ Android footprint (put in place by `scripts/android_overlay.py`): permissions MA
 READ/WRITE_EXTERNAL_STORAGE, INTERNET, VIBRATE, REQUEST_INSTALL_PACKAGES; components JournalWidget,
 JournalWidgetService, QuickAddWidget, QuickCaptureActivity, AddNoteTile, UpdateReceiver (class in
 `MainActivity.kt`); a SEND filter (text/plain, image/*) for the share sheet and a VIEW filter for
-`leanoutliner://`; EmojiCompat's start-up removed. SharedPreferences `lean_widget` (vault, folders,
-formats, capture settings, tasks, colours, bar colours); `cacheDir/update-apk`; app-icon shortcuts
+`leanoutliner://`; `allowBackup="false"` (no Android backup of the app's settings or sealed keys); EmojiCompat's start-up removed. SharedPreferences `lean_widget` (vault, folders,
+formats, capture settings, tasks, colours, bar colours, the times of the last "Add to thinky" selections); `lean_update` (the update being installed, for 30 minutes, APK only); `cacheDir/update-apk`; app-icon shortcuts
 re-published at each start.
 
 ### `scripts/` and `ci/`
@@ -217,7 +220,8 @@ tests (smoke + t1…t15), `run.sh` runs them all.
   back to `"%LOCALAPPDATA%\thinky\lean-outliner.exe" "%1"`.
 
 **Windows Credential Manager** (Build 51, only once a key is saved in Settings → AI): one generic credential per AI
-service, `thinky AI key: <service id>` (user "thinky", this computer only); Settings' Remove key deletes it.
+service, `thinky AI key: <service id>` (user "thinky", this computer only); Settings' Remove key deletes it. "Other
+(OpenAI-style)" also keeps the address its key was saved for, `thinky AI base: other` (its key goes nowhere else).
 Uninstalling leaves it (Windows → Credential Manager → Windows Credentials can remove it).
 
 **Start menu:** `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Lean Outliner capture.lnk` — the
@@ -339,7 +343,7 @@ Also mirrored: `search.rs` `fold` ↔ `ui/search.js`.
 
 - Push to `main` = a public release "Build N" (Windows installer + portable exe, Android APK) on
   this repo, where the app looks for updates from Build 34 on (Build 34 also went to the old downloads
-  repo, `srikanth-iyer/lean-outliner-releases`, where Build 33 and older look). Commits touching only Markdown, `ci/baseline.json`, `dev/**` or the phone-test scripts don't build (`paths-ignore` in build.yml; the phone test has no such list, so `[android-test]` still runs it). `wip/**` branches
+  repo, `srikanth-iyer/lean-outliner-releases`, where Build 33 and older look). Commits touching only Markdown, `ci/baseline.json` or the phone-test scripts don't build (`dev/**` does since the review fixes: the dev server and UI tests are checked) (`paths-ignore` in build.yml; the phone test has no such list, so `[android-test]` still runs it). `wip/**` branches
   build without publishing — use them to check compiling. Build minutes are limited: batch features.
 - Jobs in `.github/workflows/build.yml`: `number`, `test`, `update-key`, `windows` (also runs both
   self-tests), `capture-shots`, `android`, `sign` (main, after approval), `sign-wip`, `verify`, `sizes`,

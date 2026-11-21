@@ -685,6 +685,7 @@ extern "system" {
 #[link(name = "ole32")]
 extern "system" {
     pub fn CoInitializeEx(reserved: *mut c_void, flags: u32) -> i32;
+    pub fn CoUninitialize();
     pub fn CreateStreamOnHGlobal(h: *mut c_void, delete_on_release: i32, stream: *mut *mut c_void) -> i32;
     pub fn GetHGlobalFromStream(stream: *mut c_void, h: *mut *mut c_void) -> i32;
 }

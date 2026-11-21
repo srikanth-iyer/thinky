@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "dev", "src-tauri"]
+members = ["core", "dev", "src-tauri", "src-tauri/pure"]
 resolver = "2"
 
 # Optimised for size (Tauri's recommendation): the program is ~22% smaller (about 2 MB) and

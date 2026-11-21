@@ -5,13 +5,15 @@
 //! - **GitHub** (or any git repository): the notes folder copied into a separate folder that is a git
 //!   repository, then a snapshot ("commit") and an upload ("push") with the `git` program, as his own
 //!   weekly script does. Every earlier snapshot stays in the repository's history.
+//!
 //! Either way a backup is made only when something changed since the last one, never from a folder
 //! that doesn't look like the notes folder (so an empty or half-synced folder can't look like
 //! "everything was deleted"), and it says when an unusual number of files vanished.
 //! A missing file can be looked for in the backups and put back (`find_in_backup`,
 //! `restore_from_backup`), never over a file that is there.
 //! What is left out: git's own folder, Logseq's backups (logseq/bak), the bin (logseq/.recycle),
-//! Drive's temporary upload folder, Windows' desktop.ini and temporary files.
+//! the safety copies (logseq/.safety-<device>, up to 100 MB each), Drive's temporary upload folder,
+//! Windows' desktop.ini and temporary files.
 
 use super::App;
 use serde::Serialize;
@@ -43,7 +45,7 @@ const PREFIX: &str = "thinky-backup-";
 fn skip_dir(rel: &str) -> bool {
     let low = rel.to_ascii_lowercase();
     let name = low.rsplit('/').next().unwrap_or(&low);
-    name == ".git" || name == ".tmp.driveupload" || low == "logseq/bak" || low == "logseq/.recycle"
+    name == ".git" || name == ".tmp.driveupload" || low == "logseq/bak" || low == "logseq/.recycle" || low.starts_with("logseq/.safety-")
 }
 fn skip_file(name: &str) -> bool {
     let low = name.to_ascii_lowercase();
@@ -88,6 +90,47 @@ fn looks_like_notes(root: &Path, files: &BTreeMap<String, (PathBuf, u64, u64)>) 
     Ok(())
 }
 
+/// A folder's real path, also for one not made yet: its nearest folder that is there, made real
+/// (links followed; on Windows the `\\?\C:\…` form), with the rest of the path after it. So a backup
+/// folder still to be made compares like the notes folder does (the review's medium row: a plain
+/// `C:\vault\backups` never "started with" `\\?\C:\vault`).
+pub fn real_path(p: &Path) -> PathBuf {
+    let mut rest: Vec<&std::ffi::OsStr> = vec![];
+    let mut at = p;
+    loop {
+        if let Ok(c) = std::fs::canonicalize(at) {
+            let mut out = c;
+            for r in rest.iter().rev() {
+                out.push(r);
+            }
+            return out;
+        }
+        match (at.parent(), at.file_name()) {
+            (Some(parent), Some(name)) => {
+                rest.push(name);
+                at = parent;
+            }
+            _ => return p.to_path_buf(),
+        }
+    }
+}
+
+/// Is `inner` the folder `outer` or inside it? Part by part, and in any capitals when `fold_case`
+/// (Windows' and macOS's usual disks: `C:\Notes` and `c:\notes` are one folder).
+pub fn holds(outer: &Path, inner: &Path, fold_case: bool) -> bool {
+    let norm = |p: &Path| -> Vec<String> {
+        p.components()
+            .filter(|c| !matches!(c, std::path::Component::CurDir))
+            .map(|c| {
+                let s = c.as_os_str().to_string_lossy().into_owned();
+                if fold_case { s.to_lowercase() } else { s }
+            })
+            .collect()
+    };
+    let (o, i) = (norm(outer), norm(inner));
+    i.len() >= o.len() && i[..o.len()] == o[..]
+}
+
 /// The backup folder must be outside the notes folder (and not hold it).
 fn check_place(root: &Path, dest: &Path) -> Result<PathBuf, String> {
     if dest.as_os_str().is_empty() {
@@ -96,9 +139,9 @@ fn check_place(root: &Path, dest: &Path) -> Result<PathBuf, String> {
     if !dest.is_absolute() {
         return Err("The backup folder needs its full path (like C:\\Users\\you\\notes-backups).".into());
     }
-    let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
-    let (r, d) = (canon(root), canon(dest));
-    if d.starts_with(&r) || r.starts_with(&d) {
+    let (r, d) = (real_path(root), real_path(dest));
+    let fold = cfg!(any(windows, target_os = "macos"));
+    if holds(&r, &d, fold) || holds(&d, &r, fold) {
         return Err("Backups must go in a folder outside your notes folder (a backup inside it would be synced and backed up again).".into());
     }
     Ok(d)
@@ -156,13 +199,16 @@ fn dos_time(secs: u64) -> (u16, u16) {
 }
 
 /// Write `files` into a new zip at `dest` (stored). Up to 4 GB in all (no ZIP64): a bigger folder
-/// is refused with a clear reason rather than written wrong.
-pub fn write_zip(dest: &Path, files: &BTreeMap<String, (PathBuf, u64, u64)>) -> Result<(), String> {
+/// is refused with a clear reason rather than written wrong (also one that grew past it while being
+/// written). Gives the files it couldn't read just then (vanished, held by another program): they
+/// aren't in the zip, and the caller doesn't count them as backed up.
+pub fn write_zip(dest: &Path, files: &BTreeMap<String, (PathBuf, u64, u64)>) -> Result<Vec<String>, String> {
     let total: u64 = files.values().map(|(_, s, _)| *s).sum();
     if total > 3_900_000_000 || files.len() > 65_000 {
         return Err("The notes folder is too big for a snapshot zip (over 4 GB or 65,000 files). Use the GitHub kind instead.".into());
     }
     let tmp = dest.with_extension("zip.part");
+    let mut skipped = vec![];
     let res = (|| -> std::io::Result<()> {
         let mut out = std::io::BufWriter::new(std::fs::File::create(&tmp)?);
         let mut central: Vec<u8> = vec![];
@@ -171,7 +217,12 @@ pub fn write_zip(dest: &Path, files: &BTreeMap<String, (PathBuf, u64, u64)>) -> 
         for (rel, (path, _, mt)) in files {
             let mut data = vec![];
             if std::fs::File::open(path).and_then(|mut f| f.read_to_end(&mut data)).is_err() {
-                continue; // (a file that vanished or can't be read just now: the next backup has it)
+                skipped.push(rel.clone()); // (vanished or can't be read just now: the next backup tries again)
+                continue;
+            }
+            let too_big = || std::io::Error::other("the notes folder grew past 4 GB while it was being backed up");
+            if data.len() as u64 > u32::MAX as u64 || offset + 30 + rel.len() as u64 + data.len() as u64 > u32::MAX as u64 {
+                return Err(too_big());
             }
             let crc = crc32(&data, 0);
             let (t, d) = dos_time(*mt);
@@ -226,7 +277,7 @@ pub fn write_zip(dest: &Path, files: &BTreeMap<String, (PathBuf, u64, u64)>) -> 
         Ok(())
     })();
     match res.and_then(|_| std::fs::rename(&tmp, dest)) {
-        Ok(()) => Ok(()),
+        Ok(()) => Ok(skipped),
         Err(e) => {
             let _ = std::fs::remove_file(&tmp);
             Err(format!("Couldn't write the backup ({e})."))
@@ -247,6 +298,9 @@ pub fn zip_files(zip: &Path, mut keep: impl FnMut(&str) -> bool) -> Vec<(String,
     out
 }
 
+/// Every number read from the zip is checked against the file before it is used (review claim 8: a
+/// damaged or made-up zip never reads past its end, panics, or makes the app set aside gigabytes):
+/// the end record must be whole, the list of files and each file's bytes must lie inside the zip.
 fn zip_walk(zip: &Path, keep: &mut impl FnMut(&str) -> bool, out: &mut Vec<(String, Vec<u8>)>) -> Option<()> {
     let mut f = std::fs::File::open(zip).ok()?;
     let len = f.metadata().ok()?.len();
@@ -254,10 +308,14 @@ fn zip_walk(zip: &Path, keep: &mut impl FnMut(&str) -> bool, out: &mut Vec<(Stri
     f.seek(SeekFrom::Start(len - tail)).ok()?;
     let mut buf = vec![0u8; tail as usize];
     f.read_exact(&mut buf).ok()?;
-    let at = buf.windows(4).rposition(|w| w == [0x50, 0x4b, 0x05, 0x06])?;
+    // the end record is 22 bytes: the last signature with room for them
+    let at = buf.windows(4).enumerate().rev().find(|(i, w)| *w == [0x50, 0x4b, 0x05, 0x06] && i + 22 <= buf.len()).map(|(i, _)| i)?;
     let u16_ = |b: &[u8], i: usize| u16::from_le_bytes([b[i], b[i + 1]]) as usize;
     let u32_ = |b: &[u8], i: usize| u32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]) as u64;
     let (n, cd_size, cd_off) = (u16_(&buf, at + 10), u32_(&buf, at + 12), u32_(&buf, at + 16));
+    if cd_off.checked_add(cd_size)? > len {
+        return None;
+    }
     f.seek(SeekFrom::Start(cd_off)).ok()?;
     let mut cd = vec![0u8; cd_size as usize];
     f.read_exact(&mut cd).ok()?;
@@ -270,9 +328,18 @@ fn zip_walk(zip: &Path, keep: &mut impl FnMut(&str) -> bool, out: &mut Vec<(Stri
         let name = std::str::from_utf8(cd.get(i + 46..i + 46 + name_len)?).ok()?;
         if method == 0 && keep(name) {
             let mut lh = [0u8; 30];
+            if off.checked_add(30)? > len {
+                return None;
+            }
             f.seek(SeekFrom::Start(off)).ok()?;
             f.read_exact(&mut lh).ok()?;
+            if lh[..4] != [0x50, 0x4b, 0x03, 0x04] {
+                return None;
+            }
             let skip = 30 + u16_(&lh, 26) + u16_(&lh, 28);
+            if off.checked_add(skip as u64)?.checked_add(size)? > len {
+                return None;
+            }
             f.seek(SeekFrom::Start(off + skip as u64)).ok()?;
             let mut data = vec![0u8; size as usize];
             f.read_exact(&mut data).ok()?;
@@ -305,12 +372,17 @@ fn read_state(dest: &Path) -> State {
 
 /// A snapshot zip, if anything changed since the last one; then only the newest `keep` zips are kept.
 pub fn backup_zip(root: &Path, dest: &Path, keep: usize, stamp: &str) -> BackupReport {
+    backup_zip_of(root, dest, keep, stamp, backup_files(root))
+}
+
+/// `backup_zip` of the files `backup_files` gave (tests pass a list with a file that can't be read).
+#[doc(hidden)]
+pub fn backup_zip_of(root: &Path, dest: &Path, keep: usize, stamp: &str, files: BTreeMap<String, (PathBuf, u64, u64)>) -> BackupReport {
     let fail = |m: String| BackupReport { status: "failed".into(), message: m, changed: 0, deleted: 0, warning: None, made: None };
     let dest = match check_place(root, dest) {
         Ok(d) => d,
         Err(e) => return fail(e),
     };
-    let files = backup_files(root);
     if let Err(e) = looks_like_notes(root, &files) {
         return fail(e);
     }
@@ -335,16 +407,28 @@ pub fn backup_zip(root: &Path, dest: &Path, keep: usize, stamp: &str) -> BackupR
         k += 1;
     }
     let zip = dest.join(&name);
-    if let Err(e) = write_zip(&zip, &files) {
-        return fail(e);
+    let skipped = match write_zip(&zip, &files) {
+        Ok(s) => s,
+        Err(e) => return fail(e),
+    };
+    // what this zip really holds: a file it couldn't read isn't counted as backed up, so the next
+    // backup sees a change and tries it again (the review's medium row on write_zip)
+    let mut held = files.clone();
+    for rel in &skipped {
+        held.remove(rel);
     }
-    let state = State { fingerprint: fp.clone(), files: files.keys().cloned().collect() };
+    let state = State { fingerprint: fingerprint(&held), files: held.keys().cloned().collect() };
     let _ = std::fs::write(dest.join(STATE), serde_json::to_string(&state).unwrap_or_default());
     for old in our_zips(&dest).into_iter().skip(keep.max(1)) {
         let _ = std::fs::remove_file(old);
     }
     let warning = if st.files.is_empty() { None } else { gone_warning(deleted, st.files.len()) };
-    BackupReport { status: "saved".into(), message: format!("Backed up to {name}."), changed, deleted, warning, made: Some(name) }
+    let message = match skipped.len() {
+        0 => format!("Backed up to {name}."),
+        1 => format!("Backed up to {name}, but {} couldn't be read just now; the next backup tries it again.", skipped[0]),
+        k => format!("Backed up to {name}, but {k} files couldn't be read just now; the next backup tries them again."),
+    };
+    BackupReport { status: "saved".into(), message, changed, deleted, warning, made: Some(name) }
 }
 
 // ------------------------------------------------------------------ git
@@ -365,29 +449,53 @@ pub(super) fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
-/// Make `repo` (but its .git) hold exactly the backed-up files: copy new and changed ones, remove
-/// ones gone from the notes folder. Returns how many were copied.
-fn mirror(files: &BTreeMap<String, (PathBuf, u64, u64)>, repo: &Path) -> Result<usize, String> {
+/// The backup repository's own files, never removed by `mirror` (the review's medium row): its
+/// `.gitignore`/`.gitattributes`, a README at its top, and GitHub's settings folder `.github/`.
+pub fn repo_own(rel: &str) -> bool {
+    let low = rel.to_ascii_lowercase();
+    low == ".gitignore" || low == ".gitattributes" || low.starts_with(".github/") || (!low.contains('/') && low.starts_with("readme"))
+}
+
+/// Make `repo` (but its .git and its own files, `repo_own`) hold exactly the backed-up files: copy new
+/// and changed ones, remove ones gone from the notes folder. A file with the same size and time as
+/// its copy is taken as unchanged without reading either (each copy gets its file's time); otherwise
+/// both are read and compared. A file that can't be read just now keeps its earlier copy (none is
+/// made if there was none) and is named in the second list. Returns how many were copied.
+#[doc(hidden)] // (pub for tests)
+pub fn mirror(files: &BTreeMap<String, (PathBuf, u64, u64)>, repo: &Path) -> Result<(usize, Vec<String>), String> {
     let there = backup_files(repo);
     let mut copied = 0;
+    let mut unread = vec![];
+    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
     for (rel, (src, size, _)) in files {
         let dst = repo.join(rel);
-        let same = there.get(rel).is_some_and(|(_, s, _)| s == size) && std::fs::read(src).ok() == std::fs::read(&dst).ok();
-        if same {
+        let had = there.get(rel);
+        let when = modified(src);
+        if had.is_some_and(|(_, s, _)| s == size) && when.is_some() && when == modified(&dst) {
+            continue; // (same size and the same time to the nanosecond: unchanged, nothing read)
+        }
+        let Ok(bytes) = std::fs::read(src) else {
+            unread.push(rel.clone());
             continue;
+        };
+        if had.is_none() || std::fs::read(&dst).ok().as_deref() != Some(&bytes[..]) {
+            if let Some(p) = dst.parent() {
+                std::fs::create_dir_all(p).map_err(|e| format!("Couldn't copy {rel} ({e})."))?;
+            }
+            std::fs::write(&dst, &bytes).map_err(|e| format!("Couldn't copy {rel} ({e})."))?;
+            copied += 1;
         }
-        if let Some(p) = dst.parent() {
-            std::fs::create_dir_all(p).map_err(|e| format!("Couldn't copy {rel} ({e})."))?;
+        // the copy takes the file's time, so next time size and time say "unchanged"
+        if let (Some(t), Ok(f)) = (when, std::fs::File::options().write(true).open(&dst)) {
+            let _ = f.set_modified(t);
         }
-        std::fs::copy(src, &dst).map_err(|e| format!("Couldn't copy {rel} ({e})."))?;
-        copied += 1;
     }
     for rel in there.keys() {
-        if !files.contains_key(rel) {
+        if !files.contains_key(rel) && !repo_own(rel) {
             let _ = std::fs::remove_file(repo.join(rel));
         }
     }
-    Ok(copied)
+    Ok((copied, unread))
 }
 
 /// The notes folder into a git repository folder, a commit if anything changed, then a push (also of
@@ -406,9 +514,10 @@ pub fn backup_git(root: &Path, repo: &Path, push: bool, stamp: &str) -> BackupRe
         return fail(e);
     }
     let before = backup_files(&repo).len();
-    if let Err(e) = mirror(&files, &repo) {
-        return fail(e);
-    }
+    let unread = match mirror(&files, &repo) {
+        Ok((_, unread)) => unread,
+        Err(e) => return fail(e),
+    };
     if let Err(e) = git(&repo, &["add", "-A"]) {
         return fail(format!("git couldn't take the changes ({e})."));
     }
@@ -438,7 +547,12 @@ pub fn backup_git(root: &Path, repo: &Path, push: bool, stamp: &str) -> BackupRe
         return fail(format!("git couldn't save the snapshot ({e})."));
     }
     let made = git(&repo, &["rev-parse", "--short", "HEAD"]).ok().map(|s| s.trim().to_string());
-    pushed(BackupReport { status: "saved".into(), message: format!("{msg}."), changed, deleted, warning: gone_warning(deleted, before), made })
+    let note = match unread.len() {
+        0 => String::new(),
+        1 => format!(" {} couldn't be read just now; the next backup tries it again.", unread[0]),
+        k => format!(" {k} files couldn't be read just now; the next backup tries them again."),
+    };
+    pushed(BackupReport { status: "saved".into(), message: format!("{msg}.{note}"), changed, deleted, warning: gone_warning(deleted, before), made })
 }
 
 // ------------------------------------------------------------------ finding a file in the backups
@@ -459,15 +573,23 @@ pub fn find_in_backup(kind: &str, dest: &Path, rel: &str) -> Option<String> {
     our_zips(dest).into_iter().find(|z| read_from_zip(z, rel).is_some()).and_then(|z| z.file_name().map(|n| n.to_string_lossy().into_owned()))
 }
 
+/// "Back up now" for the notes folder at `root`: kind "zip" or "git". It needs only the folder's path,
+/// so a shell can take that from the App and run this with the App's lock let go (A2: a backup reads
+/// every file and may push to GitHub; saving and the file watcher shouldn't wait for it), as rescan
+/// does its reading.
+pub fn backup_now_at(root: &Path, kind: &str, dest: &str, keep: usize, push: bool, stamp: &str) -> BackupReport {
+    let dest = Path::new(dest.trim());
+    if kind == "git" {
+        backup_git(root, dest, push, stamp)
+    } else {
+        backup_zip(root, dest, keep, stamp)
+    }
+}
+
 impl App {
     /// "Back up now" (Settings → Backups, or the app's weekly check): kind "zip" or "git".
     pub fn backup_now(&self, kind: &str, dest: &str, keep: usize, push: bool, stamp: &str) -> BackupReport {
-        let dest = Path::new(dest.trim());
-        if kind == "git" {
-            backup_git(&self.root, dest, push, stamp)
-        } else {
-            backup_zip(&self.root, dest, keep, stamp)
-        }
+        backup_now_at(&self.root, kind, dest, keep, push, stamp)
     }
 
     /// Put a missing file back from the backups (only when it isn't there: never over a file).

@@ -71,9 +71,15 @@ mod imp {
         ((st.year as i32, st.month as u32, st.day as u32), format!("{:02}:{:02}", st.hour, st.minute))
     }
 
+    /// The clipboard, opened: another program may hold it for a moment, so tried a few times
+    /// (also the capture box's way, capture_box/files.rs). Closed again with CloseClipboard.
+    pub fn open_clipboard(owner: isize) -> bool {
+        crate::shell_rules::retry(10, std::time::Duration::from_millis(15), || (unsafe { OpenClipboard(owner as *mut c_void) } != 0).then_some(())).is_some()
+    }
+
     pub fn clipboard_text() -> String {
         unsafe {
-            if OpenClipboard(std::ptr::null_mut()) == 0 {
+            if !open_clipboard(0) {
                 return String::new();
             }
             let mut out = String::new();

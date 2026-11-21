@@ -147,8 +147,21 @@ function show(st, res) {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); keep(st, res); }
     else if (e.key === 'Escape') { e.preventDefault(); drawNotes(st, res, false); box.querySelector('.pz-keep')?.focus(); }
   });
-  st.esc = (e) => { if (e.key === 'Escape' && o.pz === st && !st.editing && !document.querySelector('.pop:not([hidden]), .modal-back')) { e.preventDefault(); close(st); } };
+  st.esc = (e) => {
+    if (!st.box?.isConnected || o.pz !== st) { document.removeEventListener('keydown', st.esc, true); return; } // (the note was drawn again, or another started)
+    if (e.key === 'Escape' && !st.editing && !document.querySelector('.pop:not([hidden]), .modal-back')) { e.preventDefault(); close(st); }
+  };
   document.addEventListener('keydown', st.esc, true);
+}
+
+/** One of the AI's notes as drawn (Outline.viewEl), in a box of its own: the drawn note's look (done,
+ *  a mark, a heading's height) goes on its parent element, which must be this note's, never the box
+ *  holding them all (review claim 22b). The classes go on that box. */
+function item(o, i, b, ...cls) {
+  const it = document.createElement('div');
+  it.className = ['pz-item', ...cls].join(' ');
+  it.append(o.viewEl(i, b));
+  return it;
 }
 
 /** The AI's notes as drawn notes (not saved), the words that weren't in the note tinted; with `fade`,
@@ -159,8 +172,7 @@ function drawNotes(st, res, fade) {
   st.box.classList.remove('pz-editing');
   st.notesEl.replaceChildren();
   res.notes.forEach((t, n) => {
-    const v = o.viewEl(i, { text: t, depth: st.depth });
-    v.classList.add('pz-note');
+    const v = item(o, i, { text: t, depth: st.depth }, 'pz-note');
     v.title = 'Click to change these words before keeping them';
     if (n > 0) v.classList.add('pz-more'); // (another note it became, after this one)
     st.notesEl.append(v);
@@ -285,8 +297,7 @@ export async function startPicture(o, i) {
   const motion = motionOn();
   let k = 0;
   for (const n of res.notes) {
-    const v = o.viewEl(i, { text: n.text, depth: st.depth + 1 + n.depth });
-    v.classList.add('pz-note', 'pz-more', 'pz-added', 'pz-new-note');
+    const v = item(o, i, { text: n.text, depth: st.depth + 1 + n.depth }, 'pz-note', 'pz-more', 'pz-added', 'pz-new-note');
     v.style.setProperty('--pd', String(n.depth));
     if (motion) v.style.setProperty('--k', String(Math.min(k++, 24)));
     box.append(v);
@@ -313,6 +324,9 @@ export async function startPicture(o, i) {
       o.undoToast(`Added ${res.notes.length} note${res.notes.length === 1 ? '' : 's'} under the picture.`);
     }
   });
-  st.esc = (e) => { if (e.key === 'Escape' && o.pz === st && !document.querySelector('.pop:not([hidden]), .modal-back')) { e.preventDefault(); close(st); } };
+  st.esc = (e) => {
+    if (!st.box?.isConnected || o.pz !== st) { document.removeEventListener('keydown', st.esc, true); return; }
+    if (e.key === 'Escape' && !document.querySelector('.pop:not([hidden]), .modal-back')) { e.preventDefault(); close(st); }
+  };
   document.addEventListener('keydown', st.esc, true);
 }

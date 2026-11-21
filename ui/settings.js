@@ -296,7 +296,7 @@ function picturesBox(app, r) {
     const btn = e.target.closest('.pic-older');
     const go = e.target.closest('.pc-go');
     if (go) {
-      const ok = await confirmBox({ title: `Open “${esc(go.dataset.page)}”?`, body: 'The note with this picture was in an older copy of this page; it isn’t on the page now. The page’s History (its ⋯ menu) has its older versions.', ok: 'Open the page' });
+      const ok = await confirmBox({ title: `Open “${go.dataset.page}”?` /* (confirmBox escapes its title) */, body: 'The note with this picture was in an older copy of this page; it isn’t on the page now. The page’s History (its ⋯ menu) has its older versions.', ok: 'Open the page' });
       if (ok) app.go('page', go.dataset.page);
       return;
     }
@@ -946,8 +946,10 @@ function tabArrows(bar) {
 async function aiCard(app) {
   const ai = await import('./ai.js');
   const card = h('div', 'card ai-card');
-  const list = await ai.providers().catch(() => []);
   let s = ai.aiSettings();
+  // (the phone sends only to https:// addresses (AiKeys.kt), so a program "on this computer" isn't offered
+  // there; one chosen before stays listed, so it can be turned off)
+  const list = (await ai.providers().catch(() => [])).filter((p) => !isAndroid || p.key !== 'none' || p.id === s.provider);
   const opt = (v, label, on) => `<option value="${esc(v)}"${on ? ' selected' : ''}>${esc(label)}</option>`;
   card.innerHTML = `<h2>AI <span class="note">(optional)</span></h2>
     <p class="note">Off until you choose a service. thinky sends something to the AI only when you use one of its features (Polish note, Picture to text, Ask about this page, Suggest links, aliases and a description), shows you what it suggests, and saves nothing until you press its button. Your key stays on this device, never in your notes.</p>
@@ -1026,14 +1028,21 @@ async function aiCard(app) {
     const v = f('base').value.trim();
     try {
       const b = v ? await call('ai_check_base', { base: v }) : '';
+      const was = s.base;
       s = ai.setAiSettings({ base: b === prov()?.base ? '' : b });
       $('.ai-test', card).textContent = '';
+      // ("Other"'s key goes only to the address it was saved with)
+      if (s.provider === 'other' && s.base !== was && await ai.keyHas('other')) $('.ai-keysay', card).textContent = 'Paste the key again to use it with this address.';
       load(true);
     } catch (e) { asked++; $('.ai-test', card).textContent = String(e.message || e); } // (a model list still on its way says nothing over this)
   };
   $('[data-a="savekey"]', card).onclick = async () => {
     try {
-      await ai.keySet(s.provider, f('key').value);
+      // "Other": the key is kept with the address in the box (it goes there and nowhere else)
+      const v = f('base').value.trim();
+      if (s.provider === 'other' && !v) throw new Error('Type the address first: the key is kept for that address only.');
+      const base = s.provider === 'other' ? await call('ai_check_base', { base: v }) : '';
+      await ai.keySet(s.provider, f('key').value, base);
       f('key').value = '';
       await draw();
       load(false);
@@ -1557,9 +1566,11 @@ function whatsNew(app) {
       const r = await fetch('https://api.github.com/repos/srikanth-iyer/thinky/releases?per_page=8', { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) });
       if (!r.ok) throw new Error(String(r.status));
       const rel = (await r.json()).filter((x) => !x.draft);
+      // (the Google Play version updates only through Play: nothing here is ready to install; review claim 10d)
+      const play = !!window.LeanAndroid?.fromPlay?.();
       list.innerHTML = rel.map((x, i) => {
         const n = Number(String(x.tag_name).match(/(\d+)$/)?.[1] || 0);
-        const tag = n === mine ? '<span class="wn-tag">this version</span>' : mine && n > mine ? '<span class="wn-tag new">ready to install</span>' : '';
+        const tag = n === mine ? '<span class="wn-tag">this version</span>' : mine && n > mine && !play ? '<span class="wn-tag new">ready to install</span>' : '';
         const day = x.published_at ? new Date(x.published_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
         const v = /\bversion (\d+\.\d+\.\d+)/.exec(x.name || '')?.[1];
         return `<details class="wn-rel"${i < 2 || n >= mine ? ' open' : ''}><summary><b>${v ? `Version ${esc(v)}` : `Build ${n}`}</b>${v ? ` <span class="wn-day">Build ${n}</span>` : ''} ${tag}<span class="wn-day">${esc(day)}</span></summary><div class="wn-body">${notes(x.body)}</div></details>`;
