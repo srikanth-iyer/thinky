@@ -67,6 +67,14 @@ fn call(app: tauri::AppHandle, state: tauri::State<'_, State>, cmd: String, args
             }
             Ok(json!(changed))
         }
+        // a backup reads every file and may push to GitHub: done without holding the notes folder,
+        // so saving and typing never wait for it (review A2; core `backup::backup_now_at`)
+        "backup_now" => {
+            let root = lock(&state).as_ref().map(|a| a.root.clone()).ok_or("no vault open")?;
+            let keep = args.get("keep").and_then(Value::as_u64).unwrap_or(4) as usize;
+            let push = args.get("push").and_then(Value::as_bool).unwrap_or(true);
+            serde_json::to_value(outline_core::app::backup::backup_now_at(&root, &s("kind"), &s("dest"), keep, push, &s("stamp"))).map_err(|e| e.to_string())
+        }
         "quit" => {
             if let Some(a) = lock(&state).as_mut() {
                 a.persist();
@@ -219,6 +227,12 @@ fn builder() -> tauri::Builder<tauri::Wry> {
                 std::thread::spawn(update::tidy); // the last update's installer, once it has run
                 std::thread::spawn(hotkey::at_start); // the shortcut key's helper runs
                 std::thread::spawn(native_host::refresh); // the browser extension's files, once set up
+                // the AI requests' body files another run left behind (ai.rs `sweep_temp`, review medium row)
+                std::thread::spawn(|| {
+                    if let Some(c) = outline_core::app::cache_dir() {
+                        outline_core::ai::sweep_temp(&c.join("ai"));
+                    }
+                });
             }
             links::listen(app.handle().clone()); // page and note links clicked while it's open
             Ok(())

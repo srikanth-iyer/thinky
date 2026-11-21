@@ -88,7 +88,7 @@ pub fn capture(a: &Value, bytes: Option<&[u8]>) -> Value {
     }
     if s("cmd") == "where" {
         // the pop-up's "to …" line: today's journal or the quick capture page, as config.edn says now
-        return match outline_core::capture::read_config(&root) {
+        return match outline_core::capture::read_config_to_add(&root) {
             Ok(cfg) => {
                 let (journal, page) = outline_core::capture::default_place(&cfg, today);
                 json!({ "ok": true, "today": journal, "page": page, "todo": cfg.todo_marker() })
@@ -125,7 +125,7 @@ pub fn capture(a: &Value, bytes: Option<&[u8]>) -> Value {
         None => outline_core::capture::capture_media_to_usual(&root, &s("link"), today, &time),
         Some(bytes) => {
             // as the Windows box does: config.edn readable before anything is copied
-            if let Err(e) = outline_core::capture::read_config(&root) {
+            if let Err(e) = outline_core::capture::read_config_to_add(&root) {
                 return json!({ "ok": false, "error": format!("Couldn't read logseq/config.edn ({e}), so nothing was added.") });
             }
             let name = with_type_ext(&s("name"), &s("typeExt"));
