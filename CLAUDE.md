@@ -683,7 +683,10 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     `aliases` (not one that's a page of its own or another page's; `search_pages` the same), so the
     `[[`/`#` list (popups.js `Suggest.pages`) shows "SB → Sourdough Bread" and never "New page: SB",
     like the search box; tests: tests/vault.rs `aliases_count_as_the_page`, t16_alias; block
-    references: `search_blocks`, `blocks_by_id`, a pass over the notes, no index of their own)
+    references: `search_blocks`, a pass over the notes; `blocks_by_id` from `Vault::ids`, an index of
+    `id::` kept by `upsert`/`unindex`, one id on two notes gives the first file's by path; `names_of`
+    from `aliases_of`, the alias map turned round; `all_tags` from each page's `#tags`, read once a
+    file version (`Page::hash_tags`); review A3, tests/vault_index.rs)
   - `search.rs` the Ctrl+K search's rules (tests in `tests/search.rs`): `fold` (small letters, Latin
     accents dropped by two tables; ui/search.js has the same), words in any order, page names (and
     `alias::`) forgive typos (`allowed_typos`: 0 under 5 letters, 1 from 5, 2 from 8; `prefix_distance`,

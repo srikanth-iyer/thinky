@@ -26,9 +26,16 @@ struct Page {
     /// Its notes' words as search reads them (`search::fold_note`), made by the first search after
     /// the file was read (so opening the folder never waits for it).
     folded: OnceLock<Vec<Box<str>>>,
+    /// Its notes' `#tags` as written (`parse::hash_tags`), one list a note, made by the first
+    /// Tags list after the file was read (review A3: never read again from every note each time).
+    hash_tags: OnceLock<Vec<Vec<String>>>,
 }
 
 impl Page {
+    fn hash_tags(&self) -> &[Vec<String>] {
+        self.hash_tags.get_or_init(|| self.parsed.blocks.iter().map(|b| crate::parse::hash_tags(&b.text)).collect())
+    }
+
     fn folded(&self) -> &[Box<str>] {
         self.folded.get_or_init(|| self.parsed.blocks.iter().map(|b| search::fold_note(&b.text)).collect())
     }
@@ -254,6 +261,12 @@ pub struct Vault {
     pages: HashMap<String, Page>,
     by_path: HashMap<String, String>,
     alias: HashMap<String, String>,
+    /// `alias` turned round: a page's key → the alias keys that lead to it (review A3: `names_of`
+    /// looked through every alias for every page).
+    aliases_of: HashMap<String, HashSet<String>>,
+    /// A note's `id::` (small letters) → (page key, note index) of each note that has it (review A3:
+    /// `blocks_by_id` read every note of every page).
+    ids: HashMap<String, Vec<(String, usize)>>,
     /// raw target key → (source page key, block index or PAGE_LEVEL)
     incoming: HashMap<String, Vec<(String, usize)>>,
     /// display form for names that are referenced but may have no file
@@ -343,11 +356,18 @@ impl Vault {
                 }
             }
             for a in &parsed.aliases {
-                self.alias.insert(key(a), k.clone());
+                self.set_alias(key(a), &k);
+            }
+            for (i, b) in parsed.blocks.iter().enumerate() {
+                for (pk, v) in &b.props {
+                    if pk == "id" {
+                        self.ids.entry(v.trim().to_lowercase()).or_default().push((k.clone(), i));
+                    }
+                }
             }
             self.display.insert(k.clone(), name.clone());
             self.by_path.insert(rel.clone(), k.clone());
-            self.pages.insert(k, Page { name, path: rel, journal, parsed, folded: OnceLock::new() });
+            self.pages.insert(k, Page { name, path: rel, journal, parsed, folded: OnceLock::new(), hash_tags: OnceLock::new() });
         }
         // the name this file had before may be free now
         if let Some(ok) = old_key {
@@ -410,11 +430,50 @@ impl Vault {
         }
         for a in &p.parsed.aliases {
             if self.alias.get(&key(a)).is_some_and(|x| x == k) {
-                self.alias.remove(&key(a));
+                self.unset_alias(&key(a));
+            }
+        }
+        for b in &p.parsed.blocks {
+            for (pk, v) in &b.props {
+                if pk == "id" {
+                    let id = v.trim().to_lowercase();
+                    if let Some(at) = self.ids.get_mut(&id) {
+                        at.retain(|(src, _)| src != k);
+                        if at.is_empty() {
+                            self.ids.remove(&id);
+                        }
+                    }
+                }
             }
         }
         if !self.incoming.contains_key(k) {
             self.display.remove(k);
+        }
+    }
+
+    /// `alias` and `aliases_of` together: alias key `a` leads to page `k` (from another page it led
+    /// to before, if any, as the last file read wins).
+    fn set_alias(&mut self, a: String, k: &str) {
+        if let Some(old) = self.alias.insert(a.clone(), k.to_string()) {
+            if old != k {
+                self.drop_alias_of(&old, &a);
+            }
+        }
+        self.aliases_of.entry(k.to_string()).or_default().insert(a);
+    }
+
+    fn unset_alias(&mut self, a: &str) {
+        if let Some(old) = self.alias.remove(a) {
+            self.drop_alias_of(&old, a);
+        }
+    }
+
+    fn drop_alias_of(&mut self, k: &str, a: &str) {
+        if let Some(set) = self.aliases_of.get_mut(k) {
+            set.remove(a);
+            if set.is_empty() {
+                self.aliases_of.remove(k);
+            }
         }
     }
 
@@ -542,7 +601,7 @@ impl Vault {
         if let Some(p) = self.pages.get(k) {
             v.extend(p.parsed.aliases.iter().map(|a| key(a)));
         }
-        v.extend(self.alias.iter().filter(|(_, t)| t.as_str() == k).map(|(a, _)| a.clone()));
+        v.extend(self.aliases_of.get(k).into_iter().flatten().cloned());
         v.sort();
         v.dedup();
         v
@@ -772,38 +831,17 @@ impl Vault {
     }
 
     /// The notes holding these ids (`id::`, any capitals), in the same order; None: no note has it.
-    /// One pass over the notes, however many ids.
+    /// Looked up in the index of ids (`ids`), however many notes there are.
     pub fn blocks_by_id(&self, ids: &[String]) -> Vec<Option<BlockHit>> {
-        let want: HashMap<String, usize> = ids.iter().enumerate().map(|(k, id)| (id.trim().to_lowercase(), k)).collect();
-        let mut out: Vec<Option<BlockHit>> = vec![None; ids.len()];
-        let mut left = want.len();
-        'all: for p in self.pages.values() {
-            for b in &p.parsed.blocks {
-                for (k, v) in &b.props {
-                    if k != "id" {
-                        continue;
-                    }
-                    if let Some(&n) = want.get(&v.to_lowercase()) {
-                        if out[n].is_none() {
-                            out[n] = Some(BlockHit { page: p.name.clone(), line: b.line, text: b.text.clone() });
-                            left -= 1;
-                            if left == 0 {
-                                break 'all;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        // the same id asked for twice: each place gets it
-        for (k, id) in ids.iter().enumerate() {
-            if out[k].is_none() {
-                if let Some(&n) = want.get(&id.trim().to_lowercase()) {
-                    out[k] = out[n].clone();
-                }
-            }
-        }
-        out
+        // (from the id index; when two notes have one id, the one in the first file by its path)
+        ids.iter()
+            .map(|id| {
+                let at = self.ids.get(&id.trim().to_lowercase())?;
+                let (p, i) = at.iter().filter_map(|(k, i)| Some((self.pages.get(k)?, *i))).min_by(|a, b| (&a.0.path, a.1).cmp(&(&b.0.path, b.1)))?;
+                let b = p.parsed.blocks.get(i)?;
+                Some(BlockHit { page: p.name.clone(), line: b.line, text: b.text.clone() })
+            })
+            .collect()
     }
 
     /// Every known page name (files + names only referenced), with journal dates and how
@@ -1112,9 +1150,9 @@ impl Vault {
                 let k = self.resolve(t);
                 m.entry(k.clone()).or_insert_with(|| (shown(&k, t), 0, 0)).1 += 1;
             }
-            for b in &p.parsed.blocks {
+            for tags in p.hash_tags() {
                 let mut seen: Vec<String> = vec![];
-                for t in crate::parse::hash_tags(&b.text) {
+                for t in tags {
                     let k = self.resolve(&t);
                     if seen.contains(&k) {
                         continue;
