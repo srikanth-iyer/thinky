@@ -32,6 +32,11 @@ export function createCalendar(host, opts) {
       if (same(d, focus)) cls.push('focus');
       cells.push(`<button type="button" class="${cls.join(' ')}" data-d="${d.join('-')}" tabindex="${same(d, focus) ? 0 : -1}" aria-label="${d[2]} ${MONTHS[d[1] - 1]} ${d[0]}">${d[2]}</button>`);
     }
+    // (the focused day not in view, after ‹ or ›: the month's first day is the one Tab reaches)
+    if (!cells.some((c) => c.includes('tabindex="0"'))) {
+      const k = cells.findIndex((c) => !c.includes('class="day other'));
+      if (k >= 0) cells[k] = cells[k].replace('tabindex="-1"', 'tabindex="0"');
+    }
     el.innerHTML = `<div class="cal-head"><button type="button" data-nav="-1" aria-label="Previous month">‹</button>
       <span class="cal-title">${MONTHS[m - 1]} ${y}</span>
       <button type="button" data-nav="1" aria-label="Next month">›</button></div>
@@ -58,7 +63,16 @@ export function createCalendar(host, opts) {
   el.addEventListener('keydown', (e) => {
     const k = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
     if (k) { e.preventDefault(); moveFocus(k); return; }
-    if (e.key === 'PageUp' || e.key === 'PageDown') { e.preventDefault(); const d = e.key === 'PageUp' ? -1 : 1; focus = [focus[0], focus[1] + d, 1]; setMonth(y, m + d); return; }
+    if (e.key === 'PageUp' || e.key === 'PageDown') {
+      // a month back or on, the same day where it has one (Jan 31 → Feb 28), across a year's end too
+      e.preventDefault();
+      const dt = new Date(focus[0], focus[1] - 1 + (e.key === 'PageUp' ? -1 : 1), 1);
+      const last = new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
+      focus = [dt.getFullYear(), dt.getMonth() + 1, Math.min(focus[2], last)];
+      setMonth(focus[0], focus[1]);
+      el.querySelector('.day.focus')?.focus();
+      return;
+    }
     if (e.key === 'Enter' && e.target.closest('[data-d]')) { e.preventDefault(); opts.onPick?.(focus); }
   });
   draw();

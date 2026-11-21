@@ -1,9 +1,11 @@
 // Plain Node tests of the page's modules that load on their own (no dev server, no browser):
 //   node dev/ui-tests/unit.mjs
 // math.js (review claim 22a: a formula that would draw too much shows as its source) and render.js
-// (review, medium: a formula inside inline code is code; a link's label holds no other link).
+// (review, medium: a formula inside inline code is code; a link's label holds no other link), ai.js on
+// the phone (review, medium: an answer that never comes back ends the wait), in a process of its own.
 globalThis.window = globalThis;
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+if (process.argv[2] === '--android-ai') { await androidAi(); process.exit(0); }
 const { tex } = await import('../../ui/math.js');
 const { inline } = await import('../../ui/render.js');
 
@@ -104,5 +106,58 @@ console.log('render.js: a link’s label holds no other link');
   check(!h7.includes('javascript:') || !/<a[^>]*href="javascript/.test(h7), 'never a javascript: link', h7);
 }
 
+console.log('ai.js on the phone: an answer that never comes back');
+{
+  // (a process of its own: api.js decides whether it's the phone once, when it is first loaded)
+  const { execFileSync } = await import('node:child_process');
+  let out;
+  try { out = execFileSync(process.execPath, ['--no-warnings', new URL(import.meta.url).pathname, '--android-ai'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 20_000 }); } catch (e) { out = (e.stdout || '') + (e.stderr || ''); }
+  for (const line of out.trim().split('\n')) {
+    const [ok, ...words] = line.split(' ');
+    check(ok === 'ok', words.join(' '), ok === 'ok' ? '' : line);
+  }
+}
+
 if (fails) { console.log(`FAILED: ${fails}`); process.exit(1); }
 console.log('all passed');
+
+/** The phone's AI requests (ai.js send): Android's answer comes back as a "lean-ai" event; one that never
+ *  comes, or a bridge that throws, must not leave the page waiting for ever. Prints "ok words" or "no words". */
+async function androidAi() {
+  const say = (c, m, x = '') => console.log((c ? 'ok ' : 'no ') + m + (c || !x ? '' : ' :: ' + String(x).slice(0, 200)));
+  globalThis.document = Object.assign(new EventTarget(), { documentElement: { classList: { toggle() {} } } });
+  // the app's own commands (they build and read the requests): answered here, as the core does
+  globalThis.fetch = async (url) => ({ ok: true, json: async () => (String(url).endsWith('ai_models_request') ? { method: 'GET', url: 'https://api.openai.com/v1/models' } : ['m1']) });
+  let answer = 'never', sent = 0;
+  globalThis.LeanAndroid = {
+    aiSend(id, provider, req) {
+      sent++;
+      if (answer === 'throws') throw new Error('The bridge is gone');
+      if (answer === 'answers') setTimeout(() => document.dispatchEvent(new CustomEvent('lean-ai', { detail: JSON.stringify({ id, status: 200, body: '{}' }) })), 5);
+    },
+  };
+  // long waits pass at once here; the time asked for is noted
+  const real = setTimeout, asked = [];
+  globalThis.setTimeout = (f, ms, ...a) => { if (ms >= 10_000) asked.push(ms); return real(f, ms >= 10_000 ? 20 : ms, ...a); };
+  const ai = await import('../../ui/ai.js');
+  const s = { provider: 'openai', base: '', textModel: '', pictureModel: '', mark: true, extra: { polish: '' } };
+  const t0 = Date.now();
+  const err = await ai.listModels(s).then(() => null, (e) => e.message);
+  say(err === 'The AI service didn’t answer in time. Try again.', 'no answer from Android: the wait ends, saying so', err);
+  say(asked.includes(150_000) && ai.REPLY_MS === 150_000, 'after 150 s (Android’s own request gives up after 120 s)', asked);
+  say(Date.now() - t0 < 2000 && sent === 1, 'sent once', sent);
+  answer = 'throws';
+  const err2 = await ai.listModels(s).then(() => null, (e) => e.message);
+  say(err2 === 'The bridge is gone', 'the bridge throws: its words, at once', err2);
+  answer = 'answers';
+  asked.length = 0;
+  const got = await ai.listModels(s).then((v) => v, (e) => 'error: ' + e.message);
+  say(JSON.stringify(got) === '["m1"]', 'an answer in time: as before', got);
+  // an answer that comes after the wait ended is let go (nothing is still waiting for it)
+  answer = 'never';
+  let id = null;
+  LeanAndroid.aiSend = (i) => { id = i; };
+  const err3 = await ai.listModels(s).then(() => null, (e) => e.message);
+  document.dispatchEvent(new CustomEvent('lean-ai', { detail: JSON.stringify({ id, status: 200, body: '{}' }) }));
+  say(/in time/.test(err3 || '') && !!id, 'a late answer changes nothing', err3);
+}

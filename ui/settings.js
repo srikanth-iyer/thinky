@@ -296,7 +296,7 @@ function picturesBox(app, r) {
     const btn = e.target.closest('.pic-older');
     const go = e.target.closest('.pc-go');
     if (go) {
-      const ok = await confirmBox({ title: `Open “${esc(go.dataset.page)}”?`, body: 'The note with this picture was in an older copy of this page; it isn’t on the page now. The page’s History (its ⋯ menu) has its older versions.', ok: 'Open the page' });
+      const ok = await confirmBox({ title: `Open “${go.dataset.page}”?` /* (confirmBox escapes its title) */, body: 'The note with this picture was in an older copy of this page; it isn’t on the page now. The page’s History (its ⋯ menu) has its older versions.', ok: 'Open the page' });
       if (ok) app.go('page', go.dataset.page);
       return;
     }

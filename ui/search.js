@@ -126,12 +126,16 @@ function markedName(name, marks = []) {
 }
 
 // ---------------------------------------------------------------------------
-/** The window's height while nothing is being typed in (so no on-screen keyboard), last seen. */
-let tallest = window.innerHeight; // (nothing is being typed in as the app starts)
+/** The window's height while nothing is being typed in (so no on-screen keyboard), last seen, for each
+ *  way the phone is held (turned, the other one's height means nothing). */
+const tallest = {};
+// (the screen's way round, not the window's: an on-screen keyboard can make a window wider than tall)
+const held = () => ((screen.orientation?.type || (screen.width > screen.height ? 'landscape' : 'portrait')).startsWith('landscape') ? 'wide' : 'tall');
 const typing = () => document.activeElement?.matches?.('input, textarea, [contenteditable]');
-const noteHeight = () => { if (!typing()) tallest = window.innerHeight; };
+const noteHeight = () => { if (!typing()) tallest[held()] = window.innerHeight; };
+noteHeight(); // (nothing is being typed in as the app starts)
 addEventListener('resize', noteHeight);
-const fullHeight = () => { noteHeight(); return Math.max(tallest, window.innerHeight); };
+export const fullHeight = () => { noteHeight(); return Math.max(tallest[held()] || 0, window.innerHeight); };
 
 export class SearchBox {
   constructor(app) {

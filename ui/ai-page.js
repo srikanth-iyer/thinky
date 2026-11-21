@@ -23,11 +23,15 @@ const said = (e) => String(e?.message ?? e);
 
 /** The AI box under a page's title (one at a time on a page). */
 function panelIn(head) {
-  head.querySelector(':scope > .ai-panel')?.remove();
+  const old = head.querySelector(':scope > .ai-panel');
+  if (old) (old.close || (() => old.remove()))(); // (closed properly: its Esc listener goes with it)
   const box = h('div', 'ai-panel');
   head.append(box);
   box.addEventListener('pointerdown', (e) => e.stopPropagation());
-  const esc_ = (e) => { if (e.key === 'Escape' && box.isConnected && !document.querySelector('.pop:not([hidden]), .modal-back')) { e.preventDefault(); close(); } };
+  const esc_ = (e) => {
+    if (!box.isConnected) { close(); return; } // (the page was drawn again without it)
+    if (e.key === 'Escape' && !document.querySelector('.pop:not([hidden]), .modal-back')) { e.preventDefault(); close(); }
+  };
   const close = () => { box.remove(); document.removeEventListener('keydown', esc_, true); };
   document.addEventListener('keydown', esc_, true);
   box.close = close;

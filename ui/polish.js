@@ -147,7 +147,10 @@ function show(st, res) {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); keep(st, res); }
     else if (e.key === 'Escape') { e.preventDefault(); drawNotes(st, res, false); box.querySelector('.pz-keep')?.focus(); }
   });
-  st.esc = (e) => { if (e.key === 'Escape' && o.pz === st && !st.editing && !document.querySelector('.pop:not([hidden]), .modal-back')) { e.preventDefault(); close(st); } };
+  st.esc = (e) => {
+    if (!st.box?.isConnected || o.pz !== st) { document.removeEventListener('keydown', st.esc, true); return; } // (the note was drawn again, or another started)
+    if (e.key === 'Escape' && !st.editing && !document.querySelector('.pop:not([hidden]), .modal-back')) { e.preventDefault(); close(st); }
+  };
   document.addEventListener('keydown', st.esc, true);
 }
 
@@ -321,6 +324,9 @@ export async function startPicture(o, i) {
       o.undoToast(`Added ${res.notes.length} note${res.notes.length === 1 ? '' : 's'} under the picture.`);
     }
   });
-  st.esc = (e) => { if (e.key === 'Escape' && o.pz === st && !document.querySelector('.pop:not([hidden]), .modal-back')) { e.preventDefault(); close(st); } };
+  st.esc = (e) => {
+    if (!st.box?.isConnected || o.pz !== st) { document.removeEventListener('keydown', st.esc, true); return; }
+    if (e.key === 'Escape' && !document.querySelector('.pop:not([hidden]), .modal-back')) { e.preventDefault(); close(st); }
+  };
   document.addEventListener('keydown', st.esc, true);
 }

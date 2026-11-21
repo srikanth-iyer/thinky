@@ -79,22 +79,33 @@ export function closeFrom(box) {
   box.remove();
 }
 
+/** How far down a pop-up may go: the window's foot, or the phone's editing toolbar's top while it shows. */
+export function roomBelow() {
+  const tb = document.querySelector('#toolbar:not([hidden])');
+  const t = tb && tb.offsetHeight ? tb.getBoundingClientRect().top : Infinity;
+  return Math.min(window.innerHeight, t);
+}
+
 export function place(el, r) {
   el.style.left = '0px'; el.style.top = '0px';
   const w = el.offsetWidth, ht = el.offsetHeight;
+  const foot = roomBelow(); // (never under the phone's toolbar)
   let top = r.bottom + 6;
-  if (top + ht > window.innerHeight - 8 && r.top - ht - 6 > 8) top = r.top - ht - 6;
-  el.style.top = Math.max(8, Math.min(top, window.innerHeight - ht - 8)) + 'px';
+  if (top + ht > foot - 8 && r.top - ht - 6 > 8) top = r.top - ht - 6;
+  el.style.top = Math.max(8, Math.min(top, foot - ht - 8)) + 'px';
   el.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
 }
 
-/** Where the caret is in a textarea, as a small rectangle (for placing popups). */
+/** Where the caret is in a textarea, as a small rectangle (for placing popups). The page's text size
+ *  zooms the notes (#main's `zoom`): the copy measured here is zoomed the same, so its letters wrap where
+ *  the note's do (its size and place set in its own, unzoomed, pixels). */
 export function caretRect(ta) {
   const r = ta.getBoundingClientRect();
   const cs = getComputedStyle(ta);
+  const z = ta.currentCSSZoom || 1;
   const mirror = h('div');
   for (const p of ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'paddingTop', 'borderLeftWidth', 'boxSizing', 'whiteSpace', 'overflowWrap', 'wordBreak']) mirror.style[p] = cs[p];
-  Object.assign(mirror.style, { position: 'fixed', visibility: 'hidden', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', whiteSpace: 'pre-wrap' });
+  Object.assign(mirror.style, { position: 'fixed', visibility: 'hidden', zoom: String(z), left: r.left / z + 'px', top: r.top / z + 'px', width: r.width / z + 'px', whiteSpace: 'pre-wrap' });
   mirror.textContent = ta.value.slice(0, ta.selectionStart);
   const mark = h('span'); mark.textContent = '​';
   mirror.append(mark);

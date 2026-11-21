@@ -1716,8 +1716,9 @@ window can't be sent to another page.
   pass, then it signs and publishes at once (the `release` environment has no reviewer since Nov 5, 2026 and
   no wait since Nov 15, 2026, Build 49, he asked: a push to main that passes is a release; build.yml's header
   comments still mention the old 30 minutes until the next build changes them). A new test goes into run.sh's list AND one of the six groups.
-  Page modules that load on their own (math.js, render.js): `node dev/ui-tests/unit.mjs` (plain Node, no server;
-  CI's `test` job and pr.yml). Dev server: `cargo test -p devserver` (its paths, Origin, AI keys).
+  Page modules that load on their own (math.js, render.js; ai.js as on the phone, in a process of its own):
+  `node dev/ui-tests/unit.mjs` (plain Node, no server; CI's `test` job and pr.yml). Dev server: `cargo test -p devserver`
+  (its paths, Origin, AI keys). The outside review's fixes (Nov 21) in the browser: t34_review.
   UI: `dev/ui-tests/run.sh [test…]` (Playwright against the dev server, fresh sample vault per test,
   screenshots in `$UI_TEST_DIR/shots`; Playwright import `/opt/npm-tools/node_modules/playwright/index.mjs`).
   Run them all after UI changes; they catch CSP blocks too. Two copies of the project (git worktrees)
