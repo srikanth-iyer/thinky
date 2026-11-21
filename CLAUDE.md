@@ -1720,7 +1720,7 @@ window can't be sent to another page.
   `node dev/ui-tests/unit.mjs` (plain Node, no server; CI's `test` job and pr.yml).
   Type check of the page's JavaScript (since the outside review's item 1, Nov 21, 2026): `npm run typecheck`
   (TypeScript's checker, pinned in package.json, reads ui/ with jsconfig.json: checkJs, not strict; the
-  globals the page reads, LeanAndroid and __TAURI__, are declared in ui/types/globals.d.ts). Types are
+  globals the page reads, LeanAndroid and __TAURI__, are declared in dev/types/globals.d.ts, outside ui/ so it isn't packed into the app). Types are
   JSDoc comments (`/** @type {HTMLElement} */ (e.target)`, `@param`), never @ts-ignore. CI's `test` job and
   pr.yml run it, with `python3 scripts/update_sig_test.py`, `bash android/test/run.sh` and
   `python3 android/test/overlay_test.py` (until Nov 21 those two ran only in android-test.yml). Dev server: `cargo test -p devserver`

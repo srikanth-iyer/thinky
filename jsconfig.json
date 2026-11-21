@@ -25,7 +25,8 @@
     // and untyped parameters are allowed. Stricter checks can be turned on later, one at a time.
     "strict": false
   },
-  // The files to check: every .js file in ui/, plus our type descriptions in ui/types/
+  // The files to check: every .js file in ui/, plus our type descriptions in dev/types/
   // (globals.d.ts describes things the app reads from `window`, such as the Android bridge).
-  "include": ["ui/**/*.js", "ui/types/**/*.d.ts"]
+  // They live outside ui/ because everything in ui/ is packed into the app, and the app never needs them.
+  "include": ["ui/**/*.js", "dev/types/**/*.d.ts"]
 }
