@@ -297,6 +297,22 @@ console.log('the medium rows: saves, rescans, calendar, popups');
   await page.locator('textarea.ed').fill(was); // (as it was: the phone below taps its icon)
   await page.keyboard.press('Escape');
   await page.evaluate(() => window.leanApp.textSize?.(1));
+  // a picture's "Open <page>?" question: the page's name is escaped once (by confirmBox), so a name
+  // with & or < shows as typed, not as &amp; (Settings → Pictures passes the name as it is)
+  const asked = await page.evaluate(async () => {
+    const { confirmBox } = await import('/popups.js');
+    const title = 'Open “Tom & Jerry <i>notes</i>”?';
+    const answer = confirmBox({ title, ok: 'Open the page' });
+    await new Promise((r) => setTimeout(r, 80));
+    const h = [...document.querySelectorAll('h2')].find((e) => e.textContent.startsWith('Open “Tom'));
+    const got = { text: h?.textContent, tags: h?.querySelectorAll('*').length };
+    [...document.querySelectorAll('[data-v="0"]')].at(-1)?.click(); // Cancel
+    got.answer = await answer;
+    return got;
+  });
+  check(asked.text === 'Open “Tom & Jerry <i>notes</i>”?' && asked.tags === 0 && asked.answer === false, 'confirmBox shows a title with & and < as typed (escaped once, never twice, never as markup)', JSON.stringify(asked));
+  const src = (await import('node:fs')).readFileSync(new URL('../../ui/settings.js', import.meta.url), 'utf8');
+  check(!/confirmBox\(\{\s*title:\s*`[^`]*\$\{esc\(/.test(src), 'settings.js passes confirmBox titles unescaped (confirmBox escapes them itself)');
   check(errors.length === 0, 'no script errors', errors.join('; '));
 }
 await browser.close();

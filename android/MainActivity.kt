@@ -323,20 +323,26 @@ class MainActivity : TauriActivity() {
       val flags = PackageManager.GET_SIGNING_CERTIFICATES
       val theirs = packageManager.getPackageArchiveInfo(apk.path, flags)?.signingInfo
       val ours = packageManager.getPackageInfo(packageName, flags).signingInfo
-      if (theirs == null || ours == null) false
+      // some Android 9 builds don't fill in a downloaded file's signingInfo: then compare the older way (still both directions, still false if unknown)
+      if (theirs == null && ours != null) sameOldStyleSigners(apk)
+      else if (theirs == null || ours == null) false
       else {
         // this app's current certificate(s) must be among the download's (which may also list older ones)
         val now = if (ours.hasMultipleSigners()) ours.apkContentsSigners?.toList() else ours.signingCertificateHistory?.lastOrNull()?.let { listOf(it) }
         val theirSet = (if (theirs.hasMultipleSigners()) theirs.apkContentsSigners else theirs.signingCertificateHistory)?.toList()
         Checks.allAmong(now, theirSet)
       }
-    } else {
-      val theirs = packageManager.getPackageArchiveInfo(apk.path, PackageManager.GET_SIGNATURES)?.signatures?.toList()
-      val ours = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES).signatures?.toList()
-      // (before Android 9 an APK has one set of signers: the same set on both sides)
-      Checks.allAmong(ours, theirs) && Checks.allAmong(theirs, ours)
-    }
+    } else sameOldStyleSigners(apk)
   } catch (e: Exception) { false }
+
+  /** The pre-Android-9 comparison: the download's signers and this app's must be the same set. */
+  @Suppress("DEPRECATION")
+  private fun sameOldStyleSigners(apk: File): Boolean {
+    val theirs = packageManager.getPackageArchiveInfo(apk.path, PackageManager.GET_SIGNATURES)?.signatures?.toList()
+    val ours = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES).signatures?.toList()
+    // (one set of signers on each side: every one of ours among theirs, and every one of theirs among ours)
+    return Checks.allAmong(ours, theirs) && Checks.allAmong(theirs, ours)
+  }
 
   /** Hand the checked APK to Android's installer (the page saved everything first). */
   fun installUpdate() {

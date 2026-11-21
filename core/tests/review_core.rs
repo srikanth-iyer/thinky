@@ -635,3 +635,34 @@ fn a_rescan_of_one_folder_never_lands_in_another() {
     assert!(again.vault.page_info("Fresh").exists);
     assert!(again.rescan().is_empty(), "nothing more");
 }
+
+/// A2: "Back up now" runs from the folder's path alone (backup_now_at), so the shell can let go of the
+/// App's lock while it reads every file. It must do exactly what the App's own backup_now does: the
+/// same zip, the same "nothing changed" the second time, and the same answer for a folder of no backups.
+#[test]
+fn backup_from_the_folder_path_alone_matches_the_apps_backup() {
+    use outline_core::app::backup::{backup_now_at, read_from_zip};
+    let v = tmp_vault("backup_at");
+    put(&v, "pages/a.md", "- a\n");
+    put(&v, "journals/2026_11_21.md", "- today\n");
+    let dest = std::env::temp_dir().join(format!("outline_review_backup_at_dest_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dest);
+    // from the path alone: a zip that holds the notes
+    let r = backup_now_at(&v, "zip", dest.to_str().unwrap(), 4, false, "2026-11-21-2100");
+    assert_eq!(r.status, "saved", "{}", r.message);
+    let zip = dest.join(r.made.clone().expect("a zip was made"));
+    assert_eq!(read_from_zip(&zip, "pages/a.md").as_deref(), Some(&b"- a\n"[..]));
+    assert_eq!(read_from_zip(&zip, "journals/2026_11_21.md").as_deref(), Some(&b"- today\n"[..]));
+    // the App's own backup_now, right after: it sees the same folder, so nothing changed
+    let app = App::open(&v).unwrap();
+    let again = app.backup_now("zip", dest.to_str().unwrap(), 4, false, "2026-11-21-2101");
+    assert_eq!(again.status, "nochange", "{}", again.message);
+    // and the path alone, again: nothing changed either; then a change: saved
+    assert_eq!(backup_now_at(&v, "zip", dest.to_str().unwrap(), 4, false, "2026-11-21-2102").status, "nochange");
+    put(&v, "pages/b.md", "- b\n");
+    // (spaces around the place, as a pasted path may have: trimmed, as backup_now does)
+    let padded = format!("  {}  ", dest.to_str().unwrap());
+    assert_eq!(backup_now_at(&v, "zip", &padded, 4, false, "2026-11-21-2103").status, "saved");
+    let _ = std::fs::remove_dir_all(&v);
+    let _ = std::fs::remove_dir_all(&dest);
+}
