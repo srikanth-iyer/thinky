@@ -360,7 +360,7 @@ the updater…` markers (and the UpdateReceiver to the end of the file), drops i
 `const val PLAY` (`__PLAY__`); android/test/overlay_test.py checks both shapes. `sign` signs the bundle with jarsigner and the same release key (Play's
 upload key; its certificate must equal the APK's; its manifest checked for the install permission; `android` also
 searches its DEX for the updater's code, `releases/download` and `PackageInstaller$Session`, review claim 10c); `sign-wip` with the
-throw-away key; `release` publishes it with the others (7 files, 10 with the old names). Play App Signing reuses the
+throw-away key; `release` publishes it with the others (8 files with thinky-apk.sig, 11 with the old names). Play App Signing reuses the
 release key (he chose it, Nov 10): `.github/workflows/play-key.yml` (run by hand on main, environment `release`) exports
 it with Google's PEPK, encrypted with Play Console's key saved as `ci/play-encryption-key.pem`, as the artifact
 `thinky-play-key.zip` for Play Console's App signing page. pepk.jar must match the SHA-256 pinned in the workflow's
@@ -1717,7 +1717,13 @@ window can't be sent to another page.
   no wait since Nov 15, 2026, Build 49, he asked: a push to main that passes is a release; build.yml's header
   comments still mention the old 30 minutes until the next build changes them). A new test goes into run.sh's list AND one of the six groups.
   Page modules that load on their own (math.js, render.js; ai.js as on the phone, in a process of its own):
-  `node dev/ui-tests/unit.mjs` (plain Node, no server; CI's `test` job and pr.yml). Dev server: `cargo test -p devserver`
+  `node dev/ui-tests/unit.mjs` (plain Node, no server; CI's `test` job and pr.yml).
+  Type check of the page's JavaScript (since the outside review's item 1, Nov 21, 2026): `npm run typecheck`
+  (TypeScript's checker, pinned in package.json, reads ui/ with jsconfig.json: checkJs, not strict; the
+  globals the page reads, LeanAndroid and __TAURI__, are declared in ui/types/globals.d.ts). Types are
+  JSDoc comments (`/** @type {HTMLElement} */ (e.target)`, `@param`), never @ts-ignore. CI's `test` job and
+  pr.yml run it, with `python3 scripts/update_sig_test.py`, `bash android/test/run.sh` and
+  `python3 android/test/overlay_test.py` (until Nov 21 those two ran only in android-test.yml). Dev server: `cargo test -p devserver`
   (its paths, Origin, AI keys). The outside review's fixes (Nov 21) in the browser: t34_review.
   UI: `dev/ui-tests/run.sh [test…]` (Playwright against the dev server, fresh sample vault per test,
   screenshots in `$UI_TEST_DIR/shots`; Playwright import `/opt/npm-tools/node_modules/playwright/index.mjs`).
@@ -1840,7 +1846,8 @@ window can't be sent to another page.
   (`update_sig.py version N`; refuses if the build claims another), signs the installer
   (`thinky-setup.exe.sig`, and `LeanOutliner-setup.exe.sig` for the same bytes under the old name, checked
   with `update_sig.py check`; also one with another key, for `verify`) and the APK, whose certificate
-  must equal `prev-cert`'s (it opens no downloaded file while it holds the keys). `sign-wip` does the same with throw-away keys.
+  must equal `prev-cert`'s (it opens no downloaded file while it holds the keys), then the signed APK's
+  `thinky-apk.sig` (`sign-update`, same key; checked with `check-update` and `apk-check`). `sign-wip` does the same with throw-away keys.
   `verify` (windows) runs the shipped exe's `--verify-update` on the signed installer (must pass) and on
   a changed copy, another build number, an edited version and another key (must fail). `sizes` reports
   sizes; `release` (main only, environment `publish`) publishes here (and on the old downloads repo while
@@ -1914,8 +1921,14 @@ MainActivity keeps the pick until the page takes it (`LeanAndroid.takeShortcut()
 called at the end of `start()`, or from `onNewIntent` via evaluateJavascript); `LeanAndroid.showKeyboard()`
 brings up the keyboard for the search box (WebView focus() alone doesn't without a tap).
 One-click update: `LeanAndroid.update(tag)` (Android 8+: first opens "Install unknown apps" for the app
-and carries on in `onResume` once allowed) downloads build N's `LeanOutliner.apk` into
-`<cache>/update-apk`, checks it's this package with a higher versionCode and (`signedLikeThisApp`, failing closed
+and carries on in `onResume` once allowed) downloads build N's `thinky-apk.sig` (since the outside review's
+item 3, Nov 21, 2026; none = refused, nothing downloaded) and `thinky.apk` into
+`<cache>/update-apk`, checks the signature file first (`Checks.apkSigProblem`, the rules of core
+`update_text_to_verify` in Kotlin: for thinky.apk and build N, version higher than the app's versionName,
+the download's SHA-256, ECDSA P-256 good with `UPDATE_KEY` = the update key's public half that
+android_overlay.py writes in from `LEAN_UPDATE_KEY`, empty = every update refused; tested by
+android/test/ChecksTest.kt with a fixture made by update_sig.py, and scripts/update_sig_test.py), then
+that it's this package with a higher versionCode and (`signedLikeThisApp`, failing closed
 since the outside review's claim 12: Android 9+ every signer of the download among this app's, below 9 the same
 signatures; anything unreadable is a no) the same signing certificate, reports `lean-update` events (permission, download %,
 check, ready, install, confirm, done, error) to the page; the page saves, then `installUpdate()` abandons

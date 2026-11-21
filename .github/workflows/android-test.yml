@@ -42,7 +42,9 @@ jobs:
       - run: cargo fetch --locked # (the crates exactly as Cargo.lock lists them; a stale lock file stops the build)
       - run: echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
       - run: npx tauri android init --ci
-      - run: python3 scripts/android_overlay.py
+      # with the real update key's public half (not secret), so the newest release's thinky-apk.sig
+      # checks out and step 11 reaches the "signed like this app" check (the debug key fails it)
+      - run: LEAN_UPDATE_KEY=$(tr -d ' \r\n' < ci/update-key.pub) python3 scripts/android_overlay.py
       # debug build: same code, plus WebView debugging so the test can drive the page
       - run: npx tauri android build --debug --apk --target x86_64 --ci
       - name: Collect APK

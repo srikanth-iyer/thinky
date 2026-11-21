@@ -2,10 +2,16 @@
 // compiles this file with android/test/ChecksTest.kt and runs it on a plain JVM (no phone, no Android
 // SDK). The Android code calls them: AiKeys (where a key may go), JournalWidget (the size a small
 // picture is read at), QuickCaptureActivity (whose picture it is, reading with a limit) and
-// SelectionCaptureActivity (how often and how much). Each says which rule of the app's it mirrors.
+// SelectionCaptureActivity (how often and how much), MainActivity (the update's signature file). Each
+// says which rule of the app's it mirrors.
 // The package line is added by scripts/android_overlay.py.
 
 import java.io.InputStream
+import java.security.KeyFactory
+import java.security.MessageDigest
+import java.security.PublicKey
+import java.security.Signature
+import java.security.spec.X509EncodedKeySpec
 
 object Checks {
   // ---- AI keys (Build 51; the outside review's claim 1): a service's key goes only to that service.
@@ -80,6 +86,170 @@ object Checks {
    *  `these` is empty (nothing known can't be "the same"). */
   fun <T> allAmong(these: List<T>?, those: List<T>?): Boolean =
     !these.isNullOrEmpty() && those != null && these.all { it in those }
+
+  // ---- the update's signature file (MainActivity.downloadUpdate; the outside review's item 3, Nov 21)
+  // Each release "build-N" carries thinky-apk.sig beside thinky.apk: JSON {"file", "version", "build",
+  // "sha256", "sig"} made by CI (scripts/update_sig.py sign-update), the same kind of file and the same
+  // key as the Windows installer's thinky-update.sig (core/src/update.rs update_text_to_verify, whose
+  // rules these mirror). "sig" is an ECDSA P-256 / SHA-256 signature (base64 of r‖s, 32 bytes each) of
+  // a short text naming the file, its version, the build and the file's SHA-256 checksum. The phone
+  // installs a download only if that signature checks out with the public key built into the app, so
+  // a file that isn't from the release job (or is a genuine older one offered as newer) is refused
+  // before Android's installer even sees it.
+
+  /** The APK and its signature file, as named on the downloads page. */
+  const val APK_FILE = "thinky.apk"
+  const val APK_SIG_FILE = "thinky-apk.sig"
+  /** A signature file is a few hundred bytes; anything far bigger isn't one (read with readAtMost). */
+  const val SIG_MAX_BYTES = 16 * 1024
+
+  /** The fixed start (DER) of a P-256 public key in the standard "SubjectPublicKeyInfo" form, before
+   *  the key's point 04‖X‖Y (scripts/update_sig.py SPKI_P256 is the same bytes). */
+  private val SPKI_P256 = hexBytes("3059301306072a8648ce3d020106082a8648ce3d030107034200")!!
+
+  /** A signature file's fields, as MainActivity read them from its JSON (null where one was missing or
+   *  of the wrong kind; `build` is null unless it was a whole number). */
+  data class UpdateSig(val file: String?, val version: String?, val build: Long?, val sha256: String?, val sig: String?)
+
+  /** "0.6.4" → (0, 6, 4); anything else (not three parts, not only digits, a part over 9 digits) →
+   *  null. As core update::parse_version. */
+  fun parseVersion(s: String?): Triple<Long, Long, Long>? {
+    val parts = s?.split('.') ?: return null
+    if (parts.size != 3) return null
+    // each part: 1 to 9 digits 0-9 (no sign, no spaces, no letters)
+    if (parts.any { p -> p.isEmpty() || p.length > 9 || !p.all { it in '0'..'9' } }) return null
+    return Triple(parts[0].toLong(), parts[1].toLong(), parts[2].toLong())
+  }
+
+  /** Is version `a` higher than version `b`? Compared part by part, the first part first. */
+  fun higherVersion(a: Triple<Long, Long, Long>, b: Triple<Long, Long, Long>): Boolean =
+    compareValuesBy(a, b, { it.first }, { it.second }, { it.third }) > 0
+
+  /** The exact text CI signs (core update::update_text, update_sig.py update_text). */
+  fun updateText(file: String, version: String, build: Long, sha256Hex: String): String =
+    "thinky-update-2\n$file\n$version\nbuild $build\n$sha256Hex\n"
+
+  /** Standard base64 (with or without "=" at the end) → bytes; null for anything else. As core
+   *  update::base64_decode (java.util.Base64 needs Android 8, and this runs on older phones too). */
+  fun base64Decode(text: String): ByteArray? {
+    val s = text.trim().trimEnd('=')
+    val out = java.io.ByteArrayOutputStream(s.length * 3 / 4)
+    var acc = 0   // bits read but not yet written out
+    var bits = 0  // how many of them
+    for (c in s) {
+      val v = when (c) {
+        in 'A'..'Z' -> c - 'A'
+        in 'a'..'z' -> c - 'a' + 26
+        in '0'..'9' -> c - '0' + 52
+        '+' -> 62
+        '/' -> 63
+        else -> return null // anything else (a space, a "-", a letter from another alphabet) isn't base64
+      }
+      acc = (acc shl 6) or v
+      bits += 6
+      if (bits >= 8) {
+        bits -= 8
+        out.write((acc shr bits) and 0xFF)
+        acc = acc and ((1 shl bits) - 1)
+      }
+    }
+    return out.toByteArray()
+  }
+
+  /** "0a1b…" (an even number of hex digits) → bytes; null for anything else. */
+  fun hexBytes(hex: String): ByteArray? {
+    if (hex.length % 2 != 0 || !hex.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) return null
+    return ByteArray(hex.length / 2) { i -> hex.substring(2 * i, 2 * i + 2).toInt(16).toByte() }
+  }
+
+  /** Bytes → lowercase hex ("0a1b…"). */
+  fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+
+  /** The SHA-256 checksum of everything `input` gives, in lowercase hex (MainActivity works it out
+   *  while it saves the download, so the file is read once). */
+  fun sha256Hex(input: InputStream): String {
+    val md = MessageDigest.getInstance("SHA-256")
+    val buf = ByteArray(64 * 1024)
+    while (true) {
+      val r = input.read(buf)
+      if (r < 0) break
+      md.update(buf, 0, r)
+    }
+    return hex(md.digest())
+  }
+
+  /** The update key's public half from the text built into the app (base64 of X‖Y, 64 bytes: as
+   *  ci/update-key.pub and Windows' LEAN_UPDATE_KEY), or null when there is none or it isn't a P-256
+   *  point (then every update is refused: a build made without the key can't check one). */
+  fun updateKey(b64: String?): PublicKey? {
+    val point = b64?.let { base64Decode(it) } ?: return null
+    if (point.size != 64 || !onP256(point)) return null
+    return try {
+      KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(SPKI_P256 + byteArrayOf(4) + point))
+    } catch (e: Exception) { null } // not a point on the curve, or no EC support: no key
+  }
+
+  /** Is X‖Y a point on the P-256 curve (y² = x³ − 3x + b, counted modulo the curve's prime p)? Java
+   *  doesn't always check this itself when it reads a key, so a mistyped key is caught here. */
+  fun onP256(point: ByteArray): Boolean {
+    if (point.size != 64) return false
+    val p = java.math.BigInteger("ffffffff00000001000000000000000000000000ffffffffffffffffffffffff", 16)
+    val b = java.math.BigInteger("5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b", 16)
+    val x = java.math.BigInteger(1, point.copyOfRange(0, 32)) // (1 = a positive number)
+    val y = java.math.BigInteger(1, point.copyOfRange(32, 64))
+    if (x >= p || y >= p) return false
+    val left = y.multiply(y).mod(p)
+    val right = x.pow(3).subtract(x.multiply(java.math.BigInteger.valueOf(3))).add(b).mod(p)
+    return left == right
+  }
+
+  /** r‖s (32 bytes each) → the DER form Java's Signature reads (SEQUENCE { INTEGER r, INTEGER s }).
+   *  As update_sig.py raw_to_der. */
+  fun rawToDer(raw: ByteArray): ByteArray? {
+    if (raw.size != 64) return null
+    fun integer(b: ByteArray): ByteArray {
+      var x = b.dropWhile { it == 0.toByte() }.toByteArray()                  // no leading zero bytes…
+      if (x.isEmpty()) x = byteArrayOf(0)                                     // …but zero is one 0 byte
+      if (x[0].toInt() and 0x80 != 0) x = byteArrayOf(0) + x                  // a set top bit would read as negative
+      return byteArrayOf(2, x.size.toByte()) + x                              // 2 = INTEGER, then its length
+    }
+    val body = integer(raw.copyOfRange(0, 32)) + integer(raw.copyOfRange(32, 64))
+    return byteArrayOf(0x30, body.size.toByte()) + body                       // 0x30 = SEQUENCE
+  }
+
+  /** Does `sig` (r‖s, base64) sign `text` with `key`? False for anything unreadable. */
+  fun signatureGood(key: PublicKey, text: String, sigB64: String): Boolean = try {
+    val der = base64Decode(sigB64)?.let { rawToDer(it) }
+    if (der == null) false
+    else Signature.getInstance("SHA256withECDSA").run {
+      initVerify(key)
+      update(text.toByteArray(Charsets.UTF_8))
+      verify(der)
+    }
+  } catch (e: Exception) { false }
+
+  /** Why the downloaded APK must not be installed, or null when its signature file checks out: the
+   *  file is for thinky.apk and for build `n` (the build the app asked for, never the file's word), its
+   *  version is higher than this app's (`ownVersion`), its checksum is the download's (`apkSha256`,
+   *  worked out by the app from the bytes it saved) and its signature is good for the text made from
+   *  those (as core update::update_text_to_verify). Fails closed: no key, no file, anything unreadable
+   *  is a reason. The words go after "Nothing was installed: ". */
+  fun apkSigProblem(key: PublicKey?, sig: UpdateSig?, n: Long, ownVersion: String?, apkSha256: String): String? {
+    if (key == null) return "this copy of thinky was built without the update key, so it can’t check an update"
+    if (sig == null) return "build $n has no signature file for the phone ($APK_SIG_FILE), so it can’t be checked"
+    if (sig.file != APK_FILE) return "the signature file is for ${sig.file ?: "no file"}, not $APK_FILE"
+    if (sig.build != n) return "the signature file isn’t for build $n"
+    val v = parseVersion(sig.version) ?: return "the signature file’s version (${sig.version}) can’t be read"
+    val own = parseVersion(ownVersion) ?: return "this app’s version ($ownVersion) can’t be read"
+    if (!higherVersion(v, own)) return "version ${sig.version} isn’t newer than this one ($ownVersion)"
+    val sha = sig.sha256?.lowercase()
+    if (sha == null || sha.length != 64 || hexBytes(sha) == null) return "the signature file’s checksum isn’t valid"
+    if (sha != apkSha256.lowercase()) return "the download doesn’t match its signature file (it may be damaged)"
+    // the text is made from what the app asked for and worked out itself: nothing in the file is taken on trust
+    val text = updateText(APK_FILE, sig.version!!, n, apkSha256.lowercase())
+    if (!signatureGood(key, text, sig.sig ?: "")) return "the download’s signature isn’t thinky’s (so it may not be genuine)"
+    return null
+  }
 
   // ---- the journal widget's small pictures (JournalWidget.thumb; the review's claim 14c)
 

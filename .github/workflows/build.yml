@@ -94,6 +94,20 @@ jobs:
       - run: sh src-tauri/pure_tests.sh
       # the page's modules that load on their own (math.js, render.js), in plain Node
       - run: node dev/ui-tests/unit.mjs
+      # the page's JavaScript type-checked (jsconfig.json: TypeScript's checker reads the code and its
+      # JSDoc types and stops the build on a type mistake, e.g. a number where text is expected)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22 }
+      - run: npm ci --ignore-scripts # (the Tauri command line and TypeScript; no install scripts)
+      - run: npm run typecheck
+      # the update signature files' script (scripts/update_sig.py, thinky-apk.sig among them), then the
+      # Android code's plain rules on a plain JVM (android/kotlin/Checks.kt: the phone's check of an
+      # update's signature file among them) and the overlay in both shapes (APK, Play bundle)
+      - run: python3 scripts/update_sig_test.py
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with: { distribution: temurin, java-version: '17' }
+      - run: bash android/test/run.sh
+      - run: python3 android/test/overlay_test.py
       - name: Speed check
         run: |
           cargo run --locked --release -p outline_core --example bench | tee bench.txt
@@ -418,7 +432,7 @@ jobs:
 
   # The APK, built unsigned: no secrets here (npm, cargo and Gradle run in this job).
   android:
-    needs: [test, number]
+    needs: [test, number, update-key]
     runs-on: ubuntu-latest
     outputs:
       sums: ${{ steps.collect.outputs.sums }}
@@ -442,7 +456,9 @@ jobs:
       - name: Use the runner's Android NDK
         run: echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
       - run: npx tauri android init --ci
+      # (the update key's public half goes into the APK: it checks each update's thinky-apk.sig with it)
       - run: python3 scripts/android_overlay.py
+        env: { LEAN_UPDATE_KEY: '${{ needs.update-key.outputs.pub }}' }
       - run: npx tauri android build --apk --target aarch64 --ci
       - run: cp "$(find src-tauri/gen/android -name '*release-unsigned.apk' | head -1)" LeanOutliner-unsigned.apk
       # The Google Play version: the same app as a bundle (.aab), without one-click updates (Play apps
@@ -616,8 +632,28 @@ jobs:
           [ -s "$RUNNER_TEMP/aab-manifest.pb" ] || { echo "::error::The Play bundle has no manifest."; exit 1; }
           if grep -a -q REQUEST_INSTALL_PACKAGES "$RUNNER_TEMP/aab-manifest.pb"; then echo "::error::The Play bundle asks to install apps (Play refuses that)."; exit 1; fi
           echo "::notice title=Play bundle signed::with the release key (certificate SHA-256 $AAB)"
+      # The APK's own signature file (the outside review's item 3, Nov 21, 2026): thinky-apk.sig, the
+      # same kind as thinky-update.sig and the same update key, for the signed thinky.apk's exact bytes,
+      # made for build N. The phone refuses an update whose file doesn't check out (Checks.apkSigProblem).
+      - name: Sign the APK's update file
+        env:
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          UPDATE_KEY_PEM: ${{ secrets.UPDATE_KEY_PEM }}
+          PUB: ${{ needs.update-key.outputs.pub }}
+          N: ${{ needs.number.outputs.n }}
+        run: |
+          set -euo pipefail
+          umask 077
+          KEY="$RUNNER_TEMP/update-key.pem"; trap 'rm -f "$KEY"' EXIT
+          [ -n "$KEY_PASS" ] && [ -n "$UPDATE_KEY_PEM" ] || { echo "::error::The release environment's secrets are missing. Never make a new key: installed apps would refuse every update."; exit 1; }
+          printf '%s\n' "$UPDATE_KEY_PEM" > "$KEY"
+          [ "$(python3 scripts/update_sig.py pub "$KEY")" = "$PUB" ] || { echo "::error::The signing key isn't the one the app is built with (ci/update-key.pub)."; exit 1; }
+          VERSION=$(python3 scripts/update_sig.py version)
+          python3 scripts/update_sig.py sign-update "$KEY" thinky.apk sig/thinky-apk.sig "$VERSION" "$N"
+          python3 scripts/update_sig.py check-update "$PUB" sig/thinky-apk.sig || { echo "::error::thinky-apk.sig doesn't check out."; exit 1; }
+          python3 scripts/update_sig.py apk-check "$PUB" thinky.apk sig/thinky-apk.sig "$N" || { echo "::error::thinky-apk.sig isn't right for this APK and build."; exit 1; }
       - id: signed
-        run: echo "sums=$(sha256sum thinky.apk thinky-play.aab sig/thinky-update.sig sig/thinky-setup.exe.sig sig/LeanOutliner-setup.exe.sig | sed 's| sig/| |' | base64 -w0)" >> "$GITHUB_OUTPUT"
+        run: echo "sums=$(sha256sum thinky.apk thinky-play.aab sig/thinky-update.sig sig/thinky-setup.exe.sig sig/LeanOutliner-setup.exe.sig sig/thinky-apk.sig | sed 's| sig/| |' | base64 -w0)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: update-signature, path: sig/* }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -683,6 +719,10 @@ jobs:
           keytool -genkeypair -noprompt -keystore "$KS" -storetype PKCS12 -alias leanoutliner -keyalg RSA -keysize 2048 -validity 10000 -storepass:env PASS -dname "CN=thinky (wip test build)"
           "$BT/apksigner" sign --ks "$KS" --ks-key-alias leanoutliner --ks-pass env:PASS --out thinky.apk aligned.apk
           "$BT/apksigner" verify thinky.apk
+          # the APK's own signature file, as on main (with this run's throw-away update key)
+          python3 scripts/update_sig.py sign-update "$KEY" thinky.apk sig/thinky-apk.sig "$VERSION" "$N"
+          python3 scripts/update_sig.py check-update "$PUB" sig/thinky-apk.sig || { echo "::error::thinky-apk.sig doesn't check out."; exit 1; }
+          python3 scripts/update_sig.py apk-check "$PUB" thinky.apk sig/thinky-apk.sig "$N" || { echo "::error::thinky-apk.sig isn't right for this APK and build."; exit 1; }
           cp unsigned/thinky-play-unsigned.aab thinky-play.aab
           jarsigner -keystore "$KS" -storepass:env PASS thinky-play.aab leanoutliner > /dev/null
           jarsigner -verify thinky-play.aab > "$RUNNER_TEMP/aab-verify.txt" || true
@@ -798,13 +838,13 @@ jobs:
           set -euo pipefail
           [ -n "$WIN" ] && [ -n "$SIGNED" ] || { echo "::error::A job didn't say what it made."; exit 1; }
           cd dist && { printf '%s' "$WIN" | base64 -d; printf '%s' "$SIGNED" | base64 -d; } | sha256sum -c -
-          [ "$(ls | wc -l)" = 7 ] || { echo "::error::Unexpected files to publish: $(ls)"; exit 1; }
+          [ "$(ls | wc -l)" = 8 ] || { echo "::error::Unexpected files to publish: $(ls)"; exit 1; }
           # the old names as well (Build 35 renamed the downloads): Build 34 and older look for these
           # to update, and old links point at them. LeanOutliner-setup.exe.sig is signed for that name.
           cp thinky-setup.exe LeanOutliner-setup.exe
           cp thinky-portable.exe LeanOutliner-portable.exe
           cp thinky.apk LeanOutliner.apk
-          [ "$(ls | wc -l)" = 10 ] || { echo "::error::Unexpected files to publish: $(ls)"; exit 1; }
+          [ "$(ls | wc -l)" = 11 ] || { echo "::error::Unexpected files to publish: $(ls)"; exit 1; }
       - name: Release notes
         env:
           MSG: ${{ github.event.head_commit.message }}

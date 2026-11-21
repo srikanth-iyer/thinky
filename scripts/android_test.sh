@@ -330,7 +330,9 @@ fi
 #     apps" screen first; once allowed, the newest release is downloaded from the public repo's
 #     releases (skipped before its first, Build 34) and checked (this test build is 0.1.0, so any release is newer). The release is signed
 #     with the real key and this test build with a debug key, so the app itself must refuse it, before
-#     Android's installer. Then the steps after a good download (a test-build-only path hands Android's
+#     Android's installer: a release with a thinky-apk.sig (after Build 55) passes that file's check (the
+#     test build holds the real update key, android-test.yml) and is refused as "not signed like this
+#     app"; an older release has no such file and is refused for that. Then the steps after a good download (a test-build-only path hands Android's
 #     installer the app's own APK): Android asks to go ahead, the test cancels, and the app says so.
 LATEST=$(curl -sS -o /dev/null -w '%{redirect_url}' https://github.com/srikanth-iyer/thinky/releases/latest | grep -o 'build-[0-9]*$')
 log "newest release on the public repo: ${LATEST:-none yet}"
@@ -580,7 +582,7 @@ result "Back at the start leaves the app for the home screen" "[ -n '$TOP' ] && 
 result "the app keeps running after leaving" "[ -n '$LEFT' ]"
 [ -n "$LATEST" ] && result "Update now asks for Android's “Install unknown apps” first" "echo \"\$UPD\" | grep -q '\"permission\"' && echo \"\$UNKNOWN\" | grep -q 'com.android.settings'"
 if [ -n "$LATEST" ]; then
-result "allowed, the newest release downloads and the app refuses it: not signed like this test build" "[ \"\$ST\" = error ] && echo \"\$REFUSED\" | grep -q 'signed like this app'"
+result "allowed, the newest release downloads and the app refuses it: not signed like this test build (or, before Build 56, no signature file)" "[ \"\$ST\" = error ] && echo \"\$REFUSED\" | grep -q -e 'signed like this app' -e 'no signature file for the phone'"
 result "handed a good download, Android's installer asks to go ahead; cancelled, the app says so" "echo \"\$ASKED\" | grep -qi 'packageinstaller' && echo \"\$CANCELLED\" | grep -q 'cancelled'"
 else
   # (only before this repo's first release, Build 34: the app looks for updates here from then on)

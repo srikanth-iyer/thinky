@@ -184,7 +184,140 @@ fun frontMatter() {
 }
 
 fun main() {
-  aiKeys(); thumbs(); sharing(); selection(); todo(); signatures(); frontMatter()
+  aiKeys(); thumbs(); sharing(); selection(); todo(); signatures(); frontMatter(); updateSignature()
   println("Checks.kt: $passed passed, $failed failed")
   if (failed > 0) kotlin.system.exitProcess(1)
+}
+
+// ---- the update's signature file (Checks.apkSigProblem; MainActivity.downloadUpdate)
+
+// Made once (Nov 21, 2026) with scripts/update_sig.py and a throw-away key (its private half was
+// deleted; it signs nothing real): `sign-update key.pem thinky.apk thinky-apk.sig 1.2.3 57`, where
+// thinky.apk held FIXTURE_APK. So this checks the phone reads exactly what CI writes.
+const val FIXTURE_KEY = "GujNI3y9EL2II7ODeal1Npt7J82Fnpclbsh8TiJmf8L+zsL+2wqRHDMc95BPM59ERcb8vf65V7SN8GcspvjpjQ=="
+const val FIXTURE_APK = "not really an app: the bytes the signature test checks\n"
+const val FIXTURE_SHA = "5a6db7aee11d103046c636bef811afb4b7173850d2e8ebe2ef52e04234d8cf7f"
+const val FIXTURE_SIG = "AvP/YtLOLoeKOgPv/4OK/YYTDtkSO6ymQ/ET9g5z8s5GDWL5O2AWUNVGHYswQFhcfQk6dzg84IK7tmDLTpsAkw=="
+val FIXTURE = Checks.UpdateSig("thinky.apk", "1.2.3", 57L, FIXTURE_SHA, FIXTURE_SIG)
+
+/** Java's DER signature → r‖s (what update_sig.py der_to_raw does), for signing in the tests. */
+fun derToRaw(der: ByteArray): ByteArray {
+  var i = 2 // after SEQUENCE and its (short) length
+  val out = ByteArray(64)
+  for (k in 0..1) {
+    val n = der[i + 1].toInt()
+    val v = java.math.BigInteger(1, der.copyOfRange(i + 2, i + 2 + n)).toByteArray().let { if (it.size > 32) it.copyOfRange(it.size - 32, it.size) else it }
+    System.arraycopy(v, 0, out, 32 * k + 32 - v.size, v.size)
+    i += 2 + n
+  }
+  return out
+}
+
+/** A fresh P-256 key, its public half as the app holds it (base64 X‖Y), and a signer with it. */
+class TestKey {
+  val pair: java.security.KeyPair = java.security.KeyPairGenerator.getInstance("EC").apply {
+    initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
+  }.generateKeyPair()
+  val pub: String = java.util.Base64.getEncoder().encodeToString(pair.public.encoded.copyOfRange(27, 91)) // the DER's last 64 bytes: X‖Y
+  fun sign(text: String): String = java.security.Signature.getInstance("SHA256withECDSA").run {
+    initSign(pair.private)
+    update(text.toByteArray(Charsets.UTF_8))
+    java.util.Base64.getEncoder().encodeToString(derToRaw(sign()))
+  }
+  /** A whole signature file for `sha`, as CI would make it. */
+  fun file(sha: String, version: String = "0.7.0", build: Long = 56L, name: String = "thinky.apk") =
+    Checks.UpdateSig(name, version, build, sha, sign(Checks.updateText(name, version, build, sha)))
+}
+
+fun updateSignature() {
+  // the bits it's made of
+  eq("versions read", Checks.parseVersion("0.6.4"), Triple(0L, 6L, 4L))
+  for (bad in listOf(null, "", "0.6", "0.6.4.1", "0.6.x", "0.6.-1", " 0.6.4", "0.6.4 ", "1..2", "0.6.1234567890", "v0.6.4", "0.6.4\n"))
+    eq("not a version: '$bad'", Checks.parseVersion(bad), null)
+  eq("higher middle", Checks.higherVersion(Triple(0, 7, 0), Triple(0, 6, 9)), true)
+  eq("higher last", Checks.higherVersion(Triple(0, 6, 5), Triple(0, 6, 4)), true)
+  eq("higher first", Checks.higherVersion(Triple(1, 0, 0), Triple(0, 99, 99)), true)
+  eq("the same isn't higher", Checks.higherVersion(Triple(0, 6, 4), Triple(0, 6, 4)), false)
+  eq("lower isn't higher", Checks.higherVersion(Triple(0, 5, 99), Triple(0, 6, 0)), false)
+  eq("10 is above 9 (numbers, not letters)", Checks.higherVersion(Triple(0, 10, 0), Triple(0, 9, 0)), true)
+  eq("the signed text (core update_text)", Checks.updateText("thinky.apk", "0.7.0", 56, "ab"), "thinky-update-2\nthinky.apk\n0.7.0\nbuild 56\nab\n")
+  eq("base64", Checks.base64Decode("aGk=")?.toString(Charsets.UTF_8), "hi")
+  eq("base64 without the =", Checks.base64Decode("aGk")?.toString(Charsets.UTF_8), "hi")
+  eq("not base64", Checks.base64Decode("a-k="), null)
+  eq("base64 with a space inside", Checks.base64Decode("aG k="), null)
+  eq("hex", Checks.hexBytes("00ff10")?.toList(), listOf<Byte>(0, -1, 16))
+  eq("odd hex", Checks.hexBytes("abc"), null)
+  eq("not hex", Checks.hexBytes("zz"), null)
+  eq("hex back", Checks.hex(byteArrayOf(0, -1, 16)), "00ff10")
+  eq("sha256 of the fixture", Checks.sha256Hex(FIXTURE_APK.byteInputStream()), FIXTURE_SHA)
+  eq("sha256 of nothing", Checks.sha256Hex(ByteArray(0).inputStream()), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+  eq("the DER form keeps a top-bit r positive", Checks.rawToDer(ByteArray(64) { 0x80.toByte() })!!.toList().subList(0, 5), listOf<Byte>(0x30, 70, 2, 33, 0))
+  eq("the DER form drops leading zeros", Checks.rawToDer(ByteArray(32) + ByteArray(31) + byteArrayOf(5))!!.toList(), listOf<Byte>(0x30, 6, 2, 1, 0, 2, 1, 5))
+  eq("r‖s must be 64 bytes", Checks.rawToDer(ByteArray(63)), null)
+
+  // the key built into the app
+  check("the fixture's key reads", Checks.updateKey(FIXTURE_KEY) != null)
+  check("ci/update-key.pub (the real key) reads", Checks.updateKey(java.io.File(System.getProperty("repo", "."), "ci/update-key.pub").readText().trim()) != null)
+  for (bad in listOf(null, "", "__UPDATE_KEY__", "AAAA", FIXTURE_KEY.dropLast(4), FIXTURE_KEY + "AAAA",
+      java.util.Base64.getEncoder().encodeToString(ByteArray(64)), // all zeros: not a point on the curve
+      java.util.Base64.getEncoder().encodeToString(ByteArray(64) { 1 })))
+    eq("no key from '${bad?.take(12)}'", Checks.updateKey(bad), null)
+
+  check("a fresh key's point is on the curve", Checks.onP256(Checks.base64Decode(TestKey().pub)!!))
+  check("a point moved by one is off the curve", !Checks.onP256(Checks.base64Decode(FIXTURE_KEY)!!.also { it[63] = (it[63].toInt() xor 1).toByte() }))
+  check("63 bytes isn't a point", !Checks.onP256(ByteArray(63)))
+
+  // what CI makes (update_sig.py) checks out on the phone
+  val key = Checks.updateKey(FIXTURE_KEY)
+  eq("the fixture: genuine", Checks.apkSigProblem(key, FIXTURE, 57, "1.2.2", FIXTURE_SHA), null)
+  eq("the fixture, checksum in capitals", Checks.apkSigProblem(key, FIXTURE.copy(sha256 = FIXTURE_SHA.uppercase()), 57, "1.2.2", FIXTURE_SHA.uppercase()), null)
+  eq("the fixture, signature without its =", Checks.apkSigProblem(key, FIXTURE.copy(sig = FIXTURE_SIG.trimEnd('=')), 57, "1.2.2", FIXTURE_SHA), null)
+
+  // every way it must be refused, each with its own reason
+  fun refused(what: String, got: String?, says: String) = check("$what is refused ($got)", got != null && says in got)
+  val other = "0".repeat(64)
+  refused("no key in the app", Checks.apkSigProblem(null, FIXTURE, 57, "1.2.2", FIXTURE_SHA), "without the update key")
+  refused("no signature file", Checks.apkSigProblem(key, null, 57, "1.2.2", FIXTURE_SHA), "no signature file")
+  refused("a changed download", Checks.apkSigProblem(key, FIXTURE, 57, "1.2.2", other), "doesn’t match")
+  refused("another build", Checks.apkSigProblem(key, FIXTURE, 58, "1.2.2", FIXTURE_SHA), "isn’t for build 58")
+  refused("the same version", Checks.apkSigProblem(key, FIXTURE, 57, "1.2.3", FIXTURE_SHA), "isn’t newer")
+  refused("an older version", Checks.apkSigProblem(key, FIXTURE, 57, "2.0.0", FIXTURE_SHA), "isn’t newer")
+  refused("this app's version unreadable", Checks.apkSigProblem(key, FIXTURE, 57, null, FIXTURE_SHA), "can’t be read")
+  refused("its version edited up", Checks.apkSigProblem(key, FIXTURE.copy(version = "1.2.4"), 57, "1.2.2", FIXTURE_SHA), "isn’t thinky’s")
+  refused("its version unreadable", Checks.apkSigProblem(key, FIXTURE.copy(version = "1.2"), 57, "1.2.2", FIXTURE_SHA), "can’t be read")
+  refused("its version missing", Checks.apkSigProblem(key, FIXTURE.copy(version = null), 57, "1.2.2", FIXTURE_SHA), "can’t be read")
+  refused("its build edited", Checks.apkSigProblem(key, FIXTURE.copy(build = 58), 58, "1.2.2", FIXTURE_SHA), "isn’t thinky’s")
+  refused("its build missing", Checks.apkSigProblem(key, FIXTURE.copy(build = null), 57, "1.2.2", FIXTURE_SHA), "isn’t for build")
+  refused("a Windows file", Checks.apkSigProblem(key, FIXTURE.copy(file = "thinky-setup.exe"), 57, "1.2.2", FIXTURE_SHA), "not thinky.apk")
+  refused("no file named", Checks.apkSigProblem(key, FIXTURE.copy(file = null), 57, "1.2.2", FIXTURE_SHA), "not thinky.apk")
+  refused("the checksum edited to the download's", Checks.apkSigProblem(key, FIXTURE.copy(sha256 = other), 57, "1.2.2", other), "isn’t thinky’s")
+  refused("a short checksum", Checks.apkSigProblem(key, FIXTURE.copy(sha256 = "abc"), 57, "1.2.2", "abc"), "isn’t valid")
+  refused("a checksum that isn't hex", Checks.apkSigProblem(key, FIXTURE.copy(sha256 = "g".repeat(64)), 57, "1.2.2", "g".repeat(64)), "isn’t valid")
+  refused("no checksum", Checks.apkSigProblem(key, FIXTURE.copy(sha256 = null), 57, "1.2.2", FIXTURE_SHA), "isn’t valid")
+  refused("no signature", Checks.apkSigProblem(key, FIXTURE.copy(sig = null), 57, "1.2.2", FIXTURE_SHA), "isn’t thinky’s")
+  refused("a signature that isn't base64", Checks.apkSigProblem(key, FIXTURE.copy(sig = "%%%"), 57, "1.2.2", FIXTURE_SHA), "isn’t thinky’s")
+  refused("a short signature", Checks.apkSigProblem(key, FIXTURE.copy(sig = FIXTURE_SIG.substring(4)), 57, "1.2.2", FIXTURE_SHA), "isn’t thinky’s")
+  refused("an all-zero signature", Checks.apkSigProblem(key, FIXTURE.copy(sig = java.util.Base64.getEncoder().encodeToString(ByteArray(64))), 57, "1.2.2", FIXTURE_SHA), "isn’t thinky’s")
+  val flipped = Checks.base64Decode(FIXTURE_SIG)!!.also { it[40] = (it[40].toInt() xor 1).toByte() }
+  refused("one bit of the signature changed", Checks.apkSigProblem(key, FIXTURE.copy(sig = java.util.Base64.getEncoder().encodeToString(flipped)), 57, "1.2.2", FIXTURE_SHA), "isn’t thinky’s")
+
+  // another key: a file signed by anyone but the release job is refused
+  val stranger = TestKey()
+  refused("signed with another key", Checks.apkSigProblem(key, stranger.file(FIXTURE_SHA, "1.2.3", 57), 57, "1.2.2", FIXTURE_SHA), "isn’t thinky’s")
+  // the old kind of text (thinky-setup.exe.sig's "lean-outliner-update") signed with the right key isn't accepted either
+  val mine = TestKey()
+  val oldKind = Checks.UpdateSig("thinky.apk", "0.7.0", 56, FIXTURE_SHA, mine.sign("lean-outliner-update\nthinky.apk\n0.7.0\n$FIXTURE_SHA\n"))
+  refused("the old kind of signed text", Checks.apkSigProblem(Checks.updateKey(mine.pub), oldKind, 56, "0.6.4", FIXTURE_SHA), "isn’t thinky’s")
+
+  // many fresh signatures (r and s of every shape: a top bit set, leading zero bytes) all check out,
+  // and each is refused for any other build, version or checksum
+  var good = 0
+  repeat(200) { i ->
+    val k = if (i % 20 == 0) TestKey() else mine
+    val sha = Checks.sha256Hex("apk $i".byteInputStream())
+    val f = k.file(sha, "0.7.$i", 56L + i)
+    if (Checks.apkSigProblem(Checks.updateKey(k.pub), f, 56L + i, "0.6.4", sha) == null) good++
+    else println("FAIL fresh signature $i: ${Checks.apkSigProblem(Checks.updateKey(k.pub), f, 56L + i, "0.6.4", sha)}")
+  }
+  eq("200 fresh signatures check out", good, 200)
 }
