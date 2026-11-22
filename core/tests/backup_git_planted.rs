@@ -58,7 +58,10 @@ fn attacker_gitdir(notes: &Path, at: &str, wt: &str, extra: &str) {
     }
     let cfg = std::fs::read_to_string(notes.join(at).join("config")).unwrap();
     put(notes, &format!("{at}/config"), format!("{cfg}{extra}").as_bytes());
-    put(notes, &format!("{wt}/f.md"), b"- x\n");
+    // the work tree's own copy; an empty `wt` is the notes folder's top ("/f.md" would be the
+    // computer's root folder, which only an administrator may write to)
+    let f = if wt.is_empty() { "f.md".to_string() } else { format!("{wt}/f.md") };
+    put(notes, &f, b"- x\n");
     let _ = std::fs::remove_dir_all(&src);
 }
 fn base_notes(tag: &str) -> PathBuf {
