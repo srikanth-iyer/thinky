@@ -53,7 +53,14 @@ fn skip_dir(rel: &str) -> bool {
 pub fn git_special(name: &str) -> bool {
     let low: String = name.chars().filter(|c| !matches!(*c as u32, 0x200C..=0x200F | 0x202A..=0x202E | 0x206A..=0x206F | 0xFEFF)).collect::<String>().to_lowercase();
     let t = low.trim_end_matches(['.', ' ']);
-    t.starts_with(".git") || t.starts_with("git~")
+    // Windows' short name for ".git…" is "GIT~1", "GIT~2"…
+    let short = t.strip_prefix("git~").is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()));
+    matches!(t, ".git" | ".gitmodules" | ".gitattributes" | ".gitignore") || short
+}
+/// The files for the git backup: `backup_files` without any path that has a part named like git's own
+/// (`git_special`), file or folder, at any depth. (Zip backups keep them: a zip runs nothing.)
+fn git_files(files: BTreeMap<String, (PathBuf, u64, u64)>) -> BTreeMap<String, (PathBuf, u64, u64)> {
+    files.into_iter().filter(|(rel, _)| !rel.split('/').any(git_special)).collect()
 }
 fn skip_file(name: &str) -> bool {
     let low = name.to_ascii_lowercase();
@@ -70,8 +77,8 @@ pub fn backup_files(root: &Path) -> BTreeMap<String, (PathBuf, u64, u64)> {
             let name = e.file_name().to_string_lossy().into_owned();
             let r = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
             let Ok(ft) = e.file_type() else { continue };
-            if ft.is_symlink() || git_special(&name) {
-                continue; // (never follow a link out of the folder; never copy git's own names, file or folder)
+            if ft.is_symlink() {
+                continue; // (never follow a link out of the folder)
             }
             if ft.is_dir() {
                 if !skip_dir(&r) {
@@ -507,7 +514,7 @@ fn remove_planted(dir: &Path, repo: &Path) {
 #[doc(hidden)] // (pub for tests)
 pub fn mirror(files: &BTreeMap<String, (PathBuf, u64, u64)>, repo: &Path) -> Result<(usize, Vec<String>), String> {
     remove_planted(repo, repo);
-    let there = backup_files(repo);
+    let there = git_files(backup_files(repo));
     let mut copied = 0;
     let mut unread = vec![];
     let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
@@ -553,11 +560,11 @@ pub fn backup_git(root: &Path, repo: &Path, push: bool, stamp: &str) -> BackupRe
     if !repo.join(".git").exists() {
         return fail(format!("{} isn't a git repository. Clone your backup repository there first (git clone …).", repo.display()));
     }
-    let files = backup_files(root);
+    let files = git_files(backup_files(root));
     if let Err(e) = looks_like_notes(root, &files) {
         return fail(e);
     }
-    let before = backup_files(&repo).len();
+    let before = git_files(backup_files(&repo)).len();
     let unread = match mirror(&files, &repo) {
         Ok((_, unread)) => unread,
         Err(e) => return fail(e),

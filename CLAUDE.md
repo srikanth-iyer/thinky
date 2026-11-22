@@ -1660,8 +1660,10 @@ it; the first save of a new page writes only where no file is: one that turned u
   most 1 s). A merge in `App::save` that takes out notes this device left as they were (`merge::theirs_removed`:
   more notes gone there than new ones) first keeps the page as it was in `logseq/bak`: a real deletion
   elsewhere and a file cut short by a sync app look the same; a file that is only the first part of the
-  version last read, cut mid-line, is a clash (core/tests/truncated_merge.rs). Notes the merge removes are
-  never lost without a copy.
+  version last read, cut inside a line (not at a line's end: Logseq's files end with no line break, so a
+  last note deleted elsewhere looks like that), is a clash (core/tests/truncated_merge.rs). A copy that
+  can't be made goes to the problems log and never stops the save. A retry runs only while that page is
+  still on screen (`keepCopy` clears it), never for a renamed/moved file or a waiting clash.
 
 ## Where outside input gets in (security review, Oct 30, 2026)
 Anything a web page, another app, a synced file or config.edn brings is data, never a command or a
@@ -1712,9 +1714,9 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
   keeps Android's `LeanAndroid` bridge to the app's own page). (tests/pages.rs)
 - A web link never opens a window of the app's own: in the app, a middle click or a click with
   Ctrl/Shift/Alt on one goes to the browser through `App.openUrl` (app.js `start`), as a plain click does.
-- The git backup (backup.rs): nothing named like git's own files (`git_special`: `.git`, `.gitmodules`,
-  `.gitattributes`, `.gitignore`, any case, Windows' trailing dots/spaces and `GIT~1`, macOS's ignorable
-  characters) is copied from the notes folder, file or folder, at any depth (a planted `sub/.git` FILE,
+- The git backup (backup.rs): nothing named like git's own files (`git_special`: exactly `.git`, `.gitmodules`,
+  `.gitattributes`, `.gitignore`, any case, Windows' trailing dots/spaces and `GIT~<n>`, macOS's ignorable
+  characters) is copied from the notes folder into the git repo (`git_files`; zips keep them), file or folder, at any depth (a planted `sub/.git` FILE,
   "gitdir: ../gd", pointed git at a folder of someone else's settings: `core.fsmonitor` or a clean filter ran
   their command during a backup; a top `.git` file stopped every backup; a `.gitignore` of `*` kept new
   notes out). Such files an older backup left in the repo's subfolders are removed (`remove_planted`). git

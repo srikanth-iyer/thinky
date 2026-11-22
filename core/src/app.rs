@@ -1494,8 +1494,11 @@ impl App {
                     // A file that is only the first part of that version, cut off in the middle of a
                     // line, is another program caught halfway through writing it (a sync app): never
                     // merged, so the cut-off notes can't be taken as deleted. The clash screen instead.
+                    // (cut at a line's end, it reads like the last notes deleted elsewhere, in a file
+                    // with no line break at its end as Logseq writes them: merged, with a copy, below)
                     if let (Some(c), Some(bt)) = (&current, &base_text) {
-                        if !c.is_empty() && c.len() < bt.len() && bt.starts_with(c.as_str()) && !c.ends_with('\n') {
+                        let in_a_line = || bt.as_bytes().get(c.len()).is_some_and(|b| !matches!(b, b'\n' | b'\r'));
+                        if !c.is_empty() && c.len() < bt.len() && bt.starts_with(c.as_str()) && !c.ends_with('\n') && in_a_line() {
                             return Ok(SaveRes { ok: false, hash: cur_hash, conflict: true, merged: None });
                         }
                     }
@@ -1509,7 +1512,11 @@ impl App {
                             let base = req.base.as_ref().map(|b| &b.blocks[..]).unwrap_or(&[]);
                             if !kept_base && crate::merge::theirs_removed(base, &req.doc.blocks, &theirs.blocks) {
                                 if let Some(bt) = &base_text {
-                                    self.backup(&rel, bt)?;
+                                    // (a copy that can't be made never stops the save: it goes to the
+                                    // problems log, and the start-up safety copy may still have the page)
+                                    if let Err(e) = self.backup(&rel, bt) {
+                                        crate::log::record(&format!("Couldn't keep {rel} in logseq/bak before saving a merge that took notes out: {e}"));
+                                    }
                                     kept_base = true;
                                 }
                             }

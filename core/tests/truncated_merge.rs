@@ -163,3 +163,44 @@ fn an_edit_elsewhere_plus_a_cut_tail_still_keeps_a_copy() {
     assert_eq!(after, "- note one, edited here\n- note two, phone\n- note three\n");
     assert!(kept.iter().any(|p| p.to_string_lossy().contains("bak")), "{kept:?}");
 }
+
+/// Like `run`, for a page whose file is `full` (Logseq writes no line break at the end).
+fn run_with(tag: &str, full: &str, disk: &str) -> (bool, bool, String, usize) {
+    let v = setup(tag);
+    put(&v, REL, full);
+    let mut app = App::open(&v).unwrap();
+    let pv = app.page("Note", None);
+    let mut mine = pv.doc.clone();
+    mine.blocks[0].text = "note one, edited here".into();
+    put(&v, REL, disk);
+    let r = app.save(SaveReq { name: "Note".into(), doc: mine, base_hash: pv.hash, force: false, path: Some(REL.into()), base: Some(pv.doc) }).unwrap();
+    (r.ok, r.conflict, std::fs::read_to_string(v.join(REL)).unwrap(), bak_copies(&v).len())
+}
+
+#[test]
+fn the_last_note_deleted_elsewhere_in_a_file_with_no_final_line_break_merges() {
+    // a real deletion, not a cut: merged as before (no clash), with a copy of the page as it was
+    let (ok, conflict, after, copies) = run_with("nolf", "- note one\n- note two\n- note three", "- note one\n- note two");
+    assert!(ok && !conflict, "merged, not a clash");
+    assert_eq!(after, "- note one, edited here\n- note two");
+    assert_eq!(copies, 1);
+    // the same with a line break at the end of the file before
+    let (ok, conflict, after, _) = run_with("lf", "- note one\n- note two\n- note three\n", "- note one\n- note two");
+    assert!(ok && !conflict, "merged, not a clash: {after:?}");
+}
+
+#[test]
+fn a_copy_that_cant_be_made_never_stops_the_save() {
+    // logseq/bak can't be made (a file stands in its place): the merge is still saved
+    let v = setup("nobak");
+    put(&v, REL, FULL);
+    std::fs::write(v.join("logseq").join("bak"), "not a folder").unwrap();
+    let mut app = App::open(&v).unwrap();
+    let pv = app.page("Note", None);
+    let mut mine = pv.doc.clone();
+    mine.blocks[0].text = "note one, edited here".into();
+    put(&v, REL, "- note one\n- note two\n");
+    let r = app.save(SaveReq { name: "Note".into(), doc: mine, base_hash: pv.hash, force: false, path: Some(REL.into()), base: Some(pv.doc) }).unwrap();
+    assert!(r.ok && !r.conflict);
+    assert_eq!(std::fs::read_to_string(v.join(REL)).unwrap(), "- note one, edited here\n- note two\n");
+}

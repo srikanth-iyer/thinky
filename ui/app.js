@@ -334,6 +334,7 @@ class App {
   /** Typing that couldn't be saved (e.g. the file is offline), on a page about to leave the screen:
    *  a copy goes to logseq/bak first. */
   async keepCopy(o) {
+    clearTimeout(o.timer); // (no save tried again later by an editor leaving the screen: editor.js save)
     if (!o.dirty || o.readonly) return;
     try { await call('backup', { name: o.name, doc: o.doc }); this.toast(`Couldn’t save “${o.name}”; a copy of your changes is in logseq/bak.`, 6000); }
     catch (e) { this.toast(`Couldn’t save “${o.name}”: ${e}`, 6000); }

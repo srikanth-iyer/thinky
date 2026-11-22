@@ -200,7 +200,7 @@ fn git_special_names() {
     for n in [".git", ".GIT", ".git.", ".git ", ".gitmodules", ".gitattributes", ".gitignore", "GIT~1", ".g\u{200C}it"] {
         assert!(git_special(n), "{n:?}");
     }
-    for n in ["git.md", "notes.git.md", "digit", "pages", "a.gitx.md"] {
+    for n in ["git.md", "notes.git.md", "digit", "pages", "a.gitx.md", ".github", ".gitkeep", ".gitlab-ci.yml", "git~notes.md"] {
         assert!(!git_special(n), "{n:?}");
     }
 }

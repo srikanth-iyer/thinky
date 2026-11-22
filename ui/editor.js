@@ -2781,11 +2781,18 @@ export class Outline {
         // only here, so a copy goes to logseq/bak now (backupPending; one per version), and the save
         // is tried again by itself: after 5 s, then 10, 20, 40, then every minute, typing or not.
         // (the message only the first time: not once a minute while the file stays offline)
+        // (not when trying again can't help: the page's file was renamed or moved, or a clash waits for
+        // his choice; and only while this page is still on screen: a page he left had its copy kept
+        // then, App.keepCopy, and an old editor must never save into the page later)
         const first = !this.retryMs;
         this.backupPending();
-        this.retryMs = Math.min((this.retryMs || 2500) * 2, 60000);
-        this.flushSoon(this.retryMs);
-        if (first) this.app.toast('Couldn’t save “' + this.name + '” yet (' + err + '). Trying again; a copy of your typing is kept in logseq/bak.', 6000);
+        const again = !this.conflict && !/renamed or moved/.test(String(err));
+        if (again) {
+          this.retryMs = Math.min((this.retryMs || 2500) * 2, 60000);
+          clearTimeout(this.timer);
+          this.timer = setTimeout(() => { if (this.el.isConnected && this.app.outlines.includes(this)) this.save(); }, this.retryMs);
+        }
+        if (first || !again) this.app.toast('Couldn’t save “' + this.name + '”' + (again ? ' yet' : '') + ' (' + err + '). ' + (again ? 'Trying again; a' : 'A') + ' copy of your typing is kept in logseq/bak.', 6000);
       }
     })();
     const all = this.saving.finally(() => {
