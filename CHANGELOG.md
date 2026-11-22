@@ -14,6 +14,16 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 57 · version 0.6.6 (November 2026)
+
+Fixes from a fresh full review (Nov 22), each checked again by a second reviewer.
+
+- Typing that couldn't be saved (the file locked, the folder offline) is no longer lost when the window closes or the phone puts the app away: a copy goes to logseq/bak first, and a failed save now tries again by itself every few seconds while the page is open.
+- A page that another program had cut short on disk (a sync app caught halfway through writing it) could lose its last notes when you saved. Now, whenever a save removes notes you didn't remove, the old page is copied to logseq/bak first, and a file cut off in the middle of a line counts as a clash.
+- Git backup: files named like git's own (`.git`, `.gitmodules`, `.gitattributes`, `.gitignore`) in the notes folder are no longer copied into the backup repo, and git runs with its risky settings switched off. Before, a file planted in a synced notes folder could make the backup run a command, fail every time, leave notes out, or push them somewhere else. Zip backups still keep those files.
+- Saving a page that many other notes link to is fast again (670 ms → 4 ms with 20,000 links).
+- Under the hood: the unused Play key export workflow and its key file are gone (the key is already with Google Play).
+
 ## Build 56 · version 0.6.5 (November 2026)
 
 The rest of the outside code review (Nov 21): two more of its suggestions.
