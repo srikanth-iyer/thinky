@@ -212,10 +212,16 @@ console.log('AI panels: their Esc listeners go with them');
     document.removeEventListener = (t, f, o) => { if (t === 'keydown' && o === true && mine.has(f)) { mine.delete(f); window.__held.delete(f); window.__keys--; } return rem(t, f, o); };
   });
   for (let k = 0; k < 3; k++) {
+    // mark the panel the round before left open, so the wait below is for the new one: the menu's
+    // choice makes the panel a moment after the click (it loads ai-page.js first), and a wait for any
+    // panel was met at once by the old one. On GitHub's slower machines the third panel then came
+    // after the Esc below: Esc closed the second, the third opened, one panel and listener were left.
+    await page.evaluate(() => document.querySelector('.ai-panel')?.setAttribute('data-old', ''));
     await page.click('.title-row [data-a="more"]');
     await page.waitForSelector('.pop:not([hidden])');
     await page.locator('.pop:not([hidden]) :text("Ask about this page")').click();
-    await page.waitForSelector('.ai-panel');
+    // (the new panel takes the old one's place, so only the new one has no data-old)
+    await page.waitForSelector('.ai-panel:not([data-old])');
   }
   check(await page.locator('.ai-panel').count() === 1, 'one panel at a time');
   check(await count() === 1, 'three opened, one listener left (the open one’s)', await count());
