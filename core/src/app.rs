@@ -1468,6 +1468,8 @@ impl App {
             return Err("This page's file changed (it was renamed or moved), so nothing was saved. Open the page again.".into());
         }
         let path = self.root.join(&rel);
+        // (set once a copy of the page as it was went to logseq/bak, so a retry below makes no second one)
+        let mut kept_base = false;
         // The new text replaces exactly the bytes read (`Expect::Bytes`, checked again right before
         // it's written): a version saved elsewhere in between (Google Drive bringing the phone's, at
         // the very moment) is never written over; it's read again and merged like any other.
@@ -1482,9 +1484,37 @@ impl App {
                         self.backup(&rel, c)?;
                     }
                 } else {
+                    // the page as this device last read it: the text in memory when it is that version
+                    // (its exact bytes), else rebuilt from the notes the editor started from
+                    let base_text = match (self.contents.get(&rel), &req.base) {
+                        (Some(t), _) if content_hash(t) == req.base_hash => Some(t.clone()),
+                        (_, Some(b)) => Some(join_doc(b)),
+                        _ => None,
+                    };
+                    // A file that is only the first part of that version, cut off in the middle of a
+                    // line, is another program caught halfway through writing it (a sync app): never
+                    // merged, so the cut-off notes can't be taken as deleted. The clash screen instead.
+                    if let (Some(c), Some(bt)) = (&current, &base_text) {
+                        if !c.is_empty() && c.len() < bt.len() && bt.starts_with(c.as_str()) && !c.ends_with('\n') {
+                            return Ok(SaveRes { ok: false, hash: cur_hash, conflict: true, merged: None });
+                        }
+                    }
                     let theirs = split_doc(current.as_deref().unwrap_or(""));
                     match req.base.as_ref().and_then(|b| crate::merge::merge_docs(b, &req.doc, &theirs)) {
-                        Some(m) => merged = Some(m),
+                        Some(m) => {
+                            // The other version took out notes this device left as they were. A real
+                            // deletion on another device looks exactly like a file cut short after a
+                            // note, so before such a merge is saved, the page as it was goes to
+                            // logseq/bak (History lists it): nothing is lost either way.
+                            let base = req.base.as_ref().map(|b| &b.blocks[..]).unwrap_or(&[]);
+                            if !kept_base && crate::merge::theirs_removed(base, &req.doc.blocks, &theirs.blocks) {
+                                if let Some(bt) = &base_text {
+                                    self.backup(&rel, bt)?;
+                                    kept_base = true;
+                                }
+                            }
+                            merged = Some(m)
+                        }
                         None => return Ok(SaveRes { ok: false, hash: cur_hash, conflict: true, merged: None }),
                     }
                 }

@@ -415,8 +415,12 @@ impl Vault {
         for b in &p.parsed.blocks {
             targets.extend(b.refs.iter().cloned());
         }
-        for t in targets {
-            let tk = key(&t);
+        // each target once: one `retain` already drops every (k, _) entry, so a page that links the
+        // same name in 5,000 notes would otherwise scan that name's list (the links from every other
+        // page too) 5,000 times: 670 ms for one save when 20,000 other notes link it, 3.7 ms now
+        // (review claim 4, Nov 22)
+        let targets: HashSet<String> = targets.iter().map(|t| key(t)).collect();
+        for tk in targets {
             if let Some(v) = self.incoming.get_mut(&tk) {
                 v.retain(|(src, _)| src != k);
                 if v.is_empty() {

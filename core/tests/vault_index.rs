@@ -151,3 +151,45 @@ fn many_pages_with_aliases_list_quickly_and_right() {
     assert!(found.iter().enumerate().all(|(i, h)| h.as_ref().is_some_and(|h| h.page == format!("P{i}"))));
     assert!(took < std::time::Duration::from_secs(20), "{took:?}");
 }
+
+/// Review claim 4: re-saving a page forgets its links one target name at a time (not once per
+/// link). The index after any re-save must be the one a fresh read of the same files gives,
+/// whatever repeats: a name linked in many notes, twice in one note, in other capitals, as a tag.
+#[test]
+fn re_saving_a_page_that_links_one_name_many_times_indexes_as_a_fresh_read() {
+    let others: Vec<(String, String)> = (0..50).map(|j| (format!("pages/Other {j}.md"), format!("- see [[Hub]] and [[Side]] {j}\n"))).collect();
+    let dense = |n: usize, extra: &str| -> String {
+        let mut s = String::from("tags:: hub, Side\n\n");
+        for i in 0..n {
+            s.push_str(&format!("- note {i} about [[Hub]] and again [[hub]] #Hub{extra}\n"));
+        }
+        s
+    };
+    let versions = [
+        dense(500, ""),
+        dense(500, " and [[Gone later]]"),
+        dense(200, ""),                      // most links removed
+        "- only text now\n".to_string(),     // every link removed
+        dense(300, " [[Side]]"),             // links back
+    ];
+    let mut v = Vault::new();
+    for (p, t) in &others {
+        v.upsert(p, t);
+    }
+    for text in &versions {
+        v.upsert("pages/Dense.md", text);
+        let mut fresh = Vault::new();
+        for (p, t) in &others {
+            fresh.upsert(p, t);
+        }
+        fresh.upsert("pages/Dense.md", text);
+        for name in ["Hub", "Side", "Gone later", "Dense"] {
+            let json = |x: &Vault| serde_json::to_string(&x.linked_refs(name)).unwrap();
+            assert_eq!(json(&v), json(&fresh), "linked refs of {name}");
+            assert_eq!(v.linking_pages(name), fresh.linking_pages(name), "pages linking {name}");
+        }
+        let all = |x: &Vault| serde_json::to_string(&x.all_pages()).unwrap();
+        assert_eq!(all(&v), all(&fresh), "All pages (names known, link counts)");
+    }
+    assert!(!v.all_pages().iter().any(|p| p.name == "Gone later"), "a name nothing links any more is forgotten");
+}

@@ -134,7 +134,19 @@ fn main() {
     // the background copy). Only on the sample vault: it changes notes.
     let mut open_changed = 0.0;
     let (mut rename, mut rename_files, mut one_by_one, mut eight) = (0.0, 0, 0.0, 0.0);
+    let mut save_dense = 0.0;
     if generated {
+        // the save of a page whose 5,000 notes all link #tag7, a name ~670 other notes link too
+        // (re-indexing it once scanned that name's links once per note: review claim 4)
+        let dense: String = (0..5000).map(|j| format!("- dense note {j} about #tag7\n")).collect();
+        std::fs::write(root.join("pages").join("Dense.md"), dense).unwrap();
+        app.rescan();
+        let mut pv = app.page("Dense", None);
+        pv.doc.blocks.push(outline_core::DocBlock { depth: 0, text: "bench note #tag7".into(), raw: None, plain: false });
+        let req = serde_json::json!({"name": "Dense", "doc": pv.doc, "base_hash": pv.hash});
+        let t = Instant::now();
+        app.save(serde_json::from_value(req).unwrap()).unwrap();
+        save_dense = ms(t);
         set_data_dir(base.join("data"));
         app.persist();
         drop(app);
@@ -196,9 +208,9 @@ fn main() {
     println!("unlinked refs ({} pages) {unlinked} ms · to-dos ({tasks}) {todos} ms", un.len());
     println!("journals: the next {shown} days {journals} ms");
     println!("journals: any unlinked references for 5 days ({any} have some) {day_unlinked} ms");
-    println!("save {save} ms · rescan {rescan} ms · JSON for the window ({json_bytes} bytes) {json} ms");
+    println!("save {save} ms · save of a page of 5,000 notes linking one tag {save_dense} ms · rescan {rescan} ms · JSON for the window ({json_bytes} bytes) {json} ms");
     println!("pictures nothing uses ({} of {}) {pictures} ms · safety copy ({copied} notes, in the background) {safety} ms", pics.unused.len(), pics.pictures);
     println!(
-        "BENCH {{\"open_cold_ms\":{open_cold},\"open_warm_ms\":{open_warm},\"pages_ms\":{list},\"linked_ms\":{linked},\"page_ms\":{long_page},\"search_ms\":{search},\"search_first_ms\":{search_first},\"search_words_ms\":{search_words},\"search_typo_ms\":{search_typo},\"unlinked_ms\":{unlinked},\"todos_ms\":{todos},\"day_unlinked_ms\":{day_unlinked},\"journals_ms\":{journals},\"save_ms\":{save},\"rescan_ms\":{rescan},\"json_ms\":{json},\"pictures_ms\":{pictures},\"safety_copy_ms\":{safety},\"open_changed_ms\":{open_changed},\"rename_ms\":{rename}}}"
+        "BENCH {{\"open_cold_ms\":{open_cold},\"open_warm_ms\":{open_warm},\"pages_ms\":{list},\"linked_ms\":{linked},\"page_ms\":{long_page},\"search_ms\":{search},\"search_first_ms\":{search_first},\"search_words_ms\":{search_words},\"search_typo_ms\":{search_typo},\"unlinked_ms\":{unlinked},\"todos_ms\":{todos},\"day_unlinked_ms\":{day_unlinked},\"journals_ms\":{journals},\"save_ms\":{save},\"save_dense_ms\":{save_dense},\"rescan_ms\":{rescan},\"json_ms\":{json},\"pictures_ms\":{pictures},\"safety_copy_ms\":{safety},\"open_changed_ms\":{open_changed},\"rename_ms\":{rename}}}"
     );
 }

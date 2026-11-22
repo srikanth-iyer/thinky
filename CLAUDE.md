@@ -1652,6 +1652,17 @@ it; the first save of a new page writes only where no file is: one that turned u
   earlier-text number). History (history.rs) only reads what its own listing names, and puts a version
   back through the normal save (base_hash), never deleting a backup.
 
+- Review fixes (Nov 22, 2026; four claims of an outside review, each checked again by a second reviewer first):
+  a save that fails (file locked, offline) keeps a copy in `logseq/bak` at once (editor.js `backupPending` now
+  covers `saveError` too, not only a waiting clash), tries again by itself (5, 10, 20, 40 s, then every
+  minute; `retryMs`; says so once), and is asked before the save when the app is put away; closing while
+  `saveAll` says not all is saved copies every unsaved page to `logseq/bak` first (app.js `keepUnsaved`, at
+  most 1 s). A merge in `App::save` that takes out notes this device left as they were (`merge::theirs_removed`:
+  more notes gone there than new ones) first keeps the page as it was in `logseq/bak`: a real deletion
+  elsewhere and a file cut short by a sync app look the same; a file that is only the first part of the
+  version last read, cut mid-line, is a clash (core/tests/truncated_merge.rs). Notes the merge removes are
+  never lost without a copy.
+
 ## Where outside input gets in (security review, Oct 30, 2026)
 Anything a web page, another app, a synced file or config.edn brings is data, never a command or a
 path out of the notes folder. Keep these when changing the code (tests in brackets):
@@ -1701,6 +1712,15 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
   keeps Android's `LeanAndroid` bridge to the app's own page). (tests/pages.rs)
 - A web link never opens a window of the app's own: in the app, a middle click or a click with
   Ctrl/Shift/Alt on one goes to the browser through `App.openUrl` (app.js `start`), as a plain click does.
+- The git backup (backup.rs): nothing named like git's own files (`git_special`: `.git`, `.gitmodules`,
+  `.gitattributes`, `.gitignore`, any case, Windows' trailing dots/spaces and `GIT~1`, macOS's ignorable
+  characters) is copied from the notes folder, file or folder, at any depth (a planted `sub/.git` FILE,
+  "gitdir: ../gd", pointed git at a folder of someone else's settings: `core.fsmonitor` or a clean filter ran
+  their command during a backup; a top `.git` file stopped every backup; a `.gitignore` of `*` kept new
+  notes out). Such files an older backup left in the repo's subfolders are removed (`remove_planted`). git
+  runs only through `git_cmd`: the repo's own `--git-dir`/`--work-tree` named outright, fsmonitor and
+  submodule recursion off, `GIT_DIR`-style variables removed, `status --ignore-submodules=all`
+  (core/tests/backup_git_planted.rs). Still trusted: the user's own global git config and his backup repo's hooks.
 Known and accepted (see the security report): script running inside the app's page could still call
 any command (`open` any folder…), but the page's CSP lets no script in but the app's own, and the
 window can't be sent to another page.
