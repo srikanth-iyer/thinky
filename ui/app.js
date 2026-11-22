@@ -334,6 +334,7 @@ class App {
   /** Typing that couldn't be saved (e.g. the file is offline), on a page about to leave the screen:
    *  a copy goes to logseq/bak first. */
   async keepCopy(o) {
+    clearTimeout(o.timer); // (no save tried again later by an editor leaving the screen: editor.js save)
     if (!o.dirty || o.readonly) return;
     try { await call('backup', { name: o.name, doc: o.doc }); this.toast(`Couldn’t save “${o.name}”; a copy of your changes is in logseq/bak.`, 6000); }
     catch (e) { this.toast(`Couldn’t save “${o.name}”: ${e}`, 6000); }
@@ -2740,20 +2741,21 @@ class App {
     // a page or note link clicked in another program while the app is open (links.rs)
     listen('lean-link', (e) => this.openLink(e.payload));
     // Put away (Android may then close the app without a word), reloaded or closed: save what can be
-    // saved; a page waiting for his choice on the clash screen is saved nowhere, so it gets a copy
-    // in logseq/bak if he typed more since the last one (editor.js backupPending)
+    // saved; a page waiting for his choice on the clash screen, or whose last save failed, is saved
+    // nowhere, so it gets a copy in logseq/bak if he typed more since the last one (editor.js
+    // backupPending; asked before the save starts, while it still knows the last save failed)
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') refresh();
-      else { this.outlines.forEach((o) => { o.flush(); o.backupPending(true); }); this.tabs.save(true); if (this.vaultOpen) call('persist').catch(() => {}); }
+      else { this.outlines.forEach((o) => { o.backupPending(true); o.flush(); }); this.tabs.save(true); if (this.vaultOpen) call('persist').catch(() => {}); }
     });
     window.addEventListener('focus', refresh);
     // without file notifications (the dev server), fall back to a slow check
     if (!isApp) setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 30000);
-    window.addEventListener('beforeunload', () => { this.outlines.forEach((o) => { o.flush(); o.backupPending(true); }); this.opening.forEach((w) => w.keep(true)); this.tabs.save(true); });
+    window.addEventListener('beforeunload', () => { this.outlines.forEach((o) => { o.backupPending(true); o.flush(); }); this.opening.forEach((w) => w.keep(true)); this.tabs.save(true); });
     // finish saving before the window closes (and remember how far down each tab was)
     listen('lean-close', async () => {
       this.tabs.save(true);
-      await this.saveAll();
+      if (!(await this.saveAll())) await this.keepUnsaved();
       call('quit').catch(() => {});
     });
   }
@@ -2776,6 +2778,17 @@ class App {
       done = await Promise.race([all, timeUp(false)]);
     } catch { /* not saved */ }
     return done && !kept.length && !this.outlines.some((o) => !o.readonly && (o.dirty || o.conflict));
+  }
+
+  /** Closing while something couldn't be saved (saveAll said no): every page with typing not on
+   *  disk gets a copy in logseq/bak before the app quits (at most 1 s: the window closes by itself
+   *  5 s after it was asked to, src-tauri lib.rs). A clash waiting for him has its copy already. */
+  async keepUnsaved(ms = 1000) {
+    const left = this.outlines.filter((o) => !o.readonly && !o.conflict && (o.dirty || o.saving));
+    if (!left.length) return;
+    call('log', { msg: `closing with unsaved typing on: ${left.map((o) => o.name).join(', ')}` }).catch(() => {});
+    const copies = Promise.all(left.map((o) => o.backupMine().catch((e) => call('log', { msg: `backup on close (“${o.name}”): ${e}` }).catch(() => {}))));
+    await Promise.race([copies, new Promise((r) => setTimeout(r, ms))]);
   }
 
   onKey(e) {

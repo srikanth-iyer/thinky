@@ -221,6 +221,26 @@ pub fn merge_docs(base: &Doc, mine: &Doc, theirs: &Doc) -> Option<Doc> {
     Some(Doc { preamble, blocks, indent: theirs.indent.clone(), crlf: theirs.crlf })
 }
 
+/// True when `theirs` took notes out of the page that `mine` kept exactly as they were in `base`, so
+/// the merge would remove them because of a change made elsewhere. That is also what a file cut short
+/// by another program (a sync app caught halfway through writing it) looks like, so `App::save` keeps
+/// a copy of the page as it was before saving such a merge. A note edited elsewhere is compared as one
+/// note gone and one new note, so only notes gone beyond the new ones count: an edit made elsewhere
+/// (the usual case) keeps no copy. True as well when the page is too big to compare (better one copy
+/// too many than none).
+pub fn theirs_removed(base: &[DocBlock], mine: &[DocBlock], theirs: &[DocBlock]) -> bool {
+    let (o, a, b) = (keys(base), keys(mine), keys(theirs));
+    // which base notes are still there, unchanged, on each side (index pairs: base -> that side)
+    let (Some(ma), Some(mb)) = (lcs(&o, &a), lcs(&o, &b)) else { return true };
+    // the base notes the other side still has, unchanged
+    let kept_there: HashSet<usize> = mb.iter().map(|&(oi, _)| oi).collect();
+    // notes this side left as they were that the other side no longer has
+    let gone = ma.iter().filter(|&&(oi, _)| !kept_there.contains(&oi)).count();
+    // notes the other side has that weren't in base (new ones, or new words for an edited note)
+    let new_there = b.len() - mb.len();
+    gone > new_there
+}
+
 /// One stretch of a page that was changed in two places: notes that need no choice (both
 /// agree, or only one side changed them, combined as `merge_blocks` does), or a clash, where both
 /// changed the same notes differently. The clash screen shows the clashes side by side.

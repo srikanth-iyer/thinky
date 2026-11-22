@@ -47,6 +47,21 @@ fn skip_dir(rel: &str) -> bool {
     let name = low.rsplit('/').next().unwrap_or(&low);
     name == ".git" || name == ".tmp.driveupload" || low == "logseq/bak" || low == "logseq/.recycle" || low.starts_with("logseq/.safety-")
 }
+/// A name git treats as its own (any case; Windows' trailing dots/spaces and 8.3 `GIT~1`; macOS's
+/// ignorable characters): `.git` (a gitfile there makes git use another repository, with its config),
+/// `.gitmodules`, `.gitattributes`, `.gitignore`. Never copied into, or removed from, the backup repo.
+pub fn git_special(name: &str) -> bool {
+    let low: String = name.chars().filter(|c| !matches!(*c as u32, 0x200C..=0x200F | 0x202A..=0x202E | 0x206A..=0x206F | 0xFEFF)).collect::<String>().to_lowercase();
+    let t = low.trim_end_matches(['.', ' ']);
+    // Windows' short name for ".git…" is "GIT~1", "GIT~2"…
+    let short = t.strip_prefix("git~").is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()));
+    matches!(t, ".git" | ".gitmodules" | ".gitattributes" | ".gitignore") || short
+}
+/// The files for the git backup: `backup_files` without any path that has a part named like git's own
+/// (`git_special`), file or folder, at any depth. (Zip backups keep them: a zip runs nothing.)
+fn git_files(files: BTreeMap<String, (PathBuf, u64, u64)>) -> BTreeMap<String, (PathBuf, u64, u64)> {
+    files.into_iter().filter(|(rel, _)| !rel.split('/').any(git_special)).collect()
+}
 fn skip_file(name: &str) -> bool {
     let low = name.to_ascii_lowercase();
     low == "desktop.ini" || low.ends_with(".tmp") || low.starts_with("~$") || low == ".ds_store" || low == "thumbs.db"
@@ -433,14 +448,27 @@ pub fn backup_zip_of(root: &Path, dest: &Path, keep: usize, stamp: &str, files: 
 
 // ------------------------------------------------------------------ git
 
-pub(super) fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
+/// git for the backup repo only: its own .git named outright (never found by walking up from a folder
+/// whose .git went missing), no fsmonitor command, no descending into anything that looks like a
+/// submodule.
+fn git_cmd(repo: &Path) -> std::process::Command {
     let mut c = std::process::Command::new("git");
-    c.arg("-C").arg(repo).args(args);
+    c.arg("-C").arg(repo).arg("--git-dir").arg(repo.join(".git")).arg("--work-tree").arg(repo);
+    c.args(["-c", "core.fsmonitor=false", "-c", "submodule.recurse=false", "-c", "push.recurseSubmodules=no", "-c", "diff.ignoreSubmodules=all", "-c", "status.submoduleSummary=false"]);
+    for v in ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_CEILING_DIRECTORIES"] {
+        c.env_remove(v);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         c.creation_flags(0x0800_0000); // (no console window flashing up)
     }
+    c
+}
+
+pub(super) fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
+    let mut c = git_cmd(repo);
+    c.args(args);
     let out = c.output().map_err(|e| format!("Couldn't run git ({e}). Is git installed?"))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
@@ -456,6 +484,28 @@ pub fn repo_own(rel: &str) -> bool {
     low == ".gitignore" || low == ".gitattributes" || low.starts_with(".github/") || (!low.contains('/') && low.starts_with("readme"))
 }
 
+/// Files with git's own names (`git_special`) that backups before Build 57 copied from the notes folder
+/// into the backup repo's subfolders (a `.git` file there points git at another repository and its
+/// settings, which can run commands): removed, so they can't act any more. Only files, and only below
+/// the repo's top (its own `.git`, `.gitignore` and `.gitattributes` stay); a top-level `.gitmodules`
+/// goes too (the backup never has submodules). Symbolic links are never followed.
+fn remove_planted(dir: &Path, repo: &Path) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        let Ok(ft) = e.file_type() else { continue };
+        let name = e.file_name().to_string_lossy().into_owned();
+        let top = dir == repo;
+        if ft.is_dir() {
+            // (the repo's own .git folder, and any folder git would treat as its own, are left alone)
+            if !git_special(&name) {
+                remove_planted(&e.path(), repo);
+            }
+        } else if ft.is_file() && git_special(&name) && (!top || name.eq_ignore_ascii_case(".gitmodules")) {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
 /// Make `repo` (but its .git and its own files, `repo_own`) hold exactly the backed-up files: copy new
 /// and changed ones, remove ones gone from the notes folder. A file with the same size and time as
 /// its copy is taken as unchanged without reading either (each copy gets its file's time); otherwise
@@ -463,7 +513,8 @@ pub fn repo_own(rel: &str) -> bool {
 /// made if there was none) and is named in the second list. Returns how many were copied.
 #[doc(hidden)] // (pub for tests)
 pub fn mirror(files: &BTreeMap<String, (PathBuf, u64, u64)>, repo: &Path) -> Result<(usize, Vec<String>), String> {
-    let there = backup_files(repo);
+    remove_planted(repo, repo);
+    let there = git_files(backup_files(repo));
     let mut copied = 0;
     let mut unread = vec![];
     let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
@@ -509,11 +560,11 @@ pub fn backup_git(root: &Path, repo: &Path, push: bool, stamp: &str) -> BackupRe
     if !repo.join(".git").exists() {
         return fail(format!("{} isn't a git repository. Clone your backup repository there first (git clone …).", repo.display()));
     }
-    let files = backup_files(root);
+    let files = git_files(backup_files(root));
     if let Err(e) = looks_like_notes(root, &files) {
         return fail(e);
     }
-    let before = backup_files(&repo).len();
+    let before = git_files(backup_files(&repo)).len();
     let unread = match mirror(&files, &repo) {
         Ok((_, unread)) => unread,
         Err(e) => return fail(e),
@@ -521,7 +572,7 @@ pub fn backup_git(root: &Path, repo: &Path, push: bool, stamp: &str) -> BackupRe
     if let Err(e) = git(&repo, &["add", "-A"]) {
         return fail(format!("git couldn't take the changes ({e})."));
     }
-    let status = match git(&repo, &["status", "--porcelain"]) {
+    let status = match git(&repo, &["status", "--porcelain", "--ignore-submodules=all"]) {
         Ok(s) => s,
         Err(e) => return fail(format!("git couldn't list the changes ({e}).")),
     };
@@ -605,13 +656,8 @@ impl App {
         let dest = Path::new(dest.trim());
         let found = find_in_backup(kind, dest, rel).ok_or_else(|| format!("{rel} isn't in your backups."))?;
         let bytes = if kind == "git" {
-            let mut c = std::process::Command::new("git");
-            c.arg("-C").arg(dest).args(["show", &format!("{found}:{rel}")]);
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                c.creation_flags(0x0800_0000);
-            }
+            let mut c = git_cmd(dest);
+            c.args(["show", &format!("{found}:{rel}")]);
             let out = c.output().map_err(|e| format!("Couldn't run git ({e})."))?;
             if !out.status.success() {
                 return Err(format!("git couldn't read {rel} from the backup."));

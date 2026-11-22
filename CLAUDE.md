@@ -361,11 +361,9 @@ the updater…` markers (and the UpdateReceiver to the end of the file), drops i
 upload key; its certificate must equal the APK's; its manifest checked for the install permission; `android` also
 searches its DEX for the updater's code, `releases/download` and `PackageInstaller$Session`, review claim 10c); `sign-wip` with the
 throw-away key; `release` publishes it with the others (8 files with thinky-apk.sig, 11 with the old names). Play App Signing reuses the
-release key (he chose it, Nov 10): `.github/workflows/play-key.yml` (run by hand on main, environment `release`) exports
-it with Google's PEPK, encrypted with Play Console's key saved as `ci/play-encryption-key.pem`, as the artifact
-`thinky-play-key.zip` for Play Console's App signing page. pepk.jar must match the SHA-256 pinned in the workflow's
-`PEPK_SHA256` (empty until the maintainer checks the file: the workflow stops before the keystore is unpacked), and the
-passwords go to PEPK on its input, never its command line (review claim 21a). Package name on Play: `com.srikanth.leanoutliner`.
+release key (he chose it, Nov 10): it is already set up in Play Console (Play's app signing key has the release
+certificate's SHA-256, checked Nov 22, 2026), so the export workflow (play-key.yml, PEPK) and Play's encryption key were
+taken out (he asked, Nov 22). Package name on Play: `com.srikanth.leanoutliner`.
 Build 43 (0.5.4; the maintainer's notes of Nov 10; tested by t25_build43): a hidden sidebar peeks out on the mouse (as in
 Notion; `App.peekSidebar`: pointerover on the strip's sidebar button, 120 ms, adds `body.side-peek` (+ `.peeking` for the
 slide when `motionOn()`), the sidebar floats over the notes (z 30, shadow; app.css "peeking out"), its links work; leaving
@@ -1652,6 +1650,19 @@ it; the first save of a new page writes only where no file is: one that turned u
   earlier-text number). History (history.rs) only reads what its own listing names, and puts a version
   back through the normal save (base_hash), never deleting a backup.
 
+- Review fixes (Nov 22, 2026; four claims of an outside review, each checked again by a second reviewer first):
+  a save that fails (file locked, offline) keeps a copy in `logseq/bak` at once (editor.js `backupPending` now
+  covers `saveError` too, not only a waiting clash), tries again by itself (5, 10, 20, 40 s, then every
+  minute; `retryMs`; says so once), and is asked before the save when the app is put away; closing while
+  `saveAll` says not all is saved copies every unsaved page to `logseq/bak` first (app.js `keepUnsaved`, at
+  most 1 s). A merge in `App::save` that takes out notes this device left as they were (`merge::theirs_removed`:
+  more notes gone there than new ones) first keeps the page as it was in `logseq/bak`: a real deletion
+  elsewhere and a file cut short by a sync app look the same; a file that is only the first part of the
+  version last read, cut inside a line (not at a line's end: Logseq's files end with no line break, so a
+  last note deleted elsewhere looks like that), is a clash (core/tests/truncated_merge.rs). A copy that
+  can't be made goes to the problems log and never stops the save. A retry runs only while that page is
+  still on screen (`keepCopy` clears it), never for a renamed/moved file or a waiting clash.
+
 ## Where outside input gets in (security review, Oct 30, 2026)
 Anything a web page, another app, a synced file or config.edn brings is data, never a command or a
 path out of the notes folder. Keep these when changing the code (tests in brackets):
@@ -1701,6 +1712,15 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
   keeps Android's `LeanAndroid` bridge to the app's own page). (tests/pages.rs)
 - A web link never opens a window of the app's own: in the app, a middle click or a click with
   Ctrl/Shift/Alt on one goes to the browser through `App.openUrl` (app.js `start`), as a plain click does.
+- The git backup (backup.rs): nothing named like git's own files (`git_special`: exactly `.git`, `.gitmodules`,
+  `.gitattributes`, `.gitignore`, any case, Windows' trailing dots/spaces and `GIT~<n>`, macOS's ignorable
+  characters) is copied from the notes folder into the git repo (`git_files`; zips keep them), file or folder, at any depth (a planted `sub/.git` FILE,
+  "gitdir: ../gd", pointed git at a folder of someone else's settings: `core.fsmonitor` or a clean filter ran
+  their command during a backup; a top `.git` file stopped every backup; a `.gitignore` of `*` kept new
+  notes out). Such files an older backup left in the repo's subfolders are removed (`remove_planted`). git
+  runs only through `git_cmd`: the repo's own `--git-dir`/`--work-tree` named outright, fsmonitor and
+  submodule recursion off, `GIT_DIR`-style variables removed, `status --ignore-submodules=all`
+  (core/tests/backup_git_planted.rs). Still trusted: the user's own global git config and his backup repo's hooks.
 Known and accepted (see the security report): script running inside the app's page could still call
 any command (`open` any folder…), but the page's CSP lets no script in but the app's own, and the
 window can't be sent to another page.

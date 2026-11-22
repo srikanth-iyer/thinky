@@ -2743,6 +2743,7 @@ export class Outline {
       try {
         const res = await call('save', { name: this.name, doc: sent, base_hash: this.hash, force, path: this.path, base: this.base });
         this.saveError = null;
+        this.retryMs = 0; // (a save went through: the next failure starts the waits from 5 s again)
         // (behind: the same page was saved from the other side of this window meanwhile, App.catchUp;
         // a clean merge of the two sides needs no word)
         const side = !!this.behind;
@@ -2775,7 +2776,23 @@ export class Outline {
       } catch (err) {
         this.dirty = true;
         this.saveError = String(err); // (the clash screen's "Keep mine" checks it)
-        this.app.toast('Could not save “' + this.name + '”: ' + err, 6000);
+        if (this.quiet) { this.app.toast('Could not save “' + this.name + '”: ' + err, 6000); return; } // (notes being moved: move.js puts this page back itself)
+        // Not saved (the file is locked or offline…): until a save goes through, this typing exists
+        // only here, so a copy goes to logseq/bak now (backupPending; one per version), and the save
+        // is tried again by itself: after 5 s, then 10, 20, 40, then every minute, typing or not.
+        // (the message only the first time: not once a minute while the file stays offline)
+        // (not when trying again can't help: the page's file was renamed or moved, or a clash waits for
+        // his choice; and only while this page is still on screen: a page he left had its copy kept
+        // then, App.keepCopy, and an old editor must never save into the page later)
+        const first = !this.retryMs;
+        this.backupPending();
+        const again = !this.conflict && !/renamed or moved/.test(String(err));
+        if (again) {
+          this.retryMs = Math.min((this.retryMs || 2500) * 2, 60000);
+          clearTimeout(this.timer);
+          this.timer = setTimeout(() => { if (this.el.isConnected && this.app.outlines.includes(this)) this.save(); }, this.retryMs);
+        }
+        if (first || !again) this.app.toast('Couldn’t save “' + this.name + '”' + (again ? ' yet' : '') + ' (' + err + '). ' + (again ? 'Trying again; a' : 'A') + ' copy of your typing is kept in logseq/bak.', 6000);
       }
     })();
     const all = this.saving.finally(() => {
@@ -2927,13 +2944,14 @@ export class Outline {
     await this.bakRun.p;
   }
 
-  /** While a clash waits for his choice, this page exists only here: a copy goes to logseq/bak when
-   *  the clash first shows, and again when the app is put away or closed if he typed more since.
+  /** While a clash waits for his choice, or while the last save failed (the file locked or offline),
+   *  this page exists only here: a copy goes to logseq/bak when the clash first shows or the save
+   *  fails, and again when the app is put away or closed if he typed more since.
    *  Never throws (a problem goes to the problems log). */
   async backupPending(keepalive = false) {
-    if (!this.conflict || this.readonly) return;
+    if (this.readonly || !(this.conflict || this.saveError)) return;
     try { await this.backupMine(keepalive); }
-    catch (err) { call('log', { msg: `backup while a clash waits (“${this.name}”): ${err}` }).catch(() => {}); }
+    catch (err) { call('log', { msg: `backup of unsaved typing (“${this.name}”): ${err}` }).catch(() => {}); }
   }
 
   /** Re-read the page from disk (after sync/Claude changed it). Skips if the user is busy here. */
