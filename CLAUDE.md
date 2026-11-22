@@ -361,11 +361,9 @@ the updater…` markers (and the UpdateReceiver to the end of the file), drops i
 upload key; its certificate must equal the APK's; its manifest checked for the install permission; `android` also
 searches its DEX for the updater's code, `releases/download` and `PackageInstaller$Session`, review claim 10c); `sign-wip` with the
 throw-away key; `release` publishes it with the others (8 files with thinky-apk.sig, 11 with the old names). Play App Signing reuses the
-release key (he chose it, Nov 10): `.github/workflows/play-key.yml` (run by hand on main, environment `release`) exports
-it with Google's PEPK, encrypted with Play Console's key saved as `ci/play-encryption-key.pem`, as the artifact
-`thinky-play-key.zip` for Play Console's App signing page. pepk.jar must match the SHA-256 pinned in the workflow's
-`PEPK_SHA256` (empty until the maintainer checks the file: the workflow stops before the keystore is unpacked), and the
-passwords go to PEPK on its input, never its command line (review claim 21a). Package name on Play: `com.srikanth.leanoutliner`.
+release key (he chose it, Nov 10): it is already set up in Play Console (Play's app signing key has the release
+certificate's SHA-256, checked Nov 22, 2026), so the export workflow (play-key.yml, PEPK) and Play's encryption key were
+taken out (he asked, Nov 22). Package name on Play: `com.srikanth.leanoutliner`.
 Build 43 (0.5.4; the maintainer's notes of Nov 10; tested by t25_build43): a hidden sidebar peeks out on the mouse (as in
 Notion; `App.peekSidebar`: pointerover on the strip's sidebar button, 120 ms, adds `body.side-peek` (+ `.peeking` for the
 slide when `motionOn()`), the sidebar floats over the notes (z 30, shadow; app.css "peeking out"), its links work; leaving
