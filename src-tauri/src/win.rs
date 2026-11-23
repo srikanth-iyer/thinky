@@ -5,68 +5,21 @@
 
 #[cfg(windows)]
 mod imp {
+    // the Windows functions, declared once for the whole app (capture_box/ffi.rs)
+    use crate::capture_box::ffi::{
+        system_dir, wide, CloseClipboard, GetClipboardData, GetLocalTime, GlobalLock, GlobalSize, GlobalUnlock, OpenClipboard, RegCloseKey, RegCreateKeyExW, RegGetValueW, RegSetValueExW, CF_UNICODETEXT,
+        HKEY_CURRENT_USER, KEY_WRITE, REG_SZ, RRF_RT_REG_SZ, SYSTEMTIME,
+    };
     use std::ffi::c_void;
-    use std::os::windows::ffi::OsStrExt;
 
     /// Windows' own PowerShell: <system folder>\WindowsPowerShell\v1.0\powershell.exe.
     fn powershell() -> std::path::PathBuf {
-        use std::os::windows::ffi::OsStringExt;
-        #[link(name = "kernel32")]
-        extern "system" {
-            fn GetSystemDirectoryW(buf: *mut u16, size: u32) -> u32;
-        }
-        let mut buf = [0u16; 260];
-        let n = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as u32) } as usize;
-        let dir = if n > 0 && n < buf.len() { std::path::PathBuf::from(std::ffi::OsString::from_wide(&buf[..n])) } else { std::path::PathBuf::from(r"C:\Windows\System32") };
-        dir.join("WindowsPowerShell").join("v1.0").join("powershell.exe")
-    }
-
-    #[repr(C)]
-    #[derive(Default)]
-    struct SystemTime {
-        year: u16,
-        month: u16,
-        weekday: u16,
-        day: u16,
-        hour: u16,
-        minute: u16,
-        second: u16,
-        ms: u16,
-    }
-
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn GetLocalTime(st: *mut SystemTime);
-        fn GlobalLock(h: *mut c_void) -> *mut c_void;
-        fn GlobalUnlock(h: *mut c_void) -> i32;
-        fn GlobalSize(h: *mut c_void) -> usize;
-    }
-    #[link(name = "user32")]
-    extern "system" {
-        fn OpenClipboard(owner: *mut c_void) -> i32;
-        fn GetClipboardData(format: u32) -> *mut c_void;
-        fn CloseClipboard() -> i32;
-    }
-    #[link(name = "advapi32")]
-    extern "system" {
-        fn RegCreateKeyExW(key: isize, sub: *const u16, res: u32, class: *const u16, opts: u32, sam: u32, sa: *const c_void, out: *mut isize, disp: *mut u32) -> i32;
-        fn RegSetValueExW(key: isize, name: *const u16, res: u32, kind: u32, data: *const u8, len: u32) -> i32;
-        fn RegGetValueW(key: isize, sub: *const u16, name: *const u16, flags: u32, kind: *mut u32, data: *mut c_void, len: *mut u32) -> i32;
-        fn RegCloseKey(key: isize) -> i32;
-    }
-    const HKCU: isize = 0x8000_0001u32 as i32 as isize;
-    const KEY_WRITE: u32 = 0x20006;
-    const REG_SZ: u32 = 1;
-    const RRF_RT_REG_SZ: u32 = 2;
-    const CF_UNICODETEXT: u32 = 13;
-
-    fn wide(s: &str) -> Vec<u16> {
-        std::ffi::OsStr::new(s).encode_wide().chain(Some(0)).collect()
+        system_dir().join("WindowsPowerShell").join("v1.0").join("powershell.exe")
     }
 
     /// (date, "HH:mm") on this computer's clock.
     pub fn local_now() -> ((i32, u32, u32), String) {
-        let mut st = SystemTime::default();
+        let mut st = SYSTEMTIME::default();
         unsafe { GetLocalTime(&mut st) };
         ((st.year as i32, st.month as u32, st.day as u32), format!("{:02}:{:02}", st.hour, st.minute))
     }
@@ -102,18 +55,24 @@ mod imp {
         }
     }
 
-    fn get(sub: &str) -> Option<String> {
-        let (sub, name) = (wide(sub), wide(""));
+    /// The text value `name` of the registry key `sub` under HKEY_CURRENT_USER ("": the key's
+    /// default value). None if the key or value isn't there, isn't text, or is longer than 2047
+    /// characters. Also hotkey.rs's way to read the start-at-sign-in entry.
+    pub fn get(sub: &str, name: &str) -> Option<String> {
+        let (sub, name) = (wide(sub), wide(name));
         let mut buf = vec![0u16; 2048];
-        let mut len = (buf.len() * 2) as u32;
-        let r = unsafe { RegGetValueW(HKCU, sub.as_ptr(), name.as_ptr(), RRF_RT_REG_SZ, std::ptr::null_mut(), buf.as_mut_ptr().cast(), &mut len) };
+        let mut len = (buf.len() * 2) as u32; // in bytes; Windows sets it to the bytes it wrote
+        let r = unsafe { RegGetValueW(HKEY_CURRENT_USER, sub.as_ptr(), name.as_ptr(), RRF_RT_REG_SZ, std::ptr::null_mut(), buf.as_mut_ptr().cast(), &mut len) };
+        // (the bytes Windows wrote, as UTF-16 units, less the end marker)
         (r == 0).then(|| String::from_utf16_lossy(&buf[..(len as usize / 2).saturating_sub(1)]))
     }
 
-    fn set(sub: &str, name: &str, value: &str) -> bool {
+    /// Set the text value `name` ("": the default value) of the key `sub` under
+    /// HKEY_CURRENT_USER, making the key if it's missing; false if Windows refused.
+    pub fn set(sub: &str, name: &str, value: &str) -> bool {
         let mut key = 0isize;
         let s = wide(sub);
-        if unsafe { RegCreateKeyExW(HKCU, s.as_ptr(), 0, std::ptr::null(), 0, KEY_WRITE, std::ptr::null(), &mut key, std::ptr::null_mut()) } != 0 {
+        if unsafe { RegCreateKeyExW(HKEY_CURRENT_USER, s.as_ptr(), 0, std::ptr::null(), 0, KEY_WRITE, std::ptr::null(), &mut key, std::ptr::null_mut()) } != 0 {
             return false;
         }
         let (n, v) = (wide(name), wide(value));
@@ -124,7 +83,7 @@ mod imp {
 
     /// A registry key's default value under HKEY_CURRENT_USER (native_host.rs).
     pub fn reg_default(sub: &str) -> Option<String> {
-        get(sub)
+        get(sub, "")
     }
     /// Set a key's default value under HKEY_CURRENT_USER (made if missing); false if refused.
     pub fn set_reg_default(sub: &str, value: &str) -> bool {
@@ -137,7 +96,7 @@ mod imp {
         let Ok(exe) = std::env::current_exe() else { return };
         let cmd = format!("\"{}\" \"%1\"", exe.display());
         const KEY: &str = "Software\\Classes\\leanoutliner";
-        if get(&format!("{KEY}\\shell\\open\\command")).as_deref() == Some(cmd.as_str()) {
+        if get(&format!("{KEY}\\shell\\open\\command"), "").as_deref() == Some(cmd.as_str()) {
             return;
         }
         set(KEY, "", "URL:thinky");
@@ -222,5 +181,81 @@ mod imp {
 }
 
 pub use imp::*;
+
+/// The shared Windows helpers (audit finding 18: one registry reader and writer, one system
+/// folder, one text converter for the whole app). Windows only: GitHub's Windows job runs them
+/// (`cargo test -p lean-outliner --lib`).
+#[cfg(all(test, windows))]
+mod tests {
+    use super::{get, set};
+    use crate::capture_box::ffi::{system_dir, wide, wide_os, RegDeleteTreeW, HKEY_CURRENT_USER};
+
+    /// A registry key of this test's own under HKEY_CURRENT_USER, removed with all its values when
+    /// the test ends (even if it fails).
+    struct TestKey(String);
+    impl TestKey {
+        fn new(what: &str) -> TestKey {
+            TestKey(format!(r"Software\thinky-test-{}-{what}", std::process::id()))
+        }
+    }
+    impl Drop for TestKey {
+        fn drop(&mut self) {
+            let k = wide(&self.0);
+            unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, k.as_ptr()) };
+        }
+    }
+
+    #[test]
+    fn a_named_value_and_the_default_value_are_kept_apart() {
+        let k = TestKey::new("named");
+        assert_eq!(get(&k.0, "Lean Outliner hotkey"), None, "nothing there yet");
+        // the start-at-sign-in entry's way (hotkey.rs): a named value
+        assert!(set(&k.0, "Lean Outliner hotkey", r#""C:\Program Files\thinky\lean-outliner.exe" --hotkey"#));
+        assert_eq!(get(&k.0, "Lean Outliner hotkey").as_deref(), Some(r#""C:\Program Files\thinky\lean-outliner.exe" --hotkey"#));
+        assert_eq!(get(&k.0, ""), None, "a named value isn't the key's default value");
+        // the link handler's way (win.rs, native_host.rs): the default value
+        assert!(set(&k.0, "", "URL:thinky"));
+        assert_eq!(get(&k.0, "").as_deref(), Some("URL:thinky"));
+        assert_eq!(super::reg_default(&k.0).as_deref(), Some("URL:thinky"));
+        assert_eq!(get(&k.0, "Lean Outliner hotkey").as_deref(), Some(r#""C:\Program Files\thinky\lean-outliner.exe" --hotkey"#), "the named one is unchanged");
+        // set again: replaced, not added to
+        assert!(set(&k.0, "Lean Outliner hotkey", "x"));
+        assert_eq!(get(&k.0, "Lean Outliner hotkey").as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn empty_and_non_english_values_come_back_as_they_were() {
+        let k = TestKey::new("text");
+        assert!(set(&k.0, "URL Protocol", ""));
+        assert_eq!(get(&k.0, "URL Protocol").as_deref(), Some(""), "an empty value is there, and empty");
+        assert!(set(&k.0, "Notizen – Übersicht", "C:\\Users\\Zoë\\笔记"));
+        assert_eq!(get(&k.0, "Notizen – Übersicht").as_deref(), Some("C:\\Users\\Zoë\\笔记"));
+        assert_eq!(get(&k.0, "notizen – übersicht").as_deref(), Some("C:\\Users\\Zoë\\笔记"), "Windows' value names ignore case");
+        assert_eq!(get(r"Software\thinky-test-no-such-key", ""), None, "a missing key: None, not an error");
+    }
+
+    #[test]
+    fn the_system_folder_is_windows_own() {
+        let d = system_dir();
+        assert!(d.is_absolute() && d.is_dir(), "{d:?}");
+        assert!(d.ends_with("System32") || d.ends_with("system32"), "{d:?}");
+        // the programs the app starts from it by full path
+        assert!(d.join("WindowsPowerShell").join("v1.0").join("powershell.exe").is_file());
+        assert!(d.join("curl.exe").is_file(), "Windows 10 1803 and later have curl.exe");
+        assert_eq!(crate::update::imp::curl(), d.join("curl.exe"));
+    }
+
+    #[test]
+    fn text_for_windows_ends_with_its_marker() {
+        assert_eq!(wide(""), vec![0]);
+        assert_eq!(wide("aé笔"), vec![b'a' as u16, 0xE9, 0x7B14, 0]);
+        assert_eq!(wide("😀"), vec![0xD83D, 0xDE00, 0], "outside the first plane: two units");
+        // a path is copied as Windows gave it, even one that isn't valid Unicode (a lone half of a pair)
+        use std::os::windows::ffi::OsStringExt;
+        let odd = std::ffi::OsString::from_wide(&[b'a' as u16, 0xD800, b'b' as u16]);
+        assert_eq!(wide_os(&odd), vec![b'a' as u16, 0xD800, b'b' as u16, 0]);
+        assert_eq!(wide_os(std::ffi::OsStr::new("aé笔")), wide("aé笔"), "for plain text the two agree");
+    }
+}
 
 // (`leanoutliner://` links are read by outline_core::link, used by main.rs)

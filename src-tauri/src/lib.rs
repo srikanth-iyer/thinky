@@ -162,24 +162,6 @@ fn decode_path(s: &str) -> String {
     String::from_utf8_lossy(&outline_core::link::percent_bytes(s, false)).into_owned()
 }
 
-fn mime(p: &std::path::Path) -> &'static str {
-    match p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
-        Some("png") => "image/png",
-        Some("jpg" | "jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
-        Some("svg") => "image/svg+xml",
-        Some("bmp") => "image/bmp",
-        Some("ico") => "image/x-icon",
-        Some("avif") => "image/avif",
-        Some("pdf") => "application/pdf",
-        Some("mp4") => "video/mp4",
-        Some("webm") => "video/webm",
-        Some("mp3") => "audio/mpeg",
-        _ => "application/octet-stream",
-    }
-}
-
 fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -226,7 +208,7 @@ fn builder() -> tauri::Builder<tauri::Wry> {
         })
         // pictures in notes: vault://localhost/assets/x.png → <notes folder>/assets/x.png, read by a
         // few threads in turn (a page of a hundred pictures asks for them all at once), none bigger
-        // than ASSET_MAX (each is read whole)
+        // than ASSET_MAX (25 MB, each is read whole), sent as a picture type (shell_rules::picture_type)
         .register_asynchronous_uri_scheme_protocol("vault", |_ctx, req, responder| {
             let path = decode_path(req.uri().path());
             static POOL: OnceLock<shell_rules::Pool> = OnceLock::new();
@@ -235,7 +217,7 @@ fn builder() -> tauri::Builder<tauri::Wry> {
                 let file = root.and_then(|r| outline_core::app::asset_file(&r, &path));
                 let resp = match file.and_then(|f| shell_rules::read_capped(&f, shell_rules::ASSET_MAX).ok().map(|b| (f, b))) {
                     Some((f, bytes)) => tauri::http::Response::builder()
-                        .header(tauri::http::header::CONTENT_TYPE, mime(&f))
+                        .header(tauri::http::header::CONTENT_TYPE, shell_rules::picture_type(&f))
                         .header(tauri::http::header::CACHE_CONTROL, "max-age=600")
                         // never a page that runs: an SVG or HTML file synced into assets/ could
                         // otherwise run script with the app's own rights (dev/src/main.rs the same)

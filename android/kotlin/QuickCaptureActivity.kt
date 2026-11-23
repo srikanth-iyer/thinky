@@ -108,7 +108,8 @@ class QuickCaptureActivity : AppCompatActivity() {
     })
     // the small toolbar: a new line, [[ ]] (the cursor between them; around the words when some are selected),
     // # at the cursor, and the to-do word at the start of the note (TODO, or LATER as config.edn's
-    // :preferred-workflow says; again: any to-do word taken off)
+    // :preferred-workflow says; again: any to-do word taken off; when adding, the core moves that word to
+    // the very start of the note's line, before the quick capture template: android_capture.rs todo_words)
     fun put(text: String, back: Int = 0) {
       val s = maxOf(0, input.selectionStart); val e = maxOf(s, input.selectionEnd)
       input.text.replace(s, e, text)

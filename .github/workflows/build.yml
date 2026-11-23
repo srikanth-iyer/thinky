@@ -48,20 +48,14 @@ jobs:
         with: { sparse-checkout: "scripts\nui/version.js", sparse-checkout-cone-mode: false, persist-credentials: false }
       # Build 41: the version (ui/version.js) is what installed apps compare, so it must be higher than
       # the newest release's (its title says it: "Build N · version X"). On main a build that forgot to
-      # raise it stops here; a wip build only warns.
+      # raise it stops here; a wip build only warns (scripts/release_check.py, which `release` runs again).
       - name: The version is higher than the last release's
         env:
           GH_TOKEN: ${{ github.token }}
           MAIN: ${{ github.ref == 'refs/heads/main' }}
         run: |
           set -euo pipefail
-          v=$(python3 scripts/update_sig.py version)
-          last=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .name | sed -n 's/.*version \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p')
-          if [ -n "$last" ] && ! python3 -c 'import sys; a, b = (tuple(map(int, x.split("."))) for x in sys.argv[1:]); sys.exit(0 if a > b else 1)' "$v" "$last"; then
-            msg="ui/version.js says $v, but the newest release is already version $last: raise it (installed apps only take a higher version)."
-            if [ "$MAIN" = true ]; then echo "::error::$msg"; exit 1; else echo "::warning::$msg"; fi
-          fi
-          echo "::notice title=Version::$v (the newest release: ${last:-none named})"
+          if [ "$MAIN" = true ]; then python3 scripts/release_check.py version --main; else python3 scripts/release_check.py version; fi
       - id: n
         env:
           GH_TOKEN: ${{ github.token }}
@@ -103,6 +97,8 @@ jobs:
       # Android code's plain rules on a plain JVM (android/kotlin/Checks.kt: the phone's check of an
       # update's signature file among them) and the overlay in both shapes (APK, Play bundle)
       - run: python3 scripts/update_sig_test.py
+      # the checks before a release (scripts/release_check.py, a stand-in `gh`; audit finding 11)
+      - run: python3 scripts/release_check_test.py
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with: { distribution: temurin, java-version: '17' }
       - run: bash android/test/run.sh
@@ -825,6 +821,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { sparse-checkout: "scripts\nci\nui/version.js", sparse-checkout-cone-mode: false, persist-credentials: false }
+      # Before anything else (audit finding 11): "Re-run failed jobs" on an older, cancelled run reuses
+      # its saved build number and skips `number`'s checks, so a newer run may have published that number
+      # meanwhile. Stop if the tag build-N is already there or any release is build N or newer (here or on
+      # the old downloads repo), and check the version again against the newest release.
+      - name: Build N isn't published yet, and the version is higher than the newest release's
+        env:
+          GH_TOKEN: ${{ github.token }}
+          N: ${{ needs.number.outputs.n }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release_check.py unpublished "$N"
+          python3 scripts/release_check.py version --main
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: android, path: dist }
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

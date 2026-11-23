@@ -130,11 +130,11 @@ never) and when the app pushes new data; everything else runs only when opened.
 | File | Job |
 |---|---|
 | `main.rs` | Picks the job from the command line (section 2) |
-| `lib.rs` | Starts Tauri; **one command `call`** that forwards to `dispatch`, plus a few OS-only commands handled before it (`save_asset_path`, `start_link`, `reveal_file`, `set_shortcut`/`get_shortcut`, `update_*`, `browser_setup`/`browser_status`, `quit`, `platform`; see `lib.rs`). Two shared commands are special-cased there: `rescan` reads files without holding the lock, and `open` also starts the file watcher. The `vault://` protocol that serves pictures (four threads in turn, `shell_rules::Pool`; none over 100 MB). Close waits for saves (`lean-close`). The start-up threads (section 3, Windows only). |
+| `lib.rs` | Starts Tauri; **one command `call`** that forwards to `dispatch`, plus a few OS-only commands handled before it (`save_asset_path`, `start_link`, `reveal_file`, `set_shortcut`/`get_shortcut`, `update_*`, `browser_setup`/`browser_status`, `quit`, `platform`; see `lib.rs`). Two shared commands are special-cased there: `rescan` reads files without holding the lock, and `open` also starts the file watcher. The `vault://` protocol that serves pictures (four threads in turn, `shell_rules::Pool`; none over 25 MB, the limit pictures are added at, and only pictures sent as pictures, `shell_rules::picture_type`; audit finding 19). Close waits for saves (`lean-close`). The start-up threads (section 3, Windows only). |
 | `shell_rules.rs` | The shell's small decisions with no Windows or Tauri in them (closing, the capture box's footer, placing and wheel, links between copies, file-size limits, the thread pool), so their tests also run where the shell can't be built (`src-tauri/pure_tests.sh`) |
 | `watch.rs` | File-change watcher |
 | `hotkey.rs` | The shortcut-key helper and the app's side of it (`set`, `state`, `at_start`, `stop`) |
-| `capture_box/` | Native Win32 capture box (`mod.rs` the window, `ffi.rs` = Windows functions declared by hand, also used by links.rs; `files.rs` clipboard, file picker, picture → PNG; `selftest.rs` CI) |
+| `capture_box/` | Native Win32 capture box (`mod.rs` the window, `ffi.rs` = the Windows functions declared by hand, once for the whole app (win.rs, hotkey.rs, update.rs, ai_key.rs, links.rs and watch.rs use it too, with its one `wide`/`wide_os` and `system_dir`); `files.rs` clipboard, file picker, picture → PNG; `selftest.rs` CI) |
 | `links.rs` | Handing page/note links to the open app |
 | `update.rs` | Download, check signature, run the installer (Windows' own `curl.exe` + CNG) |
 | `ai_key.rs` | The AI services' keys in Windows' Credential Manager, and `ai_send` (a request sent with the key through curl.exe; core `ai.rs` builds it) |
@@ -184,7 +184,7 @@ paths). Other localStorage keys: `tabs`, `updateCheck`, `skin`, `sideW`, `splitA
 | `kotlin/QuickCaptureActivity.kt` | The "Add to journal" pop-up (widgets' "+", share sheet, tile) |
 | `kotlin/AiKeys.kt` | The AI services' keys, sealed by a Keystore key of the app's own, and sending an AI request (https only; Build 51); a key goes only to its own service's address (for "Other", the address saved with it) |
 | `kotlin/SelectionCaptureActivity.kt` | "Add to thinky" over selected text in other apps (PROCESS_TEXT only; ≤ 20,000 characters, ≤ 10 a minute) |
-| `kotlin/Checks.kt` | The rules above with no Android in them (where a key may go, picture sizes, front matter, selection limits), tested on a plain JVM: `android/test/run.sh`; `android/test/overlay_test.py` tests the overlay |
+| `kotlin/Checks.kt` | The rules above with no Android in them (where a key may go, picture sizes, front matter, selection limits, today's journal file and title), tested on a plain JVM: `android/test/run.sh`; `android/test/overlay_test.py` tests the overlay |
 | `kotlin/AddNoteTile.kt` | Quick Settings tile |
 | `res/` | Widget layouts and info XML, drawables, the pop-up's layout |
 | `release.keystore` | Not in the repo: the signing key is the `ANDROID_KEYSTORE_B64` secret (locked; never replace) |
@@ -307,8 +307,10 @@ The extension asks for its "all websites" permission only when "Show my highligh
 
 The same note-format rules exist in **two** codebases. Change one → change the others:
 1. Rust `core/` (`append_bullet` in `lib.rs`, `capture.rs`, `file_stem_for`, `asset_file_name`, dates, config)
-2. Kotlin `android/kotlin/JournalWidget.kt`, only for reading and the pop-up's pre-fill:
-   `Journal.format` ≈ `date.rs` (today's journal file for the widget), `splitUrl`/`mdLink` ≈
+2. Kotlin, only for reading and the pop-up's pre-fill: `android/kotlin/Checks.kt` `formatDate`/
+   `journalRelPath` ≈ `date.rs` `format` / config.rs `journal_rel_path` (today's journal file and title
+   for the widget; tested with the core's own cases in android/test/ChecksTest.kt), and in
+   `android/kotlin/JournalWidget.kt` `splitUrl`/`mdLink` ≈
    `capture::split_url`/`md_link`. Adding notes and pictures is NOT mirrored any more
    (since Build 32): the pop-up calls the app's own Rust code (`LeanCore.kt` → `android_capture.rs`).
 

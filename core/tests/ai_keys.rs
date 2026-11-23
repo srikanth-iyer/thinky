@@ -405,3 +405,129 @@ fn link_answers_never_make_more_than_the_mentions_asked() {
     assert!(ai::links_answer("nothing useful", 3).is_err());
     assert!(ai::links_answer("41: yes - x", usize::MAX).is_err(), "a number past the cap is ignored");
 }
+
+// ---------------------------------------------------------------- the shells' one way (audit finding 15)
+// The Windows app (src-tauri ai_key.rs `send`) and the dev server (dev/src/main.rs `ai_send`) both send
+// with `send_keyed` now; each had its own copy of these checks before. These are their tests, moved here
+// (`keyed` is send_keyed without curl: the request and key exactly as they would go out).
+
+/// A request as the page hands it over (the page names an `auth` header; a key may or may not be needed).
+fn page_req(url: &str, auth: Option<&str>) -> ai::Request {
+    ai::Request { method: "POST".into(), url: url.into(), auth: auth.map(str::to_string), headers: vec![], body: Some("{}".into()), local: false, key_required: false }
+}
+const KEY: Option<&str> = Some("sk-test-123");
+
+#[test]
+fn whether_a_key_is_needed_comes_from_the_service_not_the_page() {
+    // (the line only Windows' copy had, now in send_keyed for both shells)
+    let t = tmp("needed");
+    let no_curl = Path::new("/no/such/curl"); // nothing can be sent: an error says how far it got
+    // Claude needs a key; the page says it doesn't: refused before anything is sent (no curl started)
+    let e = ai::send_keyed(no_curl, "claude", &page_req("https://api.anthropic.com/v1/models", None), None, None, &t).unwrap_err();
+    assert!(e.starts_with("No key is saved"), "{e}");
+    for svc in ["openai", "gemini", "openrouter"] {
+        let url = format!("{}/models", ai::provider(svc).unwrap().base);
+        let e = ai::send_keyed(no_curl, svc, &page_req(&url, Some("bearer")), None, None, &t).unwrap_err();
+        assert!(e.starts_with("No key is saved"), "{svc}: {e}");
+    }
+    // "Other": a key is up to the person, whatever the page says: it goes on to curl
+    let mut asked = page_req("https://ai.example.org/v1/models", Some("bearer"));
+    asked.key_required = true;
+    let e = ai::send_keyed(no_curl, "other", &asked, None, None, &t).unwrap_err();
+    assert!(e.contains("curl"), "{e}");
+    let (r, k) = ai::keyed("other", &asked, None, None).unwrap();
+    assert!(!r.key_required && k.is_none());
+    let (r, k) = ai::keyed("claude", &page_req("https://api.anthropic.com/v1/models", None), None, None).unwrap();
+    assert!(r.key_required && k.is_none() && r.auth.is_some());
+}
+
+#[test]
+fn a_key_goes_to_its_own_service() {
+    let (r, k) = ai::keyed("claude", &page_req("https://api.anthropic.com/v1/messages", Some("x-api-key")), KEY, None).unwrap();
+    assert_eq!((r.auth.as_deref(), k, r.key_required), (Some("x-api-key"), KEY, true));
+    for (service, url) in [
+        ("openai", "https://api.openai.com/v1/chat/completions"),
+        ("gemini", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"),
+        ("gemini", "https://generativelanguage.googleapis.com/v1beta/openai/models"),
+        ("openrouter", "https://openrouter.ai/api/v1/models"),
+    ] {
+        let (r, k) = ai::keyed(service, &page_req(url, Some("bearer")), KEY, None).unwrap();
+        assert_eq!((r.auth.as_deref(), k), (Some("bearer"), KEY), "{service}");
+        assert_eq!(r.url, url, "the address is left as the page gave it");
+    }
+}
+
+#[test]
+fn a_key_never_goes_to_another_address() {
+    // the review's attack: the page asks for Claude's key to be sent to its own server
+    for url in [
+        "https://attacker.example/v1/messages",
+        "https://api.anthropic.com.attacker.example/v1/messages",
+        "https://api.anthropic.com@attacker.example/v1/messages",
+        "https://api.anthropic.com/v10/messages",
+        "https://api.anthropic.com/v1",
+        "http://api.anthropic.com/v1/messages",
+        "HTTPS://API.ANTHROPIC.COM/v1/messages",
+        "HTTPS://api.anthropic.com/v1/messages",
+        " https://api.anthropic.com/v1/messages",
+        "https://api.openai.com/v1/chat/completions",
+        "https://api.openai.com/v1/messages",
+        "http://localhost:11434/v1/chat/completions",
+        "",
+    ] {
+        assert_eq!(ai::keyed("claude", &page_req(url, Some("x-api-key")), KEY, None).unwrap_err(), KEY_ELSEWHERE, "{url}");
+    }
+    // one service's key to another's address
+    assert!(ai::keyed("openai", &page_req("https://openrouter.ai/api/v1/models", Some("bearer")), KEY, None).is_err());
+    assert!(ai::keyed("gemini", &page_req("https://generativelanguage.googleapis.com/v1/models", Some("bearer")), KEY, None).is_err());
+    // an address saved for "Other" never widens a preset service's own address
+    assert!(ai::keyed("claude", &page_req("https://attacker.example/v1/messages", None), KEY, Some("https://attacker.example/v1")).is_err());
+}
+
+#[test]
+fn the_header_comes_from_the_service_not_the_page() {
+    // the page asks for Claude's key as a Bearer header, or for none at all: still x-api-key
+    for auth in [Some("bearer"), None, Some("anything")] {
+        let (r, _) = ai::keyed("claude", &page_req("https://api.anthropic.com/v1/models", auth), KEY, None).unwrap();
+        assert_eq!(r.auth.as_deref(), Some("x-api-key"));
+    }
+    // and the OpenAI-style services' as Bearer, even when the page names x-api-key or nothing
+    for auth in [Some("x-api-key"), None] {
+        let (r, _) = ai::keyed("openai", &page_req("https://api.openai.com/v1/chat/completions", auth), KEY, None).unwrap();
+        assert_eq!(r.auth.as_deref(), Some("bearer"));
+    }
+}
+
+#[test]
+fn local_programs_and_unknown_services_never_get_a_key() {
+    for service in ["ollama", "lmstudio", "nope", ""] {
+        // even if one were somehow saved, and the page asks for a header
+        let (r, k) = ai::keyed(service, &page_req("http://localhost:11434/v1/chat/completions", Some("bearer")), KEY, Some("http://localhost:11434/v1")).unwrap();
+        assert_eq!((r.auth, k), (None, None), "{service}");
+        let (r, k) = ai::keyed(service, &page_req("https://attacker.example/v1", Some("x-api-key")), KEY, None).unwrap();
+        assert_eq!((r.auth, k), (None, None), "{service}");
+    }
+    let (r, k) = ai::keyed("nope", &page_req("https://api.anthropic.com/v1/messages", Some("x-api-key")), KEY, None).unwrap();
+    assert_eq!((r.auth, k), (None, None));
+}
+
+#[test]
+fn others_key_goes_only_to_the_address_saved_with_it() {
+    let base = Some("https://ai.example.org/v1");
+    let (r, k) = ai::keyed("other", &page_req("https://ai.example.org/v1/chat/completions", Some("bearer")), KEY, base).unwrap();
+    assert_eq!((r.auth.as_deref(), k), (Some("bearer"), KEY));
+    for url in ["https://attacker.example/v1/chat/completions", "https://ai.example.org.attacker.example/v1/x", "https://ai.example.org/v2/models", "https://ai.example.org/v1"] {
+        assert_eq!(ai::keyed("other", &page_req(url, Some("bearer")), KEY, base).unwrap_err(), KEY_ELSEWHERE, "{url}");
+    }
+    // the saved address as check_base gives it (a "/" at its end is fine)
+    assert!(ai::keyed("other", &page_req("http://127.0.0.1:9/v1/models", None), KEY, Some("http://127.0.0.1:9/v1/")).is_ok());
+    // a key saved before addresses were kept with it (or the address was lost): never sent
+    assert_eq!(ai::keyed("other", &page_req("https://ai.example.org/v1/models", None), KEY, None).unwrap_err(), KEY_ELSEWHERE);
+    // a saved address that isn't one the requests may use: never sent there
+    assert!(ai::keyed("other", &page_req("http://attacker.example/v1/models", None), KEY, Some("http://attacker.example/v1")).is_err());
+    // a program on this computer, typed as "Other", with a key
+    assert!(ai::keyed("other", &page_req("http://localhost:8080/v1/models", None), KEY, Some("http://localhost:8080/v1")).is_ok());
+    // no key saved: the request goes as it is (nothing secret in it)
+    let (_, k) = ai::keyed("other", &page_req("https://anything.example/v1/models", None), None, None).unwrap();
+    assert!(k.is_none());
+}

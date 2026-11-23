@@ -248,8 +248,9 @@ pub fn tidy() {
 
 #[cfg(windows)]
 pub(crate) mod imp {
+    // the Windows functions the rest of the app shares, declared once (capture_box/ffi.rs)
+    use crate::capture_box::ffi::{system_dir, wide, wide_os, CloseHandle};
     use std::ffi::c_void;
-    use std::os::windows::ffi::{OsStrExt, OsStringExt};
     use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
 
@@ -263,13 +264,12 @@ pub(crate) mod imp {
         fn BCryptVerifySignature(key: Handle, padding: *const c_void, hash: *const u8, hash_len: u32, sig: *const u8, sig_len: u32, flags: u32) -> i32;
         fn BCryptDestroyKey(key: Handle) -> i32;
     }
+    // (only the update needs these: the list of running programs)
     #[link(name = "kernel32")]
     extern "system" {
-        fn GetSystemDirectoryW(buf: *mut u16, size: u32) -> u32;
         fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> Handle;
         fn Process32FirstW(snap: Handle, entry: *mut ProcessEntry) -> i32;
         fn Process32NextW(snap: Handle, entry: *mut ProcessEntry) -> i32;
-        fn CloseHandle(h: Handle) -> i32;
     }
     /// PROCESSENTRY32W
     #[repr(C)]
@@ -288,10 +288,6 @@ pub(crate) mod imp {
     #[link(name = "shell32")]
     extern "system" {
         fn ShellExecuteW(hwnd: *mut c_void, op: *const u16, file: *const u16, params: *const u16, dir: *const u16, show: i32) -> isize;
-    }
-
-    fn wide(s: &str) -> Vec<u16> {
-        s.encode_utf16().chain(Some(0)).collect()
     }
 
     /// A CNG algorithm provider, closed again when dropped.
@@ -406,10 +402,7 @@ pub(crate) mod imp {
 
     /// Windows' own curl.exe (Windows 10 1803 and later), by its full path.
     pub fn curl() -> PathBuf {
-        let mut buf = [0u16; 260];
-        let n = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as u32) } as usize;
-        let dir = if n > 0 && n < buf.len() { PathBuf::from(std::ffi::OsString::from_wide(&buf[..n])) } else { PathBuf::from(r"C:\Windows\System32") };
-        dir.join("curl.exe")
+        system_dir().join("curl.exe")
     }
 
     /// Download `url` to `to` with curl.exe: https only (redirects too), retried, within limits
@@ -453,7 +446,7 @@ pub(crate) mod imp {
     /// Start the installer in its passive mode and return at once. Through ShellExecute, as Tauri's
     /// own updater does (it would also ask Windows for permission if an installer needed it).
     pub fn run_installer(setup: &Path) -> Result<(), String> {
-        let file: Vec<u16> = setup.as_os_str().encode_wide().chain(Some(0)).collect();
+        let file = wide_os(setup.as_os_str());
         let (op, params) = (wide("open"), wide("/P /R /UPDATE"));
         let r = unsafe { ShellExecuteW(std::ptr::null_mut(), op.as_ptr(), file.as_ptr(), params.as_ptr(), std::ptr::null(), 5) }; // SW_SHOW
         if r <= 32 {

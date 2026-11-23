@@ -129,8 +129,31 @@ pub fn same_program(a: &str, b: &str) -> bool {
 pub const SIG_MAX: u64 = 64 * 1024;
 /// The installer's own limit (curl's --max-filesize).
 pub const SETUP_MAX: u64 = 300_000_000;
-/// A picture, PDF or video served from the notes folder is read whole: none bigger than this.
-pub const ASSET_MAX: u64 = 100 * 1024 * 1024;
+/// A picture served from the notes folder (vault://) is read whole: none bigger than this. The
+/// same 25 MB the app adds a picture or file at (outline_core::app::MAX_ASSET_BYTES; Android's
+/// LeanCore.kt too), so one limit holds everywhere (audit finding 19; until then 100 MiB, sized
+/// for PDFs and videos the page never asks for).
+pub const ASSET_MAX: u64 = outline_core::app::MAX_ASSET_BYTES as u64;
+
+/// The type a vault:// file is sent as. The page only ever asks vault:// for pictures (an <img>
+/// in a note, the Pictures and Bin lists in Settings: ui/render.js shows a link to any other file
+/// instead), so only pictures are named, the ones ui/render.js's IMG list shows. Anything else
+/// (PDF, video, sound, a page) goes as plain bytes, which the browser never shows or plays as
+/// itself (lib.rs also sends `nosniff` and a sandbox with no script).
+pub fn picture_type(p: &Path) -> &'static str {
+    // (the file's ending, compared without regard to case: "PNG" is "png")
+    match p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("svg") => "image/svg+xml",
+        Some("bmp") => "image/bmp",
+        Some("ico") => "image/x-icon",
+        Some("avif") => "image/avif",
+        _ => "application/octet-stream",
+    }
+}
 
 /// The most a download of `file` may be.
 pub fn max_download(file: &str) -> u64 {
@@ -382,6 +405,61 @@ mod tests {
         assert!(read_capped(&big, ASSET_MAX).unwrap_err().contains("too big"));
         assert!(read_capped(&d.join("missing.sig"), 64).is_err());
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_picture_over_the_apps_25_mb_is_not_served() {
+        // one limit: the one the app adds pictures and files at (audit finding 19)
+        assert_eq!(ASSET_MAX, outline_core::app::MAX_ASSET_BYTES as u64);
+        assert_eq!(ASSET_MAX, 25_000_000);
+        let d = scratch("asset-max");
+        // 30 MB (sparse: nothing is written): under the old 100 MiB, so it used to be read whole
+        let big = d.join("synced from elsewhere.png");
+        std::fs::File::create(&big).unwrap().set_len(30_000_000).unwrap();
+        assert!(read_capped(&big, ASSET_MAX).unwrap_err().contains("too big"));
+        // one byte over: refused; exactly 25 MB: served, every byte
+        std::fs::File::create(&big).unwrap().set_len(ASSET_MAX + 1).unwrap();
+        assert!(read_capped(&big, ASSET_MAX).is_err());
+        std::fs::File::create(&big).unwrap().set_len(ASSET_MAX).unwrap();
+        assert_eq!(read_capped(&big, ASSET_MAX).unwrap().len() as u64, ASSET_MAX);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn only_pictures_are_sent_as_pictures() {
+        let t = |name: &str| picture_type(Path::new(name));
+        assert_eq!(t("assets/a.png"), "image/png");
+        assert_eq!(t("assets/a.jpg"), "image/jpeg");
+        assert_eq!(t("assets/a.JPEG"), "image/jpeg", "the ending's case doesn't matter");
+        assert_eq!(t("assets/a.Gif"), "image/gif");
+        assert_eq!(t("assets/a.webp"), "image/webp");
+        assert_eq!(t("assets/a.svg"), "image/svg+xml");
+        assert_eq!(t("assets/a.bmp"), "image/bmp");
+        assert_eq!(t("assets/a.ico"), "image/x-icon");
+        assert_eq!(t("assets/a.avif"), "image/avif");
+        // the four types the page never asks vault:// for (it shows a link to them instead): plain bytes
+        for f in ["assets/report.pdf", "assets/clip.mp4", "assets/clip.webm", "assets/song.mp3", "assets/a.PDF"] {
+            assert_eq!(t(f), "application/octet-stream", "{f}");
+        }
+        // and anything else that isn't a picture, however it's named
+        for f in ["assets/page.html", "assets/a.png.pdf", "assets/png", "assets/a.png/x", "assets/.png", "assets/a.", "assets/a.svgz", "assets/a"] {
+            assert_eq!(t(f), "application/octet-stream", "{f}");
+        }
+    }
+
+    #[test]
+    fn every_picture_the_page_shows_is_sent_as_a_picture() {
+        // ui/render.js's IMG: the endings it shows as a picture (anything else is a link to the file)
+        let here = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let ui = here.ancestors().map(|d| d.join("ui").join("render.js")).find(|f| f.is_file()).expect("ui/render.js");
+        let js = std::fs::read_to_string(ui).unwrap();
+        let line = js.lines().find(|l| l.starts_with("const IMG = /")).expect("render.js's IMG");
+        let list = line.split("\\.(").nth(1).and_then(|r| r.split(')').next()).expect("IMG's endings");
+        let endings: Vec<String> = list.split('|').flat_map(|e| if e == "jpe?g" { vec!["jpg".to_string(), "jpeg".to_string()] } else { vec![e.to_string()] }).collect();
+        assert!(endings.len() >= 8, "{endings:?}");
+        for e in endings {
+            assert!(picture_type(Path::new(&format!("assets/a.{e}"))).starts_with("image/"), "render.js shows .{e} as a picture, but vault:// wouldn't send it as one");
+        }
     }
 
     #[test]

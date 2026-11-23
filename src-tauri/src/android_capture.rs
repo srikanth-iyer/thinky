@@ -7,7 +7,8 @@
 //!
 //! One call, JSON in and out, so the Java side has a single plain signature:
 //! in  {cache, data, vault, y, m, d, time, text, plain?} for words (plain: words selected in another
-//!     app, kept as plain words and lines, at most SELECTED_MAX characters), or {…, name, typeExt} + the picture's
+//!     app, kept as plain words and lines, at most SELECTED_MAX characters; typed words that start with
+//!     the workflow's to-do word, as the to-do button puts it, are added as a to-do: `todo_words`), or {…, name, typeExt} + the picture's
 //!     bytes, or {…, link} for a picture copied by an earlier try (not copied twice), or
 //!     {…, cmd: "where"} for where notes go, or {…, cmd: "kept", url} for the passages of that web
 //!     page already in the notes;
@@ -111,6 +112,7 @@ pub fn capture(a: &Value, bytes: Option<&[u8]>) -> Value {
         // plain lines (the review's claim 11b: clip::guard, as the Edge extension's highlights): no
         // line of theirs can start a note, a to-do, a property, a code block, a drawer or a date
         None if s("link").is_empty() => {
+            let mut todo = false; // whether the note is added as a to-do (the pop-up's to-do button)
             let text = if a.get("plain").and_then(Value::as_bool) == Some(true) {
                 let words = s("text");
                 if words.chars().count() > SELECTED_MAX {
@@ -118,9 +120,20 @@ pub fn capture(a: &Value, bytes: Option<&[u8]>) -> Value {
                 }
                 outline_core::clip::guard(&outline_core::clip::defuse(&words))
             } else {
-                s("text")
+                let words = s("text"); // typed in the pop-up
+                match todo_words(&root, &words) {
+                    // the to-do button's word was first: the words without it, added as a to-do
+                    Ok(Some(rest)) => {
+                        todo = true;
+                        rest
+                    }
+                    // no to-do word first: the words as typed
+                    Ok(None) => words,
+                    // config.edn couldn't be read: nothing added (as when adding any note)
+                    Err(e) => return json!({ "ok": false, "error": e }),
+                }
             };
-            outline_core::capture::capture_to_usual(&root, &text, "", false, today, &time)
+            outline_core::capture::capture_to_usual(&root, &text, "", todo, today, &time)
         }
         None => outline_core::capture::capture_media_to_usual(&root, &s("link"), today, &time),
         Some(bytes) => {
@@ -145,6 +158,34 @@ pub fn capture(a: &Value, bytes: Option<&[u8]>) -> Value {
         Ok(rel) => json!({ "ok": true, "rel": rel }),
         Err(e) => json!({ "ok": false, "error": e }),
     }
+}
+
+/// Typed words that start with the to-do word the pop-up's to-do button puts first (the workflow's:
+/// TODO, or LATER with `:preferred-workflow :now`, as "where" told the pop-up): the words after it, so
+/// the core adds the note as a to-do with the word at the very start of the line, as the Windows box's
+/// to-do flag does. Without this the quick capture template put the word after its time ("- [[quick
+/// capture]] **09:15**: TODO buy milk"), which no to-do list or widget reads as a to-do (audit finding 4).
+/// None when the words don't start with that word, or it is all there is (never an empty to-do).
+/// Err when config.edn can't be read (it's read only for words that start like a to-do).
+fn todo_words(root: &std::path::Path, words: &str) -> Result<Option<String>, String> {
+    // most notes don't start with a to-do word: no need to read the settings for them
+    if outline_core::task::marker(words.trim_start()).is_none() {
+        return Ok(None);
+    }
+    // the workflow's to-do word, from the settings as they are now
+    let cfg = outline_core::capture::read_config_to_add(root).map_err(|e| format!("Couldn't read logseq/config.edn ({e}), so nothing was added."))?;
+    Ok(after_word(words, cfg.todo_marker()).map(str::to_string))
+}
+
+/// `words` after `word` and the spaces or tabs that follow it, when `words` (spaces before it allowed)
+/// starts with that word on its own ("TODO buy", not "TODOS") and something comes after it.
+fn after_word<'a>(words: &'a str, word: &str) -> Option<&'a str> {
+    let rest = words.trim_start().strip_prefix(word)?; // what comes after the word, if it starts with it
+    if !rest.starts_with([' ', '\t']) {
+        return None; // the word must be followed by a space or a tab ("TODOS" isn't "TODO")
+    }
+    let rest = rest.trim_start_matches([' ', '\t']); // the spaces between the word and the words
+    (!rest.trim().is_empty()).then_some(rest) // nothing but the word: not a to-do
 }
 
 /// A shared file's name with the extension of its type (Android's, e.g. "jpg") when it has none
@@ -189,6 +230,11 @@ mod tests {
         assert_eq!(r, json!({ "ok": true, "rel": "pages/Inbox (2).md" }));
         assert_eq!(std::fs::read_to_string(v.join("pages/inbox.md")).unwrap(), "title:: Mail\n- mail");
         assert_eq!(std::fs::read_to_string(v.join("pages/Inbox (2).md")).unwrap(), "title:: Inbox\n- [[quick capture]] **09:15**: Shared from [example.com](https://example.com/a)\n");
+        // the pop-up's to-do button puts the to-do word before the words: the note is a to-do, the word at
+        // the very start of the line, not after the template's time (audit finding 4)
+        let r = capture(&args(&v, json!({ "text": "TODO buy milk" })), None);
+        assert_eq!(r, json!({ "ok": true, "rel": "pages/Inbox (2).md" }));
+        assert!(std::fs::read_to_string(v.join("pages/Inbox (2).md")).unwrap().ends_with("\n- TODO [[quick capture]] **09:15**: buy milk\n"));
         // a picture without an extension of its own gets its type's; the media template
         let r = capture(&args(&v, json!({ "name": "1000012345", "typeExt": "JPG" })), Some(b"jpeg"));
         assert_eq!(r["ok"], true, "{r}");
@@ -283,6 +329,69 @@ mod tests {
         let _ = std::fs::remove_dir_all(&v);
     }
 
+    /// Audit finding 4: the to-do button's word, typed before the words, makes the note a to-do in
+    /// any quick capture template (the word moved to the very start of the line, where a to-do needs it),
+    /// as the Windows box's to-do flag does. Only the workflow's own word (TODO, or LATER with
+    /// `:preferred-workflow :now`, the one "where" gives the pop-up) is moved; anything else is as typed.
+    #[test]
+    fn the_to_do_button_makes_a_to_do() {
+        let journal = |v: &std::path::Path| std::fs::read_to_string(v.join("journals/2026_10_28.md")).unwrap();
+        let v = vault("todo-button", r#"{:quick-capture-options {:insert-today? true}}"#);
+        let add = |text: &str| capture(&args(&v, json!({ "text": text })), None);
+        assert_eq!(add("TODO buy milk"), json!({ "ok": true, "rel": "journals/2026_10_28.md" }));
+        assert_eq!(journal(&v), "- TODO [[quick capture]] **09:15**: buy milk\n");
+        let parsed = outline_core::parse_page(&journal(&v), &[]);
+        assert_eq!(outline_core::task::parse(&parsed.blocks[0].text).map(|t| t.marker), Some("TODO".to_string()), "a to-do the lists find");
+        // spaces before or after the word, a tab after it; more lines stay the note's own
+        add("  TODO \t water the plants");
+        assert!(journal(&v).ends_with("- TODO [[quick capture]] **09:15**: water the plants\n"), "{}", journal(&v));
+        add("TODO call Sam\nabout the trip");
+        assert!(journal(&v).ends_with("- TODO [[quick capture]] **09:15**: call Sam\n  about the trip\n"), "{}", journal(&v));
+        // not the to-do word: as typed (a word that only starts like it, lower case, another marker)
+        add("TODOS for the week");
+        assert!(journal(&v).ends_with("- [[quick capture]] **09:15**: TODOS for the week\n"), "{}", journal(&v));
+        add("todo lower case");
+        assert!(journal(&v).ends_with("- [[quick capture]] **09:15**: todo lower case\n"), "{}", journal(&v));
+        add("DONE already done");
+        assert!(journal(&v).ends_with("- [[quick capture]] **09:15**: DONE already done\n"), "{}", journal(&v));
+        // the word alone (nothing after it): as typed, never an empty to-do
+        add("TODO");
+        assert!(journal(&v).ends_with("- [[quick capture]] **09:15**: TODO\n"), "{}", journal(&v));
+        add("TODO   ");
+        assert!(journal(&v).ends_with("- [[quick capture]] **09:15**: TODO\n"), "{}", journal(&v));
+        // words selected in another app ("plain") are never made to-dos
+        let r = capture(&args(&v, json!({ "text": "TODO from a web page", "plain": true })), None);
+        assert_eq!(r["ok"], true, "{r}");
+        let parsed = outline_core::parse_page(&journal(&v), &[]);
+        assert!(outline_core::task::parse(&parsed.blocks.last().unwrap().text).is_none(), "{}", journal(&v));
+        let _ = std::fs::remove_dir_all(&v);
+
+        // :preferred-workflow :now: the button's word is LATER; TODO is then as typed
+        let v = vault("todo-later", r#"{:preferred-workflow :now :quick-capture-options {:insert-today? true}}"#);
+        let add = |text: &str| capture(&args(&v, json!({ "text": text })), None);
+        add("LATER read the paper");
+        assert_eq!(journal(&v), "- LATER [[quick capture]] **09:15**: read the paper\n");
+        add("TODO not the workflow's word");
+        assert!(journal(&v).ends_with("- [[quick capture]] **09:15**: TODO not the workflow's word\n"), "{}", journal(&v));
+        let _ = std::fs::remove_dir_all(&v);
+
+        // a "{text}" template: the same line as before (the word was already at the start)
+        let v = vault("todo-bare", r#"{:quick-capture-options {:insert-today? true} :quick-capture-templates {:text "{text}"}}"#);
+        capture(&args(&v, json!({ "text": "TODO just the words" })), None);
+        assert_eq!(journal(&v), "- TODO just the words\n");
+        let _ = std::fs::remove_dir_all(&v);
+
+        // config.edn that can't be read: nothing added, as for any note
+        let v = vault("todo-badcfg", "");
+        std::fs::remove_file(v.join("logseq/config.edn")).unwrap();
+        std::fs::create_dir(v.join("logseq/config.edn")).unwrap();
+        let r = capture(&args(&v, json!({ "text": "TODO x" })), None);
+        assert_eq!(r["ok"], false, "{r}");
+        assert!(r["error"].as_str().unwrap().contains("config.edn"), "{r}");
+        assert!(!v.join("journals/2026_10_28.md").exists());
+        let _ = std::fs::remove_dir_all(&v);
+    }
+
     #[test]
     fn problems_are_said_and_nothing_is_guessed() {
         let r = capture(&json!({ "vault": "", "y": 2026, "m": 10, "d": 28, "text": "x" }), None);
@@ -315,6 +424,21 @@ mod tests {
         let r = capture(&args(&v, json!({ "cmd": "kept", "url": "https://kw.org/other" })), None);
         assert_eq!(r, json!({ "ok": true, "page": "", "highlights": [] }));
         let _ = std::fs::remove_dir_all(&v);
+    }
+
+    #[test]
+    fn the_word_is_taken_off_only_when_it_stands_alone() {
+        assert_eq!(after_word("TODO buy milk", "TODO"), Some("buy milk"));
+        assert_eq!(after_word("  TODO\t \tbuy", "TODO"), Some("buy"));
+        assert_eq!(after_word("TODO a\nb", "TODO"), Some("a\nb"));
+        assert_eq!(after_word("LATER x", "LATER"), Some("x"));
+        assert_eq!(after_word("LATER x", "TODO"), None);
+        assert_eq!(after_word("TODOS x", "TODO"), None);
+        assert_eq!(after_word("TODO", "TODO"), None);
+        assert_eq!(after_word("TODO  \t ", "TODO"), None);
+        assert_eq!(after_word("TODO\nnext line", "TODO"), None);
+        assert_eq!(after_word("", "TODO"), None);
+        assert_eq!(after_word("buy TODO milk", "TODO"), None);
     }
 
     #[test]

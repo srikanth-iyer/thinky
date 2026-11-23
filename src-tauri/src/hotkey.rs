@@ -148,10 +148,6 @@ mod imp {
         BUSY.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    pub(super) fn wide_os(s: &std::ffi::OsStr) -> Vec<u16> {
-        s.encode_wide().chain(Some(0)).collect()
-    }
-
     pub(super) fn close(h: isize) {
         if h != 0 && h != -1 {
             unsafe { CloseHandle(h as *mut c_void) };
@@ -162,15 +158,11 @@ mod imp {
         outline_core::log::record(msg);
     }
 
-    /// Windows' system folder (NUL-ended): where the helper and the boxes it starts stand, so none
-    /// ever holds a folder an update or uninstall removes.
-    fn system_dir() -> Vec<u16> {
-        let mut buf = [0u16; 260];
-        let n = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as u32) } as usize;
-        if n == 0 || n >= buf.len() {
-            return wide(r"C:\Windows\System32");
-        }
-        buf[..n].iter().copied().chain(Some(0)).collect()
+    /// Windows' system folder (NUL-ended, as Windows takes it; ffi.rs's system_dir): where the
+    /// helper and the boxes it starts stand, so none ever holds a folder an update or uninstall
+    /// removes.
+    fn system_dir_wide() -> Vec<u16> {
+        wide_os(system_dir().as_os_str())
     }
 
     /// The key as RegisterHotKey takes it: (modifiers, virtual-key code). None: a sign that isn't
@@ -211,7 +203,7 @@ mod imp {
     pub(super) fn start_self(args: &str, suspended: bool) -> Result<Started, String> {
         let exe = std::env::current_exe().map_err(|e| format!("this program’s place isn’t known ({e})"))?;
         let app = wide_os(exe.as_os_str());
-        let dir = system_dir();
+        let dir = system_dir_wide();
         let base = CREATE_NO_WINDOW | if suspended { CREATE_SUSPENDED } else { 0 };
         let mut last = 0;
         for flags in [base | CREATE_BREAKAWAY_FROM_JOB, base] {
@@ -393,7 +385,7 @@ mod imp {
 
     pub fn helper_main() -> i32 {
         let Some(cache) = outline_core::app::cache_dir() else { return 2 };
-        unsafe { SetCurrentDirectoryW(system_dir().as_ptr()) };
+        unsafe { SetCurrentDirectoryW(system_dir_wide().as_ptr()) };
         // first thing: from now on the app, a newer helper and the installer know it's a helper
         let Some(window) = make_window() else {
             log("The shortcut key’s helper couldn’t make its window.");
@@ -504,24 +496,13 @@ mod imp {
         Some(format!("\"{}\" --hotkey", exe.display()))
     }
 
+    /// The start-at-sign-in entry `name` (win.rs reads and writes the registry for the whole app).
     pub(super) fn run_get(name: &str) -> Option<String> {
-        let (sub, name) = (wide(RUN_KEY), wide(name));
-        let mut buf = vec![0u16; 2048];
-        let mut len = (buf.len() * 2) as u32;
-        let r = unsafe { RegGetValueW(HKEY_CURRENT_USER, sub.as_ptr(), name.as_ptr(), RRF_RT_REG_SZ, std::ptr::null_mut(), buf.as_mut_ptr().cast(), &mut len) };
-        (r == 0).then(|| String::from_utf16_lossy(&buf[..(len as usize / 2).saturating_sub(1)]))
+        crate::win::get(RUN_KEY, name)
     }
 
     fn run_set(name: &str, value: &str) -> bool {
-        let mut key = 0isize;
-        let sub = wide(RUN_KEY);
-        if unsafe { RegCreateKeyExW(HKEY_CURRENT_USER, sub.as_ptr(), 0, std::ptr::null(), 0, KEY_WRITE, std::ptr::null(), &mut key, std::ptr::null_mut()) } != 0 {
-            return false;
-        }
-        let (n, v) = (wide(name), wide(value));
-        let ok = unsafe { RegSetValueExW(key, n.as_ptr(), 0, REG_SZ, v.as_ptr().cast(), (v.len() * 2) as u32) } == 0;
-        unsafe { RegCloseKey(key) };
-        ok
+        crate::win::set(RUN_KEY, name, value)
     }
 
     pub(super) fn run_remove(name: &str) -> bool {

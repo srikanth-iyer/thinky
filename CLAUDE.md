@@ -539,8 +539,12 @@ an AES-GCM key of the app's own, the sealed bytes in SharedPreferences `lean_ai`
 core `ai_providers`, `ai_check_base`, `ai_models_request/read`, `ai_polish_request/read` (no vault needed for the first
 four); shells `ai_key_set` {provider, key, base} (empty = remove; `key_ok`: printable, no quotes; for "Other" the
 address is checked (`check_base`) and kept with the key: Windows "thinky AI base: other"), `ai_key_has`, `ai_send`
-{provider, req}. The refusal reads "That address isn't the one this service's key belongs to, so the key wasn't sent."
-(core `KEY_ELSEWHERE`, src-tauri `ai_key.rs` `prepared`, tests there).
+{provider, req}. A key goes only to its own service (review claim 1, Nov 2026): the shell names the key's header
+from the service (`ai::key_header`, never the page's `auth`) and refuses a request whose address isn't that service's
+(`ai::key_may_go`: the preset's fixed base + "/", or "Other"'s saved address) with "That address isn't the one this
+service's key belongs to, so the key wasn't sent." Both shells (Windows' `ai_key.rs` `send`, the dev server's `ai_send`)
+do it through the core's `ai::send_keyed` = `ai::keyed` (those checks, and whether a key is needed from the service's preset,
+never the page's `key_required`) + curl; each had its own copy until audit finding 15 (Nov 23, 2026); tests in core/tests/ai_keys.rs.
 Sending: `ai::send_with_curl` (Windows' System32 curl.exe, `update::imp::curl`; the dev server's curl): its settings on
 curl's input (`--config -`, `-q` first), so the key is never on a command line; the body through a file in
 `<cache>/ai`, removed after (`sweep_temp`, once per run, takes away another run's left-over `ai-*.json` or one older
@@ -825,7 +829,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   buttons sit level, checked by t7_layout) and the window buttons only in the desktop app (`window.__TAURI__.window`,
   permissions in `capabilities/default.json`); never on Android (the drag call doesn't exist there).
   The capture box ("Add to journal", a launcher-style box like Spotlight): on Windows a native Win32
-  window, `src-tauri/src/capture_box/` (Win32 declared by hand in `ffi.rs`; no web engine, so it shows
+  window, `src-tauri/src/capture_box/` (Win32 declared by hand in `ffi.rs`, the one place for the whole app: win.rs, hotkey.rs, update.rs, ai_key.rs, links.rs and watch.rs import from it rather than declare a function again, audit finding 18; no web engine, so it shows
   at once with the app closed), made straight from `main` for `--capture-box [words]`
   (`open_box`; `--capture`, a note added with no window, went in Build 34: nothing used it); if that window can't be made (or not on Windows), the reason
   and the words handed to it go to the problems log and the app opens instead (no web box since
@@ -1481,8 +1485,9 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
 - `android/MainActivity.kt` + `scripts/android_overlay.py`: applied after `tauri android init` in CI
   (insets, All-files-access permission, `window.LeanAndroid` JS bridge). `src-tauri/gen/` is not committed.
   `android/kotlin/Checks.kt`: the Android code's rules with no Android in them (where a key may go, picture sizes,
-  front matter, selection limits…), tested on a plain JVM by `bash android/test/run.sh` (ChecksTest.kt);
-  `python3 android/test/overlay_test.py` runs the overlay on a stand-in tree (APK and Play).
+  front matter, selection limits, today's journal file and title as core date.rs/`journal_rel_path` make them: the widget
+  must read the file notes go to; audit finding 17…), tested on a plain JVM by `bash android/test/run.sh` (ChecksTest.kt);
+  `python3 android/test/overlay_test.py` runs the overlay on a stand-in tree (APK and Play). Both run in android-test.yml.
 - Drawing only what changed (Build 44): `Outline.render` hands the drawn rows to `keepRows`, which keeps the rows at the start and the end
   of the page whose `rowSig` (the note's words, depth, the level its line ends at, has-kids/folded, list number, placeholder,
   and render.js `drawStamp`: the Property display rules' count + the day) is what they were drawn from (`div.sig`) and whose
@@ -1659,6 +1664,9 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
   pictures load with `referrerpolicy="no-referrer"`. "Check this folder"'s missing files and "Show attachments"
   take only names `pictures::asset_links` gives: read (`%2e`, `%5C`, `%3A`) first, then any `..`, `\`, `:` or NUL
   refused, and looked up only through `asset_file` (review claim 4). (tests/features.rs, tests/pictures.rs, t18_security)
+  The app's `vault://` sends a picture type only for pictures (`shell_rules::picture_type`, the
+  endings render.js's IMG shows; a PDF, video or sound goes as plain bytes, since the page never asks
+  for one) and reads none over `ASSET_MAX`, the same 25 MB as `app::MAX_ASSET_BYTES` (audit finding 19).
 - Drawing notes: a note that makes a drawing rule throw shows as its plain words (`renderBlock`'s
   catch); math.js looks names up with `Object.hasOwn` (no `\constructor`); a formula of more than 2,000
   matrix cells or nested more than 40 deep shows as its source (`.m-src`); a link's label holds no other link
@@ -1706,7 +1714,7 @@ window can't be sent to another page.
 - Here: `cargo test -p outline_core`; speed: `cargo run --release -p outline_core --example bench`.
   The Windows shell's own decisions (`src-tauri/src/shell_rules.rs`, `ai_key.rs`: closing, the capture box's
   footer/placing/wheel, links between copies, size limits, which address an AI key may go to) have tests
-  that need no Windows or Tauri: `sh src-tauri/pure_tests.sh` (`cargo test -p shell_pure_tests`, a small package in src-tauri/pure that builds those two files as tests against outline_core alone); on Windows
+  that need no Windows or Tauri: `sh src-tauri/pure_tests.sh` (`cargo test -p shell_pure_tests`, a small package in src-tauri/pure that builds those files as tests against outline_core alone; since audit finding 13, Nov 23, 2026, also `watch.rs`, whose inotify tests are the phone's file watcher's, run on Linux, and `android_capture.rs`); on Windows
   `cargo test -p lean-outliner` runs them with the rest.
   CI (build.yml `ui-tests`, from Build 37): all of them on every build, in six groups on six machines (every group runs to the end, `fail-fast: false`; t5_long first in its group)
   (Playwright 1.63.0 installed into /opt/npm-tools there, Pillow from pip); main signs only after all six
@@ -1718,7 +1726,7 @@ window can't be sent to another page.
   (TypeScript's checker, pinned in package.json, reads ui/ with jsconfig.json: checkJs, not strict; the
   globals the page reads, LeanAndroid and __TAURI__, are declared in dev/types/globals.d.ts, outside ui/ so it isn't packed into the app). Types are
   JSDoc comments (`/** @type {HTMLElement} */ (e.target)`, `@param`), never @ts-ignore. CI's `test` job and
-  pr.yml run it, with `python3 scripts/update_sig_test.py`, `bash android/test/run.sh` and
+  pr.yml run it, with `python3 scripts/update_sig_test.py`, `python3 scripts/release_check_test.py`, `bash android/test/run.sh` and
   `python3 android/test/overlay_test.py` (until Nov 21 those two ran only in android-test.yml). Dev server: `cargo test -p devserver`
   (its paths, Origin, AI keys). The outside review's fixes (Nov 21) in the browser: t34_review; in the core: tests/review_core.rs, tests/ai_keys.rs
   (where an AI key may go), tests/last_vault.rs (where quick capture adds notes).
@@ -1846,7 +1854,10 @@ window can't be sent to another page.
   `thinky-play.aab` with the APK's key (jarsigner, checked to carry the APK's certificate). `sign-wip` does the same with throw-away keys.
   `verify` (windows) runs the shipped exe's `--verify-update` on the signed installer (must pass) and on
   a changed copy, another build number, an edited version and another key (must fail). `sizes` reports
-  sizes; `release` (main only, environment `publish`) publishes here. Build numbers follow the newest release here or on the old downloads repo
+  sizes; `release` (main only, environment `publish`; its first step after the checkout, `scripts/release_check.py
+  unpublished N` then `version --main`, stops if the tag build-N exists or a release build-N or newer is here or on the old
+  downloads repo, and repeats the version check: audit finding 11, a re-run of an older cancelled run reuses its build number
+  and skips `number`; so a release that failed half-published is finished by a new run, not a re-run) publishes here. Build numbers follow the newest release here or on the old downloads repo
   (`number` refuses to start below build 33; so does `prev-cert` look in both). Pull requests run
   only `pr.yml` (the checks listed at the top of this section that need no Windows, the phone or a browser, plus
   Clippy with its correctness and suspicious lints stopping it; no secrets, never `pull_request_target`). Every action is pinned to a

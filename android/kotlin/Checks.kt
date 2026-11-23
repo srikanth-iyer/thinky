@@ -2,11 +2,14 @@
 // compiles this file with android/test/ChecksTest.kt and runs it on a plain JVM (no phone, no Android
 // SDK). The Android code calls them: AiKeys (where a key may go), JournalWidget (the size a small
 // picture is read at), QuickCaptureActivity (whose picture it is, reading with a limit) and
-// SelectionCaptureActivity (how often and how much), MainActivity (the update's signature file). Each
-// says which rule of the app's it mirrors.
+// SelectionCaptureActivity (how often and how much), MainActivity (the update's signature file),
+// JournalWidget and QuickCaptureActivity (today's journal file and title). Each says which rule of the
+// app's it mirrors.
 // The package line is added by scripts/android_overlay.py.
 
 import java.io.InputStream
+import java.util.Calendar
+import java.util.Locale
 import java.security.KeyFactory
 import java.security.MessageDigest
 import java.security.PublicKey
@@ -375,5 +378,72 @@ object Checks {
     if (had.isNotEmpty()) return text.substring(had.length) to -had.length
     val m = marker.trim().ifEmpty { "TODO" } + " "
     return (m + text) to m.length
+  }
+
+  // ---- today's journal: its file and its title (JournalWidget.todayFile / todayTitle; core date.rs
+  // `format` and config.rs `journal_rel_path`). The widget must read the very file the app writes
+  // notes to, so these follow the core's rules exactly; ChecksTest has the core's own test cases
+  // (audit finding 17: before, these sat in JournalWidget.kt, where no test could run them).
+
+  private val MONTHS = arrayOf("January", "February", "March", "April", "May", "June", "July",
+    "August", "September", "October", "November", "December")
+  private val DAYS = arrayOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+  /** The date-fns tokens the core knows, longest first where one starts another (core date.rs TOKENS). */
+  private val TOKENS = listOf("yyyy", "yy", "MMMM", "MMM", "MM", "M", "do", "dd", "d", "EEEE", "EEE", "EE", "E")
+
+  /** 1 → "1st", 2 → "2nd", 3 → "3rd", 11 to 13 → "th", 22 → "22nd" (core date.rs `ordinal`). */
+  fun ordinal(d: Int): String {
+    val suf = if (d % 100 in 11..13) "th" else when (d % 10) { 1 -> "st"; 2 -> "nd"; 3 -> "rd"; else -> "th" }
+    return "$d$suf"
+  }
+
+  /** The day `c` written in date-fns style tokens, same rules as core/src/date.rs `format`: the tokens
+   *  above; text in single quotes is kept as it is (an unclosed quote runs to the end); anything else
+   *  is kept as it is. */
+  fun formatDate(fmt: String, c: Calendar): String {
+    val y = c.get(Calendar.YEAR) // the year, e.g. 2026
+    val m = c.get(Calendar.MONTH) + 1 // the month, 1 to 12 (Calendar counts from 0)
+    val d = c.get(Calendar.DAY_OF_MONTH) // the day of the month, 1 to 31
+    val wd = c.get(Calendar.DAY_OF_WEEK) - 1 // the weekday, 0 = Sunday (Calendar counts from 1)
+    val sb = StringBuilder() // the text made so far
+    var i = 0 // where in `fmt` we are
+    while (i < fmt.length) {
+      if (fmt[i] == '\'') {
+        // quoted words: kept as they are, up to the closing quote (or the end)
+        val end = fmt.indexOf('\'', i + 1).let { if (it < 0) fmt.length else it }
+        sb.append(fmt, i + 1, end)
+        i = end + 1
+        continue
+      }
+      val t = TOKENS.firstOrNull { fmt.startsWith(it, i) } // a token starting here, if any
+      if (t == null) { sb.append(fmt[i]); i++; continue } // any other character: as it is
+      sb.append(when (t) {
+        "yyyy" -> String.format(Locale.US, "%04d", y)
+        "yy" -> String.format(Locale.US, "%02d", y % 100)
+        "MMMM" -> MONTHS[m - 1]
+        "MMM" -> MONTHS[m - 1].substring(0, 3)
+        "MM" -> String.format(Locale.US, "%02d", m)
+        "M" -> m.toString()
+        "do" -> ordinal(d)
+        "dd" -> String.format(Locale.US, "%02d", d)
+        "d" -> d.toString()
+        "EEEE" -> DAYS[wd]
+        else -> DAYS[wd].substring(0, 3) // EEE, EE, E: the weekday's first three letters
+      })
+      i += t.length
+    }
+    return sb.toString()
+  }
+
+  /** Today's journal file inside the notes folder, "journals/2026_11_23.md" (core config.rs
+   *  `journal_rel_path`): `dir` (:journals-directory, from the core, already checked to be inside the
+   *  notes folder; checked again here: null when it has a ".." part or starts at the top) and the file
+   *  name format `fmt` (:journal/file-name-format); a name that would leave the journals folder (empty,
+   *  starting with ".", or with / \ : or a NUL in it) falls back to yyyy_MM_dd, as the core does. */
+  fun journalRelPath(dir: String, fmt: String, c: Calendar): String? {
+    var stem = formatDate(fmt, c) // the file's name without ".md"
+    if (stem.isEmpty() || stem.startsWith(".") || stem.any { it == '/' || it == '\\' || it == ':' || it == '\u0000' }) stem = formatDate("yyyy_MM_dd", c)
+    if (dir.split('/', '\\').any { it == ".." } || dir.startsWith("/")) return null
+    return "$dir/$stem.md"
   }
 }
