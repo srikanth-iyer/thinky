@@ -651,7 +651,8 @@ own wishes for Polish note" are added after them, ≤2,000 characters, empty = t
 names or aliases sharing a 3+-letter word with the note, or starting the same 4+ letters, most linked first, ≤60;
 never the whole folder), the tags in use (≤150, most used first), and the note's words: its property lines
 (`split_props`: id::, collapsed::, by::…) are never sent. `polish_answer`: a code block or the <<< >>> it was sent in
-taken off; notes split at "- " lines (≤8; ≤4× the note + 600 characters); properties it made up dropped; every
+taken off; a picture `![w](addr)` the note didn't have becomes a plain link, so a suggestion never loads a web address
+before Keep (`text::unpicture_new`, also in `picture_answer` and the page-name helper's description: review S2, Nov 22); notes split at "- " lines (≤8; ≤4× the note + 600 characters); properties it made up dropped; every
 `[[link]]`/`#tag` that isn't a page, an alias, a tag in use, a day or already in the note becomes plain words (text.rs
 `unlink_unknown`, `link_names`; `unlinked` lists them); the first note gets the note's own property lines back; with
 `mark`, `by:: ai` on each (not when one already says `by::`); `same` when nothing changed. UI (ui/polish.js): the ✦
@@ -711,7 +712,9 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
 ## Shape
 - `core/` (Rust, `outline_core`): everything that understands notes.
   - `parse.rs` text → blocks/props/refs · `vault.rs` index (backlinks, tags, props, search, to-dos,
-    unlinked refs, templates; duplicate names: first file owns the name, `take`/`promote`; an alias
+    unlinked refs, templates; duplicate names: first file owns the name, `take`/`promote`, except that the file named for a
+    page wins over a copy that only claims it by `title::` ("Foo (1).md" sorts first; `misowned` →
+    `app::give_names_back` after loading and after changes; `promote` prefers the named file: review R5, Nov 22); an alias
     counts as its page: `page_info`/`resolve` open the page, `all_pages` gives each page its
     `aliases` (not one that's a page of its own or another page's; `search_pages` the same), so the
     `[[`/`#` list (popups.js `Suggest.pages`) shows "SB → Sourdough Bread" and never "New page: SB",
@@ -1584,7 +1587,9 @@ it; the first save of a new page writes only where no file is: one that turned u
 
 ## Rules that protect the notes
 - Files stay Logseq-compatible Markdown; other writers exist (Logseq, sync apps such
-  as Google Drive, scripts and other tools). Saves send `base_hash` + the base doc: edits made elsewhere are merged
+  as Google Drive, scripts and other tools). Saves send `base_hash` + the base doc (a save whose words the file already holds writes nothing:
+  review R8, Nov 22; when a file can't be replaced and the in-place write fails, the temp copy keeps the new
+  words and the error names it: S4); edits made elsewhere are merged
   block by block (`merge.rs`, one `stretch` rule for both `merge_blocks` and `clash_parts`: between
   notes both left alone, one side's change wins; notes edited in place on both sides merge note by note
   only when every note resolves and both line up (`aligned`); notes added at the same place on both
@@ -1592,7 +1597,9 @@ it; the first save of a new page writes only where no file is: one that turned u
   re-parents a note (the order, or an added note shallower than the next note both still have), one
   side's subtree starts with the same note as one of the other's but has other notes under it (review
   claim 7), one of them has words that were on the page (moved, or a repeat), or both took a note away
-  from its place (`both_added`); words edited on one side next to notes added on the other combine only
+  from its place (`both_added`); a note the base had that would come out more often than either side
+  has it (a note moved to two places, one per device) makes the whole page one clash (`comes_out_twice`,
+  review R10, Nov 22); words edited on one side next to notes added on the other combine only
   when the edited notes kept their depths and line up (`edits_and_insertions`); else the whole stretch
   is one clash). A real clash opens the clash screen (`ui/clash.js`, from `Outline.showConflict`): `clash`
   (app.rs, `merge::clash_parts`; checks `path` like `save`) gives the file's version and the page in
