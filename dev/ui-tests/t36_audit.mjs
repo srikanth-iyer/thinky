@@ -554,6 +554,40 @@ await section('review R11c: the full-size picture: a dialog, Esc closes it, Tab 
   await page.keyboard.press('Escape');
 });
 
+// ---------------------------------------------------------------------------------------------------
+await section('a picture over the 25 MB limit says why it is not shown (he asked, Nov 23)', async () => {
+  fs.mkdirSync(VAULT + '/assets', { recursive: true });
+  // a tiny real picture (1×1 PNG), one just over the limit and one exactly at it (sparse files: no
+  // disk is used for their empty bytes)
+  fs.writeFileSync(VAULT + '/assets/tiny.png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg==', 'base64'));
+  const sized = (name, n) => { const fd = fs.openSync(VAULT + '/assets/' + name, 'w'); fs.ftruncateSync(fd, n); fs.closeSync(fd); };
+  sized('huge.png', 25_000_001);
+  sized('edge.png', 25_000_000);
+  await fresh('Audit Big Pictures', '- small ![tiny](../assets/tiny.png)\n- big ![huge](../assets/huge.png)\n- at the limit ![edge](../assets/edge.png)\n');
+  // each picture as the page got it: its drawn size and what the app's server sent for it
+  const look = (alt) => page.evaluate(async (a) => {
+    const img = document.querySelector(`#main img[alt="${a}"]`);
+    if (!img) return null;
+    for (let k = 0; k < 50 && !img.complete; k++) await new Promise((r) => setTimeout(r, 100));
+    const r = await fetch(img.src);
+    return { w: img.naturalWidth, type: r.headers.get('content-type'), text: (await r.text()).slice(0, 2000) };
+  }, alt);
+  const big = await look('huge');
+  check(big && big.w === 440 && /image\/svg\+xml/.test(big.type), 'over the limit: a small picture is shown instead of a broken one', JSON.stringify(big && { w: big.w, type: big.type }));
+  check(big && /over thinky(&#39;|')s 25 MB limit/.test(big.text), 'and it says why: over thinky’s 25 MB limit', big?.text.slice(0, 300));
+  check(big && !/<script|href=|xlink/i.test(big.text), 'it holds no script and no link');
+  const small = await look('tiny');
+  check(small && small.w === 1 && /image\/png/.test(small.type) && !/25 MB/.test(small.text), 'a normal picture is sent as itself, with no note', JSON.stringify(small && { w: small.w, type: small.type }));
+  const edge = await look('edge');
+  check(edge && !/svg/.test(edge.type || '') && !/25 MB limit/.test(edge.text), 'a picture exactly at the limit gets no note (only one over it does)', JSON.stringify(edge && { type: edge.type }));
+  // an empty space for a missing picture is a missing picture, not a big one
+  // (asked from here, not from the page, so the page logs no failed load)
+  const tinySrc = await page.evaluate(() => document.querySelector('#main img[alt="tiny"]').src);
+  const gone = (await fetch(tinySrc.replace('tiny.png', 'nothing-here.png'))).status;
+  check(gone === 404, 'a missing picture is still "not found", never the size note', String(gone));
+  for (const n of ['tiny.png', 'huge.png', 'edge.png']) fs.rmSync(VAULT + '/assets/' + n, { force: true });
+});
+
 await browser.close();
 
 // ---------------------------------------------------------------------------------------------------

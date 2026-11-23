@@ -252,3 +252,31 @@ fn random_backslash_lines_survive_saving() {
         }
     }
 }
+
+// He asked (Nov 23): a picture that is too big to show must say why, not just look broken.
+#[test]
+fn a_picture_over_the_limit_says_why_it_is_not_shown() {
+    use outline_core::app::{too_big_picture, too_big_to_show, MAX_ASSET_BYTES};
+    // the note: an SVG picture naming the limit in megabytes, as the editor says it
+    let svg = too_big_picture();
+    assert!(svg.starts_with("<svg ") && svg.ends_with("</svg>"), "{svg}");
+    assert!(svg.contains("Picture not shown: it is over thinky's 25 MB limit"), "{svg}");
+    // nothing in it can run or go anywhere: no script, no link, no outside picture or font
+    for bad in ["<script", "href", "url(", "@import", "<foreignObject", "on"] {
+        let hit = if bad == "on" { svg.contains(" onload") || svg.contains(" onclick") } else { svg.contains(bad) };
+        assert!(!hit, "{bad} in {svg}");
+    }
+    // which files count as too big: only those over the limit (sparse files: no disk is used)
+    let dir = std::env::temp_dir().join(format!("thinky-bigpic-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let sized = |name: &str, n: u64| {
+        let p = dir.join(name);
+        std::fs::File::create(&p).unwrap().set_len(n).unwrap();
+        p
+    };
+    assert!(too_big_to_show(&sized("over.png", MAX_ASSET_BYTES as u64 + 1)), "one byte over: too big");
+    assert!(!too_big_to_show(&sized("at.png", MAX_ASSET_BYTES as u64)), "exactly the limit: shown");
+    assert!(!too_big_to_show(&sized("small.png", 10)), "a small picture: shown");
+    assert!(!too_big_to_show(&dir.join("missing.png")), "a missing file is missing, not big");
+    std::fs::remove_dir_all(&dir).unwrap();
+}

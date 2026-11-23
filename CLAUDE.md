@@ -1682,6 +1682,10 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
   The app's `vault://` sends a picture type only for pictures (`shell_rules::picture_type`, the
   endings render.js's IMG shows; a PDF, video or sound goes as plain bytes, since the page never asks
   for one) and reads none over `ASSET_MAX`, the same 25 MB as `app::MAX_ASSET_BYTES` (audit finding 19).
+  A picture over that limit is not served as a broken image: both shells (`vault://` and the dev
+  server's `/vault/`) answer with `app::too_big_picture()`, a small SVG note reading "Picture not shown:
+  it is over thinky's 25 MB limit" (no script or link in it), when `app::too_big_to_show` says the
+  file is bigger than the limit; exactly 25 MB still shows. (tests/ponytail_audit.rs, t36_audit)
 - Drawing notes: a note that makes a drawing rule throw shows as its plain words (`renderBlock`'s
   catch); math.js looks names up with `Object.hasOwn` (no `\constructor`); a formula of more than 2,000
   matrix cells or nested more than 40 deep shows as its source (`.m-src`); a link's label holds no other link

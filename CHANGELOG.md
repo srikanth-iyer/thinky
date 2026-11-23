@@ -32,6 +32,7 @@ Fixes from two code reviews (Nov 22 and Nov 23), each checked against the code f
 - A web picture in an AI suggestion becomes a plain link, so nothing is fetched before you press Keep.
 - Phone: the "Add a note" pop-up's to-do button makes a real to-do; a pages or journals folder made after the app started is now watched; a shared web page's link is now made by the same rules as on Windows (a title like {{query …}} goes in harmless).
 - Keyboard: arrow keys are fast again under a big folded note; boxes keep Tab inside and give the keyboard back when they close; Esc closes a full-size picture.
+- A picture bigger than 25 MB now shows a short note saying it is over thinky's 25 MB limit, instead of a broken picture.
 - Under the hood: on Windows, git backup only runs git.exe from PATH, never one next to the app; the AI key check exists once, in the core; the picture server sends only pictures, at most 25 MB; re-running an old release on GitHub can no longer publish over a newer one; the phone's file-watcher and widget tests now run on every build.
 
 ## Build 57 · version 0.6.6 (November 2026)

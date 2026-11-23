@@ -208,13 +208,27 @@ fn builder() -> tauri::Builder<tauri::Wry> {
         })
         // pictures in notes: vault://localhost/assets/x.png → <notes folder>/assets/x.png, read by a
         // few threads in turn (a page of a hundred pictures asks for them all at once), none bigger
-        // than ASSET_MAX (25 MB, each is read whole), sent as a picture type (shell_rules::picture_type)
+        // than ASSET_MAX (25 MB, each is read whole; a bigger picture gets a small picture saying so,
+        // `too_big_picture`), sent as a picture type (shell_rules::picture_type)
         .register_asynchronous_uri_scheme_protocol("vault", |_ctx, req, responder| {
             let path = decode_path(req.uri().path());
             static POOL: OnceLock<shell_rules::Pool> = OnceLock::new();
             POOL.get_or_init(|| shell_rules::Pool::new(4)).run(move || {
                 let root = ROOT.lock().unwrap_or_else(|p| p.into_inner()).clone();
                 let file = root.and_then(|r| outline_core::app::asset_file(&r, &path));
+                // a picture over the app's limit: a small picture that says so, not a broken one
+                // (outline_core::app::too_big_picture; read only its size, never the file)
+                if file.as_deref().is_some_and(|f| shell_rules::picture_type(f).starts_with("image/") && outline_core::app::too_big_to_show(f)) {
+                    let r = tauri::http::Response::builder()
+                        .header(tauri::http::header::CONTENT_TYPE, "image/svg+xml")
+                        .header("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'")
+                        .header("X-Content-Type-Options", "nosniff")
+                        .body(outline_core::app::too_big_picture().into_bytes());
+                    if let Ok(r) = r {
+                        responder.respond(r);
+                    }
+                    return;
+                }
                 let resp = match file.and_then(|f| shell_rules::read_capped(&f, shell_rules::ASSET_MAX).ok().map(|b| (f, b))) {
                     Some((f, bytes)) => tauri::http::Response::builder()
                         .header(tauri::http::header::CONTENT_TYPE, shell_rules::picture_type(&f))

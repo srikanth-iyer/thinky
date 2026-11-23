@@ -230,7 +230,14 @@ fn handle(sv: &Server, stream: TcpStream) {
     }
     if let Some(rel) = url.strip_prefix("/vault/") {
         let root = sv.state.lock().unwrap_or_else(|p| p.into_inner()).as_ref().map(|a| a.root.clone());
-        return match root.and_then(|r| asset_file(&r, &decode(rel))).and_then(|f| std::fs::read(&f).ok().map(|b| (f, b))) {
+        let file = root.and_then(|r| asset_file(&r, &decode(rel)));
+        // a picture over the app's limit: a small picture that says so, as the app's vault:// does
+        // (only its size is read, never the file)
+        if file.as_deref().is_some_and(|f| outline_core::app::is_picture(&f.to_string_lossy()) && outline_core::app::too_big_to_show(f)) {
+            let svg = outline_core::app::too_big_picture();
+            return respond(&stream, 200, &[("Content-Type", "image/svg+xml"), ("Content-Security-Policy", VAULT_CSP), ("X-Content-Type-Options", "nosniff")], svg.as_bytes());
+        }
+        return match file.and_then(|f| std::fs::read(&f).ok().map(|b| (f, b))) {
             // (a file from the notes folder is never a page that runs: an SVG or HTML file synced
             // into assets/ could otherwise run script with the app's own rights)
             Some((f, bytes)) => respond(&stream, 200, &[("Content-Type", mime(&f)), ("Content-Security-Policy", VAULT_CSP), ("X-Content-Type-Options", "nosniff")], &bytes),

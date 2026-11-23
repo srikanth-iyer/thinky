@@ -2711,6 +2711,36 @@ const BIN_INDEX: &str = ".thinky-bin.json";
 /// The largest picture or file added to `assets/` (the app's editor says so before reading one).
 pub const MAX_ASSET_BYTES: usize = 25_000_000;
 
+/// What the shells send in place of a picture in the notes folder bigger than `MAX_ASSET_BYTES`
+/// (synced from elsewhere: the app itself never adds one). A plain broken picture would leave you
+/// guessing why, so the note shows this small picture instead, which says it (he asked, Nov 23).
+/// An SVG with no script or link in it, drawn in the page's own light or dark look; Tauri's
+/// vault:// (src-tauri/src/lib.rs) and the dev server (dev/src/main.rs) both send it.
+pub fn too_big_picture() -> String {
+    // the limit in whole megabytes, as the editor's own message says it ("25 MB")
+    let mb = MAX_ASSET_BYTES / 1_000_000;
+    let say = format!("Picture not shown: it is over thinky's {mb} MB limit");
+    format!(
+        concat!(
+            // a 440×56 picture: a soft box with the words in the middle, the system font
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"440\" height=\"56\" viewBox=\"0 0 440 56\" role=\"img\" aria-label=\"{say}\">",
+            "<title>{say}</title>",
+            // light look first; the dark look when the screen is dark
+            "<style>rect{{fill:#f0efec;stroke:#c9c6bf}}text{{fill:#3b3a36;font:14px system-ui,sans-serif}}",
+            "@media (prefers-color-scheme: dark){{rect{{fill:#2a2b30;stroke:#4a4b52}}text{{fill:#d8d8dc}}}}</style>",
+            "<rect x=\"1\" y=\"1\" width=\"438\" height=\"54\" rx=\"8\"/>",
+            "<text x=\"220\" y=\"33\" text-anchor=\"middle\">{say}</text></svg>"
+        ),
+        say = say
+    )
+}
+
+/// Whether a file in the notes folder is too big for the app to show (more than `MAX_ASSET_BYTES`).
+/// False when it can't be read: that is a missing picture, not a big one.
+pub fn too_big_to_show(path: &Path) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| m.len() > MAX_ASSET_BYTES as u64)
+}
+
 /// Pictures the app shows in a note (by file name).
 pub fn is_picture(name: &str) -> bool {
     let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
