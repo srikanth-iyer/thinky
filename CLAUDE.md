@@ -161,7 +161,16 @@ store, folded by default), parents bold with a count (`.ns-parent`, `.ns-n`), su
 `ui/refresh` (Ctrl+R, F5, Ctrl+Shift+R; checked before the typing stop so the WebView never reloads the
 window) and the phone's pull-down (`App.pullToRefresh`, 72 px from the top; not from a textarea, a dot,
 a pop-up, the sidebar) run `App.refreshNow`: flush, `rescan`, then each outline read again unless it has
-unsaved typing or a clash (`refresh` for one being edited), place kept, "Up to date". To-dos: `TaskHit.under`
+unsaved typing or a clash (`refresh` for one being edited), place kept, "Up to date". Anything that puts
+different notes under an outline clears its selection first (`clearSel` in `restore` = Undo/Redo/putting back, `load`,
+`takeFrom`, `applyMerged`; Ponytail audit finding 3: a kept selection pointed at other notes). "In use" (typing,
+selected, a clash) is one test, `Outline.busy()`, used by `reload` and `App.newDay`. After midnight `App.newDay`
+redraws a side showing Journals whose drawn days don't include today (after each refresh check, and once a minute while
+the window shows; skipped while a day is in use; finding 6); the phone's "+" (`addNote`, async) calls `newDay(true)`
+first (unsaved typing saved), so the note goes into the new day. The refresh check's 5 s limit is its own timer (L6).
+Selection mode works out the selected range once per paint (`paintSel`; R9: ↓/↑ on a folded note with 3,000 notes
+was 170–300 ms). A menu choice gives the keyboard back to the menu's button before it runs, as Esc does; box heading
+ids are counted (`modal-h-N`), never the time (R11a). Tests: dev/ui-tests/t36_audit.mjs (`T36_ONLY=<regex>`), unit.mjs. To-dos: `TaskHit.under`
 = links of the notes above (nearest first, its own left out; vault.rs `tasks`), counted by the page
 buttons and the filter, shown as "· under …" (`taskRow`). Note menu: "Show hidden properties" when the
 note has some (`hiddenProps`, render.js `hiddenKey`), a read-only box with Copy (`showHidden`).
@@ -665,7 +674,11 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     pieces, rename (also inside `{{embed}}`/`{{query}}`, as the index reads links there; a new name ending in "." or ":"
     written `#[[x.]]`, as a `#tag` drops those at its end; Ponytail audit findings 2 and 10), unlinked mentions (macros
     left whole) · `parse::ends_tag` the one rule for where a `#tag` ends (the invisible space `clip::defuse` puts after
-    a "#" ends it too: finding 8) · `merge.rs` three-way block merge for edits made elsewhere
+    a "#" ends it too: finding 8); the page's copy of that rule is render.js's one set (`TAG_CH`, `TAG_AT`, `tagEnd`,
+    and `tagBody(name)` = `name` or `[[name]]`), used by `inline`, `pagesIn` (filter chips: `#v1.2` is "v1.2"), the #
+    list (popups.js) and paste.js: never write another tag reader in ui/ · render.js `splitList` = parse.rs
+    `split_list` (tags::/alias:: split only at commas outside `[[ ]]`, counted by depth like the core; `propsHtml`
+    uses it: finding 9) · `merge.rs` three-way block merge for edits made elsewhere
   - `capture.rs` quick capture (Logseq templates; an empty `{url}` drops a joining "from"). Web addresses
     are neat Markdown links everywhere (Build 32, the maintainer asked): `md_link(url, title, site)` = "[Title ·
     Site](url)" (`clean_title` drops a "| Site" ending; the site's address, `host`, when its name isn't
