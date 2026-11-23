@@ -1,0 +1,14 @@
+- written before the share
+- [[quick capture]] **15:38**: Shared from another app
+- [[quick capture]] **15:38**: Selected words [​[Not A Link]​] #​nottag
+- [[quick capture]] **15:38**: Burst selection 1
+- [[quick capture]] **15:38**: Burst selection 2
+- [[quick capture]] **15:38**: Burst selection 3
+- [[quick capture]] **15:38**: Burst selection 4
+- [[quick capture]] **15:38**: Burst selection 5
+- [[quick capture]] **15:38**: Burst selection 6
+- [[quick capture]] **15:38**: Burst selection 7
+- [[quick capture]] **15:38**: Burst selection 8
+- [[quick capture]] **15:38**: Burst selection 9
+- [[quick capture]] **15:38**: ![shared](../assets/shared_1795448327229.png)
+- [[quick capture]] **15:38**: ![shared](../assets/shared_1795448336263.png)
