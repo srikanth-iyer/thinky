@@ -560,10 +560,13 @@ class App {
   }
   /** The phone's "+": a new note at the end of the page shown, or of today on the Journals list (the
    *  first day there), typing in it (Outline.addAtEnd). */
-  addNote() {
+  async addNote() {
     const { kind } = parsePlace(placeOf(this.tabs.tab()));
-    const os = this.pane.outlines;
-    const o = kind === 'journals' ? os.find((x) => x.journal?.join() === today().join()) : os[0];
+    const isToday = (x) => x.journal?.join() === today().join(); // a note list that is today's journal page
+    let o = kind === 'journals' ? this.pane.outlines.find(isToday) : this.pane.outlines[0];
+    // the app stayed open past midnight and the list still starts on yesterday: it is drawn again
+    // (typing in it is saved first), then the new note goes into the new day (audit finding 6, Nov 23)
+    if (!o && kind === 'journals' && await this.newDay(true).catch(() => false)) o = this.pane.outlines.find(isToday);
     if (o) {
       this.unfoldFor(o); // (today folded: it opens first, so the new note shows)
       o.addAtEnd();
@@ -579,6 +582,26 @@ class App {
       }
     }
     else if (kind === 'journals') this.toast('Today’s journal is still opening. Try again in a moment.', 2500);
+  }
+  /** After midnight (audit finding 6, Nov 23): a Journals list drawn yesterday still starts on yesterday,
+   *  marked as today, and typing there goes into yesterday's page. Each side showing Journals whose
+   *  days are drawn but none of them is today is drawn again, so today is on top. Not while one of its
+   *  days is in use (a note being edited, typing not saved yet, notes selected, a clash, a menu open),
+   *  unless force (the phone's "+": he asked for today; drawing again saves the typing first).
+   *  Resolves true when a side was drawn again. Called when coming back to the app, on file notices,
+   *  and once a minute (a laptop left open overnight). */
+  async newDay(force = false) {
+    const t = today().join(); // today's date, as each day's note list holds its date
+    let drawn = false; // whether any side was drawn again
+    for (const p of this.tabs.panes) {
+      if (parsePlace(placeOf(this.tabs.tab(p))).kind !== 'journals') continue; // this side shows another page
+      if (!p.outlines.length) continue; // its days are still being read (or can't be): nothing to compare yet
+      if (p.outlines.some((o) => o.journal?.join() === t)) continue; // today is there: nothing to do
+      if (!force && p.outlines.some((o) => o.busy())) continue; // he is using it: left until he stops
+      await this.draw(p); // drawn again: today first
+      drawn = true;
+    }
+    return drawn;
   }
   /** Editing starts on note i of outline o while the same page, open on the other side (x), has typing
    *  not saved yet, or a save on its way, or o missed a save from there (behind). So that this side
@@ -2769,10 +2792,14 @@ class App {
       clearTimeout(this.refreshT); // a check already waiting is replaced by this one
       // the watcher, just after a save of its own: wait until saving pauses (that notice is the app's
       // own file); otherwise (coming back to the app) a moment, so its two notices make one check
-      const wait = own && now - (this.savedAt || 0) < 1500 ? 1500 : 200;
-      const go = () => { this.refreshFirst = null; this.rescan(); }; // the check itself; the burst ends
-      // never more than 5 s after the first notice, even while saves keep coming
-      if (now - this.refreshFirst >= 5000) go(); else this.refreshT = setTimeout(go, wait);
+      const pause = own && now - (this.savedAt || 0) < 1500 ? 1500 : 200;
+      // never more than 5 s after the first notice, even while saves keep coming (the wait is cut short
+      // to that; before Nov 23 it was only checked when the next notice came, up to 1.5 s later)
+      const wait = Math.max(0, Math.min(pause, 5000 - (now - this.refreshFirst)));
+      // the check itself (the burst ends); once the changed files are read, the Journals list moves on
+      // to today if the date changed meanwhile (one after the other: both may draw the same notes)
+      const go = () => { this.refreshFirst = null; this.rescan().then(() => this.newDay()).catch(() => {}); };
+      if (wait === 0) go(); else this.refreshT = setTimeout(go, wait); // now, or after the wait
     };
     listen('lean-files', () => refresh(true));
     // a page or note link clicked in another program while the app is open (links.rs)
@@ -2788,6 +2815,9 @@ class App {
     window.addEventListener('focus', () => refresh());
     // without file notifications (the dev server), fall back to a slow check
     if (!isApp) setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 30000);
+    // a window left open and in front overnight gets no "came back" notice: once a minute the Journals
+    // list is checked for a new day (only a date comparison, unless the date really changed)
+    setInterval(() => { if (document.visibilityState === 'visible') this.newDay().catch(() => {}); }, 60000);
     window.addEventListener('beforeunload', () => { this.outlines.forEach((o) => { o.backupPending(true); o.flush(); }); this.opening.forEach((w) => w.keep(true)); this.tabs.save(true); });
     // finish saving before the window closes (and remember how far down each tab was)
     listen('lean-close', async () => {

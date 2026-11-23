@@ -333,6 +333,7 @@ export class Outline {
   }
 
   load(view) {
+    this.clearSel(); // the page read again: a selection by place may now point at other notes (see restore)
     this.behind = false; // (as the file is now: see App.catchUp)
     this.name = view.info.name;
     this.path = view.info.path;
@@ -1730,6 +1731,10 @@ export class Outline {
     this.app.stepped?.(this); // (Undo goes through the page's steps in order: App.undo)
   }
   restore(st) {
+    // the selection is kept by place on the page (the 3rd note…), not by note: once the page is put
+    // back, that place may hold another note (or none), and Delete or Tab would act on it, so the
+    // selection goes first (Undo / Redo; notes moved to another page put back, move.js; audit finding 3, Nov 23)
+    this.clearSel();
     this.doc.blocks = st.blocks.map((b) => ({ ...b }));
     this.doc.preamble = st.preamble;
     if (st.indent !== undefined) { this.doc.indent = st.indent; this.doc.crlf = st.crlf; }
@@ -1807,7 +1812,13 @@ export class Outline {
     this.app.selecting(this, false);
   }
   paintSel() {
-    (/** @type {NodeListOf<HTMLElement>} */ (this.el.querySelectorAll('.blk'))).forEach((d) => d.classList.toggle('sel', this.inSel(+d.dataset.i)));
+    // the notes selected, worked out once: asking for each row again walked all the notes under a folded
+    // note once per row (a folded note with 3,000 under it took ~200 ms per arrow key; Nov 23)
+    const r = this.selRange(); // [first, after last) or null when nothing is selected
+    (/** @type {NodeListOf<HTMLElement>} */ (this.el.querySelectorAll('.blk'))).forEach((d) => {
+      const i = +d.dataset.i; // the note this row shows
+      d.classList.toggle('sel', !!r && i >= r[0] && i < r[1]); // lit when it is among the selected ones
+    });
     const head = this.sel && this.blockDiv(this.sel.b);
     head?.scrollIntoView({ block: 'nearest' });
   }
@@ -2818,6 +2829,7 @@ export class Outline {
   takeFrom(x) {
     clearTimeout(x.timer);
     x.dirty = false;
+    this.clearSel(); // the notes are replaced: a selection by place may now point at others (see restore)
     this.doc = clone(x.doc);
     this.base = clone(x.base);
     this.exists = x.exists;
@@ -2877,6 +2889,7 @@ export class Outline {
     const caret = this.ta?.selectionStart ?? null;
     const key = editing !== null ? this.blocks[editing] : null;
     const before = this.zoomLine !== null ? this.shape() : null, root = this.root;
+    this.clearSel(); // notes from elsewhere came in: a selection by place may now point at others (see restore)
     this.doc = doc;
     this.base = clone(doc);
     this.forgetUndo();
@@ -2959,12 +2972,18 @@ export class Outline {
     catch (err) { call('log', { msg: `backup of unsaved typing (“${this.name}”): ${err}` }).catch(() => {}); }
   }
 
+  /** He is using this page just now: a note being edited, typing not saved yet (or being saved), notes
+   *  selected, a clash waiting, a menu open, a finger pressing, notes being moved. Reading it again or
+   *  drawing it again (App.newDay) waits until he stops. */
+  busy() {
+    return this.cur !== null || this.dirty || !!this.saving || !!this.sel || this.conflict || !!this.menuOpen || !!this.press || !!this.locked;
+  }
+
   /** Re-read the page from disk (after sync/Claude changed it). Skips if the user is busy here. */
   async reload(forceIt = false) {
-    const busy = () => this.cur !== null || this.dirty || this.saving || this.sel || this.conflict || this.menuOpen || this.press || this.locked;
-    if (!forceIt && busy()) return false;
+    if (!forceIt && this.busy()) return false;
     const view = await call('page', { name: this.name, today: today(), time: nowTime() });
-    if (!forceIt && busy()) return false; // typing started while it loaded
+    if (!forceIt && this.busy()) return false; // typing started while it loaded
     this.stopEdit();
     const before = this.zoomLine !== null ? this.shape() : null, root = this.root;
     this.load(view);

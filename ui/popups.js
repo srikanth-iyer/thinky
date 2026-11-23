@@ -2,7 +2,7 @@
 // the date picker, confirm/prompt boxes, and link previews on hover.
 
 import { call, today, nowTime } from './api.js';
-import { esc, renderBlock, propsHtml } from './render.js';
+import { esc, renderBlock, propsHtml, tagBody } from './render.js';
 import { createCalendar } from './calendar.js';
 import { h, fadeAway, grow, eatThisClick, SLASH_ICON } from './dom.js';
 
@@ -345,7 +345,9 @@ export class Suggest {
       const close = ta.value.slice(c, c + 2) === ']]' ? 2 : 0;
       ta.setRangeText(it.value + ']]', this.start, c + close, 'end');
     } else if (kind === 'tag') {
-      const tag = /[\s,;!?"'()[\]{}<>`#]/.test(it.value) ? `[[${it.value}]]` : it.value;
+      // bare (#Sourdough) when it reads back as the same page, else #[[…]]: "New York", or "U.S." (as #U.S.
+      // the last "." would be the sentence's and the tag would be "U.S"; audit finding 10, Nov 23)
+      const tag = tagBody(it.value);
       const space = /\s/.test(ta.value[c] ?? ' ') ? '' : ' ';
       ta.setRangeText(tag + space, this.start, c, 'end');
     } else if (kind === 'propkey') {
@@ -430,6 +432,7 @@ export function pickDate(anchor, opts = {}) {
 // ---------------------------------------------------------------------------
 // Confirm and prompt boxes (instead of the browser's, which can't be styled)
 
+let modals = 0; // how many boxes have opened so far: each heading gets an id of its own from it
 function modal(inner, setup) {
   return new Promise((resolve) => {
     const back = h('div', 'modal-back');
@@ -438,7 +441,8 @@ function modal(inner, setup) {
     box.setAttribute('aria-modal', 'true');
     // a screen reader says the box's heading as its name (review claim R11a, Nov 22)
     const head = box.querySelector('h2');
-    if (head) { head.id ||= `modal-h-${Date.now()}`; box.setAttribute('aria-labelledby', head.id); }
+    // (counted, not the time: two boxes opened in the same millisecond, one over the other, would share it)
+    if (head) { head.id ||= `modal-h-${++modals}`; box.setAttribute('aria-labelledby', head.id); }
     const was = document.activeElement; // what had the keyboard before: it gets it back when the box closes
     back.append(box);
     document.body.append(back);
@@ -544,7 +548,16 @@ export function menu(anchor, items, opts = {}) {
   };
   if (opts.keep) document.addEventListener('beforeinput', close, true); // (typing goes on: the menu goes)
   box.addEventListener('pop-close', () => { const had = box.contains(document.activeElement); close(); if (had && btn?.isConnected && !opts.keep) btn.focus({ preventScroll: true }); });
-  box.onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) { close(); items[+b.dataset.k].run(); } };
+  box.onclick = (e) => {
+    const b = e.target.closest('[data-k]'); // the choice clicked (or pressed with Enter)
+    if (!b) return; // a click between choices: nothing
+    const had = box.contains(document.activeElement); // the keyboard was in the menu
+    close();
+    // the keyboard goes back to the menu's button first, as with Esc, so a box the choice opens (Delete
+    // page…) gives it back there when it closes, not to a menu that is gone (Nov 23)
+    if (had && btn?.isConnected && !opts.keep) btn.focus({ preventScroll: true });
+    items[+b.dataset.k].run(); // then the choice itself
+  };
   // Esc works from the moment it shows (Build 38: an Esc right after the click was lost); a press
   // outside only from the next turn, so the press that opened it doesn't close it
   document.addEventListener('keydown', onKey, true);
