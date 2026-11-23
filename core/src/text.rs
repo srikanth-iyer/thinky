@@ -80,7 +80,7 @@ fn tag_end(s: &str, i: usize) -> usize {
     let start = i + 1;
     let mut j = start;
     for (off, ch) in s[start..].char_indices() {
-        if ch.is_whitespace() || ",;!?\"'()[]{}<>`#".contains(ch) {
+        if crate::parse::ends_tag(ch) {
             break;
         }
         j = start + off + ch.len_utf8();
@@ -99,6 +99,15 @@ enum Piece<'a> {
 }
 
 fn pieces<'a>(s: &'a str) -> Vec<Piece<'a>> {
+    pieces_in(s, false) // macros {{ }} kept whole
+}
+
+/// `pieces`, and with `into_macros` the links and tags inside a macro (`{{embed [[Foo]]}}`,
+/// `{{query (and [[Foo]] #bar)}}`) are pieces of their own too: the index counts them as links
+/// (parse.rs reads every `[[ ]]` and `#tag`), so a rename must rewrite them (Ponytail audit finding 2,
+/// Nov 23: they kept the old name, the embed broke and an empty old page stayed). Only the rename
+/// asks for this; mentions and unlinking still leave macros alone.
+fn pieces_in<'a>(s: &'a str, into_macros: bool) -> Vec<Piece<'a>> {
     let b = s.as_bytes();
     let mut out = vec![];
     let mut plain = 0;
@@ -136,6 +145,9 @@ fn pieces<'a>(s: &'a str) -> Vec<Piece<'a>> {
                     piece = Some(Piece::Tag { name: &s[i + 1..e], raw: &s[i..e] });
                 }
             }
+        } else if c == b'{' && b.get(i + 1) == Some(&b'{') && into_macros {
+            end = Some(i + 2); // only the opening "{{" is kept as it is
+            piece = Some(Piece::Fixed(&s[i..i + 2])); // and what is inside is read like any text
         } else if c == b'{' && b.get(i + 1) == Some(&b'{') {
             if let Some(e) = s[i..].find("}}") {
                 end = Some(i + e + 2);
@@ -183,9 +195,11 @@ fn pieces<'a>(s: &'a str) -> Vec<Piece<'a>> {
     out
 }
 
-/// Link form of a page name: `[[name]]`, or for a tag `#name` / `#[[name with spaces]]`.
+/// Link form of a page name: `[[name]]`, or for a tag `#name` / `#[[name with spaces]]`. A name
+/// ending in "." or ":" takes the `#[[ ]]` form too: a `#tag` drops those at its end ("#U.S." is
+/// read as "U.S"), so the link would go to another page (Ponytail audit finding 10, Nov 23).
 fn tag_form(name: &str) -> String {
-    if name.chars().any(|c| c.is_whitespace() || ",;!?\"'()[]{}<>`#".contains(c)) {
+    if name.chars().any(crate::parse::ends_tag) || name.ends_with(['.', ':']) {
         format!("#[[{name}]]")
     } else {
         format!("#{name}")
@@ -194,7 +208,7 @@ fn tag_form(name: &str) -> String {
 
 fn rename_inline(s: &str, old: &[String], new: &str) -> String {
     let mut out = String::with_capacity(s.len() + 16);
-    for p in pieces(s) {
+    for p in pieces_in(s, true) { // links inside {{ }} too (finding 2)
         match p {
             Piece::Link { name, hash, raw } => {
                 if old.contains(&key(name)) {

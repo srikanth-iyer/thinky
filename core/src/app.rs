@@ -1639,7 +1639,7 @@ impl App {
     /// both have as they are. There's no "before" here (neither is older), so a stretch only one has
     /// is a choice too: nothing is taken in or left out unseen. Read only.
     pub fn compare_copy(&self, copy: &str) -> Result<CopyCompare, String> {
-        if !self.files.contains_key(copy) || !conflict_copy_of(copy, &self.files) {
+        if !self.files.contains_key(copy) || !conflict_copy_of(copy, &self.files, &self.vault) {
             return Err("That isn't a conflict copy in this notes folder.".into());
         }
         let orig = self.copy_original(copy).ok_or("The page this is a copy of isn't there (renamed or deleted?), so there's nothing to compare it with.")?;
@@ -1695,7 +1695,7 @@ impl App {
             copy_stems(copy).into_iter().find_map(|stem| {
                 let name = stem.rsplit('/').next().unwrap_or(&stem);
                 let info = self.vault.page_info(name);
-                info.path.filter(|p| info.exists && p != copy && !conflict_copy_of(p, &self.files))
+                info.path.filter(|p| info.exists && p != copy && !conflict_copy_of(p, &self.files, &self.vault))
             })
         })
     }
@@ -1703,7 +1703,7 @@ impl App {
     /// The conflict copy goes to the bin once its page has what was wanted from it (Compare and
     /// merge). Only a conflict copy whose page is there.
     pub fn bin_copy(&mut self, copy: &str) -> Result<(), String> {
-        if !self.files.contains_key(copy) || !conflict_copy_of(copy, &self.files) || self.copy_original(copy).is_none() {
+        if !self.files.contains_key(copy) || !conflict_copy_of(copy, &self.files, &self.vault) || self.copy_original(copy).is_none() {
             return Err("That isn't a conflict copy in this notes folder.".into());
         }
         self.bin_file(copy).map_err(|e| format!("The copy couldn't be moved to the bin: {e}"))?;
@@ -1886,7 +1886,10 @@ impl App {
             let mut rest = t;
             while let Some(i) = rest.find("<%") {
                 out.push_str(&rest[..i]);
-                let Some(j) = rest[i..].find("%>") else {
+                // the closing "%>" is looked for after the opening "<%": in "<%>" the two share the
+                // "%", and the mark's inside would be cut backwards, a crash that kept a new journal
+                // day from opening (Ponytail audit finding 5, Nov 23). j counts from i, as before.
+                let Some(j) = rest[i + 2..].find("%>").map(|j| j + 2) else {
                     out.push_str(&rest[i..]);
                     rest = "";
                     break;
@@ -3266,7 +3269,6 @@ pub fn alias_clashes(pages: &[crate::vault::PageEntry]) -> Vec<(String, Vec<Stri
     out
 }
 
-/// "Page (1).md", "Page (conflict 2026-…).md", "Page [Conflict].md": a sync copy of "Page.md"?
 /// A note's words for comparing a page with its conflict copy (`compare_copy`): spaces at line ends
 /// dropped, and the fold mark `collapsed:: true/false`, which only says whether it was folded.
 fn same_words(text: &str) -> String {
@@ -3280,44 +3282,75 @@ fn same_words(text: &str) -> String {
 }
 
 /// The page a conflict copy is a copy of, when its file is there: "X (conflict 2026-11-08-13-18-30).md",
-/// "X.sync-conflict-20261108-131830-ABCDEFG.md" (Syncthing), "X (1).md", "X-conflict….md" → "X.md".
+/// "X.sync-conflict-20261108-131830-ABCDEFG.md" (Syncthing), "X (Sam's conflicted copy 2026-11-08).md"
+/// (Dropbox), "X (1).md" → "X.md".
 fn original_of(rel: &str, all: &HashMap<String, Stamp>) -> Option<String> {
     copy_stems(rel).into_iter().map(|c| format!("{c}.md")).find(|c| c != rel && all.contains_key(c))
 }
 
+/// The marks sync apps put in a conflict copy's file name, in small letters: Google Drive and
+/// Nextcloud (" (conflict…", " (conflicted copy…"), Syncthing (".sync-conflict-…"), and the form
+/// some apps write in brackets (" (sync-conflict…"). A name that only holds the word "conflict"
+/// ("Team conflict.md", a real page) has none of them (Ponytail audit finding 1, Nov 23).
+const COPY_MARKS: [&str; 3] = [" (conflict", ".sync-conflict", " (sync-conflict"];
+
 /// What a conflict copy's file name is a copy of, without the sync app's mark: "Daily/X" for
 /// "Daily/X (conflict …).md" (folder kept), the likeliest first.
 fn copy_stems(rel: &str) -> Vec<String> {
-    let Some(stem) = rel.strip_suffix(".md") else { return vec![] };
+    let Some(stem) = rel.strip_suffix(".md") else { return vec![] }; // only Markdown files
     // ASCII capitals only: the marks are ASCII, and the places found must be the stem's own (a full
     // lowercase changes lengths: "İ" is 2 bytes, "i̇" 3; review claim 9b)
     let lower = stem.to_ascii_lowercase();
-    let mut cands = vec![];
-    for mark in [" (conflict", ".sync-conflict", " (sync-conflict", "-conflict", "_conflict", " conflict"] {
+    let mut cands = vec![]; // the names it may be a copy of, likeliest first
+    for mark in COPY_MARKS {
         if let Some(k) = lower.rfind(mark) {
-            cands.push(stem[..k].to_string());
+            cands.push(stem[..k].to_string()); // the name before the sync app's mark
         }
     }
-    if let Some((base, tail)) = stem.rsplit_once(" (") {
-        if tail.strip_suffix(')').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())) {
-            cands.push(base.to_string());
+    // Dropbox: "X (Sam's conflicted copy 2026-11-08)": the name ends at the " (" that opens the mark
+    if let Some(k) = lower.rfind("'s conflicted copy") {
+        if let Some(open) = lower[..k].rfind(" (") {
+            cands.push(stem[..open].to_string()); // the name before " (Sam's conflicted copy …)"
         }
+    }
+    // "X (1)": Google Drive and OneDrive's numbered copy
+    if let Some((base, _)) = numbered(stem) {
+        cands.push(base.to_string()); // the name before " (1)"
     }
     cands.into_iter().map(|c| c.trim_end().to_string()).filter(|c| !c.is_empty() && !c.ends_with('/')).collect()
 }
 
-fn conflict_copy_of(rel: &str, all: &HashMap<String, Stamp>) -> bool {
-    let Some(stem) = rel.strip_suffix(".md") else { return false };
-    let lower = stem.to_ascii_lowercase();
-    if lower.contains("conflict") || lower.contains("sync-conflict") {
-        return true;
+/// "X (2)" → ("X", "2"): a file name ending in a number in brackets, the shape a numbered copy has.
+fn numbered(stem: &str) -> Option<(&str, &str)> {
+    let (base, tail) = stem.rsplit_once(" (")?; // the part before the last " (" and after it
+    let n = tail.strip_suffix(')')?; // what is between the brackets
+    // one or two digits: sync apps count copies from (1) and the app's own names from (2); a year in
+    // brackets ("Budget (2027)") is a page's real name, not a copy number
+    (!n.is_empty() && n.len() <= 2 && n.bytes().all(|b| b.is_ascii_digit())).then_some((base, n))
+}
+
+/// Is file `rel` a sync app's conflict copy? Only a name with a sync app's mark (`COPY_MARKS`,
+/// Dropbox's "'s conflicted copy"), or a numbered "X (N).md" next to "X.md" that claims the same
+/// page as "X.md" or no page name of its own. The app makes "X (2).md" itself for a new page whose
+/// file name is taken (`Vault::free_rel`), with a `title::` naming another page: that is a real page,
+/// never offered for the bin (Ponytail audit finding 1, Nov 23: "Team conflict.md" and such pages
+/// were listed as copies, and Compare and merge moved them to the bin).
+fn conflict_copy_of(rel: &str, all: &HashMap<String, Stamp>, vault: &crate::vault::Vault) -> bool {
+    let Some(stem) = rel.strip_suffix(".md") else { return false }; // only Markdown files
+    let lower = stem.to_ascii_lowercase(); // the marks in any capitals
+    if COPY_MARKS.iter().any(|m| lower.contains(m)) || lower.contains("'s conflicted copy") {
+        return true; // a sync app's own mark
     }
-    if let Some((base, tail)) = stem.rsplit_once(" (") {
-        if tail.strip_suffix(')').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())) {
-            return all.contains_key(&format!("{base}.md"));
-        }
+    let Some((base, _)) = numbered(stem) else { return false }; // not "X (N)" either
+    let original = format!("{base}.md"); // the file it would be a copy of
+    if !all.contains_key(&original) {
+        return false; // no "X.md" next to it: a page of its own
     }
-    false
+    let mine = vault.key_of_file(rel); // the page this file claims
+    let theirs = vault.key_of_file(&original); // the page "X.md" claims
+    let by_name = crate::key(&vault.title_from_path(rel).0); // the page its file name alone would give
+    // a copy claims what "X.md" claims (same title:: line), or has no title:: line of its own
+    mine.is_none() || mine == theirs || mine == Some(by_name.as_str())
 }
 
 /// Read-only health check of a vault: load time and round-trip safety of every file.
@@ -3341,7 +3374,7 @@ pub fn check_vault_at(root: &Path, now: u64) -> Result<CheckReport, String> {
     fails.sort();
     let mut non_utf8: Vec<String> = app.non_utf8.iter().cloned().collect();
     non_utf8.sort();
-    let mut conflict_copies: Vec<String> = app.files.keys().filter(|r| conflict_copy_of(r, &app.files)).cloned().collect();
+    let mut conflict_copies: Vec<String> = app.files.keys().filter(|r| conflict_copy_of(r, &app.files, &app.vault)).cloned().collect();
     conflict_copies.sort();
     let mut biggest: Vec<(String, usize)> = app
         .contents

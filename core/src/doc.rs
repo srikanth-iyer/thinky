@@ -93,7 +93,11 @@ fn escape_line(line: &str) -> String {
 fn unescape_line(line: &str) -> String {
     let ws = line.len() - line.trim_start_matches([' ', '\t']).len();
     match line[ws..].strip_prefix('\\') {
-        Some(r) if needs_escape(r) => format!("{}{}", &line[..ws], r),
+        // `escape_line` puts its backslash right before the line's first non-space character, so what
+        // follows an added backslash never starts with a space or a tab; a line like `\ \- x` is the
+        // note's own text and keeps its backslash (Ponytail audit finding 12, Nov 23: it lost one on
+        // every save)
+        Some(r) if !r.starts_with([' ', '\t']) && needs_escape(r) => format!("{}{}", &line[..ws], r),
         _ => line.to_string(),
     }
 }

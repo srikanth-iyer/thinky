@@ -404,6 +404,13 @@ impl Vault {
         }
     }
 
+    /// The page key (small-letter name) that file `rel` claims: the page it owns, or the page it
+    /// waits for when another file owns that name (`shadowed`). None for a file the index doesn't hold.
+    pub fn key_of_file(&self, rel: &str) -> Option<&str> {
+        self.by_path.get(rel).map(String::as_str) // a file that owns its page
+            .or_else(|| self.shadowed.get(rel).map(|(k, _)| k.as_str())) // or one that waits for it
+    }
+
     /// Whether `rel`'s own file name gives the page name `k` (`pages/Foo.md` for "foo"), rather than
     /// only its `title::` line (a copy like `pages/Foo (1).md`).
     fn named_by_file(&self, rel: &str, k: &str) -> bool {
