@@ -139,13 +139,27 @@ class QuickCaptureActivity : AppCompatActivity() {
       // styled text arrives as a CharSequence, so read it that way (getStringExtra would give null)
       val subject = intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT)?.toString()?.trim().orEmpty()
       val body = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.trim().orEmpty()
-      // a shared web page (its title and address): one neat link, "[Title · site](address)"
-      val (bodyWords, bodyUrl) = Journal.splitUrl(body)
-      val shared = if (bodyUrl.isNotEmpty() && !bodyUrl.startsWith("[") && (bodyWords.isEmpty() || bodyWords == subject)) {
-        Journal.mdLink(bodyUrl, subject.ifEmpty { bodyWords })
-      } else listOf(subject, body).filter { it.isNotBlank() }.distinct().joinToString(" ")
-      input.setText(shared)
-      input.setSelection(input.text.length)
+      // a shared web page (its title and address): one neat link, "[Title · site](address)", made by
+      // the core's own rules (android_capture.rs share_text; audit finding 16: the phone had its own
+      // copy, which fell behind). Asked off the screen's thread; the words go in only if nothing was
+      // typed meanwhile. If the core can't be asked, the title and the text as they came.
+      val plainShare = listOf(subject, body).filter { it.isNotBlank() }.distinct().joinToString(" ")
+      val wantKept = picture == null // a web page's passages already in the notes, shown under the words
+      Thread {
+        val (shared, sharedUrl) = try { LeanCore.share(subject, body) } catch (e: Throwable) { plainShare to "" }
+        runOnUiThread {
+          if (isFinishing || isDestroyed) return@runOnUiThread
+          if (input.text.isEmpty()) { input.setText(shared); input.setSelection(input.text.length) }
+          addState()
+        }
+        // a web page: its passages already in the notes, under the words (he asked, Nov 12: "Can't I
+        // just also see what is already highlighted?"); read only, still off the screen's thread
+        val address = webAddress(sharedUrl)
+        if (wantKept && address.isNotEmpty()) {
+          val k = try { LeanCore.kept(applicationContext, address) } catch (e: Throwable) { null }
+          runOnUiThread { if (!isFinishing && k != null) showKept(k.first, k.second) }
+        }
+      }.start()
       val candidate = picture
       if (candidate != null) {
         // a picture: checked first (is it another app's? its provider is asked, off the screen's
@@ -171,14 +185,6 @@ class QuickCaptureActivity : AppCompatActivity() {
             }
             addState()
           }
-        }.start()
-      } else {
-        // a web page: its passages already in the notes, under the words (he asked, Nov 12: "Can't I
-        // just also see what is already highlighted?"); read only, off the screen's thread
-        val address = webAddress(bodyUrl)
-        if (address.isNotEmpty()) Thread {
-          val k = try { LeanCore.kept(applicationContext, address) } catch (e: Throwable) { null }
-          runOnUiThread { if (!isFinishing && k != null) showKept(k.first, k.second) }
         }.start()
       }
     }

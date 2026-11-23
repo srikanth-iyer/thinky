@@ -11,10 +11,11 @@
 //!     the workflow's to-do word, as the to-do button puts it, are added as a to-do: `todo_words`), or {…, name, typeExt} + the picture's
 //!     bytes, or {…, link} for a picture copied by an earlier try (not copied twice), or
 //!     {…, cmd: "where"} for where notes go, or {…, cmd: "kept", url} for the passages of that web
-//!     page already in the notes;
+//!     page already in the notes, or {cmd: "share", subject, body} for the words a share starts with
+//!     (no folder needed: `share_text`);
 //! out {ok: true, rel} ({ok: true, today, page, todo} for "where", todo: the workflow's to-do word,
 //!     TODO or LATER; {ok: true, page, highlights:
-//!     [{plain, link}]} for "kept") or {ok: false, error, link?}
+//!     [{plain, link}]} for "kept"; {ok: true, text, url} for "share") or {ok: false, error, link?}
 //!     (`link`: the Markdown of a picture already copied).
 //! The JNI name follows the Kotlin class: package com.srikanth.leanoutliner (checked by
 //! scripts/android_overlay.py), object `LeanCore`, method `capture`. Only that function is
@@ -76,6 +77,13 @@ pub fn capture(a: &Value, bytes: Option<&[u8]>) -> Value {
     }
     if !s("data").is_empty() {
         outline_core::app::set_data_dir(PathBuf::from(s("data")));
+    }
+    if s("cmd") == "share" {
+        // what the share sheet gave (a page's title and its address): the words the pop-up starts
+        // with, made by the core's own rules (audit finding 16: the phone had a copy that fell behind).
+        // Needs no notes folder, so it is answered before the folder is checked.
+        let (text, url) = share_text(&s("subject"), &s("body"));
+        return json!({ "ok": true, "text": text, "url": url });
     }
     let vault = s("vault");
     if vault.is_empty() {
@@ -198,6 +206,30 @@ fn with_type_ext(name: &str, type_ext: &str) -> String {
     } else {
         format!("{name}.{ext}")
     }
+}
+
+/// The words the "Add a note" pop-up starts with for a share (`subject`: the page's title, as
+/// Android gives it; `body`: the shared text), and the web address found in it ("" if none).
+/// A shared web page alone (its words empty, or the same as its title) becomes one neat link,
+/// "[Title · site](address)", made harmless like any page title (`capture::md_link`); anything
+/// else is the title and the text, each once, as they came.
+pub fn share_text(subject: &str, body: &str) -> (String, String) {
+    // the shared text, split into its first web address and the words around it
+    let (words, url) = outline_core::capture::split_url(body.trim());
+    let subject = subject.trim();
+    // a page shared on its own (not a "[name](address)" link someone wrote): one neat link
+    if !url.is_empty() && !url.starts_with('[') && (words.is_empty() || words == subject) {
+        let title = if subject.is_empty() { words.as_str() } else { subject };
+        return (outline_core::capture::md_link(&url, title, ""), url);
+    }
+    // otherwise the title and the text, each once (a share often sends the same words twice)
+    let mut parts: Vec<&str> = Vec::new();
+    for p in [subject, body.trim()] {
+        if !p.is_empty() && !parts.contains(&p) {
+            parts.push(p);
+        }
+    }
+    (parts.join(" "), url)
 }
 
 #[cfg(test)]
@@ -448,5 +480,49 @@ mod tests {
         assert_eq!(with_type_ext("a.verylongextension", "png"), "a.verylongextension.png");
         assert_eq!(with_type_ext("", "png"), "image.png");
         assert_eq!(with_type_ext("photo", ""), "photo");
+    }
+
+    // audit finding 16: the pop-up's words for a shared web page come from the core
+    #[test]
+    fn a_shared_page_becomes_one_neat_link() {
+        // the usual share from a browser: the title, and the address as the text
+        let r = capture(&json!({ "cmd": "share", "subject": "How Bread Rises | Kitchen Weekly", "body": "https://www.kitchenweekly.org/bread" }), None);
+        assert_eq!(r["ok"], true);
+        assert_eq!(r["text"], "[How Bread Rises · kitchenweekly.org](https://www.kitchenweekly.org/bread)");
+        assert_eq!(r["url"], "https://www.kitchenweekly.org/bread");
+        // no notes folder is needed for this
+        assert!(r.get("error").is_none());
+    }
+
+    #[test]
+    fn a_shared_title_that_looks_like_markup_is_made_harmless() {
+        // titles the old phone copy put in as they were (shown in the audit)
+        for title in ["{{query (todo now)}}", "See [[Secret]] here", "status:: done", "#[[tag]] news"] {
+            let (text, _) = share_text(title, "https://example.org/a");
+            // the core's own link for the same title and address: what the app makes everywhere
+            assert_eq!(text, outline_core::capture::md_link("https://example.org/a", title, ""), "{title}");
+            let name = &text[1..text.rfind("](").unwrap()];
+            // nothing in the link's name may open a query, a page link, a tag or a property
+            assert!(!name.contains("{{") && !name.contains("[[") && !name.contains("::"), "{title} gave {text}");
+        }
+    }
+
+    #[test]
+    fn shares_that_are_not_a_page_alone_keep_their_words() {
+        // no title: the address's own site names the link
+        assert_eq!(share_text("", "https://example.org/x").0, "[example.org](https://example.org/x)");
+        // words besides the address: the title and the text, as they came
+        let (t, u) = share_text("A page", "Look at this https://example.org/x");
+        assert_eq!(t, "A page Look at this https://example.org/x");
+        assert_eq!(u, "https://example.org/x");
+        // a link someone already wrote stays as written
+        let (t, u) = share_text("", "[Mine](https://example.org/y)");
+        assert_eq!(t, "[Mine](https://example.org/y)");
+        assert_eq!(u, "[Mine](https://example.org/y)");
+        // the same words twice come once; nothing at all gives nothing
+        assert_eq!(share_text("Hello", "Hello").0, "Hello");
+        assert_eq!(share_text("  ", "  "), (String::new(), String::new()));
+        // words that only repeat the title still make the neat link
+        assert_eq!(share_text("Bread", "Bread https://example.org/b").0, "[Bread · example.org](https://example.org/b)");
     }
 }

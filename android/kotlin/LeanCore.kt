@@ -85,6 +85,15 @@ object LeanCore {
     return r.optString("page") to words
   }
 
+  /** What a share starts the pop-up with (`subject`: the page's title, `body`: the shared text): a page
+   *  shared alone becomes one neat, harmless link, "[Title · site](address)", by the core's own rules;
+   *  else the title and the text as they came. Also the web address found in it ("" if none). Needs no
+   *  notes folder. Call it off the screen's thread (it may load the library). */
+  fun share(subject: String, body: String): Pair<String, String> {
+    val r = call(JSONObject().put("cmd", "share").put("subject", subject).put("body", body))
+    return r.optString("text") to r.optString("url")
+  }
+
   /** Typed or shared words → a note in the quick capture template. Returns the file written. */
   fun addText(ctx: Context, text: String): String = call(base(ctx).put("text", text)).optString("rel")
 

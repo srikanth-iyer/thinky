@@ -672,8 +672,10 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     known), "[site](url)" with no title; `split_url` takes a bare address or a whole `[name](http…)`
     link, `as_link` makes a bare one neat, and a note with no other words is just the link (no dangling
     "from"). The Edge extension sends `title`/`site` and, with a selection, a text-fragment address
-    (`#:~:text=first 4 words,last 4 words`, ≤8 words whole) that opens the page at it; the capture box is prefilled "words [Title · Site](url)"; Android mirrors it (JournalWidget.kt
-    `splitUrl`/`mdLink`; a shared page's subject + address → one link). Tests: tests/clip.rs.
+    (`#:~:text=first 4 words,last 4 words`, ≤8 words whole) that opens the page at it; the capture box is prefilled "words [Title · Site](url)"; Android asks the core for it (android_capture.rs
+    `cmd: "share"` → `share_text`, `LeanCore.share`, off the screen's thread, the words put in only if nothing was typed;
+    a shared page's subject + address → one link; audit finding 16, Nov 23, 2026: the phone's own Kotlin copy had fallen
+    behind and is gone, so never write it again in Kotlin). Tests: tests/clip.rs, android_capture.rs.
   - `clip.rs` the browser extension's highlights (Build 32; tests in `tests/clip.rs`, in a real browser
     `t16_browser.mjs`): `file_clip` files a `Clip {url, title, site, highlights: [{text, link}]}` on the
     article's page: the page whose `source::` (page property) is this article (`normalize_url`: no `#`,
