@@ -91,6 +91,14 @@ Speed, efficiency and small size come first. Before adding anything that grows t
 Prefer hand-written, small code over dependencies. Current size (Build 31, agreed Oct 27 with Inter): ~2.6 MB Windows installer, ~8.45 MB APK
 (CI warns when a file grows >10% over `ci/baseline.json`; update the baseline only for agreed growth).
 
+## How to change code (adapted from Ponytail, Nov 23, 2026)
+- Reuse first: before writing anything new, search the code for an existing helper, component or pattern and use it the way the surrounding code does.
+- Fix bugs at the root: before changing a function, find every place that calls it (grep), then fix the cause once in the shared code, not in each caller.
+- Never cut, even to make code smaller: checks on input from outside (files, links, the notes folder), error handling that prevents lost notes, security, accessibility.
+- Code that is moved or merged keeps its error handling and checks.
+- A shortcut with a known limit gets a comment: `shortcut: <the limit>, <when to upgrade>`.
+- Comments still explain what each line does, for a beginner reader (the maintainer's rule; it wins over any "fewer comments" advice).
+
 ## Release history
 Done, release by release: Build 21 phone fixes; 22 Journals (older days, each day's references,
 "Scheduled & deadline"), Plain night, Home, Settings tabs, capture box; 23 reading and writing (swipes,
