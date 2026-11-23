@@ -400,7 +400,10 @@ backup (`git log --all -S<name> -n20 --name-only`, then the file at the commit o
 the page's file is there, the notes above (first lines), the note, from/which/when; one per (file, note), the newest, ≤30.
 "Open <page>…" (`.pc-go`) asks first. Conflict copies: Check this folder lists each with "Compare and merge…" (`.cc-merge`)
 → clash.js `openCopyMerge` → core `compare_copy(copy)` (only `conflict_copy_of` files; the page = `copy_original`: the file
-without the sync app's mark next to it (`original_of`/`copy_stems`: " (conflict …)", ".sync-conflict…", " (N)", "-conflict…"),
+without the sync app's mark next to it (`original_of`/`copy_stems`: " (conflict …)", ".sync-conflict…", " (sync-conflict…",
+Dropbox's " (Sam's conflicted copy …)", " (N)" with one or two digits; `conflict_copy_of` counts only those marks, never a name
+that merely holds the word "conflict", and a " (N)" file only next to its page and claiming the same page or none by `title::`,
+so the app's own "X (2).md" for a new page is never offered for the bin: Ponytail audit finding 1, tests/ponytail_audit.rs),
 else the page of that name, as a journal day's copy is named by its title): `merge::lcs` lines them up, every stretch where they
 differ is a `Part::Clash` with an empty base (so "Keep both" is offered and pre-picked where both have notes; else the side that
 has them), `differ` false = same words (confirm, then `bin_copy`). The page opens (`app.go`), its outline found by path, flushed,
@@ -738,7 +741,10 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     move, so spaces, comments and `#_` forms between them stay byte for byte; tests in tests/features.rs
     `favourites_reorder_in_place` and the fuzz test) · `date.rs` date-fns-style format/parse
   - `task.rs` TODO/DOING/LATER/NOW…, priorities, SCHEDULED/DEADLINE, repeaters · `text.rs` link/tag
-    pieces, rename, unlinked mentions · `merge.rs` three-way block merge for edits made elsewhere
+    pieces, rename (also inside `{{embed}}`/`{{query}}`, as the index reads links there; a new name ending in "." or ":"
+    written `#[[x.]]`, as a `#tag` drops those at its end; Ponytail audit findings 2 and 10), unlinked mentions (macros
+    left whole) · `parse::ends_tag` the one rule for where a `#tag` ends (the invisible space `clip::defuse` puts after
+    a "#" ends it too: finding 8) · `merge.rs` three-way block merge for edits made elsewhere
   - `capture.rs` quick capture (Logseq templates; an empty `{url}` drops a joining "from"). Web addresses
     are neat Markdown links everywhere (Build 32, the maintainer asked): `md_link(url, title, site)` = "[Title ·
     Site](url)" (`clean_title` drops a "| Site" ending; the site's address, `host`, when its name isn't
@@ -1565,7 +1571,8 @@ file wins, `Vault::duplicates`), emoji/curly quotes in names (never slice string
 unclosed code fences (end at the next bullet that isn't deeper; ```code``` closed on its own line is inline
 code, never a fence: `doc::fence_line`, also used by parse and text). A note's later line that would read
 as a bullet (`- x`, `* x`, `+ x`, a lone `-`) is written as `\- x` outside code blocks and read back
-without the backslash (one more backslash in front of lines that already start with some). File names: Logseq triple-lowbar rules
+without the backslash (one more backslash in front of lines that already start with some; a backslash followed by a space or
+tab is always the note's own, `unescape_line`: Ponytail audit finding 12). File names: Logseq triple-lowbar rules
 (`file_stem_for`, Windows' reserved names in any capitals); names a file can't hold get `title::` (new
 pages, and renames: `add_title_prop`, after a YAML header; only a `title::` line counts, not `subtitle::`).
 A rename changes the page's own file and its name first, then links in other files (a rename that
@@ -1726,7 +1733,8 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
   "gitdir: ../gd", pointed git at a folder of someone else's settings: `core.fsmonitor` or a clean filter ran
   their command during a backup; a top `.git` file stopped every backup; a `.gitignore` of `*` kept new
   notes out). Such files an older backup left in the repo's subfolders are removed (`remove_planted`). git
-  runs only through `git_cmd`: the repo's own `--git-dir`/`--work-tree` named outright, fsmonitor and
+  runs only through `git_cmd` (on Windows by git.exe's full path found in PATH's full-path folders, never the app's own
+  folder, where a downloaded git.exe would run beside the portable copy: `git_program`, Ponytail audit finding 7): the repo's own `--git-dir`/`--work-tree` named outright, fsmonitor and
   submodule recursion off, `GIT_DIR`-style variables removed, `status --ignore-submodules=all`
   (core/tests/backup_git_planted.rs). Still trusted: the user's own global git config and his backup repo's hooks.
 Known and accepted (see the security report): script running inside the app's page could still call
