@@ -436,10 +436,31 @@ function modal(inner, setup) {
     const box = h('div', 'modal', inner);
     box.setAttribute('role', 'dialog');
     box.setAttribute('aria-modal', 'true');
+    // a screen reader says the box's heading as its name (review claim R11a, Nov 22)
+    const head = box.querySelector('h2');
+    if (head) { head.id ||= `modal-h-${Date.now()}`; box.setAttribute('aria-labelledby', head.id); }
+    const was = document.activeElement; // what had the keyboard before: it gets it back when the box closes
     back.append(box);
     document.body.append(back);
-    const done = (v) => { fadeAway(back); back.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
-    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(null); } };
+    const done = (v) => {
+      fadeAway(back);
+      back.remove();
+      document.removeEventListener('keydown', onKey, true);
+      if (was instanceof HTMLElement && was.isConnected) was.focus({ preventScroll: true }); // back where it was
+      resolve(v);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(null); return; }
+      if (e.key !== 'Tab') return;
+      // Tab and Shift+Tab go round the box's own buttons and boxes, never to the page behind it
+      const stops = [...box.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')]
+        .filter((el) => !el.disabled && el.offsetParent !== null); // only ones that can take the keyboard
+      if (!stops.length) { e.preventDefault(); return; } // nothing to go to: stay
+      const k = stops.indexOf(document.activeElement); // where the keyboard is now (-1: not in the box)
+      const next = e.shiftKey ? (k <= 0 ? stops.length - 1 : k - 1) : (k === -1 || k === stops.length - 1 ? 0 : k + 1);
+      e.preventDefault(); // the browser's own Tab would leave the box
+      stops[next].focus(); // the next one in the box, round to the start at the end
+    };
     document.addEventListener('keydown', onKey, true);
     back.addEventListener('pointerdown', (e) => { if (e.target === back) done(null); });
     setup(box, done);
@@ -451,7 +472,8 @@ export function confirmBox({ title, body = '', ok = 'OK', cancel = 'Cancel', dan
     <div class="btn-row end"><button class="btn ghost" data-v="0">${esc(cancel)}</button><button class="btn${danger ? ' danger' : ''}" data-v="1">${esc(ok)}</button></div>`,
   (box, done) => {
     box.onclick = (e) => { const v = e.target.closest('[data-v]')?.dataset.v; if (v !== undefined) done(v === '1'); };
-    box.querySelector('[data-v="1"]').focus();
+    // a box that deletes or loses something starts on Cancel, so Enter alone does no harm
+    box.querySelector(danger ? '[data-v="0"]' : '[data-v="1"]').focus();
   }).then((v) => !!v);
 }
 

@@ -367,15 +367,20 @@ export class Outline {
   hasKids(i) { return i + 1 < this.blocks.length && this.blocks[i + 1].depth > this.blocks[i].depth; }
   isCollapsed(i) { return i !== this.root && foldedIn(this.blocks[i].text) && this.hasKids(i); }
   hiddenSet() {
-    const hidden = new Set();
-    for (let i = this.start; i < this.end; i++) {
-      if (hidden.has(i)) continue;
-      if (this.isCollapsed(i)) for (let j = i + 1; j < this.subtreeEnd(i); j++) hidden.add(j);
+    const hidden = new Set(); // the notes folded away under a closed note
+    const end = this.end; // where the shown notes end, worked out once (zoomed in, it walks the notes)
+    for (let i = this.start; i < end; i++) {
+      if (!this.isCollapsed(i)) continue; // an open note hides nothing
+      const last = this.subtreeEnd(i); // where this closed note's children end, worked out once
+      for (let j = i + 1; j < last; j++) hidden.add(j); // each child is hidden
+      i = last - 1; // jump past them: nothing under a closed note needs checking again
     }
+    // (before Nov 23 the end was worked out again for every child: one arrow key below a closed note
+    // with 4,000 notes under it took up to 180 ms on a laptop; review claim 9, Nov 22)
     return hidden;
   }
   prevVisible(i) { const h = this.hiddenSet(); for (let j = i - 1; j >= this.start; j--) if (!h.has(j)) return j; return -1; }
-  nextVisible(i) { const h = this.hiddenSet(); for (let j = i + 1; j < this.end; j++) if (!h.has(j)) return j; return -1; }
+  nextVisible(i) { const h = this.hiddenSet(), end = this.end; for (let j = i + 1; j < end; j++) if (!h.has(j)) return j; return -1; }
   parentOf(i) { for (let j = i - 1; j >= 0; j--) if (this.blocks[j].depth < this.blocks[i].depth) return j; return -1; }
 
   /** Block index whose first line is file line `line` (0-based), for jumping from references. */
