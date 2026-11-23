@@ -285,21 +285,8 @@ pub fn percent_decode_pub(s: &str) -> String {
 }
 
 fn percent_decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() && s.is_char_boundary(i + 3) {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8(out).unwrap_or_else(|_| s.to_string())
+    // (crate::link::percent_bytes: the one decoder); a name that isn't UTF-8 once decoded stays as written
+    String::from_utf8(crate::link::percent_bytes(s, false)).unwrap_or_else(|_| s.to_string())
 }
 
 impl Vault {
@@ -396,18 +383,48 @@ impl Vault {
         Some(k)
     }
 
-    /// If no file owns `k`, the first waiting file (by path) takes the name.
+    /// If no file owns `k`, a waiting file takes the name: first one whose own file name gives that
+    /// name (`Foo.md` before a sync app's `Foo (1).md` or `Foo-LAPTOP.md` that also says
+    /// `title:: Foo`), then the first by path.
     fn promote(&mut self, k: &str) {
         if self.pages.contains_key(k) {
             return;
         }
-        let next = self.shadowed.iter().filter(|(_, (sk, _))| sk == k).map(|(r, _)| r.clone()).min();
+        let next = self
+            .shadowed
+            .iter()
+            .filter(|(_, (sk, _))| sk == k) // the files waiting for this name
+            .map(|(r, _)| r.clone())
+            .min_by_key(|r| (!self.named_by_file(r, k), r.clone())); // named by its file first, then by path
         if let Some(r) = next {
             if let Some((_, content)) = self.shadowed.remove(&r) {
                 self.lc_del(&r);
                 self.upsert(&r, &content);
             }
         }
+    }
+
+    /// Whether `rel`'s own file name gives the page name `k` (`pages/Foo.md` for "foo"), rather than
+    /// only its `title::` line (a copy like `pages/Foo (1).md`).
+    fn named_by_file(&self, rel: &str, k: &str) -> bool {
+        key(&self.title_from_path(rel).0) == k
+    }
+
+    /// Files that own a page name only because they were read first, while the file named for it
+    /// waits (review claim R5, Nov 22: at start the folder is read in path order, and "Foo (1).md"
+    /// sorts before "Foo.md", so a sync app's old copy took the name and opened instead of the page).
+    /// The caller gives each one back (`remove`, then `upsert` again), and the named file takes over.
+    pub fn misowned(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .shadowed
+            .iter()
+            .filter(|(r, (k, _))| self.named_by_file(r, k)) // a waiting file that is named for the page
+            .filter_map(|(_, (k, _))| self.pages.get(k).map(|p| p.path.clone())) // the file owning it now
+            .filter(|owner| self.by_path.get(owner).is_some_and(|k| !self.named_by_file(owner, k))) // owning it by title only
+            .collect();
+        out.sort(); // a fixed order
+        out.dedup(); // each owner once
+        out
     }
 
     fn unindex(&mut self, k: &str, p: &Page) {

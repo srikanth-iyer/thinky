@@ -32,21 +32,8 @@ fn mime(p: &std::path::Path) -> &'static str {
 }
 
 fn decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            if let Some(v) = std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
+    // the core's decoder (outline_core::link::percent_bytes), so all of them agree
+    String::from_utf8_lossy(&outline_core::link::percent_bytes(s, false)).into_owned()
 }
 
 struct Request {

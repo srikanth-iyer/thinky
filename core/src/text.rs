@@ -218,6 +218,41 @@ fn rename_inline(s: &str, old: &[String], new: &str) -> String {
     out
 }
 
+/// Every Markdown picture `![words](address)` whose address isn't in `original` becomes a plain link
+/// `[words](address)`: shown as its words, never loaded. The AI's answer could hold a picture from a
+/// web address, which the app would fetch as soon as the suggestion is shown (telling that server
+/// the note was looked at); a picture the note already had stays a picture (review claim S2, Nov 22).
+pub fn unpicture_new(text: &str, original: &str) -> String {
+    let mut out = String::with_capacity(text.len()); // the text with new pictures made into links
+    let mut rest = text; // what is still to be looked at
+    while let Some(at) = rest.find("![") {
+        out.push_str(&rest[..at]); // the words before the "!["
+        let after = &rest[at + 2..]; // what follows the "!["
+        // the picture's words end at "](", its address at the next ")", all on one line
+        let parts = after.find("](").and_then(|w| {
+            let addr = &after[w + 2..]; // the address and what follows it
+            addr.find(')').map(|e| (w, &addr[..e])) // (where the words end, the address)
+        });
+        match parts {
+            Some((w, addr)) if !after[..w + 2 + addr.len()].contains('\n') => {
+                let whole = &rest[at..at + 2 + w + 2 + addr.len() + 1]; // "![words](address)"
+                if addr.trim().is_empty() || original.contains(addr.trim()) {
+                    out.push_str(whole); // a picture the note already had: kept as it is
+                } else {
+                    out.push_str(&whole[1..]); // a new one: "[words](address)", a link only
+                }
+                rest = &rest[at + whole.len()..]; // on after it
+            }
+            _ => {
+                out.push_str("!["); // not a whole picture: kept as written
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest); // the words after the last picture
+    out
+}
+
 /// Every `[[link]]`, `#[[link]]` and `#tag` whose name `known` doesn't accept becomes plain words
 /// (the AI's Polish note may only link pages and use tags that exist, Build 51); code, web
 /// addresses and Markdown links stay as written. Gives the new text and the names taken out.

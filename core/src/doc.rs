@@ -301,6 +301,13 @@ fn render_block(b: &DocBlock, indent: &str, nl: &str) -> String {
     s
 }
 
+/// Give a plain paragraph (Markdown with no bullet, `plain`) new lines of its own, so it's written
+/// back laid out as before rather than as a `- ` bullet (review claim S5, Nov 22). Its text follows.
+pub(crate) fn set_plain_raw(b: &mut DocBlock, raw: String) {
+    b.text = plain_text(&split_lines_keep(&raw)); // the paragraph's words, as split_doc reads them
+    b.raw = Some(raw); // its lines in the file, kept as they are
+}
+
 /// Is this block unchanged since it was read (so its raw lines can be written back)?
 fn unchanged(b: &DocBlock, bullet_written: bool) -> bool {
     let Some(raw) = &b.raw else { return false };

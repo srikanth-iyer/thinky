@@ -73,24 +73,30 @@ pub fn parse(link: &str) -> Option<Link> {
 
 /// `%xx` decoded (a broken one is kept as written); `plus`: a `+` is a space (query values).
 fn decode(s: &str, plus: bool) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
+    String::from_utf8_lossy(&percent_bytes(s, plus)).into_owned() // bytes that aren't UTF-8 show as �
+}
+
+/// `%xx` turned into the byte it stands for; anything else kept as written. `plus`: a `+` is a space
+/// (query values). The one decoder for links, file names (vault.rs), pictures in the app (src-tauri)
+/// and the dev server. Only two hex digits count: `u8::from_str_radix` alone also takes a sign, so
+/// "%+A" became a line break inside a page name (found checking review claim S11c, Nov 23).
+pub fn percent_bytes(s: &str, plus: bool) -> Vec<u8> {
+    let b = s.as_bytes(); // the text as bytes
+    let hex = |c: u8| (c as char).to_digit(16); // a hex digit's value, None for anything else
+    let mut out = Vec::with_capacity(b.len()); // never longer than the text
+    let mut i = 0; // where we are in the text
     while i < b.len() {
-        match b[i] {
-            b'+' if plus => out.push(b' '),
-            b'%' if i + 2 < b.len() => match std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
-                Some(v) => {
-                    out.push(v);
-                    i += 2;
-                }
-                None => out.push(b'%'),
-            },
-            c => out.push(c),
+        if b[i] == b'+' && plus {
+            out.push(b' '); // a + in a query value is a space
+        } else if let (b'%', Some(h), Some(l)) = (b[i], b.get(i + 1).and_then(|&c| hex(c)), b.get(i + 2).and_then(|&c| hex(c))) {
+            out.push((h * 16 + l) as u8); // "%3F" is the byte 0x3F
+            i += 2; // its two digits are used up
+        } else {
+            out.push(b[i]); // anything else, a broken "%" too, as written
         }
-        i += 1;
+        i += 1; // on to the next byte
     }
-    String::from_utf8_lossy(&out).into_owned()
+    out
 }
 
 /// May the app's window go to this address? Only the app's own page: Tauri serves it at

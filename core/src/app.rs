@@ -409,9 +409,31 @@ pub fn write_atomic_checked(path: &Path, text: &str, expect: Expect) -> Result<b
         Ok(()) => return Ok(true),
         Err(e) => e,
     };
-    let _ = std::fs::remove_file(&tmp);
-    write_flushed(path, text).map_err(|e2| format!("Couldn't save the page: {e} / {e2}"))?;
-    Ok(true)
+    // the new words stay in the temporary file until the page's own file is shown to hold them: the
+    // direct write empties the file first, so if it stops halfway (drive full, drive gone) the
+    // temporary file is the only whole copy left (review claim S4, Nov 22)
+    write_flushed(path, text).map_err(|e2| format!("Couldn't save the page: {e} / {e2} (the new words are kept in {})", tmp.display()))?;
+    match std::fs::read(path) {
+        // read back whole: the temporary copy isn't needed any more
+        Ok(now) if now == text.as_bytes() => {
+            let _ = std::fs::remove_file(&tmp);
+            Ok(true)
+        }
+        // written but not read back the same: the copy is kept and the save is reported as failed
+        _ => Err(format!("Couldn't save the page: it didn't read back the same (the new words are kept in {})", tmp.display())),
+    }
+}
+
+/// Each file that owns a page name only by its `title::` line, while the file named for that page
+/// waits (`Vault::misowned`), is read into the index again: the named file takes the name and the
+/// copy waits instead (review claim R5, Nov 22). `contents`: each file's text.
+fn give_names_back(vault: &mut Vault, contents: &HashMap<String, String>) {
+    for owner in vault.misowned() {
+        if let Some(text) = contents.get(&owner) {
+            vault.remove(&owner); // the name is free: the file named for it takes it (Vault::promote)
+            vault.upsert(&owner, text); // the copy comes back, now waiting for the name
+        }
+    }
 }
 
 /// Write `text` to `path` and ask the system to put it on the disk before going on (Build 44). Without
@@ -856,18 +878,7 @@ fn rename_prop_in_text(text: &str, old: &str, new: &str) -> Option<(String, usiz
 /// Apply a page rename to one file's text. None when nothing changed.
 fn rename_in_text(text: &str, olds: &[String], new: &str, comma: &[String]) -> Option<String> {
     let mut doc = split_doc(text);
-    let mut changed = false;
-    if let Some(p) = crate::text::rename_refs(&doc.preamble, olds, new, comma) {
-        doc.preamble = p;
-        changed = true;
-    }
-    for b in &mut doc.blocks {
-        if let Some(t) = crate::text::rename_refs(&b.text, olds, new, comma) {
-            b.text = t;
-            changed = true;
-        }
-    }
-    changed.then(|| keep_shape(Some(text), join_doc(&doc), doc.crlf))
+    rename_doc(&mut doc, olds, new, comma).then(|| keep_shape(Some(text), join_doc(&doc), doc.crlf))
 }
 
 /// A renamed (or merged) page's links in another file, made safely (`rewrite`: a version saved
@@ -878,16 +889,27 @@ fn link_rewrite(path: &Path, olds: &[String], new: &str, comma: &[String]) -> Op
 }
 
 /// `rename_in_text` on a page already split: links to `olds` in its properties and notes now point
-/// at `new` (only the notes that change are touched).
-fn rename_doc(doc: &mut Doc, olds: &[String], new: &str, comma: &[String]) {
+/// at `new` (only the notes that change are touched). true: something changed.
+fn rename_doc(doc: &mut Doc, olds: &[String], new: &str, comma: &[String]) -> bool {
+    let mut changed = false; // whether any link was changed
     if let Some(p) = crate::text::rename_refs(&doc.preamble, olds, new, comma) {
-        doc.preamble = p;
+        doc.preamble = p; // the page's properties
+        changed = true;
     }
     for b in &mut doc.blocks {
-        if let Some(t) = crate::text::rename_refs(&b.text, olds, new, comma) {
-            b.text = t;
+        // a plain paragraph (no bullet) gets the change in its own lines, so its layout stays
+        // (else it, and everything after it, would be written back as bullets: review claim S5)
+        if let (true, Some(raw)) = (b.plain, &b.raw) {
+            if let Some(r) = crate::text::rename_refs(raw, olds, new, comma) {
+                crate::doc::set_plain_raw(b, r); // new lines and the words read from them
+                changed = true;
+            }
+        } else if let Some(t) = crate::text::rename_refs(&b.text, olds, new, comma) {
+            b.text = t; // a note: its words; it is written as a note again
+            changed = true;
         }
     }
+    changed
 }
 
 /// Can a page's YAML header (if it has one) all become `key:: value` properties (`parse::yaml_props`):
@@ -1173,6 +1195,7 @@ impl App {
             vault.upsert(rel, &contents[rel]);
             files.insert(rel.clone(), stamps[rel]);
         }
+        give_names_back(&mut vault, &contents); // a copy read before the real page gives its name back
         for rel in &non_utf8 {
             contents.remove(rel); // never cache text we couldn't read exactly
         }
@@ -1317,6 +1340,7 @@ impl App {
             self.born.remove(&rel);
             changed.push(rel);
         }
+        give_names_back(&mut self.vault, &self.contents); // (a page's file brought back by a sync app)
         // the settings, changed elsewhere (Logseq, the phone) or arrived late (Google Drive); not when
         // the app itself changed them meanwhile (read again next time)
         if let Some((st, cfg)) = ch.config.filter(|_| self.config_stamp == ch.config_base) {
@@ -1542,6 +1566,16 @@ impl App {
                 if self.vault.title_from_path(&format!("{}/{stem}.md", self.vault.config.pages_dir)).0 != info.name {
                     text = add_title_prop(&text, &info.name);
                 }
+            }
+            // the file already holds exactly these words (a letter typed and deleted again, a note
+            // folded and opened): nothing is written, so no sync app uploads it and no watcher wakes
+            // (review claim 8, Nov 22). What the app keeps in memory is brought up to date if needed.
+            if current.as_deref() == Some(text.as_str()) {
+                if self.contents.get(&rel) != Some(&text) {
+                    self.record_write(&rel, &text); // only memory is updated here, never the file
+                }
+                let merged = merged.map(|_| split_doc(&text)); // a merge that came to the same words
+                return Ok(SaveRes { ok: true, hash: content_hash(&text), conflict: false, merged });
             }
             match &current {
                 // a new page: its own file (Vault::free_rel), written only where no file is yet; one

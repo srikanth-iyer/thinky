@@ -4,7 +4,7 @@
 
 use crate::doc::{Doc, DocBlock};
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// A note as compared: its level and words.
 pub(crate) type Key<'a> = (usize, &'a str);
@@ -299,5 +299,39 @@ pub fn clash_parts(base: &[DocBlock], mine: &[DocBlock], theirs: &[DocBlock]) ->
         at = (oi + 1, ai + 1, bi + 1);
     }
     chunk(&mut parts, at, (o.len(), a.len(), b.len()));
+    // A note moved on both devices, to two different places, looks to each stretch like a note added
+    // on one side only, so each place keeps it and it would come out twice (review claim R10, Nov 22).
+    // When the combined page has a note the page already had more often than either version has it,
+    // the whole page is one clash instead, for him to choose: nothing is doubled and nothing is lost.
+    // (New notes with the same words added on both sides are left to both_added: two notes under
+    // two different parents are both kept, as before.)
+    if comes_out_twice(&parts, base, mine, theirs) {
+        return Some(vec![Part::Clash { base: base.to_vec(), mine: mine.to_vec(), theirs: theirs.to_vec() }]);
+    }
     Some(parts)
+}
+
+/// Whether the parts that need no choice hold the words of a note `base` had more often than both
+/// `mine` and `theirs` do (empty notes don't count: a page may have many).
+fn comes_out_twice(parts: &[Part], base: &[DocBlock], mine: &[DocBlock], theirs: &[DocBlock]) -> bool {
+    // how many times each note's words appear in a list of notes
+    let count = |v: &mut HashMap<String, usize>, blocks: &[DocBlock]| {
+        for b in blocks {
+            let t = b.text.trim(); // the words, without spaces around them
+            if !t.is_empty() {
+                *v.entry(t.to_string()).or_default() += 1; // one more time seen
+            }
+        }
+    };
+    let (mut o, mut m, mut t, mut out) = (HashMap::new(), HashMap::new(), HashMap::new(), HashMap::new());
+    count(&mut o, base); // the page as both last had it
+    count(&mut m, mine); // this device's version
+    count(&mut t, theirs); // the other device's version
+    for p in parts {
+        if let Part::Same { blocks } = p {
+            count(&mut out, blocks); // what the combined page would hold
+        }
+    }
+    // a note the page had, now more often than in either version: it was doubled by the combining
+    out.iter().any(|(k, n)| o.contains_key(k) && *n > (*m.get(k).unwrap_or(&0)).max(*t.get(k).unwrap_or(&0)))
 }

@@ -592,6 +592,7 @@ pub fn polish_answer(v: &Vault, original: &str, answer: &str, mark: bool) -> Res
         let kept: Vec<String> = lines.into_iter().enumerate().filter(|(n, l)| *n == 0 || crate::parse::property(l).is_none()).map(|(_, l)| l).collect();
         let (text, gone) = crate::text::unlink_unknown(&kept.join("\n"), &is_known);
         unlinked.extend(gone);
+        let text = crate::text::unpicture_new(&text, &words); // a web picture the note didn't have is only a link
         let mut text = text.trim().to_string();
         if text.is_empty() {
             continue;
@@ -791,6 +792,7 @@ pub fn picture_answer(v: &Vault, note: &str, answer: &str, mark: bool) -> Result
         let t = t.trim_start_matches('#').trim();
         let (text, gone) = crate::text::unlink_unknown(t, &is_known);
         unlinked.extend(gone);
+        let text = crate::text::unpicture_new(&text, note); // a web picture the note didn't have is only a link
         let text = text.trim().to_string();
         if !text.is_empty() {
             notes.push((indent / 2, text));
@@ -1004,6 +1006,7 @@ pub fn names_answer(v: &Vault, page: &str, answer: &str) -> Result<Value, String
             "description" if description.is_empty() && !raw.is_empty() => {
                 // plain words: a link the AI wrote becomes its words
                 let (val, _) = crate::text::unlink_unknown(raw, &|_| false);
+                let val = crate::text::unpicture_new(&val, ""); // a picture in it would load wherever it's shown
                 description = val.replace("[[", "").replace("]]", "").trim().chars().take(200).collect();
             }
             "alias" | "aliases" => {
