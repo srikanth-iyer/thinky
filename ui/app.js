@@ -2761,19 +2761,20 @@ class App {
     // One check for a burst of notices (review claim L6, Nov 22): coming back to the app fires both
     // "visible" and "focus", and each of the app's own saves wakes the folder watcher too. Nothing is
     // dropped, only put together: a change made elsewhere is still looked at, at most a few seconds late.
-    const refresh = () => {
+    // own: a notice from the folder watcher (each of the app's own saves causes one)
+    const refresh = (own = false) => {
       if (this.noAccess && window.LeanAndroid?.hasAllFilesAccess?.()) return; // the folder is opened again anyway
       const now = Date.now(); // the time now, in milliseconds
       this.refreshFirst ??= now; // when the first notice of this burst came
       clearTimeout(this.refreshT); // a check already waiting is replaced by this one
-      // just after a save of its own: wait until saving pauses (that notice is the app's own file);
-      // otherwise a moment, so the two "came back" notices make one check
-      const wait = now - (this.savedAt || 0) < 1500 ? 1500 : 200;
+      // the watcher, just after a save of its own: wait until saving pauses (that notice is the app's
+      // own file); otherwise (coming back to the app) a moment, so its two notices make one check
+      const wait = own && now - (this.savedAt || 0) < 1500 ? 1500 : 200;
       const go = () => { this.refreshFirst = null; this.rescan(); }; // the check itself; the burst ends
       // never more than 5 s after the first notice, even while saves keep coming
       if (now - this.refreshFirst >= 5000) go(); else this.refreshT = setTimeout(go, wait);
     };
-    listen('lean-files', refresh);
+    listen('lean-files', () => refresh(true));
     // a page or note link clicked in another program while the app is open (links.rs)
     listen('lean-link', (e) => this.openLink(e.payload));
     // Put away (Android may then close the app without a word), reloaded or closed: save what can be
@@ -2784,7 +2785,7 @@ class App {
       if (document.visibilityState === 'visible') refresh();
       else { this.outlines.forEach((o) => { o.backupPending(true); o.flush(); }); this.tabs.save(true); if (this.vaultOpen) call('persist').catch(() => {}); }
     });
-    window.addEventListener('focus', refresh);
+    window.addEventListener('focus', () => refresh());
     // without file notifications (the dev server), fall back to a slow check
     if (!isApp) setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 30000);
     window.addEventListener('beforeunload', () => { this.outlines.forEach((o) => { o.backupPending(true); o.flush(); }); this.opening.forEach((w) => w.keep(true)); this.tabs.save(true); });
