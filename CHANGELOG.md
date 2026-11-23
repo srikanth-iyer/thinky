@@ -53,7 +53,7 @@ Fixes from an outside code review (Nov 21): safety and security first, then smal
 - The ✦ beside an edited linked reference is no longer cut off at the reference box's edge (it was in every look; most in Paper).
 - Under the hood: polish.js `aiMenu`, `drawNotes`, `editNotes`; popups.js `menu()` takes a `title`; test t33_build54 checks the ✦ is whole in every look, t31 the menu and the editing.
 
- version 0.6.2 (November 2026)
+## Build 53 · version 0.6.2 (November 2026)
 
 - The laptop's note menu: resting the mouse on "More commands" opens the "/" commands beside it, with a box to narrow them (→, Enter or a click opens it from the keyboard too). The phone keeps "More commands…".
 - Calm's note cards sit lower: a thin edge and a short, close shadow, so they no longer look lifted high off the page.

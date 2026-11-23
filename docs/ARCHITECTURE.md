@@ -8,8 +8,8 @@ this file tells you which part to look up there.
 Written Oct 29, 2026 from `main` at Build 31, then checked line by line against the code by a separate review. When you add or remove a component, a background
 process, or a footprint outside the repo, **update this file in the same commit**.
 
-> Name: "thinky" was picked (hand-lettered wordmark) in late Oct 2026, but the screen still
-> says "Lean Outliner". The hidden identifiers never change (`com.srikanth.leanoutliner`,
+> Name: "thinky" (hand-lettered wordmark, picked late Oct 2026) is what the screen, the installer and the
+> downloads say now. The hidden identifiers never change (`com.srikanth.leanoutliner`,
 > `leanoutliner://`, cargo `lean-outliner`, repo names), so updates install over old builds.
 
 ---
@@ -48,18 +48,19 @@ it is the only writer: every save carries the version it started from and merges
 ## 2. One program, many jobs (Windows)
 
 There is a single executable, `lean-outliner.exe`. What it does depends on how it's started
-(`src-tauri/src/main.rs`; real order checked there: `--hotkey`, `--hotkey-selftest`,
-`--capture-box-selftest`, `--check`, `--verify-update`, `--capture`, `--capture-box`, a
-`leanoutliner://` link, else the app):
+(`src-tauri/src/main.rs`; real order checked there: started by Edge or Chrome for the browser extension,
+`--hotkey`, `--hotkey-selftest`, `--capture-box-selftest`, `--check`, `--verify-update` / `--verify-update-newer`,
+`--capture-box`, a `leanoutliner://` link, else the app):
 
 | Started as | What it is | Web engine? | Lives in |
 |---|---|---|---|
+| `chrome-extension://<id>/ …` (Edge or Chrome starts it) | The **browser extension's receiver** (native messaging): answers our extension's messages on standard input and output, then exits; any other extension gets nothing. | No | `src-tauri/src/native_host.rs`, rules in `core/src/clip.rs` |
 | `--hotkey` | The **shortcut-key helper**. Sits asleep, waits for the capture key, starts `--capture-box`. Started with Windows (installed copy only); quits at once if no key is set (`hotkey.txt` empty). | No | `src-tauri/src/hotkey.rs` |
 | `--capture-box` | The **"Add to journal" box** (Spotlight-like). Native Win32 window, appears in ~40–120 ms, adds one note, exits. Uses worker threads (opening the vault read-only for the page list, adding, pasted picture → PNG) and reads the clipboard to pre-fill. | No | `src-tauri/src/capture_box/` (`files.rs`: clipboard, file picker, PNG), rules in `core/src/capture_box.rs` |
 | `leanoutliner://capture?…` | Nothing since Build 34 (any web page can send one; the bookmarklet that made them is gone). The program exits at once. | No | `main.rs` |
 | `leanoutliner://page/<name>`, `…/note/<id>` (or any other non-capture `leanoutliner://`, `Link::App`) | Hands the link to the open app and quits; if none is open, starts the app on that page. | Only if it starts the app | `src-tauri/src/links.rs` |
 | `--check <vault> <out.json>` | Read-only health check of a vault. | No | `core/src/app.rs` `check_vault` |
-| `--verify-update <exe> <sig> <N>` | CI only: would the app accept this installer as build N? | No | `src-tauri/src/update.rs` |
+| `--verify-update <exe> <sig> <N>`, `--verify-update-newer` (`thinky-update.sig`) | CI only: would the app accept this installer as build N? | No | `src-tauri/src/update.rs` |
 | `--hotkey-selftest <dir>`, `--capture-box-selftest <dir>` | CI only. **Never run on your own computer** (they press keys / use the clipboard). | — | `hotkey/selftest.rs`, `capture_box/selftest.rs` |
 | *(no arguments)* | The **main app** window. | Yes (WebView2) | `src-tauri/src/lib.rs` + `ui/` |
 
@@ -80,7 +81,7 @@ On Android there is one app (the APK) plus Kotlin extras (section 4). The Google
 | **Safety-copy thread** (inside the main app) | Once, in the background after a vault opens | — | Copies recently changed notes into `logseq/.safety-<device>/` inside the notes folder (falls back to the app's data folder only when the notes folder can't be written; CLAUDE.md "app/safety.rs"). |
 | **Close guard thread** | When the window is closing | — | Gives the page 5 s to save (`lean-close`), then saves the index cache (if the app's lock is free within a second) and exits anyway. The main window never closes by itself: a second click on × while it saves is ignored (`shell_rules::close_step`). |
 | **AI requests** (Build 51, optional: only once Settings → AI is set up) | Only when the person presses one of the AI features (Polish note, Picture to text, Ask about this page, Suggest links, Suggest aliases and a description), Test, or opens Settings → AI with a key saved. **Never on a timer or by itself.** | `ai_send`: one Windows curl.exe process per request (no console window), gone when it answers; Android: one thread in MainActivity | Sends what that one feature needs (a note with nearby page names and tags in use; a picture; or one page with the notes that link to it) to the AI service the person chose, with their key (Credential Manager / Keystore). |
-| **Update check** (inside the page) | Once at start (skipped if the last answer is under a day old), and from Settings → About. **No timer**: an app left open for days doesn't check again. Laptop and phone. | The check talks to `api.github.com`; "Update now" downloads from `github.com/…/releases/download` (curl.exe on Windows, MainActivity on Android) | Looks for a newer "Build N" among this repo's releases (Build 33 and older: the old downloads repo). |
+| **Update check** (inside the page) | At start, every 2 hours and when the window comes back (an answer under 30 minutes old is reused), and from Settings → About. Laptop and phone. | The check talks to `api.github.com`; "Update now" downloads from `github.com/…/releases/download` (curl.exe on Windows, MainActivity on Android) | Looks for a newer "Build N" among this repo's releases (Build 33 and older: the old downloads repo). |
 
 Rules that follow from this:
 - **Anything that must react to a key press, a link or a file change already has a home.** Add to
@@ -199,14 +200,14 @@ re-published at each start.
 
 ### `scripts/` and `ci/`
 `android_overlay.py` (above) · `android_test.sh` and helpers (the emulator test) · `update_sig.py`
-(sign/check updates, and `apk-check` for the APK's `thinky-apk.sig`; tested by `update_sig_test.py`) · `ci_version.py` (build N → version 0.1.N) · `ci_report.py` (sizes) ·
+(sign/check updates, and `apk-check` for the APK's `thinky-apk.sig`; tested by `update_sig_test.py`) · `ci_version.py` (stamps ui/version.js's version into the build, and N into ui/build.js) · `ci_report.py` (sizes) ·
 `make_test_vault.py`. `ci/baseline.json` (agreed sizes), `ci/update-key.pub` (the update key's public half; the
 locked keys themselves are secrets, never files in the repo).
 
 ### `dev/` — testing without Tauri
 `devserver` (`dev/src/main.rs`, hand-written HTTP) serves `ui/` and `POST /api/<cmd>` → the same
-`dispatch`. `cargo run -p devserver -- <vault> [port]` (default 8765). `dev/ui-tests/`: 28 Playwright
-tests (smoke + t1…t15), `run.sh` runs them all.
+`dispatch`. `cargo run -p devserver -- <vault> [port]` (default 8765). `dev/ui-tests/`: about 60 Playwright
+tests (smoke + t1…t35), `run.sh` runs them all.
 
 ---
 
@@ -217,8 +218,11 @@ tests (smoke + t1…t15), `run.sh` runs them all.
   `"<exe>" --hotkey` (starts the helper with Windows).
 - `Software\Classes\leanoutliner` (default "URL:Lean Outliner", "URL Protocol") and
   `…\shell\open\command` = `"<exe>" "%1"` (the link handler). **Every start of any copy — installed,
-  portable, test, even the web capture box — re-points this to itself.** After testing an exe, put it
+  portable, test, even the capture box — re-points this to itself.** After testing an exe, put it
   back to `"%LOCALAPPDATA%\thinky\lean-outliner.exe" "%1"`.
+
+- `Software\Microsoft\Edge\NativeMessagingHosts\com.srikanth.leanoutliner` and `Software\Google\Chrome\NativeMessagingHosts\…`
+  (default = the path of `native-host.json`), only once Settings → Capture → Browser extension → Set up was used.
 
 **Windows Credential Manager** (Build 51, only once a key is saved in Settings → AI): one generic credential per AI
 service, `thinky AI key: <service id>` (user "thinky", this computer only); Settings' Remove key deletes it. "Other
@@ -249,6 +253,7 @@ NSIS installer adds its own uninstall entry and shortcuts; CI's Rename check cov
 | `problems.log` | anything that fails | Settings → About |
 | `safety-copies/vault-<hash>/…` | the safety thread, and `keep_replaced` right before each cache write (earlier texts) | Settings → Safety copies, History |
 | `update/` (Android: `cacheDir/update-apk`) | the updater | the updater (old ones tidied after 10 min) |
+| `browser-extension\` + `native-host.json` | Settings → Capture → Browser extension → Set up, then each app start (`native_host::refresh`) | Edge's "Load unpacked"; the browser, to find the receiver |
 | `ai/` | an AI request's body while curl.exe sends it (`ai-<pid>-<n>.json`, removed when it answers) | curl.exe |
 | Android only: SharedPreferences `lean_ai` + Keystore key `thinky-ai-keys` | Settings → AI's Save key (AiKeys.kt: the key sealed with AES-GCM; Remove key deletes it) | AiKeys.kt, when a request is sent |
 | WebView2 data (localStorage etc.) | the web engine | the page (section 4, "Browser storage") |
@@ -284,7 +289,7 @@ anyone else's change".
 | Entry point | Code path |
 |---|---|
 | Shortcut key on the laptop | helper → `--capture-box` → native box → `capture::capture_to_usual` or `App::capture_to_page` (both via `capture::append_note`) |
-| Inside the app | Ordinary editing: the phone "+" → `App.addNote` → `Outline.addAtEnd`, saved like any note. (`dispatch` also has `capture` / `append_journal` commands, but no UI uses them; only tests do.) |
+| Inside the app | Ordinary editing: the phone "+" → `App.addNote` → `Outline.addAtEnd`, saved like any note. |
 | Phone widget "+", share sheet, Quick Settings tile | `QuickCaptureActivity` (always shown; Add) → `LeanCore.capture` → the app's Rust code (`android_capture.rs` → `capture.rs`) |
 
 Browser highlights (Build 32) go through the browser extension and its native host (`clip.rs`), not
@@ -347,7 +352,7 @@ Also mirrored: `search.rs` `fold` ↔ `ui/search.js`.
   repo, `srikanth-iyer/lean-outliner-releases`, where Build 33 and older look). Commits touching only Markdown, `ci/baseline.json` or the phone-test scripts don't build (`dev/**` does since the review fixes: the dev server and UI tests are checked) (`paths-ignore` in build.yml; the phone test has no such list, so `[android-test]` still runs it). `wip/**` branches
   build without publishing — use them to check compiling. Build minutes are limited: batch features.
 - Jobs in `.github/workflows/build.yml`: `number`, `test`, `update-key`, `windows` (also runs both
-  self-tests), `capture-shots`, `android`, `sign` (main, after approval), `sign-wip`, `verify`, `sizes`,
+  self-tests), `capture-shots`, `android`, `sign` (main, once every test passes; no approval or wait), `sign-wip`, `verify`, `sizes`,
   `release` (main). Pull requests: `pr.yml`. Phone
   emulator test: `android-test.yml`.
 - Signing keys (the `release` environment's secrets; see CLAUDE.md) are made once and **never replaced**

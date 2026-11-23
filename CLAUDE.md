@@ -1,10 +1,8 @@
 # thinky (formerly Lean Outliner) — the detailed guide (for people and for Claude)
 
-**Start with `docs/ARCHITECTURE.md`**: the top-down map of every program mode, what runs in the
-background (the shortcut-key helper `--hotkey`, the link listener, the file watcher), everything the
-app leaves outside the repo (registry, Start menu, cache files), the capture paths, and the rules
-mirrored in Kotlin. Check it before building any new component, and
-update it in the same commit when you add one. This file holds the detailed rules behind each part.
+**Start with `docs/ARCHITECTURE.md`**, the top-down map (program modes, what runs in the background,
+what the app leaves outside the repo, the rules mirrored in Kotlin). Check it before building any new
+component, and update it in the same commit when you add one. This file holds the detailed rules behind each part.
 
 A lean Logseq-style outliner for Windows and Android. Most of it is written and maintained with
 Claude (an AI), and this file is the detailed guide for whoever works on it next, person or AI.
@@ -18,7 +16,7 @@ capture box's owner) stay. The release files are named thinky since Build 35 (`t
 `thinky-portable.exe`, `thinky.apk`: core/src/update.rs, MainActivity, site links); each release also
 carries copies under the old names `LeanOutliner-setup.exe(.sig)`/`-portable.exe`/`LeanOutliner.apk`
 (the old .sig signed for the old name), because Build 34 and older look for those to update; drop them
-only when the maintainer says so. Updates must install over older builds. `api.js` `APP_NAME` is the one place new code takes the name from.
+only when the maintainer says so. Updates must install over older builds. The name the page shows comes from dom.js `BRAND` (`BRAND.word`); `api.js` `APP_NAME` is defined but nothing uses it.
 Brand (the maintainer's picks on the "thnki + thinky · scribble to spark" board): `ui/brand/` — `icon.svg` (the
 "scribble to spark" icon: cream tile #F4EEE3, ink #1D1A2E, red spark #FF4B2B; the designer's three
 drawings by size: `icon.svg` fine lines for 128px and up, `icon-mid.svg` ~40–96px, `icon-small.svg`
@@ -27,7 +25,7 @@ thick lines drawn 1.14× bigger for 32px and less), `wordmark.svg` ("thinky" in 
 (no `[[thinky]]` mark: the maintainer tried it and said not to use it, Oct 29). The wordmark is outlines made ONCE
 from the font (`scripts/make_wordmark.py`, how to get the font is in it; the app ships no font for
 them), each a `<symbol id="m">` drawn with `<use href="brand/wordmark.svg#m">` so the letters take the
-look's ink (`currentColor`; readable in night looks) while the spark and [[ ]] stay red. Inside the app
+look's ink (`currentColor`; readable in night looks) while the spark stays red. Inside the app
 the icon takes the look's colours (Build 32, the maintainer asked): `ui/brand/icon-in.svg` holds icon-small (`#s`) and
 icon-mid (`#m`) as symbols, numbers rounded, filled by `--logo-tile`/`--logo-ink`/`--logo-spark` (skins.css;
 the brand's cream/ink/red by default, each look's own otherwise), drawn inline (`<svg class="logo"><use>`: an
@@ -44,7 +42,7 @@ ui/brand; the journal widget's header shows `android/res/drawable/widget_logo.xm
 a vector). Tested by t16_brand.
 The logo in use (Build 32, tested by t16_logo): start-up: `index.html` `#splash` (the scribble inline,
 rounded to whole units, + the spark; app.css `#splash`, CSS only: the line draws in 0.45 s, the spark
-pops at the end) covers the window on the page colour while the app opens, takes no clicks, fades
+pops at the end) covers the window on the brand's cream in every look while the app opens, takes no clicks, fades
 when the first page is drawn (`App.unsplash`, end of `draw`; never waited for, never again), goes by
 itself after 12 s; still with reduced motion.
 The spark as a small mark (sparingly; colour token `--spark`, default #FF4B2B, in skins.css; the shape
@@ -69,8 +67,7 @@ lines, the spark as sqrt|x|+sqrt|y| curves; tested by core/tests/capture_box.rs 
 its words start after it (`left` = 38 px).
 Calm's accent (Build 32, the maintainer asked: keep it green but warmer, to sit with the brand) is a sage-green
 `#2F6E52` with cream-green tints and a faintly warm page (`[data-skin="calm"], [data-skin="calmplain"]`). Calm plain has its own slate teal since Build 51 (below). The
-fallbacks when no look was saved yet follow (capture box `BoxColors::default`, the Android widgets' and pop-up's
-`c_accent` default). The thinky look's in-app icon is an ink tile with cream lines (a cream tile melted into its
+fallbacks when no look was saved yet are thinky's, not Calm's (Build 33, below). The thinky look's in-app icon is an ink tile with cream lines (a cream tile melted into its
 light page).
 The installer and the rename: Tauri's NSIS installer keys its folder (`%LOCALAPPDATA%\thinky`), its
 Apps & features entry and shortcuts on productName, so `src-tauri/windows/hooks.nsh` `LO_MIGRATE`
@@ -81,7 +78,7 @@ Outliner` note and its Start-menu/desktop shortcuts; POSTINSTALL makes the think
 (an /UPDATE install makes none itself), points a taskbar pin, `leanoutliner://` and the shortcut key's
 Run value at the new exe. Uninstalling also removes the leanoutliner:// key when it points there. The
 app's data folders are named by the identifier, so the maintainer's notes folder, look, settings and key carry
-over. CI's Windows job "Rename check" installs the real Build 31 then this build `/S /UPDATE` and
+over. CI's `rename-check` job installs the real Build 31 then this build (`/P /R /UPDATE`) and
 checks all of it, then uninstalls (`makensis` isn't on the cloud workspace by default: `apt-get
 install nsis` compiles a stub harness of the hooks, but only CI runs them).
 
@@ -100,19 +97,11 @@ Prefer hand-written, small code over dependencies. Current size (Build 31, agree
 - Comments still explain what each line does, for a beginner reader (the maintainer's rule; it wins over any "fewer comments" advice).
 
 ## Release history
-Done, release by release: Build 21 phone fixes; 22 Journals (older days, each day's references,
-"Scheduled & deadline"), Plain night, Home, Settings tabs, capture box; 23 reading and writing (swipes,
-press-and-hold preview, pinned parents, find and replace, easier links, page icons, coloured boxes); 24
-safety and Android (side-by-side clash view, safety copies, unused pictures, quick-settings tile and
-app-icon shortcuts); 25 resizable pictures; 26 tabs and two sides; 27 one-click updates, roomier
-journal; 28 references with sub-notes, page history, the note menu, drag to move; 29 the Logseq feel
-(instant shortcut key helper, smarter search, Ctrl+Shift+P, Plain like Logseq, the top strip, wide
-mode, resizing, menus, folding, more / commands, `((`, Ctrl+A, wrapping, rich paste, export, phone +);
-30 drag notes anywhere, files from Explorer, All pages by date, rename by the title + merge, favourites
-follow renames, leanoutliner:// page/note links, Show file in Explorer.
+Earlier builds are summed up in CHANGELOG.md. Below, from Build 33: what each build changed in the code.
+A later build's entry wins over an earlier one. Build 50 and Builds 55 on have no entry of their own: their
+rules went into the entries they changed and the topic sections further down.
 The maintainer agreed (Oct 27): Plain night back to near-black, Logseq's blue-green kept as the look Plain teal; Inter is bundled (one variable file, italics
 slanted by the browser; for Plain and Plain night); the grown size is the new `ci/baseline.json`.
-Logo/name: decided Oct 29, 2026: thinky (see "Name" above).
 Build 33 (the maintainer's list of Oct 30): thinky is the default look (index.html, boot.js, `setSkin`'s
 start; the no-look-yet fallbacks too: capture box `BoxColors::default`, the Android widgets' and pop-up's;
 UI tests still open in Calm: lib.mjs `open({look})`, t6_looks checks the default). To-dos: one filter at a
@@ -140,22 +129,21 @@ lets such outlines go (`dropLive`: typing saved). The page's name (group heading
 the page; "… N more" still zooms. Tested by t17_refedit. The Tags list counts `#tag`s written in notes too
 (`parse::hash_tags`, not in code; `Vault::all_tags` = [name, pages with tags::, notes with #name]).
 Build 34 (the maintainer's list of Oct 30; tested by t19_build34, t15_pages, core/tests/capture_box.rs and
-CI's capture-box self-test): the top strip's seven buttons over the sidebar evenly spaced to its edge (app.css
-`--hb-gap`); Ctrl+Enter cycles DONE → CANCELED too (editor.js `nextMarker`); "Linked references" folds from its
+CI's capture-box self-test): Ctrl+Enter cycles DONE → CANCELED too (editor.js `nextMarker`); "Linked references" folds from its
 heading like the unlinked ones (`foldableRefs`, localStorage `refShut`); the reference filter has buttons for
-the pages its references are on or mention (`refTools` chips: a click shows only those, a second hides them,
-a third lets go; 24, then "N more"; `pagesIn` in render.js); the To-dos list orders Newest (default) /
+the pages its references are on or mention (`refTools` chips, `pagesIn` in render.js; how a click works now:
+Build 37); the To-dos list orders Newest (default) /
 Oldest (by the page file's change time, `TaskHit.changed` from `App::tasks`) / By date (the old groups),
 `todoOpts.sort`, with the same page buttons (`.todo-chips`); All pages' Namespaces lists only pages in a
 namespace and their parents, each level in the columns' order (views.js); the editor's spelling check
-(`textarea.ed` `spellcheck`, Settings → Look, localStorage `spellcheck`, default on; the system's own:
+(`textarea.ed` `spellcheck`, Settings → Typing & keys, localStorage `spellcheck`, default on; the system's own:
 WebView2's on Windows, the keyboard's on Android; no grammar check: none built in); the Android pop-up
 more compact (less space above and below, the same text sizes); the Windows capture box's small buttons
 [[ ]], # and To-do at the right of the first line (`Layout.tools`, `Metrics.tool_w`, `Hot::Tool`;
 `link_brackets`: selected words become a link, else the caret between empty brackets).
 Also Build 34: the faint words (`--ink-faint`: counts, weekday, paths, property names, placeholders) at least
 4.5:1 on the page and cards in Plain (#6D6D6D; its soft words #5C5C5C so they stay darker), Plain night
-(#878787), Calm and Calm plain (#656D7C), Paper (#746C5E) and Night (#9198A2), and Plain's #tags in the
+(#878787), Calm and Calm plain (#656D7C), Paper (#6E665A since Build 53) and Night (#9198A2), and Plain's #tags in the
 whole link colour (shown to the maintainer as before/after pictures; t19 measures it); the Edge
 extension's Highlight key Ctrl+Shift+H for a new setup (`browser/manifest.json`; an existing one keeps
 its key; popup.js shows the real one from `chrome.commands`), Settings → Capture lists the keys and gives
@@ -164,8 +152,7 @@ Build 35 (Nov 2, 2026): the downloads named thinky (above, "Name"; CI signs the 
 names, `release` copies the files to the old names after checking them; MainActivity tries thinky.apk,
 then the old name); the browser extension from the Edge and Chrome stores (clip.rs ids; Settings →
 Capture → "Highlights from your browser": Set up, then "Get it for Edge"/"Get it for Chrome" open the
-store pages, `STORES` in settings.js, the same ids, t16_settings checks; loading it unpacked folded
-below; the keys' addresses for Edge and Chrome); the newer GitHub Actions (Node 24, Dependabot's).
+store pages, `STORES` in settings.js, the same ids, t16_settings checks; the keys' addresses for Edge and Chrome); the newer GitHub Actions (Node 24, Dependabot's).
 Build 36 (the maintainer's notes of Nov 4 and 5; tested by t20_build36, t15_pages, core tests/vault.rs
 `todos_carry_their_parents_links`, tests/pages.rs `a_property_renamed_everywhere`, tests/pictures.rs
 `links_to_pictures_that_arent_there`): Namespaces (views.js `draw`, tree branch) list a top-level
@@ -215,7 +202,7 @@ not made yet, in any capitals on Windows/macOS) and a notes folder with no notes
 out; `backup_now_at(root, …)` runs without the App (A2: the shell can let the App's lock go); ≥ 20 (or a tenth) gone →
 warning; `find_in_backup`/`restore_from_backup` with create_new), dispatch `backup_now`/`backup_find`/
 `backup_restore`; UI `App.backupNow`/`backupIfDue` (hourly check, day/week, localStorage `backup` per device),
-Settings → Notes `backupCard` (not on Android), Missing pictures' "Found in your backup: restore". Its Choose… (`folderPicker` mode 'choose'; since Build 50, he asked Nov 18): with the GitHub kind a git clone that looks like a notes folder (a copy of the notes, so it has `pages`) can be used unless it is the open notes folder (`app.summary.root`) or inside a notes folder; a notes folder with no `.git`, and with the zip kind any notes folder, stay refused. Tested by t30_build50 (Build 50, 0.5.11). Android:
+Settings → Safety `backupCard` (not on Android), Missing pictures' "Found in your backup: restore". Its Choose… (`folderPicker` mode 'choose'; since Build 50, he asked Nov 18): with the GitHub kind a git clone that looks like a notes folder (a copy of the notes, so it has `pages`) can be used unless it is the open notes folder (`app.summary.root`) or inside a notes folder; a notes folder with no `.git`, and with the zip kind any notes folder, stay refused. Tested by t30_build50 (Build 50, 0.5.11). Android:
 `SelectionCaptureActivity.kt` (PROCESS_TEXT, translucent, closes once the words are written; `LeanCore.addSelected` →
 android_capture.rs `plain` → `clip::guard(clip::defuse(…))` → `capture_to_usual`), manifest entry in android_overlay.py,
 android_test.sh step 5b. Since the outside review (claims 11a–c): only an `ACTION_PROCESS_TEXT` start counts (other
@@ -273,7 +260,7 @@ setSkin body: widgets, bars, capture box); a `prefers-color-scheme` listener fol
 Settings → Look: `.look-mode` (radiogroup) + "Day look"/"Night look" grids (`[data-for]`; Light or Dark shows only
 its own). The sidebar's Look list: two groups (`.looks-h`), each marking its look. Commands "Look: Light / Dark /
 Match system". Tests: t23_build39 (the old-look guesses, the setting, the system turning while open, the first
-paint, the list, thinky night's contrast), t6_looks/t16_looks (13 looks), android_test.sh 14c (the phone's dark
+paint, the list, thinky night's contrast), t6_looks/t16_looks (12 looks), android_test.sh 14c (the phone's dark
 mode reaches the WebView).
 Also Build 39 (he picked each, Nov 9): the phone bar (`#topbar`, narrow windows): 42px, softer 19px icons, no line;
 menu, Back, Forward (each hidden when there's nowhere to go, `[data-h]:disabled` visibility hidden: its place kept),
@@ -307,10 +294,10 @@ draws `--bullet`/`--guide` from them with `--bullet-strength`/`--guide-strength`
 look so dots stand out ~2.2:1 and lines ~1.2:1 from the page (Plain: 100%, Logseq's own, already the faintest);
 a folded note's ring keeps the full colour. t23_build39 measures every look. Dots are 6px in every look (Logseq's size; he picked it over 7 and 5, Nov 9), Paper's 5px. Picking from the "/" list on lift
 eats the click that follows (`eatNextClick`), which otherwise landed on the full-width "+" line and added a note.
-Build 40 (the maintainer's notes of Nov 9; tested by t8_phone, t16_feedback, t3_pages, t10_safety, t21_build37): Settings in six tabs, Updates & about first (`SETTINGS_TABS`
-in dom.js: about, notes, safety, look, writing, capture; Notes = the folder + Check this folder, Safety = bin, safety
-copies, backups, Writing = `writingCard` (spell check) + Property display + the laptop's keys; the old `#/settings/keys`
-opens Writing; with `html.has-update` Settings opens on Updates; on a phone the row scrolls sideways on one line (he
+Build 40 (the maintainer's notes of Nov 9; tested by t8_phone, t16_feedback, t3_pages, t10_safety, t21_build37): Settings in tabs, Updates & about first (`SETTINGS_TABS`
+in dom.js, now eight: about, notes, safety, look, typing ('Typing & keys'), capture, ai, help; Notes = the folder + Check this folder, Safety = bin, safety
+copies, backups, Look = looks + Property display, Typing & keys = `writingCard` (spell check) + the laptop's keys, Help = feedback + problems log (settings.js `parts`); the old `#/settings/keys`
+and `#/settings/writing` open Typing & keys; with `html.has-update` Settings opens on Updates; on a phone the row scrolls sideways on one line (he
 asked: not two lines), the chosen tab scrolled into view). Property display shows one example note per choice
 (`propsHtmlAs` in render.js draws `by:: claude` under each rule; the Icon example uses the plain default dot, not a
 spark-like sign: he said that reads as something important). Updates: `checkUpdate` at start, every 2 hours and when the
@@ -320,29 +307,7 @@ What's new (`whatsNew` in settings.js): each build's release notes from GitHub's
 CI's "App size" table left out), the installed one marked; it opens by itself when an update waits or after updating
 (`seenBuild`). Night looks dim the page DARKER behind the search box and dialogs (`--scrim`/`--scrim-modal`, skins.css;
 his pick "A"); day looks keep the ink-coloured dim.
-Version numbers (he decided, Nov 9): the version's first number = released to the public, the middle = big changes,
-the last = small ones, back to 0 when the middle goes up. Versions given afterwards (he agreed, Nov 9; CHANGELOG.md's
-headings): 0.1 = Builds 1–22, 0.2 = 23–28, 0.3 = 29–31, 0.4 = 32–38, 0.5 = 39 on (Build 40 = 0.5.1, Build 41 = 0.5.2).
-Since Build 41 the version is `ui/version.js` `VERSION`, set by hand with every build (with CHANGELOG.md's heading),
-and it is the app's real version: ci_version.py stamps it into tauri.conf.json (and Android's versionCode =
-major·1,000,000 + minor·1,000 + patch, so it rises with it) and writes `ui/build.js` `BUILD` = N (null in the repo:
-dev and tests show "(preview)"); update_sig.py `version` reads it (`app_version`, one rule for the build, the
-signature and the release title "Build N · version X"). Updates compare versions (he decided, Nov 9: any part may go
-up): app.js `checkUpdate` offers the newest release when the version in its title (`releaseVersion`) is higher
-(`higherVersion`); Windows reads `thinky-update.sig` (core update.rs `UPDATE_SIG_FILE`, `update_text`: its own first
-line "thinky-update-2", the version and "build N" signed, `update_text_to_verify`: made for the build asked for,
-version higher than its own); Android needs a higher versionCode (MainActivity, unchanged). Every release still
-carries `thinky-setup.exe.sig`/`LeanOutliner-setup.exe.sig` signed the old way with version 0.1.N (`legacy N`),
-which Build 40 and older read (they want a version ending in the build number); Build 41 was the bridge. CI: the
-`number` job refuses (main) or warns (wip) when VERSION isn't higher than the newest release's title; `sign` refuses
-an APK whose versionCode isn't higher than the last release's (`prev-cert` reads it); `verify` runs
-`--verify-update` (old kind) and `--verify-update-newer` (thinky-update.sig) cases. Suggest which number to raise.
-(Builds 34–40's titles were renamed by hand on GitHub, Nov 9; the cloud session's gh can't edit releases.)
-CHANGELOG.md gets a section for every release (Builds 38 and 39 were added late).
-Website changelog (he asked, Nov 10): every release ALSO adds its entry at the top of `site/changelog.html` (the
-public page at srikanth-iyer.github.io/thinky/changelog.html), in the same commit as CHANGELOG.md: heading
-"Build N · version X (Month Year)" and a short <ul> of 2–6 plain one-line points (shorter than CHANGELOG.md, no
-"Under the hood" detail; escape & as &amp;). Builds 38–42 were added late (Nov 10). New site pages go in `site/sitemap.xml`.
+Version numbers and the changelogs: "Build & test" below.
 Build 41 (0.5.2; the maintainer's picks of Nov 9, from a clickable preview; tested by t24_build41): the laptop strip
 (app.js `buildChrome`, tabs.js `sideNav`/`alignStrip`, app.css "the top strip"): above the sidebar, fixed spots: the
 sidebar's button, `.hb-dv`, Search, Back, Forward, then Go to date on today's journal / Home elsewhere (one spot, `.hb-nav.at-today`
@@ -358,20 +323,7 @@ copy of its icon (`.pop-hic`; a dot = `.pop-dot`) and its title or colours besid
 one low down scrolls, `maxHeight`); else placed as before, growing from its corner nearest. A right-click on a dot opens the
 note menu from the dot. Motion: dom.js `OPEN_MS` 200 / `CLOSE_MS` 150 / `EASE` cubic-bezier(.2,.8,.2,1), also app.css's
 opening/closing keyframes and `SLIDE_EASE`; tabs widen in / slide over (`paint`, WAAPI, by tab object `el.tab`).
-Build 42 (0.5.3; he said go, Nov 10; tested by t13_update "the Google Play version"): the Google Play version. CI's
-`android` job builds the APK, then runs android_overlay.py again with `THINKY_PLAY=1` and builds `thinky-play.aab`
-(Play takes bundles): no REQUEST_INSTALL_PACKAGES, no UpdateReceiver, no `LeanAndroid.update`/`installUpdate` (Play apps
-may update only through Play), `LeanAndroid.fromPlay()` true → app.js `checkUpdate` asks GitHub nothing and About says
-"Updates come from Google Play" (`play` stage). Since the outside review (claim 10a) the updater's code isn't in the Play
-bundle at all: android_overlay.py `without_updater` cuts MainActivity.kt between its `// ---- updater…` / `// ---- end of
-the updater…` markers (and the UpdateReceiver to the end of the file), drops imports no longer used and sets
-`const val PLAY` (`__PLAY__`); android/test/overlay_test.py checks both shapes. `sign` signs the bundle with jarsigner and the same release key (Play's
-upload key; its certificate must equal the APK's; its manifest checked for the install permission; `android` also
-searches its DEX for the updater's code, `releases/download` and `PackageInstaller$Session`, review claim 10c); `sign-wip` with the
-throw-away key; `release` publishes it with the others (8 files with thinky-apk.sig, 11 with the old names). Play App Signing reuses the
-release key (he chose it, Nov 10): it is already set up in Play Console (Play's app signing key has the release
-certificate's SHA-256, checked Nov 22, 2026), so the export workflow (play-key.yml, PEPK) and Play's encryption key were
-taken out (he asked, Nov 22). Package name on Play: `com.srikanth.leanoutliner`.
+Build 42 (0.5.3; he said go, Nov 10): the Google Play version (its rules: "Android extras").
 Build 43 (0.5.4; the maintainer's notes of Nov 10; tested by t25_build43): a hidden sidebar peeks out on the mouse (as in
 Notion; `App.peekSidebar`: pointerover on the strip's sidebar button, 120 ms, adds `body.side-peek` (+ `.peeking` for the
 slide when `motionOn()`), the sidebar floats over the notes (z 30, shadow; app.css "peeking out"), its links work; leaving
@@ -385,8 +337,7 @@ that edge; a press scrolls 70% of the row; the first time it doesn't fit, a 48px
 `setTabsNudged`; none without motion).
 Also Build 43 (he asked, Nov 10; tested by t21_build37, t10_safety): Settings → Backups' "Choose…" (`.bk-choose`) opens
 `folderPicker` in mode 'choose' under the box (`.bk-pick`; again or Cancel closes it): "Use this folder" → `opts.pick` (the box
-and `setBackupPrefs`), refused for a notes folder or one inside one; with `opts.git` it says whether `list_dir`'s new `git`
-(a `.git` there) is true, but takes either; a saved folder that's gone starts the picker at the top. "Pictures nothing uses":
+and `setBackupPrefs`); which folders it refuses is as Build 50 left it (`backupCard` above); a saved folder that's gone starts the picker at the top. "Pictures nothing uses":
 the tick box is its own `label.pic-tick`, the picture + name a `.pic-open` button → `App.showImage` (the notes' lightbox). The
 bin: each page's name is a `.bin-see` button → history.js `showBinPage` (core `recycled_page`: a plain `.md` right in the bin,
 read only → {name, doc, props}; drawn as History draws a version, `.bin-view`, Esc/×/Close, "Restore this page" = the row's
@@ -420,8 +371,7 @@ both sides from `minDepth(it)`; the to-do word is followed by a real space. `cop
 before. Check this folder's report stays (`app.lastCheck` {vault, r, at}, this run only; "Checked at …", the button "Check
 again"); binning pictures, restoring a missing one and a merged copy update `r` too.
 Build 44 (0.5.5; from a review of the app, Nov 10–11, the maintainer said go for these; tested by t26_build44, t23_build39):
-a save is flushed before the rename (app.rs `write_flushed`: `File::create`, `write_all`, `sync_all`, used for the temp file
-and for the direct write a synced drive may need; a flush the drive refuses is skipped, the save isn't). Azulejo taken out
+a save is flushed before the rename ("Rules that protect the notes"). Azulejo taken out
 (`REMOVED` in app.js and boot.js's map: a saved "azulejo", as `skin`, `skinDay` or `skinNight`, opens as thinky; 12 looks;
 `ui/skins/azulejo*.svg` gone; `--sheet-band` stays for a future look). Faint words ≥ 4.5:1 as drawn in every look
 (`--ink-faint`: thinky #716A79, Sticker #716C8B, Automaton #646F89, Plain teal #92AAAD with its `--ink-soft` #9BAFB1 and
@@ -435,36 +385,8 @@ up and down), `.todo` (up, down, left; never right: Chromium already gives a tap
 so a tap on a note's first letters went to the dot before and would go to the box), `.chip`, `.btn`, `.icon-btn`,
 `.tab-arrow`, `.side-h.side-fold` (to 40px by `min(0px, (100% - 40px) / 2)`); `.chips` has more padding taken back by its
 margin so the reach isn't cut off; `.seg` no longer clips (round ends on its first and last child); the menu's rows 35px.
-The maintainer found filter buttons too big on a phone (Nov 6), so they are drawn as before: only the reach grew. A change
-draws only what changed: `Outline.render` hands the drawn rows to `keepRows`, which keeps the rows at the start and the end
-of the page whose `rowSig` (the note's words, depth, the level its line ends at, has-kids/folded, list number, placeholder,
-and render.js `drawStamp`: the Property display rules' count + the day) is what they were drawn from (`div.sig`) and whose
-words weren't drawn again in place since (`bc.from`), makes the rows between, renumbers `data-i`, and sets hidden/selected
-on kept rows; a row being typed in, one with a ((reference)) (`bc.noKeep`: its words are fetched) or with any passing class
-is made again; more than `CHUNK` new rows, or nothing kept, falls back to the old way (all rows, in parts). `shownStart`/
-`shownEnd`: what the last render showed. t26 compares the page after each kind of change with the same page drawn from
-scratch (`o.shownEnd = -1; o.render()`): keep that check when touching `blockEl`/`viewEl`, and put anything new a row is
-made from into `rowSig`. Long lists: views.js `drawInParts(host, items, html, {first, each, done})` (an invisible
-`.more-tail` over the last 700px; an IntersectionObserver draws the next 300), used by `todosView` (group after group;
-`draw(keep)` draws at least as many rows as were showing, so ticking one far down keeps the place) and by today's
-`scheduledBox` (a group's rows only once it shows). Journals: `journalsView`'s `list.farObs` marks a `.sheet.day` that is off
-the screen (where the whole page scrolls, phones: more than 1.5 screens away; an IntersectionObserver's margin doesn't
-reach past a scrolling pane) `far` = `content-visibility: auto` (only far days, so the containment never clips a day on
-screen; its notes stay in the page: find, Undo and saving as before); every day has `contain-intrinsic-size: auto 400px`,
-so the browser notes its height while it is drawn and holds a far day at it; `textSize` takes `far` off every day and
-watches it again, so each is measured at the new text size (t26; t3_pages' "end of the notes can still be reached").
-Measured (cloud machine, Chromium; a phone is slower): 850-note page, Enter 42–102 → 20 ms, Tab 40–96 → 13–19, Undo 40–94 →
-13–19; To-dos with 2,290 rows 313 → 144 ms to open (16,295 → 1,316 elements); Journals' first screen 16,483 → 460 elements
-with 2,290 overdue to-dos; Enter in today's notes with 300 days loaded 45 → 7–10 ms.
-Also Build 44 (he asked, Nov 11: the flush made many-file actions slow on a slow disk, 21.5 ms a save on GitHub's;
-"isn't there a way without compromising on the safety?"): `each_file` (app.rs) does a rename's and a merge's link files
-(`link_files`: each once), a merge's Undo and `rename_property` on `AT_ONCE` = 8 threads when there are 8 files or more
-(fewer: one by one on the calling thread, where the tests' write hook lives); every file is still flushed before its
-rename and checked with `Expect::Bytes`; results come back in order with each file's stamp taken right after its own
-work (`record_written`), so a save made elsewhere a moment later still shows as a change. The threads are in `at_once`
-(not generic, a `&dyn Fn(usize)`), which `each_file` only wraps: written per action it cost 52 KB of program, so 13 KB. core/tests/many_files.rs
-(rename over 60 files, a property in 40, merge + Undo over 30, bytes compared); the bench renames a page 300 files link
-to (`rename_ms`) and prints 300 flushed writes one after another against 8 at a time.
+The maintainer found filter buttons too big on a phone (Nov 6), so they are drawn as before: only the reach grew. Drawing only what changed and long lists: "Shape".
+Also Build 44 (he asked, Nov 11): many-file actions on up to 8 threads (`each_file`, "Rules that protect the notes").
 Also Build 44 (his comments on the review's doc, Nov 11; tested by t26_build44, t15_edit, t16_logo): the "/" list has an
 icon before each row (dom.js `SLASH_ICON` by the row's id: drawings, a letter badge `{t}` for H1–H6 and a boxed one
 `{t, b}` for a priority; popups.js `slashIcon`, `.ac-ic`, aria-hidden, `overflow: hidden` so a badge sits on the line as
@@ -477,24 +399,14 @@ foot, so more room brings pages back); under 520px of window height the drawing 
 `#topbar.typing` has `margin-bottom: -topbar-h` (the notes move up into its strip) and `html.typing-in` a small
 scroll-padding (`updateToolbar`); the toolbar's tools are `--tb-w` wide = the row's width over how many 36px ones fit
 (`App.fitTools`, a ResizeObserver on `.tb-scroll`), the row snaps to whole tools and fades at an edge with more past it
-(`.more-l`/`.more-r`, a mask). One scale (skins.css `--fs-tiny/small/sub/ui/read/big/head/top` = 11–16, 18, 22px and
-`--r-line/s/m/l/xl/pill` = 2, 4, 6, 8, 12px, 999px): every fixed text size and rounding in app.css is one of them
-(17 sizes and 13 roundings before; halves went up, except `.chip`, `.chip-find input`, `.crumbs`, `.sec-h .n`, `.pg-col`
-and `#side`, a step down: he wanted filter buttons small, and the sidebar's menu now matches its lists); t26 fails on a
-fixed px size or rounding in app.css, so new rules take a step. The looks' own tokens (`--body-size`, `--title-size`,
-`--props-size`, `--btn-radius`…) and em sizes are as they were.
+(`.more-l`/`.more-r`, a mask). One scale of text sizes and roundings ("Shape").
 Build 45 (0.5.6; his note of Nov 11, a picture of All pages' filter box against the title: "check for other such
 situations in the ui everywhere"; tested by t27_build45): what sits right under a page's title keeps `--title-gap`
 from it (skins.css: `calc(var(--title-size) * .38)`, 16px under a 42px title, 11px under a phone's 30px one):
 `.view > .page-title { margin-bottom }` (the list screens' filter box, Settings' tabs, a property's "Rename or merge…"
 row) and `.page-head .page-props { margin-top }` (a page's properties box; it was 4px). `.list-tools .filter` and
-`.set-tabs-wrap` lost their own 6px above. A new screen: put its title straight in `.view` (or its box in
-`.page-head`) and it follows; don't give the thing under a title a top margin of its own. `.card h3.look-h` has 10px
-under it (`.card h3`'s 2px let the chosen look's ring, 5px outside its card, touch "Day look"). How it was found: a
-script measured, on every screen (laptop and phone, six looks), each heading's letters against the nearest box edge
-under and above. Measured and left as they are: a 15px section heading 5.5–7.5px above its filter box or first
-reference box (in proportion); a pop-up's head row 0–3px above its first row (his pick, Build 41); the search box's
-small group headings.
+`.set-tabs-wrap` lost their own 6px above. `.card h3.look-h` has 10px
+under it (`.card h3`'s 2px let the chosen look's ring, 5px outside its card, touch "Day look"). The rule for a new screen: "Shape".
 Build 46 (0.5.7; his #claude requests of Nov 11–12; tested by t28_build46, t16_widget, android_test.sh 7c): the
 journal widget draws notes as the app does (below, "Android extras"). Settings → Check this folder on a phone (he
 sent a screenshot): "Pictures nothing uses" rows are a grid in a narrow list (`.pics` `container-type`, under
@@ -550,20 +462,19 @@ for LATER/WAITING and the look's link colour for DOING/NOW; he didn't like that 
 Don't bring it back unasked; another idea for it needs his word first.
 The speed check's reference for a save is 5 ms (he agreed, Nov 11: with the flush, GitHub's machines measured 21.5,
 3.3 and 4.7 ms; `ci/baseline.json` `save_ms`, so it warns above 10).
-Seen in the review, not changed (his call): the page properties box and the list filter box touch the title; a second
+Seen in the review, not changed (his call): a second
 line starting "- " in a note becomes a sub-note when read again; a page name over ~250 bytes says "File name too long …
 Google Drive"; numbered lines inside a note show as typed; Automaton's To-dos list on a phone sits on the pattern;
 WebView2 on Windows holds ~200 MB private (the app itself 27 MB) and its profile folder 86 MB.
 Build 48 (0.5.9; his #claude requests of Nov 13; tested by t29_build48, core tests/features.rs `shortcuts_change_in_place`,
 tests/pictures.rs `links_to_files_in_assets_in_one_note`): one-press keys with Ctrl or Alt (`RUN_ACTIONS` in app.js: every action
 `runAction` does) run from app.js `onKey` with nothing typed in, and with notes selected (editor.js `onSelKey` takes fold all and
-Ctrl+↑/↓ itself; the rest falls through to the app's). Selected notes: ← folds, → unfolds (`foldSel` on `selTops`, one Undo
-step; a note with nothing to fold: nothing, his pick); `editor/collapse-block-children` / `expand-block-children` (Logseq's
+Ctrl+↑/↓ itself; the rest falls through to the app's). Selected notes' ← / → (Build 49 made them start typing, below); `editor/collapse-block-children` / `expand-block-children` (Logseq's
 `mod+up` / `mod+down`): the note typed in (`foldNotes`), the selection, else every note (`foldAll`). Key helpers (`parseChord`,
 `evChord`, `same`, `chordText`, `sameKey`) live in keys.js. Settings tabs (`SETTINGS_TABS`, his pick): About (version, updates,
 What's new) · Notes · Safety · Look (+ Property display) · Typing & keys (`typing`: spelling + the laptop's keys; the old
-`writing`/`keys` addresses open it) · Capture · Help (Send feedback, Problems log). `keysCard`: `KEY_ROWS` in groups Go / Notes /
-Window, each with Change (`recordKeys`: a press with Ctrl/Alt or an F-key, or two plain presses within 2 s = a sequence; Esc
+`writing`/`keys` addresses open it) · Capture · Help (Send feedback, Problems log); AI joined in Build 51. `keysCard`: `KEY_ROWS` in groups Go / Notes /
+Window, each with Change (`recordKeys`: a press with Ctrl/Alt or an F-key, or two plain presses within `SEQ_MS` (1.2 s since Build 49) = a sequence; Esc
 cancels; `FIXED_KEYS` refused; keys another action has → confirm, that action gives them up first) → core `set_shortcut`
 (`App::set_shortcut`, `edn::set_entry`: one `:shortcuts` entry set or taken out in place; keys as Logseq writes them, none =
 `false`, Back to default = the entry taken out) → `App.takeShortcuts`; the fixed keys (`FIXED`) a table in groups Editing /
@@ -600,12 +511,11 @@ Since the outside review (claim 13) a replaced watch (`GEN`) ends within `WAKE_M
 handle: Linux/Android inotify is IN_NONBLOCK and waited on with poll(), EINTR tried again, `Watches.paths` (wd → folder)
 follows folders made or moved in at any depth and forgets ones moved out, a queue overflow watches everything again;
 Windows reads are overlapped (`finish`: wait, CancelIoEx when stale) and a folder that fails is opened again after
-`backoff` (1 s … 30 s). Tests in watch.rs (`cargo test` on Linux, live inotify).
+`backoff` (1 s … 30 s). Tests in watch.rs: CI runs them on Windows (`cargo test -p lean-outliner --lib`); the live inotify ones need a Linux build of the shell, which CI doesn't make.
 attach.js: `again(o)` (from `paint` and `markDirty`, 400 ms) asks `asset_links` again for an outline whose words changed
 and recounts (current hit kept), tips set with `data-att-tip` and removed; app.css `#attbar` 76px up on phones, 53px with
 `html.tb-on` (set by `updateToolbar`). The page ⋯ menu: `menu()` items' `icon` (`.m-icon`, `.m-ic`, 17px, `--icon-ink`;
-dom.js `pen history copyText folder tabNew wide narrow print trash clip chain`). Stale locations fixed: Send feedback
-under Help, the bin under Safety (start.rs tour, README, site, app.js toast, settings.js dialog, app.rs merge undo).
+dom.js `pen history copyText folder tabNew wide narrow print trash clip chain`).
 Build 51 (0.6.0; he asked, Nov 18, and picked each part from a clickable preview; tested by t31_build51, core
 tests/ai.rs): the optional AI features, starting with Polish note. Off and out of sight until an AI is set up: ui/ai.js
 puts `ai-on` on <html> once a service and a text model are chosen (localStorage `ai` = {provider, base, textModel,
@@ -621,7 +531,7 @@ words). `check_base`: https anywhere, http only to this computer or a home netwo
 builds the request): `key_header(service)` (x-api-key / bearer / none) is the only source of the key's header, and
 `key_may_go(service, url, other_base)`: a preset service's key only under its fixed `PROVIDERS` base + "/", "Other"'s
 only under the address saved with its key on that device, Ollama/LM Studio/unknown never; else the shell refuses with
-`KEY_ELSEWHERE` (`send_keyed` does both for curl; Android mirrors it in AiKeys.kt). `setup_base`: a service whose key
+`KEY_ELSEWHERE` (`send_keyed` does both for curl; Android mirrors it in Checks.kt `keyMayGo`, below). `setup_base`: a service whose key
 is "required" always uses its own address (a typed one is ignored). The key never reaches the page or the notes
 folder (Drive syncs it, a backup pushes it): Windows' Credential Manager (src-tauri `ai_key.rs`: CredWriteW/ReadW/
 DeleteW by hand, target "thinky AI key: <id>", this user, this computer), Android's Keystore (android/kotlin/AiKeys.kt:
@@ -629,10 +539,8 @@ an AES-GCM key of the app's own, the sealed bytes in SharedPreferences `lean_ai`
 core `ai_providers`, `ai_check_base`, `ai_models_request/read`, `ai_polish_request/read` (no vault needed for the first
 four); shells `ai_key_set` {provider, key, base} (empty = remove; `key_ok`: printable, no quotes; for "Other" the
 address is checked (`check_base`) and kept with the key: Windows "thinky AI base: other"), `ai_key_has`, `ai_send`
-{provider, req}. A key goes only to its own service (review claim 1, Nov 2026): the shell names the key's header
-from the service (`ai::key_header`, never the page's `auth`) and refuses a request whose address isn't that service's
-(`ai::key_may_go`: the preset's fixed base + "/", or "Other"'s saved address) with "That address isn't the one this
-service's key belongs to, so the key wasn't sent." (src-tauri `ai_key.rs` `prepared`, tests there).
+{provider, req}. The refusal reads "That address isn't the one this service's key belongs to, so the key wasn't sent."
+(core `KEY_ELSEWHERE`, src-tauri `ai_key.rs` `prepared`, tests there).
 Sending: `ai::send_with_curl` (Windows' System32 curl.exe, `update::imp::curl`; the dev server's curl): its settings on
 curl's input (`--config -`, `-q` first), so the key is never on a command line; the body through a file in
 `<cache>/ai`, removed after (`sweep_temp`, once per run, takes away another run's left-over `ai-*.json` or one older
@@ -644,7 +552,7 @@ Android: `LeanAndroid.aiKeySet/aiKeySetFor(provider, key, base)/aiKeyHas/aiSend(
 goes only to its own service's address (`Checks.keyMayGo`, as core `ai::key_may_go`: the fixed base + "/", for "Other"
 the https address kept with its key as `other_base`, which `aiKeySetFor` requires), in the header the service takes
 (`Checks.keyHeader`, as `ai::key_header`; a page's Authorization / x-api-key headers are dropped), answers ≤ 8 MB; https only there (http to a home network would need Android's cleartext allowance for the whole
-app). No new library: the app doesn't grow (his choice: "no new library", the same way updates go).
+app), so since Build 55 the phone's Settings → AI doesn't offer the services that need no key (Ollama, LM Studio; settings.js `aiCard`). No new library: the app doesn't grow (his choice: "no new library", the same way updates go).
 Polish note: `POLISH_RULES` are fixed (he decided: built in, tested, never breakable; Settings → AI → Advanced's "Your
 own wishes for Polish note" are added after them, ≤2,000 characters, empty = the default). `polish_question`: today
 (weekday, ISO date, a day link as the folder writes it: `journal_title`), the pages it may link (`candidate_pages`:
@@ -652,7 +560,7 @@ names or aliases sharing a 3+-letter word with the note, or starting the same 4+
 never the whole folder), the tags in use (≤150, most used first), and the note's words: its property lines
 (`split_props`: id::, collapsed::, by::…) are never sent. `polish_answer`: a code block or the <<< >>> it was sent in
 taken off; a picture `![w](addr)` the note didn't have becomes a plain link, so a suggestion never loads a web address
-before Keep (`text::unpicture_new`, also in `picture_answer` and the page-name helper's description: review S2, Nov 22); notes split at "- " lines (≤8; ≤4× the note + 600 characters); properties it made up dropped; every
+before Keep (`text::unpicture_new`, also in `picture_answer` and the page-name helper's description: review S2, Nov 22); notes split at "- " lines (≤8; at most 4× the note + 600 characters, or 2,000 if that's more); properties it made up dropped; every
 `[[link]]`/`#tag` that isn't a page, an alias, a tag in use, a day or already in the note becomes plain words (text.rs
 `unlink_unknown`, `link_names`; `unlinked` lists them); the first note gets the note's own property lines back; with
 `mark`, `by:: ai` on each (not when one already says `by::`); `same` when nothing changed. UI (ui/polish.js): the ✦
@@ -710,6 +618,12 @@ Ideas came partly from Tine (an open-source Logseq-compatible outliner, also Tau
 ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Tine's sidebar counts.
 
 ## Shape
+- Files this map doesn't walk through (each one's first lines say what it does; the rules are in its Build entry):
+  ui `keys.js` (key helpers), `clash.js` (the clash screen), `attach.js` (Show attachments, Build 48), `chips.js`
+  (filter buttons, Build 37), `ai.js`/`polish.js`/`ai-page.js` (the AI features, Builds 51–52), `version.js` (the version,
+  Build 41), `build.js` (the build number, written by ci_version.py); core `ai.rs` (AI requests and answers),
+  `app/backup.rs` (backups, Build 37), `app/older.rs` (where a picture was used before, Build 43); src-tauri `ai_key.rs`
+  (AI keys in Credential Manager), `shell_rules.rs` (the shell's small decisions), `native_host.rs` (the extension's receiver).
 - `core/` (Rust, `outline_core`): everything that understands notes.
   - `parse.rs` text → blocks/props/refs · `vault.rs` index (backlinks, tags, props, search, to-dos,
     unlinked refs, templates; duplicate names: first file owns the name, `take`/`promote`, except that the file named for a
@@ -755,7 +669,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     link, `as_link` makes a bare one neat, and a note with no other words is just the link (no dangling
     "from"). The Edge extension sends `title`/`site` and, with a selection, a text-fragment address
     (`#:~:text=first 4 words,last 4 words`, ≤8 words whole) that opens the page at it; the capture box is prefilled "words [Title · Site](url)"; Android mirrors it (JournalWidget.kt
-    `splitUrl`/`mdLink`/`asLink`; a shared page's subject + address → one link). Tests: tests/clip.rs.
+    `splitUrl`/`mdLink`; a shared page's subject + address → one link). Tests: tests/clip.rs.
   - `clip.rs` the browser extension's highlights (Build 32; tests in `tests/clip.rs`, in a real browser
     `t16_browser.mjs`): `file_clip` files a `Clip {url, title, site, highlights: [{text, link}]}` on the
     article's page: the page whose `source::` (page property) is this article (`normalize_url`: no `#`,
@@ -769,7 +683,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     is skipped. Written via split_doc/join_doc (the maintainer's bullets byte for byte, BOM kept) with
     `write_atomic_checked` (Expect::Bytes / Missing, 3 tries). Messages (`answer`, `serve`, `read_message`
     / `message_bytes`: 4-byte native-endian length + JSON, ≤8 MB): `hello`, `clip`, `journal` (the usual
-    quick capture with a neat link to the passage); always `{ok, …}` or `{ok: false, error}`.
+    quick capture with a neat link to the passage), `articles` (every article with a page), `kept` (a page's kept passages); always `{ok, …}` or `{ok: false, error}`.
     `HOST_NAME` com.srikanth.leanoutliner; the extensions answered (`EXTENSION_IDS`, `is_our_origin`, the
     host manifest's allowed_origins): `EXTENSION_ID` fjgdgmpheeihnlbpmbajkmoapjfieggg (unpacked; fixed by
     the public `key` in browser/manifest.json, whose private key was thrown away), and since Build 35 the
@@ -786,10 +700,10 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     its note. `bin_pictures` checks each again (disk as now) and moves it to `logseq/.recycle`, named by
     its exact path (`bin_name`: "%"→"%25", "/"→"%2F", `assets%2Fsub%2Fx.png`; a name the bin has gets
     "%~2"… before the extension, which the encoding never makes) with its file time set to the move
-    time; `recycled`/`restore` list and put back pictures (`from_bin_name`: exactly there, the folder made
+    time; `recycled`/`restore` (in app.rs) list and put back pictures (`from_bin_name`: exactly there, the folder made
     again if gone; never over a picture; `restore` returns its path, so the message names the folder).
     Nothing reads the older `assets_x.png` naming (never released).
-    `picture_check_at`/`bin_pictures_at(now)`/`check_vault_at` for tests and the bench (their pictures
+    `picture_check_at`/`bin_pictures_at(now)`/`check_vault_at` (app.rs) for tests and the bench (their pictures
     are new); the dev server takes `X-Test-Now: <secs>` on `check`/`bin_pictures` for UI tests.
   - `app/safety.rs`: safety copies, kept IN the notes folder since Build 32 (the maintainer asked, Oct 28: Google
     Drive keeps them in the cloud; ~100 MB agreed): `logseq/.safety-<device>/<id>.copy`. Dot folders:
@@ -842,7 +756,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     Settings → Safety copies: list (both devices', "12 notes · your phone"), a copy's notes ("<page> —
     before a change made elsewhere" for an earlier text), a note's text, "Put this version back"
     (`before`: 0 or the earlier text's number on safety_note/safety_restore; ids "<device>/<id>",
-    `split_ref`). Settings → Notes → "Deleted pages and pictures": pages (newest 50) and
+    `split_ref`). Settings → Safety → "Deleted pages and pictures": pages (newest 50) and
     a "Pictures" section (all, newest move first, "Put back").
   - `app/history.rs`: a page's History (⋯ → History…, `ui/history.js`). Versions: its backup folder
     `logseq/bak/<file without .md>/` (Logseq's `<UTC>.<Desktop|android|ios>.md`, the app's `<UTC>.md`/
@@ -866,10 +780,11 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     button, gesture or menu changes, change `DEMO` too) and today's journal note pointing at
     it). Refused in or inside a notes folder (`notes_folder_of`) or with a file named pages/journals/
     logseq in the way (checked before anything is made); files `create_new`, so nothing there is ever
-    written over. `list_dir` also says `files` (how many) and `inside` (the notes folder above).
+    written over. `list_dir` (app.rs) also says `files` (how many) and `inside` (the notes folder above).
   - `update.rs` one-click update rules (tests in `tests/update.rs`): "build-N" → download address,
-    the exact signed text (`lean-outliner-update\n<file>\n<version>\n<sha256>\n`), the signature file
-    (`LeanOutliner-setup.exe.sig`: JSON file/version/sha256/sig = base64 r‖s), version checks
+    the exact signed text (`thinky-update-2\n<file>\n<version>\nbuild <N>\n<sha256>\n` in `thinky-update.sig`,
+    `UPDATE_SIG_FILE`; the old `lean-outliner-update\n…` text in `thinky-setup.exe.sig`/`LeanOutliner-setup.exe.sig` is still made for Build 40 and older;
+    JSON file/version/sha256/sig = base64 r‖s), version checks
 - `src-tauri/` Tauri 2 shell: one command `call(cmd, args)` → `dispatch`; `vault://` protocol for
   pictures; `watch.rs` file-change notices (ReadDirectoryChangesW / inotify) → `lean-files` event;
   closing waits for saves (`lean-close`); `android_capture.rs` the Android pop-up's way into the core
@@ -925,7 +840,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   (WS_CAPTION with the frame trimmed in WM_NCCALCSIZE, `insets`) so Windows 11 draws the rounded
   corners, shadow and thin border; on top, not in the taskbar (a hidden owner window); per-monitor DPI;
   colours from `<cache>/look.txt`, which the app writes from the CSS tokens when the look changes
-  (`save_look` command, `lookColors` in app.js; Calm's colours if missing); Segoe UI Variable/Segoe UI;
+  (`save_look` command, `lookColors` in app.js; thinky's colours if missing, Build 33); Segoe UI Variable/Segoe UI;
   Windows' own EDIT controls (IME, clipboard, right-click menu, screen readers; Ctrl shortcuts never
   fire with AltGr). The "+" button (or Alt+↓ / Ctrl+Space) opens a native menu: Picture or file…
   (GetOpenFileNameW; also Ctrl+V of a picture or of files, and dropping files): linked at once under
@@ -982,7 +897,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   (PeekMessage for WM_CLOSE while it tries for the key). A key it can't get within 4 s (Explorer
   letting go) → the problems log and `<cache>/hotkey-status.txt` (`why` in the maintainer's words; removed once a
   helper holds the key), exit 3 (4: a key Windows can't use). The app's side (`set`, Settings'
-  Save/Remove; it returns the key as saved; `get_shortcut` = `status`: `{key, helper, running,
+  Save/Remove; it returns the key as saved; `get_shortcut` = `hotkey::state()`: `{key, helper, running,
   starting (the app handing it over, or a helper still starting), fallback (the old .lnk still
   answers it), why}`; Settings shows a `.banner.key-state` line when it isn't running, "is starting…"
   re-asked each second, else why and Try again = Save of the same key): `turn_on` saves the key,
@@ -1019,13 +934,13 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   result is picked, "Clear"; then `App.recent()` minus the page open) and commands (Ctrl+Shift+P =
   `command-palette/toggle` in DEFAULT_KEYS, Logseq's name; the footer button swaps modes; phones: the
   menu's "Commands", `.cmd-btn`, narrow/touch only). The note being edited when it opened is edited
-  again on Esc or before an editing command (`editingNow`/`editAgain`) · `commands.js` (the command
+  again on Esc or before an editing command (`editingNow`/`editAgain`, keys.js) · `commands.js` (the command
   list: `commandList(app, ed)` calls the app's own methods (App, Tabs, Find, Outline, the / menu's
   `SLASH` and `Outline.command`, `openHistory`, settings' `TABS`, `SKINS`), never copies of them; each
-  shows its key from `app.keyMap` (`key`: an action name) or fixed keys (`keys`), `keyHtml` draws
+  shows its key from `app.keyMap` (`key`: an action name) or fixed keys (`keys`), `keyHtml` (keys.js) draws
   them; groups Editing / Selected notes / Page / Go / Window / Look; `more` = only when typed for) · `views.js` (All pages, tags, props, to-dos; no Calendar tab, the maintainer removed it) · `welcome.js` (the
-  welcome screen, below "Starting fresh") · `settings.js` (tabs About / Notes / Safety / Look / Typing & keys / Capture / Help since Build 48 (Build 40's six before), at `#/settings/<tab>`;
-  About's `feedbackCard`: "Send feedback" opens a new issue on the public GitHub repo in the browser
+  welcome screen, below "Starting fresh") · `settings.js` (tabs About / Notes / Safety / Look / Typing & keys / Capture / AI / Help (`SETTINGS_TABS`), at `#/settings/<tab>`;
+  Help's `feedbackCard`: "Send feedback" opens a new issue on the public GitHub repo in the browser
   (`feedbackUrl`: the first line as the title, the message, then only "thinky <version> · <system>";
   `FEEDBACK_URL`), through `App.openUrl`. The app sends nothing itself; no email box, no problems log.
   t16_feedback checks the address and that no request leaves the page.
@@ -1130,7 +1045,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   never on Android, so one tab starts on Journals as always; with its notes folder `vault`: another
   folder doesn't get them; a page gone meanwhile, with no file and no links to it, doesn't come back).
   Narrow windows and phones: no strip, only the active side shows (`#col > .pane:not(.act)` hidden),
-  Ctrl+click opens in place. CSS: the "tabs" block at the end of app.css (`#col.split` grid, the left side
+  Ctrl+click opens in place. CSS: the "tabs" block in app.css (`#col.split` grid, the left side
   `--split` of the width; `#app.split > #histbar` in two `.hb-h` halves, the left one `--sw` + its side,
   so each side's buttons and tabs sit above it; tabs.js `layout()` sets both classes). `#histbar`, its `.hb-h` halves
   and `.tabs` are `data-tauri-drag-region` (bare: only presses on them directly move the window, so
@@ -1138,8 +1053,8 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
 - Navigation and layout (Build 29; app.js `sideExtras`/`grip`/`slide`, tabs.js `linkMenu`; t15_nav):
   - The top strip runs across the window (`#app` grid: row 1 `#histbar`, row 2 `#side` | `#col`); nothing in
     it moves when the sidebar opens or closes. Hiding (`toggleSidebar`): `--sw` (the sidebar's column)
-    goes to 0 at once and the sidebar slides off by a CSS transform (`html.sliding`, 200 ms, the same
-    curve as `SLIDE_EASE`); `App.slide` slides what moved (each side's `.view`, the find bar, the right
+    goes to 0 at once and the sidebar slides off by a CSS transform (`html.sliding`, 200 ms, app.css's
+    cubic-bezier(.2, .7, .3, 1), close to `SLIDE_EASE`'s (.2, .8, .2, 1)); `App.slide` slides what moved (each side's `.view`, the find bar, the right
     side's strip buttons) from where it was by WAAPI transforms (FLIP): one layout, no layout per frame,
     so 3,000-note pages slide smoothly; none with reduced motion or in narrow windows. A hidden sidebar
     is `visibility: hidden` (out of the Tab order).
@@ -1171,7 +1086,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     Ctrl+Shift+A, t o, Undo's fallback), and what must change notes there opens the day first
     (`App.unfoldFor`: Undo/Redo reaching a step there, the phone's "+", find going to a match there).
   - Note menu: compact on a laptop (smaller swatches, heading buttons and rows); with `(pointer:
-    coarse)` finger-sized and compact too (two to a row, "Phone chrome" below). Hover preview (`Preview`): the whole page (folded notes' sub-notes left out) in
+    coarse)` finger-sized and compact too (one column, "Phone chrome" below). Hover preview (`Preview`): the whole page (folded notes' sub-notes left out) in
     a box that scrolls, drawn 60 notes then 150 more each time it's scrolled near the end; its title or
     a link in it opens that page (`App.go`). Not grabby: it takes the mouse only once entered on purpose
     (`.pv-wait` = pointer-events none until the pointer rests in it 300 ms, or the wheel turns over it,
@@ -1221,15 +1136,15 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   `pointer: coarse`, editor.js `viewEl`), a click there edits that note, so it's plain nothing is written and
   its references sit well below. Dates are page-title size on a laptop (`--title-size`), `clamp(26px, 8vw, 34px)` on
   phones (the longest, "September 30th, 2026", fits one line in most looks). No "On this day" (the maintainer
-  removed it). Go to date: a calendar button after Forward in each side's strip (`sideNav`; the right side's
-  hides in a two-sided window under 940px with the sidebar showing, else the window buttons get
-  pushed off) and before Search in the phone bar (Journals list only, `#topbar.journals`, so a
-  page's name keeps its room); g d opens it under the active side's. Sheet spacing: `--sheet-pad-top`/
+  removed it). Go to date: a calendar button after Back and Forward in each side's strip, sharing one spot with Home
+  (Build 41: the calendar on today's journal, Home elsewhere, `.at-today`; `sideNav`; the right side's
+  calendar hides in a two-sided window under 940px with the sidebar showing, else the window buttons get
+  pushed off), and the same shared spot beside Search in the phone bar; g d opens it under the active side's. Sheet spacing: `--sheet-pad-top`/
   `--sheet-pad-bottom`/`--sheet-gap` (Plain: no cards, equal space around the hairline between days).
   Filter rows (`.chips`, `fitChips` in views.js) stay on one line, scrolling sideways only if they must.
-  The phone bar (`#topbar`) has back/forward like `#histbar`; Home greys out where it would do nothing
-  (on the Journals list, already at today: `App.updateHome`, also while scrolling), staying in place so
-  the buttons beside it never move. The editing toolbar (icons for every button, Italics = `*…*` as
+  The phone bar (`#topbar`) has back/forward like `#histbar`; on the Journals list, already at today,
+  Home's spot shows the calendar (Go to date) instead (`App.updateHome` sets `.at-today`, also while scrolling; since
+  Build 41 the laptop strip's sides too), so the buttons beside it never move. The editing toolbar (icons for every button, Italics = `*…*` as
   Ctrl+I) keeps "close keyboard" (`.tb-pin`) at its end.
   Undo/Redo follow the page's changes in order across its outlines (the Journals list has one per
   day): `Outline.snap` → `App.stepped(o)`; `App.undo/redo(from)` take the newest step of an outline
@@ -1290,7 +1205,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   (tokens `--refgrp-bg/-border/-radius/-shadow/-line/-gap` per look: Calm a white well with a firm inner
   shade at the top and a light edge below (round 1's; the maintainer tried a softer one in round 2 and asked for this
   back, round 3); raised sheets' `--sheet-shadow` only blurred layers, no hard offset (round 2, the maintainer kept
-  it), except Sticker/Sticker night's drawn ones); Plain/Plain night/teal Logseq's flat grey box; Paper a pencilled slip; Night/Grimoire a dark
+  it), except Sticker/Sticker night's drawn ones); Plain/Plain night/teal Logseq's flat grey box; Paper a pencilled slip; Night a dark
   well), headed (`refGroup`) by its `icon::` emoji, or a small calendar (`.grp-day`) for a journal day,
   the name (16px, 600) and "N notes" (`.grp-n`); a faint line (`--refgrp-line`) between its notes. Linked references from 2+ pages (a page's, and a
   day's in the Journals list) get `App.refTools(sec, groups, host, fill)`: three small quiet icon buttons
@@ -1411,8 +1326,8 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   and notes with them show and cycle as before (t15_edit).
 - Pages (Build 30; core `tests/pages.rs`, UI `t15_pages.mjs`):
   - All pages (views.js `pagesView`, as Logseq's table): column heads Name / Links / Created / Changed
-    (`.pg-cols`, buttons; `SORTS`: a click sorts, again the other way; localStorage `pagesOpts` {sort,
-    desc}); pages with no file (no times) last; Namespaces on: only pages in a namespace (and their parents), each level sorted by the column. Rows are one grid
+    (`.pg-cols`, buttons; `SORTS`: a click sorts, again the other way; localStorage `pagesOpts`: sort, desc and the filters
+    journals/ghosts/orphans/tree); pages with no file (no times) last; Namespaces on: only pages in a namespace (and their parents), each level sorted by the column. Rows are one grid
     (`--pg-cols`, px widths); a narrow side or phone (`@container`, `.pg-table` < 560px) shows only the
     sorted column (`data-sort`). Times come with the `pages` command (`App::pages`: `PageEntry.changed`
     = the file's change time, `.created`, seconds). "Created" = `App::born`: the earliest of the
@@ -1466,7 +1381,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   sheet border/shadow/band image, bullet shape, tag decorations, weekday prefix…); `app.css` reads tokens
   and never names a skin. Tokens inherit, so a sample with `data-skin` shows that look anywhere: the
   sidebar's Look button opens a list with small samples, Settings shows large previews. Add a look:
-  token block + entry (id, name, note) in `SKINS` (app.js). Images live in `ui/skins/`. Looks: Plain, Plain night (near-black), Plain teal (Logseq's dark blue-green),
+  token block + entry in `SKINS` (app.js: id, name, note, `dark: true` for a night look, `pair` = the other half of its family). Images live in `ui/skins/`. Looks: Plain, Plain night (near-black), Plain teal (Logseq's dark blue-green),
   Calm, Night, Paper, Sticker, Sticker night (from the first mockups), thinky night (Build 39), Automaton (a rule 30
   pattern around the cards), Calm plain (Calm without cards on a white page, a hairline between days); Azulejo went in Build 44. thinky (Build 32: the logo's
   colours laid out like Calm plain (the maintainer asked: a white page, no cards, a hairline between days; the menu a hint of
@@ -1513,7 +1428,7 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   `start`, and `App.draw` sends other places there; a chosen folder that can't be opened still goes to
   Settings, saying why). It's loaded only then (dynamic import); `html.welcome` puts the sidebar and the
   bars' buttons away (a Windows window keeps its own buttons and drag strip). Logo, "Welcome to
-  <APP_NAME>" (`api.js` `APP_NAME`: the one place the name lives for new code), one line, two choices:
+  thinky" (`BRAND.word`), one line, two choices:
   Open an existing notes folder → `folderPicker(…, {mode: 'open'})`; Create a new notes folder →
   `{mode: 'new'}` (starts in Documents when home has one; a name, "Notes" or the next free "Notes 2";
   the tour ticked; `new_folder` + `start_notes`, then `useVault(app, path, place)` at "Start here").
@@ -1532,18 +1447,20 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   rest scrolls). The toolbar's ⋯ opens the note menu by its button (`at`); other `menu()`s (a page's ⋯)
   ≤280px wide, ≤62vh, rows 44px (`{head}` items are small headings: the date menu's); the look list ≤60vh.
   The search box (`(pointer: coarse), (max-width: 640px)`): where it always was (10vh down, over the
-  28% darkening; the maintainer didn't want it at the top), compact: 44px input, 36px rows, results ≤42vh. The phone bar: `--topbar-h` 45px (was 55; 44px buttons, no padding; the find
+  28% darkening; the maintainer didn't want it at the top), compact: 44px input, 36px rows, results ≤42vh; on a
+  touch screen 6 and 22 hundredths of the height without the keyboard (`--sb-vh`, set by search.js) so it stays whole above it. The phone bar: `--topbar-h` 42px (was 55, then 45; 44px buttons, no padding; the find
   bar and scroll-padding follow it); the editing toolbar 45px (was 51). The drawer: `min(70vw, 280px)`, starting under the top bar, which
   stays usable above the dimming (`body.drawer #topbar` z 46; the menu button lit, `aria-expanded` kept
   by a MutationObserver on body's class); a tap beside it, the button again, a swipe left or Back close
-  it. The "+": 46px, a see-through disc in the page's colour with a hairline and soft shadow, the "+" in
-  the accent (tokens `--fab-bg/-ink/-border/-shadow`); `App.fabScroll` (in the scroll handler's frame)
+  it. The "+": 46px, a see-through disc in the page's colour with a hairline and soft shadow, the logo's pen line
+  in the ink and its spark red (tokens `--fab-bg/-ink/-border/-shadow`); `App.fabScroll` (in the scroll handler's frame)
   adds `.away` while a finger scrolls down (`touchedAt`, within 1 s of a touchmove: the app's own
   scrolling never hides it) and drops it scrolling up, near the top, on another page or when typing
   stops.
-- `browser/` the Edge extension "thinky highlights" (Build 32, MV3, no build step, ~25 KB; the maintainer
-  loads it unpacked from the folder `setup` makes). Permissions: activeTab, scripting, storage,
-  contextMenus, nativeMessaging: no host permissions, so `page.js` is put into a page only when the maintainer uses
+- `browser/` the Edge extension "thinky highlights" (Build 32, MV3, no build step, ~50 KB; installed
+  from the Edge and Chrome stores since Build 35). Permissions: activeTab, scripting, storage,
+  contextMenus, nativeMessaging, and `<all_urls>` only as an optional host permission (`optional_host_permissions`) that the popup's
+  "show again" tick asks for, so without it `page.js` is put into a page only when the maintainer uses
   it there (toolbar button, right-click menu, Ctrl+Shift+H highlight (Build 34; an older setup keeps Alt+Shift+H; Ctrl+Shift+J would be Edge's developer tools and Ctrl+Shift+L is the Windows capture key, so J and L stay Alt+Shift), Alt+Shift+J to the journal / L the box; Settings → Capture lists them and gives `edge://extensions/shortcuts` to copy: a page can't open edge:// links). `page.js`:
   `window.__leanOutliner` (once per page): `pageInfo` (canonical address on the same site, og:title,
   og:site_name), `highlight` (the selection → {id, plain, text: Markdown, pos, link}; marks it with the
@@ -1557,14 +1474,40 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   receiver says to use Settings → Capture → Set up. Its icons (`browser/icons/32|48|128.png`) are the brand's
   icon-small/icon-mid/icon drawn at that size. `popup.*`: the page name (editable), the list
   (readable words, × to drop), Send N, Clear, "Send the selected text to today’s journal"; `?tab=<id>`
-  for tests. Marks don't come back after a reload until the box is opened there (no host permission).
+  for tests. Marks come back by themselves after a reload only with that tick on (`showAgain` and the permission:
+  background.js `tabs.onUpdated`); otherwise when the box is opened there.
 - `dev/` dev server (hand-written HTTP, one thread per connection): serves `ui/` with the app's CSP,
   `POST /api/<cmd>` → same `dispatch`, `/vault/<path>` files. `cargo run -p devserver -- <vault> [port]`.
 - `android/MainActivity.kt` + `scripts/android_overlay.py`: applied after `tauri android init` in CI
   (insets, All-files-access permission, `window.LeanAndroid` JS bridge). `src-tauri/gen/` is not committed.
   `android/kotlin/Checks.kt`: the Android code's rules with no Android in them (where a key may go, picture sizes,
   front matter, selection limits…), tested on a plain JVM by `bash android/test/run.sh` (ChecksTest.kt);
-  `python3 android/test/overlay_test.py` runs the overlay on a stand-in tree (APK and Play). Both run in android-test.yml.
+  `python3 android/test/overlay_test.py` runs the overlay on a stand-in tree (APK and Play).
+- Drawing only what changed (Build 44): `Outline.render` hands the drawn rows to `keepRows`, which keeps the rows at the start and the end
+  of the page whose `rowSig` (the note's words, depth, the level its line ends at, has-kids/folded, list number, placeholder,
+  and render.js `drawStamp`: the Property display rules' count + the day) is what they were drawn from (`div.sig`) and whose
+  words weren't drawn again in place since (`bc.from`), makes the rows between, renumbers `data-i`, and sets hidden/selected
+  on kept rows; a row being typed in, one with a ((reference)) (`bc.noKeep`: its words are fetched) or with any passing class
+  is made again; more than `CHUNK` new rows, or nothing kept, falls back to the old way (all rows, in parts). `shownStart`/
+  `shownEnd`: what the last render showed. t26 compares the page after each kind of change with the same page drawn from
+  scratch (`o.shownEnd = -1; o.render()`): keep that check when touching `blockEl`/`viewEl`, and put anything new a row is
+  made from into `rowSig`. Long lists: views.js `drawInParts(host, items, html, {first, each, done})` (an invisible
+  `.more-tail` over the last 700px; an IntersectionObserver draws the next 300), used by `todosView` (group after group;
+  `draw(keep)` draws at least as many rows as were showing, so ticking one far down keeps the place) and by today's
+  `scheduledBox` (a group's rows only once it shows). Journals: `journalsView`'s `list.farObs` marks a `.sheet.day` that is off
+  the screen (where the whole page scrolls, phones: more than 1.5 screens away; an IntersectionObserver's margin doesn't
+  reach past a scrolling pane) `far` = `content-visibility: auto` (only far days, so the containment never clips a day on
+  screen; its notes stay in the page: find, Undo and saving as before); every day has `contain-intrinsic-size: auto 400px`,
+  so the browser notes its height while it is drawn and holds a far day at it; `textSize` takes `far` off every day and
+  watches it again, so each is measured at the new text size (t26; t3_pages' "end of the notes can still be reached").
+- Text sizes and roundings (Build 44): one scale (skins.css `--fs-tiny/small/sub/ui/read/big/head/top` = 11–16, 18, 22px and
+  `--r-line/s/m/l/xl/pill` = 2, 4, 6, 8, 12px, 999px): every fixed text size and rounding in app.css is one of them
+  (17 sizes and 13 roundings before; halves went up, except `.chip`, `.chip-find input`, `.crumbs`, `.sec-h .n`, `.pg-col`
+  and `#side`, a step down: he wanted filter buttons small, and the sidebar's menu now matches its lists); t26 fails on a
+  fixed px size or rounding in app.css, so new rules take a step. The looks' own tokens (`--body-size`, `--title-size`,
+  `--props-size`, `--btn-radius`…) and em sizes are as they were.
+- A new screen (Build 45): put its title straight in `.view` (or its box in
+  `.page-head`) and it follows; don't give the thing under a title a top margin of its own.
 
 ## File shapes in real notes folders (all must round-trip byte-for-byte; see tests/doc.rs, tests/fuzz.rs)
 Logseq `- ` bullets (tabs), Obsidian `* ` bullets, plain paragraphs before any bullet (one block each;
@@ -1619,15 +1562,17 @@ it; the first save of a new page writes only where no file is: one that turned u
   steps are dropped (`forgetUndo`): they'd bring back what was merged in or chosen against (a merge
   arriving while more typing is pending keeps them: that Undo is merged too). If `clash` fails, the
   banner offers whole versions ("Keep mine" = forced save, the file's version to bak first; "Use the
-  other version" backs the maintainer's up first; "Keep mine" waits for a save on its way, and a save queued behind
+  other version" backs the user's up first; "Keep mine" waits for a save on its way, and a save queued behind
   another stays forced, `againForce`); a failed "Keep mine" keeps the page waiting. "Decide later" leaves
-  a banner ("Nothing on this page is saved until you choose."); the page can't be left until the maintainer
+  a banner ("Nothing on this page is saved until you choose."); the page can't be left until the user
   chooses. Never silently overwrite. Unreadable/non-UTF-8 files are read-only. Backups: `logseq/bak/`,
   bin: `logseq/.recycle/`.
-- Writes go to a temp file then rename. Property values only link via `[[ ]]`/`#` (Logseq 0.8.9+),
-  except keys in `:property/separated-by-commas`.
+- Writes go to a temp file, flushed before the rename (Build 44: app.rs `write_flushed`: `File::create`, `write_all`,
+  `sync_all`, used for the temp file and for the direct write a synced drive may need; a flush the drive refuses is
+  skipped, the save isn't), then renamed. Property values only link via `[[ ]]`/`#` (Logseq 0.8.9+),
+  except `tags`, `alias` and keys in `:property/separated-by-commas` (config.rs).
 - Every write of a note or of config.edn replaces exactly the bytes it read (Build 32): `save` (and
-  `rewrite` in app.rs for `save_block`, `append_to`, rename's and merge's link files and the page's own
+  `rewrite` in app.rs for `save_block`, rename's and merge's link files and the page's own
   file, favourites, `edit_config`) write with `Expect::Bytes(<what was read>)` (`Expect::Missing` for no
   file); `write_atomic_checked` checks again right before each rename and before the direct write a
   synced drive may need, and a file it can't read just then (Google Drive holding it) is waited for
@@ -1684,6 +1629,15 @@ it; the first save of a new page writes only where no file is: one that turned u
   last note deleted elsewhere looks like that), is a clash (core/tests/truncated_merge.rs). A copy that
   can't be made goes to the problems log and never stops the save. A retry runs only while that page is
   still on screen (`keepCopy` clears it), never for a renamed/moved file or a waiting clash.
+- Many files at once (Build 44, he asked, Nov 11: the flush made many-file actions slow on a slow disk, 21.5 ms a save on GitHub's;
+  "isn't there a way without compromising on the safety?"): `each_file` (app.rs) does a rename's and a merge's link files
+  (`link_files`: each once), a merge's Undo and `rename_property` on `AT_ONCE` = 8 threads when there are 8 files or more
+  (fewer: one by one on the calling thread, where the tests' write hook lives); every file is still flushed before its
+  rename and checked with `Expect::Bytes`; results come back in order with each file's stamp taken right after its own
+  work (`record_written`), so a save made elsewhere a moment later still shows as a change. The threads are in `at_once`
+  (not generic, a `&dyn Fn(usize)`), which `each_file` only wraps: written per action it cost 52 KB of program, so 13 KB. core/tests/many_files.rs
+  (rename over 60 files, a property in 40, merge + Undo over 30, bytes compared); the bench renames a page 300 files link
+  to (`rename_ms`) and prints 300 flushed writes one after another against 8 at a time.
 
 ## Where outside input gets in (security review, Oct 30, 2026)
 Anything a web page, another app, a synced file or config.edn brings is data, never a command or a
@@ -1744,7 +1698,7 @@ path out of the notes folder. Keep these when changing the code (tests in bracke
   folder, where a downloaded git.exe would run beside the portable copy: `git_program`, Ponytail audit finding 7): the repo's own `--git-dir`/`--work-tree` named outright, fsmonitor and
   submodule recursion off, `GIT_DIR`-style variables removed, `status --ignore-submodules=all`
   (core/tests/backup_git_planted.rs). Still trusted: the user's own global git config and his backup repo's hooks.
-Known and accepted (see the security report): script running inside the app's page could still call
+Known and accepted: script running inside the app's page could still call
 any command (`open` any folder…), but the page's CSP lets no script in but the app's own, and the
 window can't be sent to another page.
 
@@ -1755,10 +1709,9 @@ window can't be sent to another page.
   that need no Windows or Tauri: `sh src-tauri/pure_tests.sh` (`cargo test -p shell_pure_tests`, a small package in src-tauri/pure that builds those two files as tests against outline_core alone); on Windows
   `cargo test -p lean-outliner` runs them with the rest.
   CI (build.yml `ui-tests`, from Build 37): all of them on every build, in six groups on six machines (every group runs to the end, `fail-fast: false`; t5_long first in its group)
-  (Playwright 1.63.0 installed into /opt/npm-tools there, Pillow from apt); main signs only after all six
+  (Playwright 1.63.0 installed into /opt/npm-tools there, Pillow from pip); main signs only after all six
   pass, then it signs and publishes at once (the `release` environment has no reviewer since Nov 5, 2026 and
-  no wait since Nov 15, 2026, Build 49, he asked: a push to main that passes is a release; build.yml's header
-  comments still mention the old 30 minutes until the next build changes them). A new test goes into run.sh's list AND one of the six groups.
+  no wait since Nov 15, 2026, Build 49, he asked, and he confirmed it Nov 23: a push to main that passes is a release). A new test goes into run.sh's list AND one of the six groups.
   Page modules that load on their own (math.js, render.js; ai.js as on the phone, in a process of its own):
   `node dev/ui-tests/unit.mjs` (plain Node, no server; CI's `test` job and pr.yml).
   Type check of the page's JavaScript (since the outside review's item 1, Nov 21, 2026): `npm run typecheck`
@@ -1767,7 +1720,8 @@ window can't be sent to another page.
   JSDoc comments (`/** @type {HTMLElement} */ (e.target)`, `@param`), never @ts-ignore. CI's `test` job and
   pr.yml run it, with `python3 scripts/update_sig_test.py`, `bash android/test/run.sh` and
   `python3 android/test/overlay_test.py` (until Nov 21 those two ran only in android-test.yml). Dev server: `cargo test -p devserver`
-  (its paths, Origin, AI keys). The outside review's fixes (Nov 21) in the browser: t34_review.
+  (its paths, Origin, AI keys). The outside review's fixes (Nov 21) in the browser: t34_review; in the core: tests/review_core.rs, tests/ai_keys.rs
+  (where an AI key may go), tests/last_vault.rs (where quick capture adds notes).
   UI: `dev/ui-tests/run.sh [test…]` (Playwright against the dev server, fresh sample vault per test,
   screenshots in `$UI_TEST_DIR/shots`; Playwright import `/opt/npm-tools/node_modules/playwright/index.mjs`).
   Run them all after UI changes; they catch CSP blocks too. Two copies of the project (git worktrees)
@@ -1780,7 +1734,7 @@ window can't be sent to another page.
   changed elsewhere: their earlier texts kept first). Clashes: `tests/features.rs` (merge cases),
   `t4_sync.mjs` (Undo, waiting clash backups, rename/delete refused, Keep both, fallback; `page.route`
   to slow or fail a command). Linked references with their sub-notes: `tests/vault.rs`, `t14_refs.mjs`
-  (`t5_long` times a page with 450 of them); their boxes, filter, sort, Fold all and the empty days in
+  (`t5_long` times a page with 450 of them); typing that couldn't be saved surviving a close or a hide: `t35_lost_typing.mjs`; their boxes, filter, sort, Fold all and the empty days in
   Journals: `t16_refs.mjs` (`tests/pages.rs` for `RefGroup.changed`).
   Safety copies in the notes folder (two devices, moving older copies in, a folder that can't be
   written, links): `tests/safety.rs`, `tests/safety_before.rs`, `t16_safety.mjs` (a phone's copy
@@ -1816,9 +1770,7 @@ window can't be sent to another page.
   shortcut-key helper (`at_start` is for the installed copy only), but its Settings → Save key would make
   a Start-menu shortcut with that key (the portable way).
 - Android: put `[android-test]` in a commit message (main or `wip/**`) → `.github/workflows/android-test.yml`
-  runs a debug x86_64 build on an emulator (scripts/android_test.sh: first start, folder, editing, looks,
-  share text/picture, look picker, the widgets' colours per look, back button, print, app icon
-  shortcuts, Quick Settings tile; 320x640
+  runs a debug x86_64 build on an emulator (scripts/android_test.sh; its numbered steps say what each checks; 320x640
   screen) and force-pushes screenshots, log and the gzipped
   system log to the `android-test-results` branch (`git fetch origin android-test-results:refs/remotes/
   origin/android-test-results`). The log ends with PASS/FAIL lines; any FAIL fails the job. The emulator
@@ -1834,12 +1786,12 @@ window can't be sent to another page.
 - GitHub Actions (`.github/workflows/build.yml`): tests + speed check, Windows (NSIS + portable exe),
   Android (APK), size check (each size also a notice, readable from the release job's annotations:
   `gh api repos/srikanth-iyer/thinky/check-runs/<job id>/annotations`); on main a Release "Build N" (N = one more than the newest release, from
-  the `number` job, the newest here or on the old downloads repo; also the app's version 0.1.N, which the update
-  check compares) on this repo, where the app looks once a day for updates from Build 34 on (`core/src/update.rs`
+  the `number` job, the newest here or on the old downloads repo; the app's version is ui/version.js's `VERSION`, which the update
+  check compares, Build 41 on) on this repo, where the app looks for updates from Build 34 on (at start, every 2 hours and when
+  the window comes back: `core/src/update.rs`
   `DOWNLOADS`, app.js `checkUpdate`, MainActivity's APK address). Build 33 and older look on the old downloads repo
-  `srikanth-iyer/lean-outliner-releases`, so Build 34 is published there too, the last one (`release` does it
-  only while the `RELEASES_TOKEN` secret exists; delete it after Build 34, then archive that repo: archived
-  releases stay downloadable, and the Rename check needs its Build 31). `wip/**` branches build without publishing — use them to check Windows/Android compile. GitHub's
+  `srikanth-iyer/lean-outliner-releases`, so Build 34 was published there too, the last one (its tags stop at build-34; `release`'s step for it runs
+  only while the `RELEASES_TOKEN` secret exists, so it does nothing now; that repo stays readable, and the Rename check needs its Build 31). `wip/**` branches build without publishing — use them to check Windows/Android compile. GitHub's
   builds take time (~27 minutes for a full build + phone test): batch features into one
   build, run the phone test once per release candidate; a newer push to a wip branch stops its older
   run (`concurrency`, never on main; the phone test's is on its job, so a push that skips it never
@@ -1865,10 +1817,9 @@ window can't be sent to another page.
   moved; Windows' slow path must not fire too), Remove. Its notice: box ms, helper KB; NOTE lines in a
   second notice.
   Signing (public repo, Build 34 on). No secret is a file in the repo or a repository-level secret.
-  Two environments, each allowed only for `main`: `release` (required reviewer: the maintainer; secrets
+  Two environments, each allowed only for `main`: `release` (no reviewer since Nov 5, 2026 and no wait since Nov 15, 2026; secrets
   `ANDROID_KEY_PASSWORD`, `ANDROID_KEYSTORE_B64` = the locked Android keystore in base64, `UPDATE_KEY_PEM`
-  = the locked P-256 update key as PEM text) and `publish` (`RELEASES_TOKEN`, Build 34 only: a fine-grained
-  token with Contents read/write on lean-outliner-releases only; deleted afterwards). The keys were made once (Oct 26, 2026) and must
+  = the locked P-256 update key as PEM text) and `publish` (it held `RELEASES_TOKEN` for Build 34 only). The keys were made once (Oct 26, 2026) and must
   never be replaced: phones refuse an APK signed with another certificate, and installed Windows apps
   refuse an installer signed with another update key. Jobs: `update-key` (no secrets) gives the build
   the update key's public half: on main `ci/update-key.pub` (checked against the newest signed release's
@@ -1883,28 +1834,66 @@ window can't be sent to another page.
   On main, `windows` and `android` restore no build cache (Swatinem/rust-cache only on wip branches), so
   nothing another job or run put in a cache can reach what is signed. `prev-cert` (main, no secrets) reads
   the newest release APK's certificate.
-  `sign` (main only, waits for approval; a fresh runner with only scripts/ and tauri.conf.json, no build
+  `sign` (main only, once every test passes; a fresh runner with only scripts/, tauri.conf.json and ui/version.js, no build
   tools) writes the keys from the secrets into the runner's temp folder (umask 077, deleted on exit),
-  checks the update key matches `ci/update-key.pub`, works out the version from the build number itself
-  (`update_sig.py version N`; refuses if the build claims another), signs the installer
-  (`thinky-setup.exe.sig`, and `LeanOutliner-setup.exe.sig` for the same bytes under the old name, checked
+  checks the update key matches `ci/update-key.pub`, reads the version from ui/version.js
+  (`update_sig.py version`; refuses if the build claims another), signs the installer
+  (`thinky-update.sig` with the version and build N for Build 41 on; `thinky-setup.exe.sig`, and `LeanOutliner-setup.exe.sig` for
+  the same bytes under the old name, with 0.1.N from `update_sig.py legacy N` for Build 40 and older; checked
   with `update_sig.py check`; also one with another key, for `verify`) and the APK, whose certificate
   must equal `prev-cert`'s (it opens no downloaded file while it holds the keys), then the signed APK's
-  `thinky-apk.sig` (`sign-update`, same key; checked with `check-update` and `apk-check`). `sign-wip` does the same with throw-away keys.
+  `thinky-apk.sig` (`sign-update`, same key; checked with `check-update` and `apk-check`), and the Google Play bundle
+  `thinky-play.aab` with the APK's key (jarsigner, checked to carry the APK's certificate). `sign-wip` does the same with throw-away keys.
   `verify` (windows) runs the shipped exe's `--verify-update` on the signed installer (must pass) and on
   a changed copy, another build number, an edited version and another key (must fail). `sizes` reports
-  sizes; `release` (main only, environment `publish`) publishes here (and on the old downloads repo while
-  `RELEASES_TOKEN` exists). Build numbers follow the newest release here or on the old downloads repo
+  sizes; `release` (main only, environment `publish`) publishes here. Build numbers follow the newest release here or on the old downloads repo
   (`number` refuses to start below build 33; so does `prev-cert` look in both). Pull requests run
-  only `pr.yml` (the core's and the dev server's tests, `src-tauri/pure_tests.sh`, `node dev/ui-tests/unit.mjs`,
+  only `pr.yml` (the checks listed at the top of this section that need no Windows, the phone or a browser, plus
   Clippy with its correctness and suspicious lints stopping it; no secrets, never `pull_request_target`). Every action is pinned to a
   commit; Dependabot proposes updates; Cargo.lock is used as is (`--locked`, `cargo fetch --locked`) and
   npm installs without install scripts; `deny` runs cargo-deny (deny.toml): a security advisory holds the
   release back (`sign` needs `deny`), licences, bans and sources only report. Release lists are read with
   `gh api --paginate` (all pages, not only the newest 100). The first build with updates is installed by hand.
+- Versions and changelogs (rules from Build 40 on). Version numbers (he decided, Nov 9): the version's first number = released to the public, the middle = big changes,
+  the last = small ones, back to 0 when the middle goes up. Versions given afterwards (he agreed, Nov 9; CHANGELOG.md's
+  headings): 0.1 = Builds 1–22, 0.2 = 23–28, 0.3 = 29–31, 0.4 = 32–38, 0.5 = 39–50 (Build 40 = 0.5.1, Build 41 = 0.5.2, Build 50 = 0.5.11), 0.6 = 51 on (Build 51 = 0.6.0).
+  Since Build 41 the version is `ui/version.js` `VERSION`, set by hand with every build (with CHANGELOG.md's heading),
+  and it is the app's real version: ci_version.py stamps it into tauri.conf.json (and Android's versionCode =
+  major·1,000,000 + minor·1,000 + patch, so it rises with it) and writes `ui/build.js` `BUILD` = N (null in the repo:
+  dev and tests show "(preview)"); update_sig.py `version` reads it (`app_version`, one rule for the build, the
+  signature and the release title "Build N · version X"). Updates compare versions (he decided, Nov 9: any part may go
+  up): app.js `checkUpdate` offers the newest release when the version in its title (`releaseVersion`) is higher
+  (`higherVersion`); Windows reads `thinky-update.sig` (core update.rs `UPDATE_SIG_FILE`, `update_text`: its own first
+  line "thinky-update-2", the version and "build N" signed, `update_text_to_verify`: made for the build asked for,
+  version higher than its own); Android needs a higher versionCode (MainActivity, unchanged). Every release still
+  carries `thinky-setup.exe.sig`/`LeanOutliner-setup.exe.sig` signed the old way with version 0.1.N (`legacy N`),
+  which Build 40 and older read (they want a version ending in the build number); Build 41 was the bridge. CI: the
+  `number` job refuses (main) or warns (wip) when VERSION isn't higher than the newest release's title; `sign` refuses
+  an APK whose versionCode isn't higher than the last release's (`prev-cert` reads it); `verify` runs
+  `--verify-update` (old kind) and `--verify-update-newer` (thinky-update.sig) cases. Suggest which number to raise.
+  (Builds 34–40's titles were renamed by hand on GitHub, Nov 9; the cloud session's gh can't edit releases.)
+  CHANGELOG.md gets a section for every release (Builds 38 and 39 were added late).
+  Website changelog (he asked, Nov 10): every release ALSO adds its entry at the top of `site/changelog.html` (the
+  public page at srikanth-iyer.github.io/thinky/changelog.html), in the same commit as CHANGELOG.md: heading
+  "Build N · version X (Month Year)" and a short <ul> of 2–6 plain one-line points (shorter than CHANGELOG.md, no
+  "Under the hood" detail; escape & as &amp;). Builds 38–42 were added late (Nov 10). New site pages go in `site/sitemap.xml`.
 - Pull before pushing.
 
 ## Android extras
+The Google Play version (Build 42, he said go Nov 10; tested by t13_update "the Google Play version"). CI's
+`android` job builds the APK, then runs android_overlay.py again with `THINKY_PLAY=1` and builds `thinky-play.aab`
+(Play takes bundles): no REQUEST_INSTALL_PACKAGES, no UpdateReceiver, no `LeanAndroid.update`/`installUpdate` (Play apps
+may update only through Play), `LeanAndroid.fromPlay()` true → app.js `checkUpdate` asks GitHub nothing and About says
+"Updates come from Google Play" (`play` stage). Since the outside review (claim 10a) the updater's code isn't in the Play
+bundle at all: android_overlay.py `without_updater` cuts MainActivity.kt between its `// ---- updater…` / `// ---- end of
+the updater…` markers (and the UpdateReceiver to the end of the file), drops imports no longer used and sets
+`const val PLAY` (`__PLAY__`); android/test/overlay_test.py checks both shapes. `sign` signs the bundle with jarsigner and the same release key (Play's
+upload key; its certificate must equal the APK's; its manifest checked for the install permission; `android` also
+searches its DEX for the updater's code, `releases/download` and `PackageInstaller$Session`, review claim 10c); `sign-wip` with the
+throw-away key; `release` publishes it with the others (8 files with thinky-apk.sig, 11 with the old names). Play App Signing reuses the
+release key (he chose it, Nov 10): it is already set up in Play Console (Play's app signing key has the release
+certificate's SHA-256, checked Nov 22, 2026), so the export workflow (play-key.yml, PEPK) and Play's encryption key were
+taken out (he asked, Nov 22). Package name on Play: `com.srikanth.leanoutliner`.
 Home-screen widgets in `android/kotlin/JournalWidget.kt`: today's journal (to-dos due *today* only, under
 "DUE TODAY", then the day's notes; since Build 46 drawn as the app draws them, `Journal.styled`: bold,
 italics, strike, highlight on the look's `--mark-bg`, code and $TeX$ in a fixed-width font, headings a size up,

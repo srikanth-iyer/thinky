@@ -1,12 +1,11 @@
 # Builds the Windows app and the Android app on GitHub's machines and publishes them as a release
 # ("Build N") here, where installed apps look for updates from Build 34 on. Build 34 is also published
 # once more on the old downloads repo, srikanth-iyer/lean-outliner-releases, where Build 33 and older
-# look (only while the RELEASES_TOKEN secret exists; delete it after Build 34). Runs on every push to main (a release, 30 minutes after every test
-# passes, unless the run is cancelled) and to wip/** branches (a test build: never published, signed with throw-away keys).
+# look (only while the RELEASES_TOKEN secret exists; nothing went there after Build 34). Runs on every push to main (a release, as soon as every test
+# passes) and to wip/** branches (a test build: never published, signed with throw-away keys).
 #
 # Secrets: none at repository level. Two environments, both allowed only for `main`:
-#   release  (a 30-minute wait, then it signs: cancel the run to stop it; until Build 36 it waited
-#            for the maintainer's approval)  ANDROID_KEY_PASSWORD, ANDROID_KEYSTORE_B64 (the locked
+#   release  (no reviewer since Nov 5, 2026, no wait since Nov 15, 2026: it signs at once)  ANDROID_KEY_PASSWORD, ANDROID_KEYSTORE_B64 (the locked
 #            Android keystore, base64), UPDATE_KEY_PEM (the locked P-256 update key, PEM text)
 #   publish  RELEASES_TOKEN (Build 34 only, then deleted: a fine-grained token, Contents read/write on
 #            lean-outliner-releases only)
@@ -531,8 +530,8 @@ jobs:
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
 
   # main only: sign the installer and the APK with the real keys, on a machine of its own that gets
-  # only the scripts, the version rule and the two built files (no build tools run here). Waits for
-  # environment `release`'s 30-minute wait (cancel the run to stop a release). The keys are written from secrets into the
+  # only the scripts, the version rule and the built files (no build tools run here). Environment
+  # `release` has no reviewer or wait, so it starts as soon as the jobs it needs pass. The keys are written from secrets into the
   # runner's temp folder and deleted at the end; they are never outputs, artifacts or log lines.
   sign:
     needs: [number, update-key, windows, android, prev-cert, ui-tests, deny]
