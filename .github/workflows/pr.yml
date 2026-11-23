@@ -37,7 +37,7 @@ jobs:
       - run: python3 scripts/release_check_test.py
       # sending the browser extension to the stores (scripts/extension_store.py; stand-in stores, no network)
       - run: python3 scripts/extension_store_test.py
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with: { distribution: temurin, java-version: '17' }
       - run: bash android/test/run.sh
       - run: python3 android/test/overlay_test.py
