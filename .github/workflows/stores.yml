@@ -1,0 +1,68 @@
+# Sends the browser extension (browser/) to the Edge and Chrome stores after each release, so a new
+# extension version needs no uploading by hand (Build 59, the maintainer asked Nov 23, 2026). It runs when
+# `build` finishes on main (a release) or by hand (Actions → stores → Run workflow), and only sends a
+# version the store doesn't have yet: most runs only say "already has it". Each store then reviews it and
+# updates people's copies by itself. build.yml's `number` job makes sure a changed browser/ carries a
+# higher version (scripts/release_check.py extension).
+#
+# Environment `stores`, allowed only for `main`:
+#   secrets  EDGE_API_KEY (Partner Center → Publish API; it lasts 72 days, Microsoft emails before it ends)
+#   vars     EDGE_CLIENT_ID, EDGE_PRODUCT_ID (Partner Center), CWS_PUBLISHER_ID (Chrome Developer
+#            Dashboard → Account), GCP_WIF_PROVIDER, GCP_SERVICE_ACCOUNT (Google Cloud; no key: Google
+#            trusts this repository's own GitHub sign-in token for the main branch, Workload Identity
+#            Federation, and gives a 10-minute token for the Chrome Web Store only)
+# A store whose settings are missing is skipped with a note. The steps run scripts/extension_store.py
+# with no third-party action and nothing installed.
+name: stores
+
+on:
+  workflow_run:
+    workflows: [build]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# one at a time, never cancelled half way (a store could be left with an upload and no review asked)
+concurrency:
+  group: stores
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  stores:
+    # after a build that passed (a release) on main, or by hand from main
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    environment: stores
+    permissions:
+      contents: read
+      id-token: write # GitHub's own sign-in token for this run, which Google is set up to trust (Chrome only)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the commit that was released (by hand: main as it is now)
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          sparse-checkout: "scripts\nbrowser"
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: The store package (browser/ without its key)
+        run: python3 scripts/extension_store.py zip "$RUNNER_TEMP/thinky-highlights.zip"
+      # the package, kept with the run for 30 days (to upload by hand if a store ever needs it)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: thinky-highlights, path: "${{ runner.temp }}/thinky-highlights.zip", retention-days: 30, if-no-files-found: error }
+      - name: Edge Add-ons
+        env:
+          EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
+          EDGE_CLIENT_ID: ${{ vars.EDGE_CLIENT_ID }}
+          EDGE_PRODUCT_ID: ${{ vars.EDGE_PRODUCT_ID }}
+        run: python3 scripts/extension_store.py edge "$RUNNER_TEMP/thinky-highlights.zip"
+      - name: Chrome Web Store
+        # (also when Edge failed: the stores don't depend on each other)
+        if: ${{ !cancelled() }}
+        env:
+          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          CWS_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
+        run: python3 scripts/extension_store.py chrome "$RUNNER_TEMP/thinky-highlights.zip"

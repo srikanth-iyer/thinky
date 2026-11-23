@@ -27,10 +27,14 @@ def check(what, ok):
     failed += 0 if ok else 1
 
 
-def run(version, table, *args):
-    """release_check.py ARGS with ui/version.js saying `version` and `gh` answering from `table`:
-    (exit code, what it printed, the gh calls made)."""
+def run(version, table, *args, browser=None):
+    """release_check.py ARGS with ui/version.js saying `version`, browser/ holding `browser` ({path:
+    bytes}) and `gh` answering from `table`: (exit code, what it printed, the gh calls made)."""
     with tempfile.TemporaryDirectory() as t:
+        for path, data in (browser or {}).items():  # the extension's files, if the case has some
+            os.makedirs(os.path.dirname(os.path.join(t, "browser", path)), exist_ok=True)
+            with open(os.path.join(t, "browser", path), "wb") as f:
+                f.write(data)
         os.makedirs(os.path.join(t, "scripts"))
         os.makedirs(os.path.join(t, "ui"))
         os.makedirs(os.path.join(t, "bin"))
@@ -117,6 +121,48 @@ bad[REFS] = [1, "gh: Forbidden (HTTP 403)"]
 code, said, _ = run("0.6.6", bad, "unpublished", "51")
 check("the tags unreadable: stops", code == 1)
 
+# ---- extension: browser/ changed since the newest release → its version went up
+import base64, hashlib
+def sha(b):  # git's id of some bytes, as GitHub's tree lists it
+    return hashlib.sha1(b"blob %d\0" % len(b) + b).hexdigest()
+def manifest(v):  # a manifest.json saying version v
+    return json.dumps({"name": "x", "version": v}).encode()
+TAG_Q = "repos/me/thinky/releases/latest"
+TREE = "repos/me/thinky/git/trees/build-57:browser?recursive=1"
+OLD_MANIFEST = "repos/me/thinky/contents/browser/manifest.json?ref=build-57"
+def ext_table(files, old_version):
+    """GitHub's answers when release build-57 had `files` ({path: bytes}) with that manifest version."""
+    lines = "".join(f"{sha(b)} {p}\n" for p, b in files.items())
+    return {TAG_Q: [0, "build-57\n"], TREE: [0, lines],
+            OLD_MANIFEST: [0, base64.b64encode(manifest(old_version)).decode() + "\n"]}
+then = {"manifest.json": manifest("1.1.1"), "page.js": b"a", "icons/32.png": b"png"}
+code, said, calls = run("0.6.8", ext_table(then, "1.1.1"), "extension", "--main", browser=then)
+check(f"extension unchanged: goes on, asks only the release's list ({said})", code == 0 and "unchanged since build-57 (version 1.1.1)" in said
+      and [c[1] for c in calls] == [TAG_Q, TREE])
+now = dict(then, **{"page.js": b"b"})
+code, said, _ = run("0.6.8", ext_table(then, "1.1.1"), "extension", "--main", browser=now)
+check(f"a changed file with the same version stops main ({said})", code == 1 and "::error::The browser extension changed since build-57 (page.js)" in said)
+code, said, _ = run("0.6.8", ext_table(then, "1.1.1"), "extension", browser=now)
+check("…and only warns on a wip branch", code == 0 and "::warning::" in said)
+now2 = dict(now, **{"manifest.json": manifest("1.1.2")})
+code, said, _ = run("0.6.8", ext_table(then, "1.1.1"), "extension", "--main", browser=now2)
+check(f"changed and raised: goes on ({said})", code == 0 and "version 1.1.2 (was 1.1.1 in build-57); changed: manifest.json, page.js" in said)
+code, said, _ = run("0.6.8", ext_table(then, "1.1.10"), "extension", "--main", browser=now2)
+check("versions compare as numbers (1.1.2 is lower than 1.1.10)", code == 1)
+added = dict(then, **{"new.js": b"n"})
+code, said, _ = run("0.6.8", ext_table(then, "1.1.1"), "extension", "--main", browser=added)
+check("a new file counts as a change", code == 1 and "(new.js)" in said)
+gone = {k: v for k, v in then.items() if k != "icons/32.png"}
+code, said, _ = run("0.6.8", ext_table(then, "1.1.1"), "extension", "--main", browser=gone)
+check("a removed file counts as a change", code == 1 and "(icons/32.png)" in said)
+hidden = dict(then, **{".DS_Store": b"junk"})
+code, said, _ = run("0.6.8", ext_table(then, "1.1.1"), "extension", "--main", browser=hidden)
+check("a hidden file isn't part of it (the store package leaves it out)", code == 0)
+bad = ext_table(then, "1.1.1")
+bad[TREE] = [1, "gh: Not Found (HTTP 404)"]
+code, said, _ = run("0.6.8", bad, "extension", "--main", browser=then)
+check(f"the release's files unreadable: stops ({said})", code == 1 and "Couldn't read" in said)
+
 # ---- build.yml runs these checks where they're needed (audit finding 11)
 yml = open(os.path.join(HERE, "..", ".github", "workflows", "build.yml"), encoding="utf-8").read()
 def job(name):
@@ -134,9 +180,11 @@ check("release: the build number comes from the number job's output, through env
 check("release: it may read the releases (a token)", "GH_TOKEN: ${{ github.token }}" in steps[1])
 check("release: publishing comes after the checks", -1 < rel.find("release_check.py unpublished") < rel.find("softprops/action-gh-release"))
 check("number: the same version check (main stops, wip warns)", "release_check.py version" in job("number") and "--main" in job("number"))
+check("number: the extension's version check too, with browser/ checked out", "release_check.py extension --main" in job("number")
+      and "release_check.py extension;" in job("number") and "browser" in job("number").split("sparse-checkout:")[1].split("\n")[0])
 
 # ---- what it's asked
-for args in (["unpublished"], ["unpublished", "x"], ["unpublished", "0"], ["unpublished", "-3"], ["version", "--wip"], [], ["publish"]):
+for args in (["unpublished"], ["unpublished", "x"], ["unpublished", "0"], ["unpublished", "-3"], ["version", "--wip"], ["extension", "--wip"], [], ["publish"]):
     code, said, calls = run("0.6.6", table(), *args)
     check(f"refuses {args} and asks GitHub nothing", code != 0 and calls == [])
 

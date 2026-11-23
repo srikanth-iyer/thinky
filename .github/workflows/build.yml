@@ -45,10 +45,12 @@ jobs:
       n: ${{ steps.n.outputs.n }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { sparse-checkout: "scripts\nui/version.js", sparse-checkout-cone-mode: false, persist-credentials: false }
+        with: { sparse-checkout: "scripts\nui/version.js\nbrowser", sparse-checkout-cone-mode: false, persist-credentials: false }
       # Build 41: the version (ui/version.js) is what installed apps compare, so it must be higher than
       # the newest release's (its title says it: "Build N · version X"). On main a build that forgot to
       # raise it stops here; a wip build only warns (scripts/release_check.py, which `release` runs again).
+      # Build 59: the same for the browser extension (browser/manifest.json's version), when browser/
+      # changed since that release: the stores take only a higher version (the `stores` workflow sends it).
       - name: The version is higher than the last release's
         env:
           GH_TOKEN: ${{ github.token }}
@@ -56,6 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$MAIN" = true ]; then python3 scripts/release_check.py version --main; else python3 scripts/release_check.py version; fi
+          if [ "$MAIN" = true ]; then python3 scripts/release_check.py extension --main; else python3 scripts/release_check.py extension; fi
       - id: n
         env:
           GH_TOKEN: ${{ github.token }}
@@ -99,6 +102,8 @@ jobs:
       - run: python3 scripts/update_sig_test.py
       # the checks before a release (scripts/release_check.py, a stand-in `gh`; audit finding 11)
       - run: python3 scripts/release_check_test.py
+      # sending the browser extension to the stores (scripts/extension_store.py; stand-in stores, no network)
+      - run: python3 scripts/extension_store_test.py
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with: { distribution: temurin, java-version: '17' }
       - run: bash android/test/run.sh

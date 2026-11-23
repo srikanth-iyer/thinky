@@ -455,8 +455,8 @@ Phone: android_capture.rs `cmd: "kept"`, `LeanCore.kept`, QuickCaptureActivity `
 under the words: "N highlights already in “Page”", each with a QuoteSpan in the accent; 7 lines, a tap shows all);
 android_test.sh step 5c. Settings → Capture's browser card says how (`.again-how`, `HOWTO`); website
 `site/highlights.html` (pictures from t16_browser's shots in site/shots/highlights-*.png; in sitemap.xml, linked from
-index and the changelog; privacy.html says what the switch does). The store copies change only when he uploads the
-new zip (browser/ without `key`; the new permission means a new review).
+index and the changelog; privacy.html says what the switch does). The store copies change when CI sends a new
+version (since Build 59, "Build & test"; before that he uploaded the zip by hand; a new permission means a new review).
 Also Build 46 (his #claude notes, Nov 11–12; t28_build46): the To-dos list's tick box: right-click, Shift+F10 or a
 450 ms hold (`taskClicks` `states`: a `{head}` "Set to" menu with `on` radios, his workflow's words; Done through
 `task_done`; the phone's own long-press contextmenu after a hold is ignored, `held`). Note menu: "Number its sub-notes"
@@ -707,7 +707,8 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
     host manifest's allowed_origins): `EXTENSION_ID` fjgdgmpheeihnlbpmbajkmoapjfieggg (unpacked; fixed by
     the public `key` in browser/manifest.json, whose private key was thrown away), and since Build 35 the
     store copies, `EDGE_STORE_ID` cpdmmmcipjfebaemgdnbamipolboaokn (Edge Add-ons) and `CHROME_STORE_ID`
-    ggainimehhgjmblabbjkiemfhhlhcgnk (Chrome Web Store); the store zip is browser/ without `key`.
+    ggainimehhgjmblabbjkiemfhhlhcgnk (Chrome Web Store; the same ids in scripts/extension_store.py); the store zip
+    is browser/ without `key`, made and sent by CI since Build 59 ("Build & test", the stores).
   - `log.rs`
     problems log (`<cache>/problems.log`) · `app.rs` `App` + `dispatch(cmd, args)` = the whole API
   - `app/pictures.rs` (child of app.rs, uses its private parts): "Check this folder" lists pictures in
@@ -1907,6 +1908,29 @@ window can't be sent to another page.
   public page at srikanth-iyer.github.io/thinky/changelog.html), in the same commit as CHANGELOG.md: heading
   "Build N · version X (Month Year)" and a short <ul> of 2–6 plain one-line points (shorter than CHANGELOG.md, no
   "Under the hood" detail; escape & as &amp;). Builds 38–42 were added late (Nov 10). New site pages go in `site/sitemap.xml`.
+- The browser extension's stores (Build 59, he asked Nov 23, 2026: "automate them as much as possible"):
+  `.github/workflows/stores.yml` runs when `build` passes on main (a release; `workflow_run`, only a push's) and by
+  hand (Actions → stores → Run workflow, main only). `scripts/extension_store.py zip` makes the store package
+  (browser/ without manifest.json's `key`, dot files left out, sorted, one fixed time: the same files make the same
+  zip; kept as the run's artifact `thinky-highlights` for 30 days), then `edge` and `chrome` each send it only when
+  that store doesn't show this version yet (Edge: its public `getproductdetailsbycrxid` answer; Chrome: fetchStatus'
+  published and in-review versions): Edge's REST API v1.1 (`Authorization: ApiKey`, `X-ClientID`; upload to the
+  draft, wait, publish with reviewers' notes made from the package's own manifest, wait), the Chrome Web Store API
+  v2 (upload, wait, publish). A store not set up (its settings missing) or still reviewing an earlier version
+  (Edge `InProgressSubmission`; Chrome refusing an upload while one is in review) is a notice, and the next
+  release's run tries again; anything else fails the step with the store's own words (the app's release is
+  unaffected: it is a separate workflow). Settings: environment `stores` (main only): secret `EDGE_API_KEY`
+  (Partner Center → Publish API; lasts 72 days, Microsoft emails before it ends; a refused key says how to renew
+  it), vars `EDGE_CLIENT_ID`, `EDGE_PRODUCT_ID`, `CWS_PUBLISHER_ID`, `GCP_WIF_PROVIDER` (projects/<number>/locations/
+  global/workloadIdentityPools/<pool>/providers/<provider>), `GCP_SERVICE_ACCOUNT`. Chrome has no stored key:
+  the job's `id-token: write` gives GitHub's sign-in token, Google's STS swaps it (the provider only accepts this
+  repository in the `stores` environment), and `generateAccessToken` gives the service account (linked in the
+  Chrome Developer Dashboard → Account) a 10-minute token for the chromewebstore scope only; masked in the log.
+  No third-party action, nothing installed. The version rule: `number` runs `release_check.py extension`
+  (browser/ compared file by file, by git's blob ids, with the newest release's tag; changed → manifest.json's
+  version must be higher: main stops, wip warns). So with every change to browser/ raise its version (1.1.2 in
+  Build 59: the Nov 21 change had shipped as a second "1.1.1"). Tests: scripts/extension_store_test.py (stand-in
+  stores, no network), release_check_test.py; both in CI's `test` job and pr.yml. The store ids are clip.rs's.
 - Pull before pushing.
 
 ## Android extras

@@ -357,6 +357,13 @@ Also mirrored: `search.rs` `fold` ↔ `ui/search.js`.
   self-tests), `capture-shots`, `android`, `sign` (main, once every test passes; no approval or wait), `sign-wip`, `verify`, `sizes`,
   `release` (main). Pull requests: `pr.yml`. Phone
   emulator test: `android-test.yml`.
+- The browser extension's store copies (Build 59): `.github/workflows/stores.yml` runs after each release
+  (and by hand) and sends `browser/` to Edge Add-ons and the Chrome Web Store when the store doesn't have its
+  version yet (`scripts/extension_store.py`; each store then reviews it and updates people's copies by itself).
+  `number` stops a release whose `browser/` changed without a higher `manifest.json` version
+  (`scripts/release_check.py extension`). Its settings are the `stores` environment's (main only): Edge's
+  API key (a secret that lasts 72 days) and ids; Chrome has no stored key (Google trusts this repository's
+  GitHub sign-in through Workload Identity Federation).
 - Signing keys (the `release` environment's secrets; see CLAUDE.md) are made once and **never replaced**
   — installed apps would refuse every update.
 

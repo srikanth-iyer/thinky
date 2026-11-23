@@ -14,6 +14,16 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 59 · version 0.6.8 (November 2026)
+
+The browser extension now reaches the Edge and Chrome stores by itself.
+
+- After each release, GitHub sends the extension to Edge Add-ons and the Chrome Web Store whenever its version is new to that store, and asks for the review. Once a store approves it, Edge and Chrome update everyone's copy on their own. No more uploading zips by hand.
+- A release whose extension changed without a higher version number now stops, so a store never gets two different packages under one number.
+- The extension is version 1.1.2: the Nov 21 fix (hidden words judged on the live page; Send keeps highlights added meanwhile) had gone out as a second "1.1.1".
+
+Under the hood: `.github/workflows/stores.yml` and `scripts/extension_store.py` (Edge's publish API with an API key; the Chrome Web Store API with no stored key, through Google's Workload Identity Federation); `scripts/release_check.py extension` in the `number` job.
+
 ## Build 58 · version 0.6.7 (November 2026)
 
 Fixes from two code reviews (Nov 22 and Nov 23), each checked against the code first and each with a test that fails on the old code.

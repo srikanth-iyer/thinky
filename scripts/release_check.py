@@ -12,9 +12,16 @@
       number and skips the `number` job, so without this it could publish an old version over a
       newer release that took that number, and make it the latest download.
 
+  release_check.py extension [--main]
+      The browser extension (browser/) must carry a higher version (manifest.json's "version") whenever its
+      files differ from the newest release's: the Edge and Chrome stores take only a higher version, and two
+      different packages must never share one number. On main a missing raise stops the job; on a wip
+      branch it only warns. The `number` job runs it; the `stores` workflow then sends the new version to
+      the stores (scripts/extension_store.py).
+
 Any answer from GitHub that can't be read stops it (it never guesses "nothing there").
 Tested by scripts/release_check_test.py (a stand-in `gh`); CI's `test` job and pr.yml run that."""
-import os, re, subprocess, sys
+import base64, hashlib, json, os, re, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))  # this script's folder (scripts/)
 sys.path.insert(0, HERE)  # so update_sig.py next to it can be imported
@@ -79,10 +86,72 @@ def check_unpublished(n):
     print(f"::notice title=Release number::build {n} isn't published yet, and no newer build is")
 
 
-a = sys.argv[1:]  # what the script was asked to do
-if a[:1] == ["version"] and a[1:] in ([], ["--main"]):
-    check_version(main=a[1:] == ["--main"])
-elif a[:1] == ["unpublished"] and len(a) == 2 and a[1].isdigit() and int(a[1]) > 0:
-    check_unpublished(int(a[1]))
-else:
-    sys.exit(__doc__)  # anything else: how to use it, and a failure
+BROWSER = os.path.join(HERE, "..", "browser")  # the extension's folder, beside scripts/
+
+
+def blob_sha(data):
+    """The id git gives a file's bytes (what GitHub's tree lists): SHA-1 of "blob <size>\\0" + the bytes."""
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+def local_extension():
+    """{path inside browser/: git's id of its bytes} for every file of the extension here (dot files left
+    out, as the store package leaves them out; "/" between folders, as git writes paths)."""
+    files = {}  # what is found
+    for root, dirs, names in os.walk(BROWSER):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]  # (hidden folders aren't part of it)
+        for n in names:
+            if n.startswith("."):
+                continue  # a hidden file isn't part of it
+            full = os.path.join(root, n)  # the file on disk
+            rel = os.path.relpath(full, BROWSER).replace(os.sep, "/")  # its path inside browser/
+            with open(full, "rb") as f:
+                files[rel] = blob_sha(f.read())
+    return files
+
+
+def extension_version(manifest_bytes):
+    """manifest.json's "version" ("1.1.2"), read from its bytes."""
+    return json.loads(manifest_bytes.decode("utf-8"))["version"]
+
+
+def check_extension(main):
+    """`extension`: browser/ changed since the newest release → its version went up."""
+    repo = os.environ["GITHUB_REPOSITORY"]  # this repository
+    tag = gh(f"repos/{repo}/releases/latest", "--jq", ".tag_name").strip()  # the newest release's tag
+    # every file of browser/ as that release had it: "<id> <path>" lines (`build-57:browser` = that folder)
+    listed = gh(f"repos/{repo}/git/trees/{tag}:browser?recursive=1", "--jq", '.tree[] | select(.type == "blob") | .sha + " " + .path')
+    then = {}  # {path: id} at the release
+    for line in listed.splitlines():
+        sha, _, path = line.partition(" ")  # the id, then the path
+        if path and not path.split("/")[-1].startswith("."):
+            then[path] = sha
+    now = local_extension()  # the same, as this build has it
+    with open(os.path.join(BROWSER, "manifest.json"), "rb") as f:
+        v = extension_version(f.read())  # this build's extension version
+    if now == then:
+        print(f"::notice title=Browser extension::unchanged since {tag} (version {v})")
+        return
+    # it changed: the release's version, from its manifest.json (GitHub hands the bytes in base64)
+    old = extension_version(base64.b64decode(gh(f"repos/{repo}/contents/browser/manifest.json?ref={tag}", "--jq", ".content")))
+    changed = sorted(p for p in set(now) | set(then) if now.get(p) != then.get(p))  # what differs
+    if not version_tuple(v) > version_tuple(old):
+        msg = f"The browser extension changed since {tag} ({', '.join(changed)}), but browser/manifest.json still says version {v} (that release had {old}): raise it, or the stores won't take it."
+        if main:
+            print(f"::error::{msg}")  # main: the stores would never get this change
+            sys.exit(1)
+        print(f"::warning::{msg}")  # wip: a test build, only a warning
+        return
+    print(f"::notice title=Browser extension::version {v} (was {old} in {tag}); changed: {', '.join(changed)}")
+
+
+if __name__ == "__main__":  # run as a program (extension_store.py imports the helpers above)
+    a = sys.argv[1:]  # what the script was asked to do
+    if a[:1] == ["version"] and a[1:] in ([], ["--main"]):
+        check_version(main=a[1:] == ["--main"])
+    elif a[:1] == ["unpublished"] and len(a) == 2 and a[1].isdigit() and int(a[1]) > 0:
+        check_unpublished(int(a[1]))
+    elif a[:1] == ["extension"] and a[1:] in ([], ["--main"]):
+        check_extension(main=a[1:] == ["--main"])
+    else:
+        sys.exit(__doc__)  # anything else: how to use it, and a failure
