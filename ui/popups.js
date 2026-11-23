@@ -2,7 +2,7 @@
 // the date picker, confirm/prompt boxes, and link previews on hover.
 
 import { call, today, nowTime } from './api.js';
-import { esc, renderBlock, propsHtml } from './render.js';
+import { esc, renderBlock, propsHtml, tagBody } from './render.js';
 import { createCalendar } from './calendar.js';
 import { h, fadeAway, grow, eatThisClick, SLASH_ICON } from './dom.js';
 
@@ -345,7 +345,9 @@ export class Suggest {
       const close = ta.value.slice(c, c + 2) === ']]' ? 2 : 0;
       ta.setRangeText(it.value + ']]', this.start, c + close, 'end');
     } else if (kind === 'tag') {
-      const tag = /[\s,;!?"'()[\]{}<>`#]/.test(it.value) ? `[[${it.value}]]` : it.value;
+      // bare (#Sourdough) when it reads back as the same page, else #[[…]]: "New York", or "U.S." (as #U.S.
+      // the last "." would be the sentence's and the tag would be "U.S"; audit finding 10, Nov 23)
+      const tag = tagBody(it.value);
       const space = /\s/.test(ta.value[c] ?? ' ') ? '' : ' ';
       ta.setRangeText(tag + space, this.start, c, 'end');
     } else if (kind === 'propkey') {
@@ -430,16 +432,39 @@ export function pickDate(anchor, opts = {}) {
 // ---------------------------------------------------------------------------
 // Confirm and prompt boxes (instead of the browser's, which can't be styled)
 
+let modals = 0; // how many boxes have opened so far: each heading gets an id of its own from it
 function modal(inner, setup) {
   return new Promise((resolve) => {
     const back = h('div', 'modal-back');
     const box = h('div', 'modal', inner);
     box.setAttribute('role', 'dialog');
     box.setAttribute('aria-modal', 'true');
+    // a screen reader says the box's heading as its name (review claim R11a, Nov 22)
+    const head = box.querySelector('h2');
+    // (counted, not the time: two boxes opened in the same millisecond, one over the other, would share it)
+    if (head) { head.id ||= `modal-h-${++modals}`; box.setAttribute('aria-labelledby', head.id); }
+    const was = document.activeElement; // what had the keyboard before: it gets it back when the box closes
     back.append(box);
     document.body.append(back);
-    const done = (v) => { fadeAway(back); back.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
-    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(null); } };
+    const done = (v) => {
+      fadeAway(back);
+      back.remove();
+      document.removeEventListener('keydown', onKey, true);
+      if (was instanceof HTMLElement && was.isConnected) was.focus({ preventScroll: true }); // back where it was
+      resolve(v);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(null); return; }
+      if (e.key !== 'Tab') return;
+      // Tab and Shift+Tab go round the box's own buttons and boxes, never to the page behind it
+      const stops = [...box.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')]
+        .filter((el) => !el.disabled && el.offsetParent !== null); // only ones that can take the keyboard
+      if (!stops.length) { e.preventDefault(); return; } // nothing to go to: stay
+      const k = stops.indexOf(document.activeElement); // where the keyboard is now (-1: not in the box)
+      const next = e.shiftKey ? (k <= 0 ? stops.length - 1 : k - 1) : (k === -1 || k === stops.length - 1 ? 0 : k + 1);
+      e.preventDefault(); // the browser's own Tab would leave the box
+      stops[next].focus(); // the next one in the box, round to the start at the end
+    };
     document.addEventListener('keydown', onKey, true);
     back.addEventListener('pointerdown', (e) => { if (e.target === back) done(null); });
     setup(box, done);
@@ -451,7 +476,8 @@ export function confirmBox({ title, body = '', ok = 'OK', cancel = 'Cancel', dan
     <div class="btn-row end"><button class="btn ghost" data-v="0">${esc(cancel)}</button><button class="btn${danger ? ' danger' : ''}" data-v="1">${esc(ok)}</button></div>`,
   (box, done) => {
     box.onclick = (e) => { const v = e.target.closest('[data-v]')?.dataset.v; if (v !== undefined) done(v === '1'); };
-    box.querySelector('[data-v="1"]').focus();
+    // a box that deletes or loses something starts on Cancel, so Enter alone does no harm
+    box.querySelector(danger ? '[data-v="0"]' : '[data-v="1"]').focus();
   }).then((v) => !!v);
 }
 
@@ -522,7 +548,16 @@ export function menu(anchor, items, opts = {}) {
   };
   if (opts.keep) document.addEventListener('beforeinput', close, true); // (typing goes on: the menu goes)
   box.addEventListener('pop-close', () => { const had = box.contains(document.activeElement); close(); if (had && btn?.isConnected && !opts.keep) btn.focus({ preventScroll: true }); });
-  box.onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) { close(); items[+b.dataset.k].run(); } };
+  box.onclick = (e) => {
+    const b = e.target.closest('[data-k]'); // the choice clicked (or pressed with Enter)
+    if (!b) return; // a click between choices: nothing
+    const had = box.contains(document.activeElement); // the keyboard was in the menu
+    close();
+    // the keyboard goes back to the menu's button first, as with Esc, so a box the choice opens (Delete
+    // page…) gives it back there when it closes, not to a menu that is gone (Nov 23)
+    if (had && btn?.isConnected && !opts.keep) btn.focus({ preventScroll: true });
+    items[+b.dataset.k].run(); // then the choice itself
+  };
   // Esc works from the moment it shows (Build 38: an Esc right after the click was lost); a press
   // outside only from the next turn, so the press that opened it doesn't close it
   document.addEventListener('keydown', onKey, true);

@@ -452,7 +452,7 @@ pub fn backup_zip_of(root: &Path, dest: &Path, keep: usize, stamp: &str, files: 
 /// whose .git went missing), no fsmonitor command, no descending into anything that looks like a
 /// submodule.
 fn git_cmd(repo: &Path) -> std::process::Command {
-    let mut c = std::process::Command::new("git");
+    let mut c = std::process::Command::new(git_program());
     c.arg("-C").arg(repo).arg("--git-dir").arg(repo.join(".git")).arg("--work-tree").arg(repo);
     c.args(["-c", "core.fsmonitor=false", "-c", "submodule.recurse=false", "-c", "push.recurseSubmodules=no", "-c", "diff.ignoreSubmodules=all", "-c", "status.submoduleSummary=false"]);
     for v in ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_CEILING_DIRECTORIES"] {
@@ -464,6 +464,42 @@ fn git_cmd(repo: &Path) -> std::process::Command {
         c.creation_flags(0x0800_0000); // (no console window flashing up)
     }
     c
+}
+
+/// The git program to run. On Windows, a bare "git" is looked for first in the folder the app itself
+/// runs from: the portable copy run from Downloads would run a git.exe a web page once saved there,
+/// as the person, at the next backup, with no click (Ponytail audit finding 7, Nov 23). So on Windows
+/// git.exe is found in the PATH folders here and run by its full path, as the shell does for curl and
+/// PowerShell; elsewhere the system's own search has no such first folder, and "git" is kept.
+fn git_program() -> std::path::PathBuf {
+    #[cfg(windows)]
+    {
+        let path = std::env::var_os("PATH").unwrap_or_default(); // the folders Windows searches
+        let app_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)); // the app's own folder
+        if let Some(found) = find_on_path(&path, "git.exe", app_dir.as_deref(), &|p: &Path| p.is_file()) {
+            return found; // git.exe by its full path
+        }
+    }
+    std::path::PathBuf::from("git") // elsewhere, or no git.exe found: the plain name (its error says git is missing)
+}
+
+/// The first `exe` in the folders of a PATH value, by its full path: only folders written as full
+/// paths (a "." or a relative folder would mean wherever the app happens to be), never `skip` (the
+/// app's own folder). `is_file` says whether a file is there (a test gives its own).
+#[cfg_attr(not(windows), allow(dead_code))] // (only Windows uses it; the tests run it everywhere)
+pub(crate) fn find_on_path(path: &std::ffi::OsStr, exe: &str, skip: Option<&Path>, is_file: &dyn Fn(&Path) -> bool) -> Option<std::path::PathBuf> {
+    std::env::split_paths(path) // each folder of the PATH value
+        .filter(|dir| dir.is_absolute()) // only folders given by their full path
+        .filter(|dir| skip.is_none_or(|s| !same_dir(dir, s))) // never the app's own folder
+        .map(|dir| dir.join(exe)) // where the program would be in that folder
+        .find(|p| is_file(p)) // the first folder that has it
+}
+
+/// Are two folders the same? Compared without a trailing slash and, as Windows does, in any capitals.
+#[cfg_attr(not(windows), allow(dead_code))] // (only Windows uses it; the tests run it everywhere)
+fn same_dir(a: &Path, b: &Path) -> bool {
+    let norm = |p: &Path| p.to_string_lossy().trim_end_matches(['/', '\\']).to_lowercase(); // "C:\\X\\" and "c:\\x" alike
+    norm(a) == norm(b)
 }
 
 pub(super) fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
@@ -673,5 +709,49 @@ impl App {
         let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&target).map_err(|e| format!("Couldn't put {rel} back ({e})."))?;
         f.write_all(&bytes).map_err(|e| format!("Couldn't put {rel} back ({e})."))?;
         Ok(found)
+    }
+}
+
+#[cfg(test)]
+mod git_path_tests {
+    use super::find_on_path;
+    use std::path::{Path, PathBuf};
+
+    /// A PATH value of these folders, joined the way this system joins them (";" on Windows, ":" elsewhere).
+    fn path_of(dirs: &[&str]) -> std::ffi::OsString {
+        std::env::join_paths(dirs).unwrap()
+    }
+
+    /// Ponytail audit finding 7: git.exe is found in the PATH folders, by its full path, never in the
+    /// app's own folder, a "." or a relative folder.
+    #[test]
+    fn git_is_found_by_its_full_path_and_never_beside_the_app() {
+        let root = std::env::temp_dir().join(format!("outline_gitpath_{}", std::process::id())); // a folder for this test only
+        let (app, tools, other) = (root.join("Downloads"), root.join("Git").join("cmd"), root.join("Empty")); // three folders
+        for d in [&app, &tools, &other] {
+            std::fs::create_dir_all(d).unwrap(); // made on disk
+        }
+        std::fs::write(app.join("git.exe"), "planted").unwrap(); // a file a web page saved beside the app
+        std::fs::write(tools.join("git.exe"), "real").unwrap(); // the installed git
+        let is_file = |p: &Path| p.is_file(); // a real look on disk
+        let s = |p: &PathBuf| p.to_string_lossy().into_owned(); // a folder as text
+        // the app's folder first in the PATH: skipped, the real one is found
+        let path = path_of(&[&s(&app), &s(&other), &s(&tools)]);
+        assert_eq!(find_on_path(&path, "git.exe", Some(&app), &is_file), Some(tools.join("git.exe")));
+        // the app's folder written with a trailing slash and other capitals is still the app's folder
+        let odd = format!("{}{}", s(&app).to_uppercase(), std::path::MAIN_SEPARATOR);
+        let path = path_of(&[&odd, &s(&tools)]);
+        if cfg!(windows) {
+            assert_eq!(find_on_path(&path, "git.exe", Some(&app), &is_file), Some(tools.join("git.exe")));
+        }
+        // "." and relative folders are never searched, even when they'd hold a git.exe
+        let path = path_of(&[".", "Downloads", &s(&other)]);
+        assert_eq!(find_on_path(&path, "git.exe", None, &|_: &Path| true), Some(other.join("git.exe")));
+        // no git anywhere: none found (the caller then names plain "git", whose error says it's missing)
+        let path = path_of(&[&s(&other)]);
+        assert_eq!(find_on_path(&path, "git.exe", Some(&app), &is_file), None);
+        // an empty PATH: none
+        assert_eq!(find_on_path(std::ffi::OsStr::new(""), "git.exe", None, &is_file), None);
+        let _ = std::fs::remove_dir_all(&root); // tidy up
     }
 }

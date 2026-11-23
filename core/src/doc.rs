@@ -93,7 +93,11 @@ fn escape_line(line: &str) -> String {
 fn unescape_line(line: &str) -> String {
     let ws = line.len() - line.trim_start_matches([' ', '\t']).len();
     match line[ws..].strip_prefix('\\') {
-        Some(r) if needs_escape(r) => format!("{}{}", &line[..ws], r),
+        // `escape_line` puts its backslash right before the line's first non-space character, so what
+        // follows an added backslash never starts with a space or a tab; a line like `\ \- x` is the
+        // note's own text and keeps its backslash (Ponytail audit finding 12, Nov 23: it lost one on
+        // every save)
+        Some(r) if !r.starts_with([' ', '\t']) && needs_escape(r) => format!("{}{}", &line[..ws], r),
         _ => line.to_string(),
     }
 }
@@ -299,6 +303,13 @@ fn render_block(b: &DocBlock, indent: &str, nl: &str) -> String {
         }
     }
     s
+}
+
+/// Give a plain paragraph (Markdown with no bullet, `plain`) new lines of its own, so it's written
+/// back laid out as before rather than as a `- ` bullet (review claim S5, Nov 22). Its text follows.
+pub(crate) fn set_plain_raw(b: &mut DocBlock, raw: String) {
+    b.text = plain_text(&split_lines_keep(&raw)); // the paragraph's words, as split_doc reads them
+    b.raw = Some(raw); // its lines in the file, kept as they are
 }
 
 /// Is this block unchanged since it was read (so its raw lines can be written back)?

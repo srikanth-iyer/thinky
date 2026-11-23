@@ -332,7 +332,7 @@ fn refs_in(text: &str, out: &mut Vec<String>, tags_only: bool) {
             let start = i + 1;
             let mut j = start;
             for (off, ch) in text[start..].char_indices() {
-                if ch.is_whitespace() || ",;!?\"'()[]{}<>`#".contains(ch) {
+                if ends_tag(ch) {
                     j = start + off;
                     break;
                 }
@@ -350,6 +350,14 @@ fn refs_in(text: &str, out: &mut Vec<String>, tags_only: bool) {
         prev = Some(ch);
         i += ch.len_utf8();
     }
+}
+
+/// Does `ch` end a `#tag`? A space, a mark of punctuation or brackets, or the invisible zero-width
+/// space (U+200B) that the app puts after a "#" in text from other apps to make it harmless
+/// (`clip::defuse`): "#\u{200B}MeToo" was still read as a tag with the invisible character at its
+/// front (Ponytail audit finding 8, Nov 23). One rule for the reader here and the rename (text.rs).
+pub(crate) fn ends_tag(ch: char) -> bool {
+    ch.is_whitespace() || ch == '\u{200B}' || ",;!?\"'()[]{}<>`#".contains(ch)
 }
 
 /// `[[ ... ]]` starting at byte `i` (pointing at the first '['), nesting aware.

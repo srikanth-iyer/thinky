@@ -12,6 +12,6 @@ Thanks for wanting to help. A few things keep thinky what it is:
 - **Read the guide.** `docs/ARCHITECTURE.md` (the map) and `CLAUDE.md` (the detailed rules) say where
   each kind of change belongs.
 
-Pull requests from forks run the tests only; signing and releasing happen only on `main` and need
-the maintainer's approval. By contributing you agree that your work is released under the AGPL-3.0
+Pull requests from forks run the tests only; signing and releasing happen only on `main`, where a
+push that passes every test is a release. By contributing you agree that your work is released under the AGPL-3.0
 like the rest of the project.

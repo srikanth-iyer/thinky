@@ -409,9 +409,31 @@ pub fn write_atomic_checked(path: &Path, text: &str, expect: Expect) -> Result<b
         Ok(()) => return Ok(true),
         Err(e) => e,
     };
-    let _ = std::fs::remove_file(&tmp);
-    write_flushed(path, text).map_err(|e2| format!("Couldn't save the page: {e} / {e2}"))?;
-    Ok(true)
+    // the new words stay in the temporary file until the page's own file is shown to hold them: the
+    // direct write empties the file first, so if it stops halfway (drive full, drive gone) the
+    // temporary file is the only whole copy left (review claim S4, Nov 22)
+    write_flushed(path, text).map_err(|e2| format!("Couldn't save the page: {e} / {e2} (the new words are kept in {})", tmp.display()))?;
+    match std::fs::read(path) {
+        // read back whole: the temporary copy isn't needed any more
+        Ok(now) if now == text.as_bytes() => {
+            let _ = std::fs::remove_file(&tmp);
+            Ok(true)
+        }
+        // written but not read back the same: the copy is kept and the save is reported as failed
+        _ => Err(format!("Couldn't save the page: it didn't read back the same (the new words are kept in {})", tmp.display())),
+    }
+}
+
+/// Each file that owns a page name only by its `title::` line, while the file named for that page
+/// waits (`Vault::misowned`), is read into the index again: the named file takes the name and the
+/// copy waits instead (review claim R5, Nov 22). `contents`: each file's text.
+fn give_names_back(vault: &mut Vault, contents: &HashMap<String, String>) {
+    for owner in vault.misowned() {
+        if let Some(text) = contents.get(&owner) {
+            vault.remove(&owner); // the name is free: the file named for it takes it (Vault::promote)
+            vault.upsert(&owner, text); // the copy comes back, now waiting for the name
+        }
+    }
 }
 
 /// Write `text` to `path` and ask the system to put it on the disk before going on (Build 44). Without
@@ -856,18 +878,7 @@ fn rename_prop_in_text(text: &str, old: &str, new: &str) -> Option<(String, usiz
 /// Apply a page rename to one file's text. None when nothing changed.
 fn rename_in_text(text: &str, olds: &[String], new: &str, comma: &[String]) -> Option<String> {
     let mut doc = split_doc(text);
-    let mut changed = false;
-    if let Some(p) = crate::text::rename_refs(&doc.preamble, olds, new, comma) {
-        doc.preamble = p;
-        changed = true;
-    }
-    for b in &mut doc.blocks {
-        if let Some(t) = crate::text::rename_refs(&b.text, olds, new, comma) {
-            b.text = t;
-            changed = true;
-        }
-    }
-    changed.then(|| keep_shape(Some(text), join_doc(&doc), doc.crlf))
+    rename_doc(&mut doc, olds, new, comma).then(|| keep_shape(Some(text), join_doc(&doc), doc.crlf))
 }
 
 /// A renamed (or merged) page's links in another file, made safely (`rewrite`: a version saved
@@ -878,16 +889,27 @@ fn link_rewrite(path: &Path, olds: &[String], new: &str, comma: &[String]) -> Op
 }
 
 /// `rename_in_text` on a page already split: links to `olds` in its properties and notes now point
-/// at `new` (only the notes that change are touched).
-fn rename_doc(doc: &mut Doc, olds: &[String], new: &str, comma: &[String]) {
+/// at `new` (only the notes that change are touched). true: something changed.
+fn rename_doc(doc: &mut Doc, olds: &[String], new: &str, comma: &[String]) -> bool {
+    let mut changed = false; // whether any link was changed
     if let Some(p) = crate::text::rename_refs(&doc.preamble, olds, new, comma) {
-        doc.preamble = p;
+        doc.preamble = p; // the page's properties
+        changed = true;
     }
     for b in &mut doc.blocks {
-        if let Some(t) = crate::text::rename_refs(&b.text, olds, new, comma) {
-            b.text = t;
+        // a plain paragraph (no bullet) gets the change in its own lines, so its layout stays
+        // (else it, and everything after it, would be written back as bullets: review claim S5)
+        if let (true, Some(raw)) = (b.plain, &b.raw) {
+            if let Some(r) = crate::text::rename_refs(raw, olds, new, comma) {
+                crate::doc::set_plain_raw(b, r); // new lines and the words read from them
+                changed = true;
+            }
+        } else if let Some(t) = crate::text::rename_refs(&b.text, olds, new, comma) {
+            b.text = t; // a note: its words; it is written as a note again
+            changed = true;
         }
     }
+    changed
 }
 
 /// Can a page's YAML header (if it has one) all become `key:: value` properties (`parse::yaml_props`):
@@ -1173,6 +1195,7 @@ impl App {
             vault.upsert(rel, &contents[rel]);
             files.insert(rel.clone(), stamps[rel]);
         }
+        give_names_back(&mut vault, &contents); // a copy read before the real page gives its name back
         for rel in &non_utf8 {
             contents.remove(rel); // never cache text we couldn't read exactly
         }
@@ -1317,6 +1340,7 @@ impl App {
             self.born.remove(&rel);
             changed.push(rel);
         }
+        give_names_back(&mut self.vault, &self.contents); // (a page's file brought back by a sync app)
         // the settings, changed elsewhere (Logseq, the phone) or arrived late (Google Drive); not when
         // the app itself changed them meanwhile (read again next time)
         if let Some((st, cfg)) = ch.config.filter(|_| self.config_stamp == ch.config_base) {
@@ -1543,6 +1567,16 @@ impl App {
                     text = add_title_prop(&text, &info.name);
                 }
             }
+            // the file already holds exactly these words (a letter typed and deleted again, a note
+            // folded and opened): nothing is written, so no sync app uploads it and no watcher wakes
+            // (review claim 8, Nov 22). What the app keeps in memory is brought up to date if needed.
+            if current.as_deref() == Some(text.as_str()) {
+                if self.contents.get(&rel) != Some(&text) {
+                    self.record_write(&rel, &text); // only memory is updated here, never the file
+                }
+                let merged = merged.map(|_| split_doc(&text)); // a merge that came to the same words
+                return Ok(SaveRes { ok: true, hash: content_hash(&text), conflict: false, merged });
+            }
             match &current {
                 // a new page: its own file (Vault::free_rel), written only where no file is yet; one
                 // that turned up meanwhile is a clash like any change made elsewhere
@@ -1605,7 +1639,7 @@ impl App {
     /// both have as they are. There's no "before" here (neither is older), so a stretch only one has
     /// is a choice too: nothing is taken in or left out unseen. Read only.
     pub fn compare_copy(&self, copy: &str) -> Result<CopyCompare, String> {
-        if !self.files.contains_key(copy) || !conflict_copy_of(copy, &self.files) {
+        if !self.files.contains_key(copy) || !conflict_copy_of(copy, &self.files, &self.vault) {
             return Err("That isn't a conflict copy in this notes folder.".into());
         }
         let orig = self.copy_original(copy).ok_or("The page this is a copy of isn't there (renamed or deleted?), so there's nothing to compare it with.")?;
@@ -1661,7 +1695,7 @@ impl App {
             copy_stems(copy).into_iter().find_map(|stem| {
                 let name = stem.rsplit('/').next().unwrap_or(&stem);
                 let info = self.vault.page_info(name);
-                info.path.filter(|p| info.exists && p != copy && !conflict_copy_of(p, &self.files))
+                info.path.filter(|p| info.exists && p != copy && !conflict_copy_of(p, &self.files, &self.vault))
             })
         })
     }
@@ -1669,7 +1703,7 @@ impl App {
     /// The conflict copy goes to the bin once its page has what was wanted from it (Compare and
     /// merge). Only a conflict copy whose page is there.
     pub fn bin_copy(&mut self, copy: &str) -> Result<(), String> {
-        if !self.files.contains_key(copy) || !conflict_copy_of(copy, &self.files) || self.copy_original(copy).is_none() {
+        if !self.files.contains_key(copy) || !conflict_copy_of(copy, &self.files, &self.vault) || self.copy_original(copy).is_none() {
             return Err("That isn't a conflict copy in this notes folder.".into());
         }
         self.bin_file(copy).map_err(|e| format!("The copy couldn't be moved to the bin: {e}"))?;
@@ -1852,7 +1886,10 @@ impl App {
             let mut rest = t;
             while let Some(i) = rest.find("<%") {
                 out.push_str(&rest[..i]);
-                let Some(j) = rest[i..].find("%>") else {
+                // the closing "%>" is looked for after the opening "<%": in "<%>" the two share the
+                // "%", and the mark's inside would be cut backwards, a crash that kept a new journal
+                // day from opening (Ponytail audit finding 5, Nov 23). j counts from i, as before.
+                let Some(j) = rest[i + 2..].find("%>").map(|j| j + 2) else {
                     out.push_str(&rest[i..]);
                     rest = "";
                     break;
@@ -2674,6 +2711,36 @@ const BIN_INDEX: &str = ".thinky-bin.json";
 /// The largest picture or file added to `assets/` (the app's editor says so before reading one).
 pub const MAX_ASSET_BYTES: usize = 25_000_000;
 
+/// What the shells send in place of a picture in the notes folder bigger than `MAX_ASSET_BYTES`
+/// (synced from elsewhere: the app itself never adds one). A plain broken picture would leave you
+/// guessing why, so the note shows this small picture instead, which says it (he asked, Nov 23).
+/// An SVG with no script or link in it, drawn in the page's own light or dark look; Tauri's
+/// vault:// (src-tauri/src/lib.rs) and the dev server (dev/src/main.rs) both send it.
+pub fn too_big_picture() -> String {
+    // the limit in whole megabytes, as the editor's own message says it ("25 MB")
+    let mb = MAX_ASSET_BYTES / 1_000_000;
+    let say = format!("Picture not shown: it is over thinky's {mb} MB limit");
+    format!(
+        concat!(
+            // a 440×56 picture: a soft box with the words in the middle, the system font
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"440\" height=\"56\" viewBox=\"0 0 440 56\" role=\"img\" aria-label=\"{say}\">",
+            "<title>{say}</title>",
+            // light look first; the dark look when the screen is dark
+            "<style>rect{{fill:#f0efec;stroke:#c9c6bf}}text{{fill:#3b3a36;font:14px system-ui,sans-serif}}",
+            "@media (prefers-color-scheme: dark){{rect{{fill:#2a2b30;stroke:#4a4b52}}text{{fill:#d8d8dc}}}}</style>",
+            "<rect x=\"1\" y=\"1\" width=\"438\" height=\"54\" rx=\"8\"/>",
+            "<text x=\"220\" y=\"33\" text-anchor=\"middle\">{say}</text></svg>"
+        ),
+        say = say
+    )
+}
+
+/// Whether a file in the notes folder is too big for the app to show (more than `MAX_ASSET_BYTES`).
+/// False when it can't be read: that is a missing picture, not a big one.
+pub fn too_big_to_show(path: &Path) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| m.len() > MAX_ASSET_BYTES as u64)
+}
+
 /// Pictures the app shows in a note (by file name).
 pub fn is_picture(name: &str) -> bool {
     let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
@@ -3232,7 +3299,6 @@ pub fn alias_clashes(pages: &[crate::vault::PageEntry]) -> Vec<(String, Vec<Stri
     out
 }
 
-/// "Page (1).md", "Page (conflict 2026-…).md", "Page [Conflict].md": a sync copy of "Page.md"?
 /// A note's words for comparing a page with its conflict copy (`compare_copy`): spaces at line ends
 /// dropped, and the fold mark `collapsed:: true/false`, which only says whether it was folded.
 fn same_words(text: &str) -> String {
@@ -3246,44 +3312,75 @@ fn same_words(text: &str) -> String {
 }
 
 /// The page a conflict copy is a copy of, when its file is there: "X (conflict 2026-11-08-13-18-30).md",
-/// "X.sync-conflict-20261108-131830-ABCDEFG.md" (Syncthing), "X (1).md", "X-conflict….md" → "X.md".
+/// "X.sync-conflict-20261108-131830-ABCDEFG.md" (Syncthing), "X (Sam's conflicted copy 2026-11-08).md"
+/// (Dropbox), "X (1).md" → "X.md".
 fn original_of(rel: &str, all: &HashMap<String, Stamp>) -> Option<String> {
     copy_stems(rel).into_iter().map(|c| format!("{c}.md")).find(|c| c != rel && all.contains_key(c))
 }
 
+/// The marks sync apps put in a conflict copy's file name, in small letters: Google Drive and
+/// Nextcloud (" (conflict…", " (conflicted copy…"), Syncthing (".sync-conflict-…"), and the form
+/// some apps write in brackets (" (sync-conflict…"). A name that only holds the word "conflict"
+/// ("Team conflict.md", a real page) has none of them (Ponytail audit finding 1, Nov 23).
+const COPY_MARKS: [&str; 3] = [" (conflict", ".sync-conflict", " (sync-conflict"];
+
 /// What a conflict copy's file name is a copy of, without the sync app's mark: "Daily/X" for
 /// "Daily/X (conflict …).md" (folder kept), the likeliest first.
 fn copy_stems(rel: &str) -> Vec<String> {
-    let Some(stem) = rel.strip_suffix(".md") else { return vec![] };
+    let Some(stem) = rel.strip_suffix(".md") else { return vec![] }; // only Markdown files
     // ASCII capitals only: the marks are ASCII, and the places found must be the stem's own (a full
     // lowercase changes lengths: "İ" is 2 bytes, "i̇" 3; review claim 9b)
     let lower = stem.to_ascii_lowercase();
-    let mut cands = vec![];
-    for mark in [" (conflict", ".sync-conflict", " (sync-conflict", "-conflict", "_conflict", " conflict"] {
+    let mut cands = vec![]; // the names it may be a copy of, likeliest first
+    for mark in COPY_MARKS {
         if let Some(k) = lower.rfind(mark) {
-            cands.push(stem[..k].to_string());
+            cands.push(stem[..k].to_string()); // the name before the sync app's mark
         }
     }
-    if let Some((base, tail)) = stem.rsplit_once(" (") {
-        if tail.strip_suffix(')').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())) {
-            cands.push(base.to_string());
+    // Dropbox: "X (Sam's conflicted copy 2026-11-08)": the name ends at the " (" that opens the mark
+    if let Some(k) = lower.rfind("'s conflicted copy") {
+        if let Some(open) = lower[..k].rfind(" (") {
+            cands.push(stem[..open].to_string()); // the name before " (Sam's conflicted copy …)"
         }
+    }
+    // "X (1)": Google Drive and OneDrive's numbered copy
+    if let Some((base, _)) = numbered(stem) {
+        cands.push(base.to_string()); // the name before " (1)"
     }
     cands.into_iter().map(|c| c.trim_end().to_string()).filter(|c| !c.is_empty() && !c.ends_with('/')).collect()
 }
 
-fn conflict_copy_of(rel: &str, all: &HashMap<String, Stamp>) -> bool {
-    let Some(stem) = rel.strip_suffix(".md") else { return false };
-    let lower = stem.to_ascii_lowercase();
-    if lower.contains("conflict") || lower.contains("sync-conflict") {
-        return true;
+/// "X (2)" → ("X", "2"): a file name ending in a number in brackets, the shape a numbered copy has.
+fn numbered(stem: &str) -> Option<(&str, &str)> {
+    let (base, tail) = stem.rsplit_once(" (")?; // the part before the last " (" and after it
+    let n = tail.strip_suffix(')')?; // what is between the brackets
+    // one or two digits: sync apps count copies from (1) and the app's own names from (2); a year in
+    // brackets ("Budget (2027)") is a page's real name, not a copy number
+    (!n.is_empty() && n.len() <= 2 && n.bytes().all(|b| b.is_ascii_digit())).then_some((base, n))
+}
+
+/// Is file `rel` a sync app's conflict copy? Only a name with a sync app's mark (`COPY_MARKS`,
+/// Dropbox's "'s conflicted copy"), or a numbered "X (N).md" next to "X.md" that claims the same
+/// page as "X.md" or no page name of its own. The app makes "X (2).md" itself for a new page whose
+/// file name is taken (`Vault::free_rel`), with a `title::` naming another page: that is a real page,
+/// never offered for the bin (Ponytail audit finding 1, Nov 23: "Team conflict.md" and such pages
+/// were listed as copies, and Compare and merge moved them to the bin).
+fn conflict_copy_of(rel: &str, all: &HashMap<String, Stamp>, vault: &crate::vault::Vault) -> bool {
+    let Some(stem) = rel.strip_suffix(".md") else { return false }; // only Markdown files
+    let lower = stem.to_ascii_lowercase(); // the marks in any capitals
+    if COPY_MARKS.iter().any(|m| lower.contains(m)) || lower.contains("'s conflicted copy") {
+        return true; // a sync app's own mark
     }
-    if let Some((base, tail)) = stem.rsplit_once(" (") {
-        if tail.strip_suffix(')').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())) {
-            return all.contains_key(&format!("{base}.md"));
-        }
+    let Some((base, _)) = numbered(stem) else { return false }; // not "X (N)" either
+    let original = format!("{base}.md"); // the file it would be a copy of
+    if !all.contains_key(&original) {
+        return false; // no "X.md" next to it: a page of its own
     }
-    false
+    let mine = vault.key_of_file(rel); // the page this file claims
+    let theirs = vault.key_of_file(&original); // the page "X.md" claims
+    let by_name = crate::key(&vault.title_from_path(rel).0); // the page its file name alone would give
+    // a copy claims what "X.md" claims (same title:: line), or has no title:: line of its own
+    mine.is_none() || mine == theirs || mine == Some(by_name.as_str())
 }
 
 /// Read-only health check of a vault: load time and round-trip safety of every file.
@@ -3307,7 +3404,7 @@ pub fn check_vault_at(root: &Path, now: u64) -> Result<CheckReport, String> {
     fails.sort();
     let mut non_utf8: Vec<String> = app.non_utf8.iter().cloned().collect();
     non_utf8.sort();
-    let mut conflict_copies: Vec<String> = app.files.keys().filter(|r| conflict_copy_of(r, &app.files)).cloned().collect();
+    let mut conflict_copies: Vec<String> = app.files.keys().filter(|r| conflict_copy_of(r, &app.files, &app.vault)).cloned().collect();
     conflict_copies.sort();
     let mut biggest: Vec<(String, usize)> = app
         .contents

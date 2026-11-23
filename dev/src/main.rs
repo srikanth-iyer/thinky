@@ -32,21 +32,8 @@ fn mime(p: &std::path::Path) -> &'static str {
 }
 
 fn decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            if let Some(v) = std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
+    // the core's decoder (outline_core::link::percent_bytes), so all of them agree
+    String::from_utf8_lossy(&outline_core::link::percent_bytes(s, false)).into_owned()
 }
 
 struct Request {
@@ -122,29 +109,6 @@ struct Server {
 /// Saved keys: (service, key, the address saved with it: only "Other"'s, whose address the person types).
 static AI_KEYS: Mutex<Vec<(String, String, String)>> = Mutex::new(Vec::new());
 
-/// Said when a request would carry a service's key to an address that isn't that service's (the
-/// same words as the Windows and Android shells).
-const KEY_ELSEWHERE: &str = "That address isn't the one this service's key belongs to, so the key wasn't sent.";
-
-/// The key to send with `req` for `service` (from `saved`: its key and the address saved with it), and
-/// where it goes. Like the app's shells: where the key goes comes from the service (core
-/// `ai::key_header`), never from the page's request, and a key goes only to its own service's
-/// address (`ai::key_may_go`; review claim 1).
-fn key_for(service: &str, req: &mut outline_core::ai::Request, saved: Option<(String, String)>) -> Result<Option<String>, String> {
-    let header = outline_core::ai::key_header(service);
-    req.auth = header.map(String::from);
-    match (header, saved) {
-        (Some(_), Some((key, base))) => {
-            let other = (!base.is_empty()).then_some(base.as_str());
-            if !outline_core::ai::key_may_go(service, &req.url, other) {
-                return Err(KEY_ELSEWHERE.into());
-            }
-            Ok(Some(key))
-        }
-        _ => Ok(None),
-    }
-}
-
 fn ai_command(cmd: &str, args: &serde_json::Value) -> Option<Result<serde_json::Value, String>> {
     use serde_json::json;
     let s = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -166,11 +130,17 @@ fn ai_command(cmd: &str, args: &serde_json::Value) -> Option<Result<serde_json::
         }
         "ai_key_has" => Ok(json!(keys().iter().any(|(q, ..)| *q == s("provider")))),
         "ai_send" => (|| {
-            let mut req: outline_core::ai::Request = serde_json::from_value(args.get("req").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
+            let req: outline_core::ai::Request = serde_json::from_value(args.get("req").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
             let service = s("provider");
+            // the key saved for this service, and the address saved with it ("" for all but "Other")
             let saved = keys().iter().find(|(q, ..)| *q == service).map(|(_, k, b)| (k.clone(), b.clone()));
-            let key = key_for(&service, &mut req, saved)?;
-            let (status, body) = outline_core::ai::send_with_curl(Path::new("curl"), &req, key.as_deref(), &std::env::temp_dir().join("thinky-dev-ai"))?;
+            let key = saved.as_ref().map(|(k, _)| k.as_str());
+            let base = saved.as_ref().map(|(_, b)| b.as_str()).filter(|b| !b.is_empty());
+            // as the app sends (audit finding 15: the core's one way): the header and whether a key is
+            // needed come from the service, never the page, and a key goes only to its own service's
+            // address (`ai::key_may_go`; review claim 1), else refused with nothing sent
+            let tmp = std::env::temp_dir().join("thinky-dev-ai");
+            let (status, body) = outline_core::ai::send_keyed(Path::new("curl"), &service, &req, key, base, &tmp)?;
             Ok(json!({ "status": status, "body": body }))
         })(),
         _ => return None,
@@ -260,7 +230,14 @@ fn handle(sv: &Server, stream: TcpStream) {
     }
     if let Some(rel) = url.strip_prefix("/vault/") {
         let root = sv.state.lock().unwrap_or_else(|p| p.into_inner()).as_ref().map(|a| a.root.clone());
-        return match root.and_then(|r| asset_file(&r, &decode(rel))).and_then(|f| std::fs::read(&f).ok().map(|b| (f, b))) {
+        let file = root.and_then(|r| asset_file(&r, &decode(rel)));
+        // a picture over the app's limit: a small picture that says so, as the app's vault:// does
+        // (only its size is read, never the file)
+        if file.as_deref().is_some_and(|f| outline_core::app::is_picture(&f.to_string_lossy()) && outline_core::app::too_big_to_show(f)) {
+            let svg = outline_core::app::too_big_picture();
+            return respond(&stream, 200, &[("Content-Type", "image/svg+xml"), ("Content-Security-Policy", VAULT_CSP), ("X-Content-Type-Options", "nosniff")], svg.as_bytes());
+        }
+        return match file.and_then(|f| std::fs::read(&f).ok().map(|b| (f, b))) {
             // (a file from the notes folder is never a page that runs: an SVG or HTML file synced
             // into assets/ could otherwise run script with the app's own rights)
             Some((f, bytes)) => respond(&stream, 200, &[("Content-Type", mime(&f)), ("Content-Security-Policy", VAULT_CSP), ("X-Content-Type-Options", "nosniff")], &bytes),
@@ -321,72 +298,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use outline_core::ai::Request;
-
-    fn req(url: &str, auth: Option<&str>) -> Request {
-        Request { method: "POST".into(), url: url.into(), auth: auth.map(String::from), headers: vec![], body: None, local: false, key_required: true }
-    }
-    fn saved(key: &str, base: &str) -> Option<(String, String)> {
-        Some((key.into(), base.into()))
-    }
-
-    #[test]
-    fn a_key_goes_only_to_its_own_service() {
-        // the preset services: their own address, with where the key goes taken from the service
-        let mut r = req("https://api.anthropic.com/v1/messages", Some("bearer"));
-        assert_eq!(key_for("claude", &mut r, saved("sk-a", "")), Ok(Some("sk-a".into())));
-        assert_eq!(r.auth.as_deref(), Some("x-api-key"), "the page's own `auth` is not used");
-        let mut r = req("https://api.openai.com/v1/chat/completions", Some("x-api-key"));
-        assert_eq!(key_for("openai", &mut r, saved("sk-o", "")), Ok(Some("sk-o".into())));
-        assert_eq!(r.auth.as_deref(), Some("bearer"));
-        let mut r = req("https://openrouter.ai/api/v1/models", None);
-        assert_eq!(key_for("openrouter", &mut r, saved("k", "")), Ok(Some("k".into())));
-        assert_eq!(r.auth.as_deref(), Some("bearer"), "a request that names no auth still gets the service's");
-        let mut r = req("https://generativelanguage.googleapis.com/v1beta/openai/models", None);
-        assert_eq!(key_for("gemini", &mut r, saved("g", "")), Ok(Some("g".into())));
-        // the review's case: the page points a preset service's key somewhere else
-        for bad in [
-            "https://attacker.example/v1/messages",
-            "https://api.anthropic.com.attacker.example/v1/messages",
-            "https://api.anthropic.com@attacker.example/v1/messages",
-            "http://api.anthropic.com/v1/messages",
-            "HTTPS://api.anthropic.com/v1/messages",
-            "https://api.anthropic.com/v10/messages",
-            " https://api.anthropic.com/v1/messages",
-            "https://api.openai.com/v1/messages",
-            "",
-        ] {
-            let mut r = req(bad, Some("x-api-key"));
-            assert_eq!(key_for("claude", &mut r, saved("sk-a", "")), Err(KEY_ELSEWHERE.into()), "{bad}");
-        }
-        // a saved base never widens a preset service's own address
-        let mut r = req("https://attacker.example/v1/messages", None);
-        assert!(key_for("claude", &mut r, saved("sk-a", "https://attacker.example/v1")).is_err());
-    }
-
-    #[test]
-    fn other_keeps_the_address_saved_with_its_key() {
-        let mut r = req("https://ai.example.org/v1/chat/completions", None);
-        assert_eq!(key_for("other", &mut r, saved("k", "https://ai.example.org/v1")), Ok(Some("k".into())));
-        assert_eq!(r.auth.as_deref(), Some("bearer"));
-        let mut r = req("http://127.0.0.1:9/v1/models", None);
-        assert_eq!(key_for("other", &mut r, saved("k", "http://127.0.0.1:9/v1/")), Ok(Some("k".into())), "the saved address as check_base gives it");
-        let mut r = req("https://attacker.example/v1/models", None);
-        assert_eq!(key_for("other", &mut r, saved("k", "https://ai.example.org/v1")), Err(KEY_ELSEWHERE.into()), "the address changed after the key was saved");
-        let mut r = req("https://ai.example.org/v1/models", None);
-        assert_eq!(key_for("other", &mut r, saved("k", "")), Err(KEY_ELSEWHERE.into()), "a key saved with no address goes nowhere");
-        let mut r = req("https://ai.example.org/v1/models", None);
-        assert_eq!(key_for("other", &mut r, None), Ok(None), "no key saved: the request goes without one");
-    }
-
-    #[test]
-    fn local_programs_and_unknown_services_get_no_key() {
-        for s in ["ollama", "lmstudio", "nosuch", ""] {
-            let mut r = req("http://localhost:11434/v1/models", Some("bearer"));
-            assert_eq!(key_for(s, &mut r, saved("k", "http://localhost:11434/v1")), Ok(None), "{s}");
-            assert_eq!(r.auth, None, "{s}: nothing tells curl to send a key");
-        }
-    }
+    // (where a key may go is the core's send_keyed's, tested in core/tests/ai_keys.rs)
+    use outline_core::ai::KEY_ELSEWHERE;
 
     #[test]
     fn the_key_commands_keep_others_address() {
@@ -404,6 +317,23 @@ mod tests {
         assert_eq!(set("openai", "sk-o", ""), Ok(json!(true)));
         let out = ai_command("ai_send", &json!({ "provider": "openai", "req": { "method": "GET", "url": "https://attacker.example/v1/models", "auth": "bearer" } })).unwrap();
         assert_eq!(out, Err(KEY_ELSEWHERE.into()));
+        // ai_send goes through the core's send_keyed (audit finding 15): "Other"'s key only to the
+        // address saved with it, a saved address never widens a preset service's, and a key saved
+        // with no address goes nowhere
+        let send = |p: &str, url: &str| ai_command("ai_send", &json!({ "provider": p, "req": { "method": "GET", "url": url, "auth": "x-api-key" } })).unwrap();
+        assert_eq!(set("other", "sk-x", "https://ai.example.org/v1"), Ok(json!(true)));
+        assert_eq!(send("other", "https://attacker.example/v1/models"), Err(KEY_ELSEWHERE.into()));
+        assert_eq!(send("other", "https://ai.example.org.attacker.example/v1/models"), Err(KEY_ELSEWHERE.into()));
+        assert_eq!(set("claude", "sk-c", "https://attacker.example/v1"), Ok(json!(true))); // (the bad key above removed it)
+        assert_eq!(send("claude", "https://attacker.example/v1/models"), Err(KEY_ELSEWHERE.into()), "Claude's key, though an address was typed with it");
+        AI_KEYS.lock().unwrap().push(("other".into(), "sk-old".into(), String::new())); // saved before addresses were kept
+        AI_KEYS.lock().unwrap().retain(|(q, k, _)| q != "other" || k == "sk-old");
+        assert_eq!(send("other", "https://ai.example.org/v1/models"), Err(KEY_ELSEWHERE.into()));
+        // the header and whether a key is needed come from the service: Claude with no key saved is
+        // refused before anything is sent, though the page says none is needed
+        assert_eq!(set("claude", "", ""), Ok(json!(false)));
+        let out = ai_command("ai_send", &json!({ "provider": "claude", "req": { "method": "GET", "url": "https://api.anthropic.com/v1/models", "key_required": false } })).unwrap();
+        assert!(out.unwrap_err().starts_with("No key is saved"));
     }
 
     fn scratch(name: &str) -> PathBuf {

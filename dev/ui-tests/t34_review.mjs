@@ -121,7 +121,10 @@ console.log('1. an AI key goes only to its own service');
   const r3 = await call('ai_send', { provider: 'openai', req: req(baseB + '/models') });
   check(/isn't the one/.test(r3.err || '') && seen.b.length === 0, 'OpenAI’s key to a stand-in address: refused, nothing sent', JSON.stringify(r3));
   const r4 = await call('ai_send', { provider: 'claude', req: req(baseB + '/models', 'x-api-key') });
-  check(r4.ok && seen.b.length === 1 && !seen.b[0].xkey && !seen.b[0].auth, 'no key saved for it: the request goes, with no key', JSON.stringify([r4, seen.b]));
+  // a service that needs a key, with none saved: refused before anything is sent (whether a key is needed
+  // comes from the service, never the page's key_required; Windows always did this, and since audit
+  // finding 15 the dev server goes through the same core function, ai::send_keyed)
+  check(/No key is saved/.test(r4.err || '') && seen.b.length === 0, 'no key saved for a service that needs one: refused, nothing sent', JSON.stringify([r4, seen.b]));
   seen.b.length = 0;
   const r5 = await call('ai_send', { provider: 'ollama', req: req(baseB + '/models') });
   check(r5.ok && seen.b.length === 1 && !seen.b[0].auth, 'a local program: never a key', JSON.stringify(seen.b));
@@ -212,10 +215,16 @@ console.log('AI panels: their Esc listeners go with them');
     document.removeEventListener = (t, f, o) => { if (t === 'keydown' && o === true && mine.has(f)) { mine.delete(f); window.__held.delete(f); window.__keys--; } return rem(t, f, o); };
   });
   for (let k = 0; k < 3; k++) {
+    // mark the panel the round before left open, so the wait below is for the new one: the menu's
+    // choice makes the panel a moment after the click (it loads ai-page.js first), and a wait for any
+    // panel was met at once by the old one. On GitHub's slower machines the third panel then came
+    // after the Esc below: Esc closed the second, the third opened, one panel and listener were left.
+    await page.evaluate(() => document.querySelector('.ai-panel')?.setAttribute('data-old', ''));
     await page.click('.title-row [data-a="more"]');
     await page.waitForSelector('.pop:not([hidden])');
     await page.locator('.pop:not([hidden]) :text("Ask about this page")').click();
-    await page.waitForSelector('.ai-panel');
+    // (the new panel takes the old one's place, so only the new one has no data-old)
+    await page.waitForSelector('.ai-panel:not([data-old])');
   }
   check(await page.locator('.ai-panel').count() === 1, 'one panel at a time');
   check(await count() === 1, 'three opened, one listener left (the open one’s)', await count());

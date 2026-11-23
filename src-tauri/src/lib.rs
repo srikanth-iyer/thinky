@@ -158,39 +158,8 @@ fn watch_notes(app: &tauri::AppHandle, a: &App) {
 
 /// `%20` etc. in a URL path.
 fn decode_path(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            if let Some(v) = std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-fn mime(p: &std::path::Path) -> &'static str {
-    match p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
-        Some("png") => "image/png",
-        Some("jpg" | "jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
-        Some("svg") => "image/svg+xml",
-        Some("bmp") => "image/bmp",
-        Some("ico") => "image/x-icon",
-        Some("avif") => "image/avif",
-        Some("pdf") => "application/pdf",
-        Some("mp4") => "video/mp4",
-        Some("webm") => "video/webm",
-        Some("mp3") => "audio/mpeg",
-        _ => "application/octet-stream",
-    }
+    // the core's decoder (outline_core::link::percent_bytes), so all of them agree
+    String::from_utf8_lossy(&outline_core::link::percent_bytes(s, false)).into_owned()
 }
 
 fn builder() -> tauri::Builder<tauri::Wry> {
@@ -239,16 +208,30 @@ fn builder() -> tauri::Builder<tauri::Wry> {
         })
         // pictures in notes: vault://localhost/assets/x.png → <notes folder>/assets/x.png, read by a
         // few threads in turn (a page of a hundred pictures asks for them all at once), none bigger
-        // than ASSET_MAX (each is read whole)
+        // than ASSET_MAX (25 MB, each is read whole; a bigger picture gets a small picture saying so,
+        // `too_big_picture`), sent as a picture type (shell_rules::picture_type)
         .register_asynchronous_uri_scheme_protocol("vault", |_ctx, req, responder| {
             let path = decode_path(req.uri().path());
             static POOL: OnceLock<shell_rules::Pool> = OnceLock::new();
             POOL.get_or_init(|| shell_rules::Pool::new(4)).run(move || {
                 let root = ROOT.lock().unwrap_or_else(|p| p.into_inner()).clone();
                 let file = root.and_then(|r| outline_core::app::asset_file(&r, &path));
+                // a picture over the app's limit: a small picture that says so, not a broken one
+                // (outline_core::app::too_big_picture; read only its size, never the file)
+                if file.as_deref().is_some_and(|f| shell_rules::picture_type(f).starts_with("image/") && outline_core::app::too_big_to_show(f)) {
+                    let r = tauri::http::Response::builder()
+                        .header(tauri::http::header::CONTENT_TYPE, "image/svg+xml")
+                        .header("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'")
+                        .header("X-Content-Type-Options", "nosniff")
+                        .body(outline_core::app::too_big_picture().into_bytes());
+                    if let Ok(r) = r {
+                        responder.respond(r);
+                    }
+                    return;
+                }
                 let resp = match file.and_then(|f| shell_rules::read_capped(&f, shell_rules::ASSET_MAX).ok().map(|b| (f, b))) {
                     Some((f, bytes)) => tauri::http::Response::builder()
-                        .header(tauri::http::header::CONTENT_TYPE, mime(&f))
+                        .header(tauri::http::header::CONTENT_TYPE, shell_rules::picture_type(&f))
                         .header(tauri::http::header::CACHE_CONTROL, "max-age=600")
                         // never a page that runs: an SVG or HTML file synced into assets/ could
                         // otherwise run script with the app's own rights (dev/src/main.rs the same)

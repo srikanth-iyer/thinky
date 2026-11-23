@@ -5,6 +5,8 @@
 // numbered), table rows, pictures on the web. Dropped: styles, scripts, comments, Word's own markup
 // (its list bullets, <o:p>…), anything hidden.
 
+import { tagBody } from './render.js'; // (how a page's name is written after a "#")
+
 const DROP = new Set(['SCRIPT', 'STYLE', 'HEAD', 'TITLE', 'META', 'LINK', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'MATH', 'IFRAME', 'OBJECT', 'EMBED',
   'CANVAS', 'VIDEO', 'AUDIO', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'XML']);
 const BLOCKS = 'p,div,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,pre,table,tr,td,th,thead,tbody,tfoot,caption,section,article,header,footer,aside,main,nav,figure,figcaption,dl,dt,dd,hr,address,center,form,fieldset,details,summary';
@@ -81,7 +83,8 @@ export function htmlToNotes(html) {
     if (/^[0-9a-f-]{36}$/i.test(n.dataset.ref || '')) return `((${n.dataset.ref}))`; // (this app's block reference)
     if (tag === 'A' && n.dataset.page) { // (this app's page link or tag)
       const name = n.dataset.page;
-      return n.classList.contains('tag') ? '#' + (/[\s,;!?"'()[\]{}<>`#]/.test(name) ? `[[${name}]]` : name) : `[[${name}]]`;
+      // a tag: #name, or #[[name]] when the bare form would read back as another page (render.js tagBody)
+      return n.classList.contains('tag') ? '#' + tagBody(name) : `[[${name}]]`;
     }
     if (/^(CODE|KBD|SAMP|TT)$/.test(tag)) {
       const t = n.textContent.replace(/\s+/g, ' ');

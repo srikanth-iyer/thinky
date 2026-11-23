@@ -7,7 +7,7 @@ globalThis.window = globalThis;
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 if (process.argv[2] === '--android-ai') { await androidAi(); process.exit(0); }
 const { tex } = await import('../../ui/math.js');
-const { inline } = await import('../../ui/render.js');
+const { inline, propsHtml, pagesIn, splitList, tagBody } = await import('../../ui/render.js');
 
 let fails = 0;
 const check = (c, m, x = '') => { if (c) console.log('  ok  ' + m); else { fails++; console.log('  FAIL ' + m + (x ? ' :: ' + String(x).slice(0, 300) : '')); } };
@@ -104,6 +104,55 @@ console.log('render.js: a link’s label holds no other link');
   // a label that isn't safe to link stays a span: its words may still link
   const h7 = inline('[[[Page]]](javascript:alert(1))');
   check(!h7.includes('javascript:') || !/<a[^>]*href="javascript/.test(h7), 'never a javascript: link', h7);
+}
+
+console.log('render.js: tags:: and alias:: values split only at commas outside [[ ]] (audit finding 9)');
+{
+  const pages = (html) => [...html.matchAll(/data-page="([^"]*)"/g)].map((m) => m[1].replace(/&#39;/g, "'").replace(/&amp;/g, '&'));
+  // the audit's case: a page name with a comma inside [[ ]]
+  check(JSON.stringify(pages(propsHtml([['tags', '[[New York, NY]], travel']]))) === '["New York, NY","travel"]', 'tags:: [[New York, NY]], travel → two links, the comma kept in the name', propsHtml([['tags', '[[New York, NY]], travel']]));
+  check(JSON.stringify(pages(propsHtml([['alias', 'NYC, [[New York, NY]]']]))) === '["NYC","New York, NY"]', 'alias:: too, the bracketed name last');
+  check(JSON.stringify(pages(propsHtml([['tags', '#[[A, B]], #c, [[d]]']]))) === '["A, B","c","d"]', '#[[A, B]], #c and [[d]]: each without its # or brackets');
+  check(JSON.stringify(pages(propsHtml([['tag', 'x, [[y, z]]']]))) === '["x","y, z"]' && JSON.stringify(pages(propsHtml([['aliases', 'p, [[q, r]]']]))) === '["p","q, r"]', 'tag:: and aliases:: as well');
+  // as before for plain lists
+  check(JSON.stringify(splitList('a, b,c')) === '["a","b","c"]', 'plain commas still split');
+  check(JSON.stringify(splitList(' a ,, , b ')) === '["a","b"]', 'empty items name no page');
+  check(JSON.stringify(splitList('[[ spaced ]]')) === '["spaced"]', 'spaces inside the brackets go');
+  check(JSON.stringify(splitList('[[a, [[b, c]]]], d')) === '["a, [[b, c]]","d"]', 'nested brackets: the commas inside stay (as the core reads it)');
+  check(JSON.stringify(splitList('[[open, b')) === '["[[open, b"]', 'an unclosed [[: the rest is one item (as the core reads it)');
+  check(JSON.stringify(splitList('a]], b')) === '["a]]","b"]', 'a stray ]]: commas after it still split (as the core reads it)');
+  check(JSON.stringify(splitList('')) === '[]', 'an empty value: no pages');
+  // other properties are drawn as words, not split
+  const other = propsHtml([['source', '[[New York, NY]], travel']]);
+  check(pages(other).length === 1 && pages(other)[0] === 'New York, NY', 'another property: its [[link]] as written in the words', other);
+}
+
+console.log('render.js: one rule for a #tag (audit finding 10)');
+{
+  // the filter buttons of Linked references and To-dos read tags as they are drawn
+  check(JSON.stringify(pagesIn('release #v1.2 today')) === '["v1.2"]', '#v1.2 is "v1.2", not "v1"', pagesIn('release #v1.2 today'));
+  check(JSON.stringify(pagesIn('see #v1.2.')) === '["v1.2"]', 'a "." after it is the sentence\'s');
+  check(JSON.stringify(pagesIn('#U.S. and #time: 5')) === '["U.S","time"]', 'a "." or ":" at its end is trimmed, as when drawn');
+  check(JSON.stringify(pagesIn('#a:b #c/d #e-f')) === '["a:b","c/d","e-f"]', 'a ":" or "/" inside it is kept');
+  check(JSON.stringify(pagesIn('#... #. #:')) === '[]', 'a tag of only dots or colons names no page');
+  check(JSON.stringify(pagesIn('#x, #y; #z! #w?')) === '["x","y","z","w"]', 'commas, semicolons, ! and ? end it');
+  check(JSON.stringify(pagesIn('a#b (#c) ,#d')) === '["c","d"]', 'only after a space, "(" or "," (not inside a word)');
+  check(JSON.stringify(pagesIn('#[[New York, NY]] [[ Page ]]')) === '["New York, NY","Page"]', '#[[…]] and [[…]] as before');
+  check(JSON.stringify(pagesIn('#a<b>')) === '["a"]', 'a "<" ends it, as when drawn');
+  // what pagesIn reads is what inline draws, for the same words
+  for (const w of ['#v1.2', '#U.S.', '#a:b:', '#x.y.z', '#café.', '#2026-11-23']) {
+    const drawn = (inline(w).match(/data-page="([^"]*)"/) || [])[1];
+    check(drawn === pagesIn(w)[0], `drawn and read the same: ${w} → ${drawn}`, `${drawn} vs ${pagesIn(w)[0]}`);
+  }
+  // writing a page's name after "#": bare only when it reads back as the same page
+  check(tagBody('Sourdough') === 'Sourdough' && tagBody('v1.2') === 'v1.2' && tagBody('a:b') === 'a:b', 'plain names, and "." or ":" inside: bare');
+  check(tagBody('U.S.') === '[[U.S.]]', 'a name ending in "." → [[U.S.]]');
+  check(tagBody('Time:') === '[[Time:]]' && tagBody('a.:') === '[[a.:]]', 'a name ending in ":" (or ".:") → [[ ]]');
+  check(tagBody('New York') === '[[New York]]' && tagBody('a,b') === '[[a,b]]' && tagBody('x#y') === '[[x#y]]' && tagBody('a<b') === '[[a<b]]', 'a space, comma, # or < → [[ ]] as before');
+  for (const n of ['U.S.', 'Time:', 'v1.2', 'New York', 'Q&A?', '...', 'a.b.']) {
+    const drawn = (inline('#' + tagBody(n)).match(/data-page="([^"]*)"/) || [])[1]?.replace(/&amp;/g, '&');
+    check(drawn === n, `#${tagBody(n)} reads back as "${n}"`, drawn);
+  }
 }
 
 console.log('ai.js on the phone: an answer that never comes back');

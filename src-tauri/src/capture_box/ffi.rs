@@ -1,5 +1,8 @@
-//! The Windows functions, messages and structures the native capture box and its shortcut-key
-//! helper (hotkey.rs) use, declared by hand (like win.rs and watch.rs: no Windows crate). Handles
+//! The Windows functions, messages and structures the app's Windows parts use (the native capture
+//! box, its shortcut-key helper hotkey.rs, win.rs, update.rs, ai_key.rs, links.rs, watch.rs),
+//! declared by hand in this one place (no Windows crate): one declaration per function, so a fix
+//! to one reaches every caller (audit finding 18). Functions only one file needs (the update's
+//! signature check, the saved AI keys, the folder watcher's own) stay in that file. Handles
 //! are plain `isize`s. Functions that older
 //! Windows versions lack, or that live in libraries the box only sometimes needs (the file picker,
 //! the PNG encoder), are looked up when needed (`proc_addr`), so they never slow the app's start.
@@ -248,6 +251,20 @@ impl FILETIME {
 }
 
 /// How a program is started (CreateProcessW).
+/// A date and time as Windows gives it (GetLocalTime: this computer's clock and time zone).
+#[repr(C)]
+#[derive(Default)]
+pub struct SYSTEMTIME {
+    pub year: u16,
+    pub month: u16,
+    pub weekday: u16,
+    pub day: u16,
+    pub hour: u16,
+    pub minute: u16,
+    pub second: u16,
+    pub ms: u16,
+}
+
 #[repr(C)]
 pub struct STARTUPINFOW {
     pub cb: u32,
@@ -636,10 +653,11 @@ extern "system" {
     pub fn GetSystemTimePreciseAsFileTime(t: *mut FILETIME);
     pub fn GetTickCount64() -> u64;
     pub fn GetLastError() -> u32;
-    /// (a pointer, as watch.rs and update.rs declare it)
+    /// (takes a pointer: watch.rs's and update.rs's handles are pointers; others pass `h as *mut c_void`)
     pub fn CloseHandle(h: *mut c_void) -> i32;
     pub fn CreateMutexW(sa: *const c_void, owner: i32, name: *const u16) -> isize;
     pub fn ReleaseMutex(h: isize) -> i32;
+    /// (takes a number; watch.rs passes its pointer handle `as isize`)
     pub fn WaitForSingleObject(h: isize, ms: u32) -> u32;
     pub fn OpenProcess(access: u32, inherit: i32, pid: u32) -> isize;
     pub fn GetExitCodeProcess(h: isize, code: *mut u32) -> i32;
@@ -647,6 +665,7 @@ extern "system" {
     pub fn CreateProcessW(app: *const u16, cmd: *mut u16, psa: *const c_void, tsa: *const c_void, inherit: i32, flags: u32, env: *const c_void, dir: *const u16, si: *const STARTUPINFOW, pi: *mut PROCESS_INFORMATION) -> i32;
     pub fn ResumeThread(h: isize) -> u32;
     pub fn GetSystemDirectoryW(buf: *mut u16, size: u32) -> u32;
+    pub fn GetLocalTime(st: *mut SYSTEMTIME);
     pub fn SetCurrentDirectoryW(dir: *const u16) -> i32;
     pub fn K32EmptyWorkingSet(p: isize) -> i32;
     pub fn K32GetProcessMemoryInfo(p: isize, c: *mut PROCESS_MEMORY_COUNTERS, cb: u32) -> i32;
@@ -660,6 +679,7 @@ extern "system" {
     pub fn RegSetValueExW(key: isize, name: *const u16, res: u32, kind: u32, data: *const u8, len: u32) -> i32;
     pub fn RegGetValueW(key: isize, sub: *const u16, name: *const u16, flags: u32, kind: *mut u32, data: *mut c_void, len: *mut u32) -> i32;
     pub fn RegDeleteKeyValueW(key: isize, sub: *const u16, name: *const u16) -> i32;
+    pub fn RegDeleteTreeW(key: isize, sub: *const u16) -> i32;
     pub fn RegCloseKey(key: isize) -> i32;
 }
 
@@ -698,6 +718,27 @@ extern "system" {
 /// A NUL-ended UTF-16 copy of `s`, as Windows takes text.
 pub fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
+}
+
+/// The same for a file name or path, which on Windows may hold text that isn't valid Unicode
+/// (so it is copied as Windows gave it, not through a `&str`).
+pub fn wide_os(s: &std::ffi::OsStr) -> Vec<u16> {
+    use std::os::windows::ffi::OsStrExt; // (encode_wide: an OsStr's UTF-16 as Windows keeps it)
+    s.encode_wide().chain(Some(0)).collect()
+}
+
+/// Windows' system folder (C:\Windows\System32 on most computers), as Windows says it is: where
+/// the programs the app starts by full path live (PowerShell, curl.exe) and where the shortcut-key
+/// helper stands. If Windows doesn't say (or its answer doesn't fit), the usual place.
+pub fn system_dir() -> std::path::PathBuf {
+    use std::os::windows::ffi::OsStringExt; // (from_wide: UTF-16 from Windows back to a path)
+    let mut buf = [0u16; 260]; // MAX_PATH, the longest the system folder can be
+    // (the folder's length in UTF-16 units; 0 on failure, more than the buffer if it didn't fit)
+    let n = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as u32) } as usize;
+    if n == 0 || n >= buf.len() {
+        return std::path::PathBuf::from(r"C:\Windows\System32");
+    }
+    std::path::PathBuf::from(std::ffi::OsString::from_wide(&buf[..n]))
 }
 
 /// A function in a Windows library, found when first needed (None when this Windows lacks it).

@@ -8,7 +8,8 @@
 //! folder handle behind (the outside review's claim 13: a blocking read never woke up, and each switch
 //! kept one more). An interrupted wait is simply started again, a folder made or moved in later is
 //! watched too (inotify isn't recursive), and on Windows a folder that can't be read is opened again
-//! after a pause instead of being given up.
+//! after a pause instead of being given up; on Linux and Android a top folder (pages/, journals/, the
+//! logseq folder) that isn't there yet, or went and came back, is watched once it is there (each wake).
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -95,8 +96,11 @@ fn backoff(tries: u32) -> u64 {
 
 #[cfg(windows)]
 mod platform {
+    // the Windows functions the rest of the app shares, declared once (capture_box/ffi.rs): one
+    // declaration each, so two can't disagree (WaitForSingleObject took a pointer here and a
+    // number there, audit finding 18)
+    use crate::capture_box::ffi::{wide_os, CloseHandle, GetLastError, WaitForSingleObject};
     use std::ffi::c_void;
-    use std::os::windows::ffi::OsStrExt;
     use std::path::{Path, PathBuf};
 
     type Handle = *mut c_void;
@@ -117,11 +121,8 @@ mod platform {
         fn ReadDirectoryChangesW(dir: Handle, buf: *mut c_void, len: u32, subtree: i32, filter: u32, ret: *mut u32, ov: *mut Overlapped, done: *const c_void) -> i32;
         fn CreateEventW(sa: *const c_void, manual_reset: i32, initial: i32, name: *const u16) -> Handle;
         fn ResetEvent(h: Handle) -> i32;
-        fn WaitForSingleObject(h: Handle, ms: u32) -> u32;
         fn GetOverlappedResult(h: Handle, ov: *mut Overlapped, got: *mut u32, wait: i32) -> i32;
         fn CancelIoEx(h: Handle, ov: *mut Overlapped) -> i32;
-        fn GetLastError() -> u32;
-        fn CloseHandle(h: Handle) -> i32;
     }
     const FILE_LIST_DIRECTORY: u32 = 1;
     const SHARE_ALL: u32 = 1 | 2 | 4;
@@ -155,7 +156,7 @@ mod platform {
 
     impl Folder {
         fn open(dir: &Path) -> Option<Folder> {
-            let wide: Vec<u16> = dir.as_os_str().encode_wide().chain(Some(0)).collect();
+            let wide = wide_os(dir.as_os_str());
             let flags = FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED;
             let h = unsafe { CreateFileW(wide.as_ptr(), FILE_LIST_DIRECTORY, SHARE_ALL, std::ptr::null(), OPEN_EXISTING, flags, std::ptr::null_mut()) };
             if h.is_null() || h as isize == -1 {
@@ -254,7 +255,7 @@ mod platform {
     /// the buffer before it goes.
     fn finish(f: &Folder, ov: &mut Overlapped, gen: usize) -> Got {
         loop {
-            let waited = unsafe { WaitForSingleObject(f.event, super::WAKE_MS) };
+            let waited = unsafe { WaitForSingleObject(f.event as isize, super::WAKE_MS) };
             if waited == WAIT_OBJECT_0 {
                 let mut n = 0u32;
                 if unsafe { GetOverlappedResult(f.h, ov, &mut n, 0) } != 0 {
@@ -381,6 +382,32 @@ mod platform {
             }
         }
 
+        /// A top folder (pages/, journals/) or the `logseq` folder that isn't watched: one that wasn't
+        /// there when the watch started (a fresh notes folder, a sync that hasn't brought it yet) or that
+        /// went and was made again. Tried on each wake, so it is watched about a second after it appears
+        /// (audit finding 14: before, it was never watched, and its notes' changes went unseen until the
+        /// app came back to the front). True when one was added: notes may already be in it.
+        pub fn add_missing(&mut self) -> bool {
+            let mut added = false; // whether any folder was added this time
+            for d in self.tops.clone() {
+                // already watched: its own path is among the watched folders
+                if self.paths.values().any(|p| *p == d) {
+                    continue;
+                }
+                let before = self.paths.len(); // how many folders were watched before trying
+                self.add_tree(&d, 0); // watches it and every folder in it, if it's there now
+                added |= self.paths.len() > before; // it's there now (a watch was added)
+            }
+            // the logseq folder (its own watch, -1 while there is none), as in add_all
+            if self.config_wd < 0 {
+                if let Some(wd) = self.add_one(&self.config, libc::IN_ONLYDIR) {
+                    self.config_wd = wd; // remembered: events from it are about the settings
+                    added = true;
+                }
+            }
+            added
+        }
+
         fn add_one(&self, dir: &Path, flags: u32) -> Option<i32> {
             let c = CString::new(dir.as_os_str().as_bytes()).ok()?;
             let wd = unsafe { libc::inotify_add_watch(self.fd, c.as_ptr(), MASK | flags) };
@@ -460,6 +487,11 @@ mod platform {
         let Some(mut w) = Watches::new(dirs, config) else { return };
         let mut buf = vec![0u8; 64 * 1024];
         while super::current(gen) {
+            // each wake (at most WAKE_MS apart): a top folder that wasn't there before and is now gets
+            // watched, and the page is told to look (audit finding 14; Windows opens its folders again too)
+            if w.add_missing() {
+                signal();
+            }
             let mut p = libc::pollfd { fd: w.fd, events: libc::POLLIN, revents: 0 };
             let r = unsafe { libc::poll(&mut p, 1, super::WAKE_MS as i32) };
             if r < 0 {
@@ -733,6 +765,34 @@ mod tests {
             assert_eq!(w.config_wd, -1, "no logseq folder: no watch for it");
         }
 
+        /// add_missing (audit finding 14) on its own: only folders that aren't watched, each added once.
+        #[test]
+        fn missing_top_folders_are_added_once_they_are_there() {
+            let d = Dir::new("missing");
+            let (pages, journals, config) = (d.0.join("pages"), d.0.join("journals"), d.0.join("logseq"));
+            std::fs::create_dir_all(&pages).unwrap();
+            write(&journals, "not a folder"); // a file where journals/ should be: never watched
+            let mut w = Watches::new(vec![pages.clone(), journals.clone()], config.clone()).unwrap();
+            assert_eq!(w.paths.len(), 1);
+            assert!(!w.add_missing(), "nothing new: pages/ is watched, journals/ is a file, no logseq/");
+            assert!(!w.add_missing(), "and still nothing on the next wake");
+            // journals/ made (with a folder in it) and logseq/ made: both watched, reported once
+            std::fs::remove_file(&journals).unwrap();
+            std::fs::create_dir_all(journals.join("2026")).unwrap();
+            std::fs::create_dir_all(&config).unwrap();
+            assert!(w.add_missing(), "new folders are reported (notes may be in them)");
+            assert!(w.config_wd >= 0);
+            let mut watched: Vec<_> = w.paths.values().map(|p| p.strip_prefix(&d.0).unwrap().to_string_lossy().into_owned()).collect();
+            watched.sort();
+            assert_eq!(watched, vec!["journals", "journals/2026", "pages"]);
+            assert!(!w.add_missing(), "already watched: not added or reported again");
+            // a top folder whose watch ended (it went): added again once it's back
+            let top = *w.paths.iter().find(|(_, p)| **p == pages).unwrap().0;
+            w.take(&[Event { wd: top, mask: libc::IN_IGNORED, name: String::new() }]);
+            assert!(w.add_missing(), "pages/ is still there, so it's watched again");
+            assert!(w.paths.values().any(|p| *p == pages));
+        }
+
         #[test]
         fn events_count_only_for_notes_and_the_settings() {
             let d = Dir::new("take");
@@ -819,6 +879,74 @@ mod tests {
             let n = w.settled();
             write(&pages.join("renamed/two/y.md"), "- hi");
             assert!(w.reports_after(n), "a folder renamed inside the notes");
+        }
+
+        /// Audit finding 14: journals/ that isn't there yet when the watch starts (a fresh notes folder,
+        /// or a sync that hasn't brought it) is watched once it appears, within about a second.
+        #[test]
+        fn a_top_folder_made_later_is_watched() {
+            let _one = one();
+            let d = Dir::new("later");
+            let pages = d.0.join("pages");
+            let journals = d.0.join("journals");
+            std::fs::create_dir_all(&pages).unwrap(); // pages/ is there, journals/ not yet
+            let w = watching(vec![pages.clone(), journals.clone()], d.0.join("logseq"));
+            assert!(w.quiet_after(0), "a top folder that isn't there yet reports nothing by itself");
+            std::fs::create_dir_all(&journals).unwrap(); // the sync brings journals/
+            assert!(w.reports_after(0), "a top folder that appeared counts (notes may already be in it)");
+            let n = w.settled();
+            write(&journals.join("2026_11_23.md"), "- from the laptop");
+            assert!(w.reports_after(n), "a note in a journals/ made after the watch started");
+            // a folder inside it is followed too
+            let n = w.settled();
+            std::fs::create_dir_all(journals.join("sub")).unwrap();
+            assert!(w.reports_after(n));
+            let n = w.settled();
+            write(&journals.join("sub/x.md"), "- deeper");
+            assert!(w.reports_after(n), "a note in a folder inside the late journals/");
+        }
+
+        /// Audit finding 14: pages/ deleted (by a sync, or by hand) and made again is watched again.
+        #[test]
+        fn a_top_folder_deleted_and_made_again_is_watched_again() {
+            let _one = one();
+            let d = Dir::new("again");
+            let pages = d.0.join("pages");
+            std::fs::create_dir_all(&pages).unwrap();
+            let w = watching(vec![pages.clone()], d.0.join("logseq"));
+            std::fs::remove_dir_all(&pages).unwrap();
+            assert!(w.reports_after(0), "a watched folder that went counts (its notes went with it)");
+            let n = w.settled();
+            std::fs::create_dir_all(&pages).unwrap();
+            assert!(w.reports_after(n), "the folder made again counts");
+            let n = w.settled();
+            write(&pages.join("back.md"), "- hi");
+            assert!(w.reports_after(n), "a note in the folder made again");
+            // and once more: it keeps coming back each time
+            let n = w.settled();
+            std::fs::remove_dir_all(&pages).unwrap();
+            std::fs::create_dir_all(&pages).unwrap();
+            let n = { assert!(w.reports_after(n)); w.settled() };
+            write(&pages.join("again.md"), "- hi");
+            assert!(w.reports_after(n), "a note after the second time it was made again");
+        }
+
+        /// Audit finding 14: the logseq folder made later (a fresh notes folder): config.edn in it counts.
+        #[test]
+        fn a_logseq_folder_made_later_is_watched() {
+            let _one = one();
+            let d = Dir::new("cfglater");
+            let pages = d.0.join("pages");
+            let config = d.0.join("logseq");
+            std::fs::create_dir_all(&pages).unwrap();
+            let w = watching(vec![pages.clone()], config.clone());
+            std::fs::create_dir_all(&config).unwrap();
+            assert!(w.reports_after(0), "the settings' folder that appeared counts");
+            let n = w.settled();
+            write(&config.join("custom.css"), "a {}");
+            assert!(w.quiet_after(n), "only config.edn counts there, also when it was watched late");
+            write(&config.join("config.edn"), "{:preferred-workflow :now}");
+            assert!(w.reports_after(n), "config.edn in a logseq folder made after the watch started");
         }
 
         #[test]

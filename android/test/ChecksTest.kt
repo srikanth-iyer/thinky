@@ -183,8 +183,58 @@ fun frontMatter() {
   eq("a word that isn't a key", Checks.withoutFrontMatter("---\nhello world\n---\n- a"), "---\nhello world\n---\n- a")
 }
 
+// ---- today's journal file and title (Checks.formatDate / journalRelPath; JournalWidget.todayFile and
+// todayTitle). The cases are the core's own (core/tests/vault.rs journal_names and user_style_config,
+// core/tests/features.rs folder_settings_stay_inside_the_notes_folder), so the widget reads the very file
+// the app writes notes to (audit finding 17).
+
+/** A Calendar on that day (month 1 to 12), as JournalWidget's Calendar.getInstance() gives today. */
+fun day(y: Int, m: Int, d: Int): java.util.Calendar = java.util.Calendar.getInstance().apply { clear(); set(y, m - 1, d, 12, 0) }
+
+fun journalDates() {
+  // core vault.rs journal_names: Logseq's default title "MMM do, yyyy" and file "yyyy_MM_dd"
+  eq("title, 25th", Checks.formatDate("MMM do, yyyy", day(2026, 10, 25)), "Oct 25th, 2026")
+  eq("title, 1st", Checks.formatDate("MMM do, yyyy", day(2026, 10, 1)), "Oct 1st, 2026")
+  eq("title, 12th", Checks.formatDate("MMM do, yyyy", day(2026, 10, 12)), "Oct 12th, 2026")
+  eq("title, 22nd", Checks.formatDate("MMM do, yyyy", day(2026, 10, 22)), "Oct 22nd, 2026")
+  eq("title, 23rd", Checks.formatDate("MMM do, yyyy", day(2026, 10, 23)), "Oct 23rd, 2026")
+  eq("default file", Checks.journalRelPath("journals", "yyyy_MM_dd", day(2026, 1, 5)), "journals/2026_01_05.md")
+  eq("weekday, Sunday", Checks.formatDate("EEEE, yyyy-MM-dd", day(2026, 10, 25)), "Sunday, 2026-10-25")
+  // core vault.rs user_style_config: journals in "Diary", full month names in titles and files
+  eq("Diary, full month names", Checks.journalRelPath("Diary", "MMMM do, yyyy", day(2026, 10, 25)), "Diary/October 25th, 2026.md")
+  eq("full month title", Checks.formatDate("MMMM do, yyyy", day(2026, 10, 26)), "October 26th, 2026")
+  // core features.rs folder_settings_stay_inside_the_notes_folder: a name that would leave the folder
+  eq("quoted ../ falls back", Checks.journalRelPath("journals", "'../x'yyyy", day(2026, 10, 30)), "journals/2026_10_30.md")
+  // the core's other rules: ordinals, short tokens, quotes, every weekday
+  eq("11th, 13th, 21st, 31st, 2nd, 3rd", listOf(11, 13, 21, 31, 2, 3, 111, 112).map { Checks.ordinal(it) }, listOf("11th", "13th", "21st", "31st", "2nd", "3rd", "111th", "112th"))
+  eq("short tokens", Checks.formatDate("yy M d E EE EEE", day(2026, 3, 7)), "26 3 7 Sat Sat Sat")
+  eq("two-digit tokens", Checks.formatDate("yy/MM/dd", day(2009, 1, 2)), "09/01/02")
+  eq("a four-digit year from a small one", Checks.formatDate("yyyy", day(987, 6, 1)), "0987")
+  eq("quoted words stay as they are", Checks.formatDate("'Day' d 'of' MMMM", day(2026, 11, 23)), "Day 23 of November")
+  eq("an empty quote", Checks.formatDate("yyyy''MM", day(2026, 11, 23)), "202611")
+  eq("an unclosed quote runs to the end", Checks.formatDate("yyyy 'MM dd", day(2026, 11, 23)), "2026 MM dd")
+  eq("other characters as they are", Checks.formatDate("yyyy.MM.dd — wk", day(2026, 11, 23)), "2026.11.23 — wk")
+  eq("every weekday", (22..28).map { Checks.formatDate("EEEE", day(2026, 11, it)) }, listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+  eq("a leap day", Checks.formatDate("EEE MMM do yyyy", day(2028, 2, 29)), "Tue Feb 29th 2028")
+  eq("December", Checks.formatDate("MMMM MMM", day(2026, 12, 31)), "December Dec")
+  // file names that would leave the journals folder: the default name instead (as the core)
+  eq("an empty format", Checks.journalRelPath("journals", "", day(2026, 11, 23)), "journals/2026_11_23.md")
+  eq("a name starting with a dot", Checks.journalRelPath("journals", "'.'yyyy", day(2026, 11, 23)), "journals/2026_11_23.md")
+  eq("a slash in the name", Checks.journalRelPath("journals", "yyyy/MM", day(2026, 11, 23)), "journals/2026_11_23.md")
+  eq("a backslash in the name", Checks.journalRelPath("journals", "yyyy'\\'MM", day(2026, 11, 23)), "journals/2026_11_23.md")
+  eq("a colon in the name", Checks.journalRelPath("journals", "'C:'yyyy", day(2026, 11, 23)), "journals/2026_11_23.md")
+  eq("a NUL in the name", Checks.journalRelPath("journals", "yyyy\u0000", day(2026, 11, 23)), "journals/2026_11_23.md")
+  eq("a dot inside the name is fine", Checks.journalRelPath("journals", "yyyy.MM.dd", day(2026, 11, 23)), "journals/2026.11.23.md")
+  // a journals folder that isn't inside the notes folder (the core never sends one): no file at all
+  eq("a .. folder", Checks.journalRelPath("../outside", "yyyy_MM_dd", day(2026, 11, 23)), null)
+  eq("a .. inside the folder", Checks.journalRelPath("a/../../b", "yyyy_MM_dd", day(2026, 11, 23)), null)
+  eq("a .. after a backslash", Checks.journalRelPath("a\\..", "yyyy_MM_dd", day(2026, 11, 23)), null)
+  eq("a folder from the top", Checks.journalRelPath("/sdcard/x", "yyyy_MM_dd", day(2026, 11, 23)), null)
+  eq("a folder inside a folder", Checks.journalRelPath("notes/Diary", "yyyy_MM_dd", day(2026, 11, 23)), "notes/Diary/2026_11_23.md")
+}
+
 fun main() {
-  aiKeys(); thumbs(); sharing(); selection(); todo(); signatures(); frontMatter(); updateSignature()
+  aiKeys(); thumbs(); sharing(); selection(); todo(); signatures(); frontMatter(); updateSignature(); journalDates()
   println("Checks.kt: $passed passed, $failed failed")
   if (failed > 0) kotlin.system.exitProcess(1)
 }

@@ -33,16 +33,11 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.util.Calendar
-import java.util.Locale
 
 /** Where today's journal lives, and how to read/append it. Settings come from the app
  *  (setWidgetConfig / setCaptureConfig / setWidgetTasks); nothing runs in the background. */
 object Journal {
   private const val PREFS = "lean_widget"
-  private val MONTHS = arrayOf("January", "February", "March", "April", "May", "June", "July",
-    "August", "September", "October", "November", "December")
-  private val DAYS = arrayOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
-  private val TOKENS = listOf("yyyy", "yy", "MMMM", "MMM", "MM", "M", "do", "dd", "d", "EEEE", "EEE", "EE", "E")
   private val PROP = Regex("^[\\w.\\-/]+::")
 
   /** One line of the widget: a note of today's journal, a to-do due today, or a small heading. */
@@ -94,21 +89,19 @@ object Journal {
 
   fun vault(ctx: Context): File? = prefs(ctx).getString("vault", null)?.let { File(it) }
 
+  /** Today's journal file, as the app names it (Checks.journalRelPath: the core's rule, tested there). */
   fun todayFile(ctx: Context): File? {
     val p = prefs(ctx)
     val vault = vault(ctx) ?: return null
-    val dir = p.getString("dir", "journals") ?: "journals"
-    val fmt = p.getString("file", "yyyy_MM_dd") ?: "yyyy_MM_dd"
-    // the core's rule (config::journal_rel_path): a name that would leave the journals folder falls
-    // back to yyyy_MM_dd; the folder came from the core, already checked to be inside the notes folder
-    var stem = format(fmt, Calendar.getInstance())
-    if (stem.isEmpty() || stem.startsWith(".") || stem.any { it == '/' || it == '\\' || it == ':' || it == '\u0000' }) stem = format("yyyy_MM_dd", Calendar.getInstance())
-    if (dir.split('/', '\\').any { it == ".." } || dir.startsWith("/")) return null
-    return File(File(vault, dir), "$stem.md")
+    val dir = p.getString("dir", "journals") ?: "journals" // the journals folder the app last sent
+    val fmt = p.getString("file", "yyyy_MM_dd") ?: "yyyy_MM_dd" // its file name format
+    val rel = Checks.journalRelPath(dir, fmt, Calendar.getInstance()) ?: return null
+    return File(vault, rel)
   }
 
+  /** Today's journal title, as the app writes it (Checks.formatDate: the core's rule, tested there). */
   fun todayTitle(ctx: Context): String =
-    format(prefs(ctx).getString("title", "MMM do, yyyy") ?: "MMM do, yyyy", Calendar.getInstance())
+    Checks.formatDate(prefs(ctx).getString("title", "MMM do, yyyy") ?: "MMM do, yyyy", Calendar.getInstance())
 
   /** The pop-up's "to …" line until the app's own code says (LeanCore "where"): today's journal or
    *  the quick capture page, as the app last sent them (setCaptureConfig). Only shown, never used to
@@ -116,46 +109,6 @@ object Journal {
   fun captureWhere(ctx: Context): String {
     val c = capture(ctx)
     return if (c.optBoolean("today", false)) todayTitle(ctx) else c.optString("page", "quick capture").ifBlank { "quick capture" }
-  }
-
-  private fun ordinal(d: Int): String {
-    val suf = if (d % 100 in 11..13) "th" else when (d % 10) { 1 -> "st"; 2 -> "nd"; 3 -> "rd"; else -> "th" }
-    return "$d$suf"
-  }
-
-  /** date-fns style tokens, same rules as core/src/date.rs */
-  fun format(fmt: String, c: Calendar): String {
-    val y = c.get(Calendar.YEAR)
-    val m = c.get(Calendar.MONTH) + 1
-    val d = c.get(Calendar.DAY_OF_MONTH)
-    val wd = c.get(Calendar.DAY_OF_WEEK) - 1
-    val sb = StringBuilder()
-    var i = 0
-    while (i < fmt.length) {
-      if (fmt[i] == '\'') {
-        val end = fmt.indexOf('\'', i + 1).let { if (it < 0) fmt.length else it }
-        sb.append(fmt, i + 1, end)
-        i = end + 1
-        continue
-      }
-      val t = TOKENS.firstOrNull { fmt.startsWith(it, i) }
-      if (t == null) { sb.append(fmt[i]); i++; continue }
-      sb.append(when (t) {
-        "yyyy" -> String.format(Locale.US, "%04d", y)
-        "yy" -> String.format(Locale.US, "%02d", y % 100)
-        "MMMM" -> MONTHS[m - 1]
-        "MMM" -> MONTHS[m - 1].substring(0, 3)
-        "MM" -> String.format(Locale.US, "%02d", m)
-        "M" -> m.toString()
-        "do" -> ordinal(d)
-        "dd" -> String.format(Locale.US, "%02d", d)
-        "d" -> d.toString()
-        "EEEE" -> DAYS[wd]
-        else -> DAYS[wd].substring(0, 3)
-      })
-      i += t.length
-    }
-    return sb.toString()
   }
 
   // links and pictures: [name](address), ![name](address); an address may hold (balanced) brackets,
@@ -462,73 +415,6 @@ object Journal {
     fun ch(x: Int, y: Int) = (x + (y - x) * t).toInt().coerceIn(0, 255)
     return android.graphics.Color.rgb(ch(android.graphics.Color.red(a), android.graphics.Color.red(b)),
       ch(android.graphics.Color.green(a), android.graphics.Color.green(b)), ch(android.graphics.Color.blue(a), android.graphics.Color.blue(b)))
-  }
-
-  /** First web address in the text (bare, or a Markdown link to one, `[name](https://…)`), and the
-   *  rest without it (as outline_core::capture::split_url). */
-  fun splitUrl(s: String): Pair<String, String> {
-    val bare = listOf(s.indexOf("https://"), s.indexOf("http://")).filter { it >= 0 }.minOrNull()
-    val md = mdLinkAt(s)
-    if (md != null && (bare == null || md.first < bare)) {
-      return tidyRest(s.substring(0, md.first) + s.substring(md.second)) to s.substring(md.first, md.second)
-    }
-    val i = bare ?: return s.trim() to ""
-    var end = i
-    while (end < s.length && !s[end].isWhitespace()) end++
-    val url = s.substring(i, end).trimEnd('.', ',', ';', ')', '"', '\'')
-    return tidyRest(s.substring(0, i) + s.substring(i + url.length)) to url
-  }
-
-  private fun tidyRest(r: String) = r.trim().trimEnd(':', '-', '—', '|').trim()
-
-  /** Where the first `[name](http…)` link in s is (start, end), as outline_core's md_link_at. */
-  private fun mdLinkAt(s: String): Pair<Int, Int>? {
-    var from = 0
-    while (true) {
-      val a = s.indexOf('[', from)
-      if (a < 0) return null
-      val c = s.indexOf("](", a)
-      if (c >= 0) {
-        val label = s.substring(a + 1, c)
-        val tail = s.substring(c + 2)
-        if (label.none { it == '[' || it == ']' || it == '\n' } && (tail.startsWith("https://") || tail.startsWith("http://"))) {
-          var depth = 0
-          for ((i, ch) in tail.withIndex()) {
-            if (ch.isWhitespace()) break
-            if (ch == '(') depth++
-            else if (ch == ')') { if (depth == 0) return a to (c + 2 + i + 1); depth-- }
-          }
-        }
-      }
-      from = a + 1
-    }
-  }
-
-  /** The site's address without https://, www., a port or a path (as outline_core's host). */
-  fun host(url: String): String {
-    val rest = url.substringAfter("://", url)
-    var h = rest.split('/', '?', '#').first()
-    h = h.substringAfterLast('@').substringBefore(':')
-    return h.removePrefix("www.").lowercase()
-  }
-
-  /** A neat Markdown link, "[Title · site](url)", or "[site](url)" with no title (as outline_core's
-   *  md_link, for a shared page: Android gives its title, not the site's own name). */
-  fun mdLink(url: String, title: String): String {
-    val u = url.trim()
-    if (u.isEmpty()) return ""
-    val place = host(u)
-    var t = title.split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
-    for (sep in listOf(" | ", " - ", " – ", " — ", " · ", " : ", " :: ", " / ")) {
-      val i = t.lastIndexOf(sep)
-      if (i > 0) {
-        val tail = t.substring(i + sep.length).trim().lowercase()
-        if (tail == place || tail.replace(" ", "") == place.substringBefore('.')) { t = t.substring(0, i).trim(); break }
-      }
-    }
-    val name = (if (t.isEmpty() || t.equals(place, ignoreCase = true)) place else "$t · $place").ifEmpty { u }
-      .replace('[', '(').replace(']', ')').replace('\n', ' ')
-    return "[$name](${u.replace(" ", "%20").replace("(", "%28").replace(")", "%29")})"
   }
 
   fun refresh(ctx: Context) {

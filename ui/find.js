@@ -229,9 +229,12 @@ export class Find {
   }
   /** Fold away again what was shown from inside folded notes. */
   unreveal() {
+    const hiddenOf = new Map(); // each page's folded-away notes, worked out once per page, not once per note
     for (const [o, i] of this.shown) {
       const div = o.blockDiv(i);
-      if (div && o.cur !== i && o.hiddenSet().has(i)) div.hidden = true;
+      if (!div || o.cur === i) continue; // gone from the screen, or the note being edited: left showing
+      if (!hiddenOf.has(o)) hiddenOf.set(o, o.hiddenSet()); // the first note of this page: work it out
+      if (hiddenOf.get(o).has(i)) div.hidden = true; // folded away: hidden again
     }
     this.shown = [];
   }

@@ -14,6 +14,27 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 58 · version 0.6.7 (November 2026)
+
+Fixes from two code reviews (Nov 22 and Nov 23), each checked against the code first and each with a test that fails on the old code.
+
+- A real page could be listed as a sync app's "conflict copy" and moved to the bin: any name with the word "conflict" in it, or "X (2).md" next to "X.md", counted. Now only real sync marks count, and "X (2).md" only when it really is a copy of X. The other way round too: a sync app's copy ("Foo (1).md", OneDrive's "Foo-LAPTOP.md") can no longer take the page's place.
+- Renaming a page now also changes its links inside embeds and queries ({{embed [[Foo]]}}), and in a plain-Markdown file only the link changes.
+- A new name ending in "." or ":" keeps its whole name as a tag, and the app reads such tags one way everywhere (the # list, pasting, the filter buttons): "#v1.2" is "v1.2".
+- A template with an odd "<%>" in it no longer stops a new journal day from opening.
+- A backslash at the start of a line ("\\ -") is no longer lost when the page is saved.
+- Text made "harmless" (from a web page or the phone's "Add to thinky") no longer makes hidden tags.
+- A tags:: or alias:: value with a comma inside [[ ]] stays one link.
+- Undo with notes selected no longer leaves the wrong notes selected (before, Delete could then delete the wrong note).
+- The Journals list moves on to the new day after midnight, and the phone's "+" adds to today, not yesterday.
+- A note moved to two different places on two devices now shows as one clash instead of appearing twice.
+- Saving the same words a file already holds writes nothing, and a save keeps its safety copy until the note reads back whole.
+- A web picture in an AI suggestion becomes a plain link, so nothing is fetched before you press Keep.
+- Phone: the "Add a note" pop-up's to-do button makes a real to-do; a pages or journals folder made after the app started is now watched; a shared web page's link is now made by the same rules as on Windows (a title like {{query …}} goes in harmless).
+- Keyboard: arrow keys are fast again under a big folded note; boxes keep Tab inside and give the keyboard back when they close; Esc closes a full-size picture.
+- A picture bigger than 25 MB now shows a short note saying it is over thinky's 25 MB limit, instead of a broken picture.
+- Under the hood: on Windows, git backup only runs git.exe from PATH, never one next to the app; the AI key check exists once, in the core; the picture server sends only pictures, at most 25 MB; re-running an old release on GitHub can no longer publish over a newer one; the phone's file-watcher and widget tests now run on every build.
+
 ## Build 57 · version 0.6.6 (November 2026)
 
 Fixes from a fresh full review (Nov 22), each checked again by a second reviewer.
@@ -53,7 +74,7 @@ Fixes from an outside code review (Nov 21): safety and security first, then smal
 - The ✦ beside an edited linked reference is no longer cut off at the reference box's edge (it was in every look; most in Paper).
 - Under the hood: polish.js `aiMenu`, `drawNotes`, `editNotes`; popups.js `menu()` takes a `title`; test t33_build54 checks the ✦ is whole in every look, t31 the menu and the editing.
 
- version 0.6.2 (November 2026)
+## Build 53 · version 0.6.2 (November 2026)
 
 - The laptop's note menu: resting the mouse on "More commands" opens the "/" commands beside it, with a box to narrow them (→, Enter or a click opens it from the keyboard too). The phone keeps "More commands…".
 - Calm's note cards sit lower: a thin edge and a short, close shadow, so they no longer look lifted high off the page.

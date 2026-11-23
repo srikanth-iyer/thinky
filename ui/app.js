@@ -406,8 +406,27 @@ class App {
   }
   showImage(src) {
     const back = h('div', 'modal-back lightbox', `<img src="${esc(src)}" alt="">`);
-    back.onclick = () => back.remove();
+    // a box of its own for the keyboard and screen readers too (review claim R11c, Nov 22): Esc
+    // closes it, Tab can't reach the page behind it, and the keyboard goes back where it was
+    back.setAttribute('role', 'dialog');
+    back.setAttribute('aria-modal', 'true');
+    back.setAttribute('aria-label', 'Picture (Esc or a click closes it)');
+    back.tabIndex = -1; // it can hold the keyboard itself
+    const was = document.activeElement; // what had the keyboard before
+    const close = () => {
+      back.remove(); // the picture goes
+      document.removeEventListener('keydown', onKey, true); // and so does its key handler
+      if (was instanceof HTMLElement && was.isConnected) was.focus({ preventScroll: true }); // keyboard back
+    };
+    const onKey = (e) => {
+      if (!back.isConnected) { document.removeEventListener('keydown', onKey, true); return; } // closed another way (Android Back)
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } // Esc closes it
+      else if (e.key === 'Tab') e.preventDefault(); // nothing else to go to while it's open
+    };
+    back.onclick = close; // a click anywhere closes it, as before
+    document.addEventListener('keydown', onKey, true); // first to see each key while it's open
     document.body.append(back);
+    back.focus({ preventScroll: true }); // the keyboard is in the picture's box
   }
   workflow() { return this.summary?.config?.workflow || 'todo'; }
   /** Block references in el (render.js: span.bref[data-ref]) show the words of the note they name
@@ -541,10 +560,13 @@ class App {
   }
   /** The phone's "+": a new note at the end of the page shown, or of today on the Journals list (the
    *  first day there), typing in it (Outline.addAtEnd). */
-  addNote() {
+  async addNote() {
     const { kind } = parsePlace(placeOf(this.tabs.tab()));
-    const os = this.pane.outlines;
-    const o = kind === 'journals' ? os.find((x) => x.journal?.join() === today().join()) : os[0];
+    const isToday = (x) => x.journal?.join() === today().join(); // a note list that is today's journal page
+    let o = kind === 'journals' ? this.pane.outlines.find(isToday) : this.pane.outlines[0];
+    // the app stayed open past midnight and the list still starts on yesterday: it is drawn again
+    // (typing in it is saved first), then the new note goes into the new day (audit finding 6, Nov 23)
+    if (!o && kind === 'journals' && await this.newDay(true).catch(() => false)) o = this.pane.outlines.find(isToday);
     if (o) {
       this.unfoldFor(o); // (today folded: it opens first, so the new note shows)
       o.addAtEnd();
@@ -560,6 +582,26 @@ class App {
       }
     }
     else if (kind === 'journals') this.toast('Today’s journal is still opening. Try again in a moment.', 2500);
+  }
+  /** After midnight (audit finding 6, Nov 23): a Journals list drawn yesterday still starts on yesterday,
+   *  marked as today, and typing there goes into yesterday's page. Each side showing Journals whose
+   *  days are drawn but none of them is today is drawn again, so today is on top. Not while one of its
+   *  days is in use (a note being edited, typing not saved yet, notes selected, a clash, a menu open),
+   *  unless force (the phone's "+": he asked for today; drawing again saves the typing first).
+   *  Resolves true when a side was drawn again. Called when coming back to the app, on file notices,
+   *  and once a minute (a laptop left open overnight). */
+  async newDay(force = false) {
+    const t = today().join(); // today's date, as each day's note list holds its date
+    let drawn = false; // whether any side was drawn again
+    for (const p of this.tabs.panes) {
+      if (parsePlace(placeOf(this.tabs.tab(p))).kind !== 'journals') continue; // this side shows another page
+      if (!p.outlines.length) continue; // its days are still being read (or can't be): nothing to compare yet
+      if (p.outlines.some((o) => o.journal?.join() === t)) continue; // today is there: nothing to do
+      if (!force && p.outlines.some((o) => o.busy())) continue; // he is using it: left until he stops
+      await this.draw(p); // drawn again: today first
+      drawn = true;
+    }
+    return drawn;
   }
   /** Editing starts on note i of outline o while the same page, open on the other side (x), has typing
    *  not saved yet, or a save on its way, or o missed a save from there (behind). So that this side
@@ -700,7 +742,10 @@ class App {
   }
   /** file: what the file holds now (Outline.save), for the other side to catch up with. */
   saved(outline, file = null) {
-    window.LeanAndroid?.refreshWidget?.();
+    this.savedAt = Date.now(); // when the app last saved a file (see refresh in start)
+    // the phone's journal widget shows today's journal page only, so only a save of that page redraws it
+    // (before Nov 23 every save of any page redrew it and decoded its pictures again; review claim 6, Nov 22)
+    if (outline.journal?.join() === today().join()) window.LeanAndroid?.refreshWidget?.();
     this.refCache?.clear(); // (block references show the newest words when drawn again)
     const key = outline.name.toLowerCase();
     const isNew = !this.names.some((n) => n.exists && n.name.toLowerCase() === key);
@@ -2736,8 +2781,27 @@ class App {
     // Pick up edits from Drive sync / Claude / other devices: the app is told about file
     // changes; coming back to it re-checks too, in case a notice was missed.
     // (not when "all files access" was just turned on: then the folder is opened again anyway, see start)
-    const refresh = () => { if (!(this.noAccess && window.LeanAndroid?.hasAllFilesAccess?.())) this.rescan(); };
-    listen('lean-files', refresh);
+    // One check for a burst of notices (review claim L6, Nov 22): coming back to the app fires both
+    // "visible" and "focus", and each of the app's own saves wakes the folder watcher too. Nothing is
+    // dropped, only put together: a change made elsewhere is still looked at, at most a few seconds late.
+    // own: a notice from the folder watcher (each of the app's own saves causes one)
+    const refresh = (own = false) => {
+      if (this.noAccess && window.LeanAndroid?.hasAllFilesAccess?.()) return; // the folder is opened again anyway
+      const now = Date.now(); // the time now, in milliseconds
+      this.refreshFirst ??= now; // when the first notice of this burst came
+      clearTimeout(this.refreshT); // a check already waiting is replaced by this one
+      // the watcher, just after a save of its own: wait until saving pauses (that notice is the app's
+      // own file); otherwise (coming back to the app) a moment, so its two notices make one check
+      const pause = own && now - (this.savedAt || 0) < 1500 ? 1500 : 200;
+      // never more than 5 s after the first notice, even while saves keep coming (the wait is cut short
+      // to that; before Nov 23 it was only checked when the next notice came, up to 1.5 s later)
+      const wait = Math.max(0, Math.min(pause, 5000 - (now - this.refreshFirst)));
+      // the check itself (the burst ends); once the changed files are read, the Journals list moves on
+      // to today if the date changed meanwhile (one after the other: both may draw the same notes)
+      const go = () => { this.refreshFirst = null; this.rescan().then(() => this.newDay()).catch(() => {}); };
+      if (wait === 0) go(); else this.refreshT = setTimeout(go, wait); // now, or after the wait
+    };
+    listen('lean-files', () => refresh(true));
     // a page or note link clicked in another program while the app is open (links.rs)
     listen('lean-link', (e) => this.openLink(e.payload));
     // Put away (Android may then close the app without a word), reloaded or closed: save what can be
@@ -2748,9 +2812,12 @@ class App {
       if (document.visibilityState === 'visible') refresh();
       else { this.outlines.forEach((o) => { o.backupPending(true); o.flush(); }); this.tabs.save(true); if (this.vaultOpen) call('persist').catch(() => {}); }
     });
-    window.addEventListener('focus', refresh);
+    window.addEventListener('focus', () => refresh());
     // without file notifications (the dev server), fall back to a slow check
     if (!isApp) setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 30000);
+    // a window left open and in front overnight gets no "came back" notice: once a minute the Journals
+    // list is checked for a new day (only a date comparison, unless the date really changed)
+    setInterval(() => { if (document.visibilityState === 'visible') this.newDay().catch(() => {}); }, 60000);
     window.addEventListener('beforeunload', () => { this.outlines.forEach((o) => { o.backupPending(true); o.flush(); }); this.opening.forEach((w) => w.keep(true)); this.tabs.save(true); });
     // finish saving before the window closes (and remember how far down each tab was)
     listen('lean-close', async () => {
@@ -2814,7 +2881,10 @@ class App {
     if (this.attach?.on && !this.pane.outlines.some((x) => x.sel) && this.attach.key(e)) { e.preventDefault(); return; }
     // blocks selected: arrows, Tab, Delete, copy… act on them
     const o = this.pane.outlines.find((x) => x.sel && this.shows(x)); // (the active side's: keys act there)
-    if (o && o.onSelKey(e)) { e.preventDefault(); return; }
+    // a button or link that has the keyboard keeps Tab, Enter and Space for itself (moving on,
+    // pressing it), rather than indenting or opening the selected notes (review claim R11b, Nov 22)
+    const onControl = document.activeElement?.closest?.('button, a[href]') && ['Tab', 'Enter', ' '].includes(e.key);
+    if (o && !onControl && o.onSelKey(e)) { e.preventDefault(); return; }
     // Ctrl+A / Ctrl+Shift+A with nothing selected: every note on the page (a Journals day: the last
     // one edited, else the first), as Logseq does
     if (!o && (act('editor/select-parent') || act('editor/select-all-blocks'))) {
@@ -3254,7 +3324,10 @@ class App {
         const todayPage = String(await call('journal_name', { date: today() })).toLowerCase();
         const due = tasks.filter((x) => [x.scheduled, x.deadline].some((w) => w && w.date.join() === t) && x.page.toLowerCase() !== todayPage)
           .slice(0, 20).map((x) => ({ text: x.text.split('\n')[0], page: x.page }));
-        window.LeanAndroid.setWidgetTasks(JSON.stringify({ day: today().join('-'), tasks: due })); // the day: stale ones aren't shown
+        const json = JSON.stringify({ day: today().join('-'), tasks: due }); // the day: stale ones aren't shown
+        if (json === this.wtSent) return; // the same list the widget already has: nothing to redraw
+        this.wtSent = json; // remembered, so the next unchanged list is skipped
+        window.LeanAndroid.setWidgetTasks(json); // the widget saves the list and redraws
       } catch { /* ignore */ }
     }, 1500);
   }

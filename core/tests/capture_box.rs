@@ -799,5 +799,8 @@ fn selected_words_land_as_plain_words() {
     let mut vault = outline_core::Vault::new();
     vault.upsert(&rel, &text);
     assert!(vault.linked_refs("Some Page").is_empty() && vault.pages_tagged("tag").is_empty(), "no link or tag made");
+    // no tag at all, not even one with the invisible character at its front (Ponytail audit finding 8:
+    // the check above looked for the tag "tag", while the reader made "\u{200b}tag")
+    assert!(vault.all_tags().is_empty(), "tags made: {:?}", vault.all_tags());
     let _ = std::fs::remove_dir_all(&v);
 }

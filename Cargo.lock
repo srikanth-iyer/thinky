@@ -3103,7 +3103,9 @@ dependencies = [
 name = "shell_pure_tests"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "outline_core",
+ "serde_json",
 ]
 
 [[package]]

@@ -1,12 +1,11 @@
 # Builds the Windows app and the Android app on GitHub's machines and publishes them as a release
 # ("Build N") here, where installed apps look for updates from Build 34 on. Build 34 is also published
 # once more on the old downloads repo, srikanth-iyer/lean-outliner-releases, where Build 33 and older
-# look (only while the RELEASES_TOKEN secret exists; delete it after Build 34). Runs on every push to main (a release, 30 minutes after every test
-# passes, unless the run is cancelled) and to wip/** branches (a test build: never published, signed with throw-away keys).
+# look (only while the RELEASES_TOKEN secret exists; nothing went there after Build 34). Runs on every push to main (a release, as soon as every test
+# passes) and to wip/** branches (a test build: never published, signed with throw-away keys).
 #
 # Secrets: none at repository level. Two environments, both allowed only for `main`:
-#   release  (a 30-minute wait, then it signs: cancel the run to stop it; until Build 36 it waited
-#            for the maintainer's approval)  ANDROID_KEY_PASSWORD, ANDROID_KEYSTORE_B64 (the locked
+#   release  (no reviewer since Nov 5, 2026, no wait since Nov 15, 2026: it signs at once)  ANDROID_KEY_PASSWORD, ANDROID_KEYSTORE_B64 (the locked
 #            Android keystore, base64), UPDATE_KEY_PEM (the locked P-256 update key, PEM text)
 #   publish  RELEASES_TOKEN (Build 34 only, then deleted: a fine-grained token, Contents read/write on
 #            lean-outliner-releases only)
@@ -49,20 +48,14 @@ jobs:
         with: { sparse-checkout: "scripts\nui/version.js", sparse-checkout-cone-mode: false, persist-credentials: false }
       # Build 41: the version (ui/version.js) is what installed apps compare, so it must be higher than
       # the newest release's (its title says it: "Build N · version X"). On main a build that forgot to
-      # raise it stops here; a wip build only warns.
+      # raise it stops here; a wip build only warns (scripts/release_check.py, which `release` runs again).
       - name: The version is higher than the last release's
         env:
           GH_TOKEN: ${{ github.token }}
           MAIN: ${{ github.ref == 'refs/heads/main' }}
         run: |
           set -euo pipefail
-          v=$(python3 scripts/update_sig.py version)
-          last=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .name | sed -n 's/.*version \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p')
-          if [ -n "$last" ] && ! python3 -c 'import sys; a, b = (tuple(map(int, x.split("."))) for x in sys.argv[1:]); sys.exit(0 if a > b else 1)' "$v" "$last"; then
-            msg="ui/version.js says $v, but the newest release is already version $last: raise it (installed apps only take a higher version)."
-            if [ "$MAIN" = true ]; then echo "::error::$msg"; exit 1; else echo "::warning::$msg"; fi
-          fi
-          echo "::notice title=Version::$v (the newest release: ${last:-none named})"
+          if [ "$MAIN" = true ]; then python3 scripts/release_check.py version --main; else python3 scripts/release_check.py version; fi
       - id: n
         env:
           GH_TOKEN: ${{ github.token }}
@@ -104,6 +97,8 @@ jobs:
       # Android code's plain rules on a plain JVM (android/kotlin/Checks.kt: the phone's check of an
       # update's signature file among them) and the overlay in both shapes (APK, Play bundle)
       - run: python3 scripts/update_sig_test.py
+      # the checks before a release (scripts/release_check.py, a stand-in `gh`; audit finding 11)
+      - run: python3 scripts/release_check_test.py
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with: { distribution: temurin, java-version: '17' }
       - run: bash android/test/run.sh
@@ -362,7 +357,7 @@ jobs:
           - t13_tabs_safety t7_layout t16_refs t2_blocks t16_looks2 smoke t16_feedback t16_widget t24_build41 t25_build43
           - t15_drag t20_build36 t16_logo t16_phone t16_looks t16_gaps t16_browser t22_build38 t23_build39 t35_lost_typing
           - t15_edit t14_history t16_start t9_journals t16_reftools t16_brand t16_alias t16_safety t27_build45 t28_build46
-          - t14_blockmenu t11_reading t15_pages t12_pictures t13_update t19_build34 t6_looks t16_find t26_build44
+          - t14_blockmenu t11_reading t15_pages t12_pictures t13_update t19_build34 t6_looks t16_find t26_build44 t36_audit
           - t5_long t8_phone t15_nav t15_looks t15_search t10_safety t10_shortcuts t16_settings t34_review
           - t4_sync t13_tabs t3_pages t21_build37 t14_refs t1_editing t17_refedit t18_security t29_build48 t30_build50 t31_build51 t32_build52 t33_build54
     steps:
@@ -531,8 +526,8 @@ jobs:
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
 
   # main only: sign the installer and the APK with the real keys, on a machine of its own that gets
-  # only the scripts, the version rule and the two built files (no build tools run here). Waits for
-  # environment `release`'s 30-minute wait (cancel the run to stop a release). The keys are written from secrets into the
+  # only the scripts, the version rule and the built files (no build tools run here). Environment
+  # `release` has no reviewer or wait, so it starts as soon as the jobs it needs pass. The keys are written from secrets into the
   # runner's temp folder and deleted at the end; they are never outputs, artifacts or log lines.
   sign:
     needs: [number, update-key, windows, android, prev-cert, ui-tests, deny]
@@ -826,6 +821,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { sparse-checkout: "scripts\nci\nui/version.js", sparse-checkout-cone-mode: false, persist-credentials: false }
+      # Before anything else (audit finding 11): "Re-run failed jobs" on an older, cancelled run reuses
+      # its saved build number and skips `number`'s checks, so a newer run may have published that number
+      # meanwhile. Stop if the tag build-N is already there or any release is build N or newer (here or on
+      # the old downloads repo), and check the version again against the newest release.
+      - name: Build N isn't published yet, and the version is higher than the newest release's
+        env:
+          GH_TOKEN: ${{ github.token }}
+          N: ${{ needs.number.outputs.n }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release_check.py unpublished "$N"
+          python3 scripts/release_check.py version --main
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: android, path: dist }
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

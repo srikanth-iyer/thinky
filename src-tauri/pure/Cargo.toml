@@ -1,8 +1,8 @@
-# The shell's tests that need neither Windows nor Tauri (src-tauri/src/shell_rules.rs and
-# ai_key.rs), built by cargo against outline_core alone, so they run where the shell itself can't
-# be built (Linux without WebKitGTK, GitHub's test job, the cloud workspace): `cargo test -p
-# shell_pure_tests` (src-tauri/pure_tests.sh). On Windows `cargo test -p lean-outliner` runs them
-# with the rest. Nothing here is built into the app.
+# The shell's tests that need neither Windows nor Tauri (src-tauri/src/shell_rules.rs, ai_key.rs,
+# watch.rs and android_capture.rs), built by cargo against outline_core alone, so they run where the
+# shell itself can't be built (Linux without WebKitGTK, GitHub's test job, the cloud workspace):
+# `cargo test -p shell_pure_tests` (src-tauri/pure_tests.sh). On Windows `cargo test -p lean-outliner`
+# runs them with the rest. Nothing here is built into the app.
 [package]
 name = "shell_pure_tests"
 version = "0.1.0"
@@ -13,6 +13,13 @@ autotests = false
 
 [dependencies]
 outline_core = { path = "../../core" }
+# the JSON that android_capture.rs takes and gives (the same version the shell and the core use)
+serde_json = "1"
+
+# watch.rs's phone side (inotify) needs libc, as in src-tauri/Cargo.toml; its tests run on Linux,
+# so a break in the phone's file watcher fails here and on GitHub's Linux test job (audit finding 13)
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
+libc = "0.2"
 
 [[test]]
 name = "shell_rules"
@@ -21,3 +28,13 @@ path = "../src/shell_rules.rs"
 [[test]]
 name = "ai_key"
 path = "../src/ai_key.rs"
+
+# the file watcher: the parts every system shares, and on Linux the inotify watch the phone uses
+[[test]]
+name = "watch"
+path = "../src/watch.rs"
+
+# Android's "Add a note" pop-up: everything apart from the JNI function itself (that one is Android's only)
+[[test]]
+name = "android_capture"
+path = "../src/android_capture.rs"

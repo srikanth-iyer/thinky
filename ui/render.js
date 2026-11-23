@@ -55,12 +55,51 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+/** The characters a #tag is made of (anything but a space and these: , ; ! ? " ' ( ) [ ] { } < > ` #).
+ *  One rule for drawing tags (inline), reading them (pagesIn) and writing them (tagBody). */
+const TAG_CH = '[^\\s,;!?"\'()[\\]{}<>`#]';
+const TAG_AT = new RegExp(`^#(${TAG_CH}+)`); // a #tag at the start of the words left (inline)
+const TAG_ONLY = new RegExp(`^${TAG_CH}+$`); // a name made only of tag characters (tagBody)
+/** A #tag's page: a "." or ":" at its end is the sentence's, not the tag's ("see #v1.2." → v1.2). */
+const tagEnd = (t) => t.replace(/[.:]+$/, '');
+/** How a page's name is written after a "#": bare when it reads back as the same name, else in
+ *  [[ ]] (a space or a comma in it, or a "." or ":" at its end, as in "U.S.": #U.S. would tag "U.S"). */
+export const tagBody = (name) => (TAG_ONLY.test(name) && tagEnd(name) === name ? name : `[[${name}]]`);
+/** The pages a note's words link to or tag: [[Page]], #tag, #[[Page]] (the filter buttons of linked
+ *  references and of To-dos). A #tag is read as it is drawn (TAG_CH, tagEnd): #v1.2 is "v1.2". */
+const LINKS_IN = new RegExp(`\\[\\[([^\\[\\]\\n]+?)\\]\\]|(?:^|[\\s(,])#(${TAG_CH}+)`, 'g');
+export const pagesIn = (text) => {
+  const out = []; // the page names found, in the order written
+  // m[1]: the name inside [[ ]] (spaces around it trimmed); m[2]: a #tag (only its end trimmed)
+  for (const m of String(text || '').matchAll(LINKS_IN)) out.push(m[1] !== undefined ? m[1].trim() : tagEnd(m[2]));
+  return out.filter(Boolean); // (a tag that was only dots, "#...", names no page)
+};
+/** A tags:: or alias:: value's page names, as the core reads it (parse.rs split_list): split at the
+ *  commas outside [[ ]] ("[[New York, NY]], travel" is two pages, not three), each without its "#"
+ *  or [[ ]]. */
+export function splitList(v) {
+  const out = []; // the names found
+  let depth = 0; // how many [[ are open at this point
+  let cur = ''; // the item being read
+  const push = () => {
+    let x = cur.trim().replace(/^#/, ''); // spaces around it and a leading # go
+    const m = x.match(/^\[\[([\s\S]*)\]\]$/); // written as [[name]]?
+    if (m) x = m[1]; // then just the name
+    x = x.trim(); // (spaces inside the brackets too)
+    if (x) out.push(x); // an empty item (",,") names no page
+  };
+  for (let i = 0; i < v.length; i++) {
+    const two = v.slice(i, i + 2); // this character and the next
+    if (two === '[[') { depth++; cur += two; i++; } // a link opens
+    else if (two === ']]') { depth--; cur += two; i++; } // a link closes
+    else if (v[i] === ',' && depth <= 0) { push(); cur = ''; } // a comma outside links ends an item
+    else cur += v[i]; // any other character belongs to the item
+  }
+  push(); // the last item
+  return out;
+}
 /** Only web, mail and phone links open; anything else (javascript:, file:, …) stays text. */
 // (leanoutliner:// links open a page or a note of these notes: App.openLink)
-/** The pages a note's words link to or tag: [[Page]], #tag, #[[Page]] (the filter buttons of linked
- *  references and of To-dos). */
-const LINKS_IN = /\[\[([^\[\]\n]+?)\]\]|(?:^|[\s(,])#([^\s#,.;:!?()\[\]"'{}]+)/g;
-export const pagesIn = (text) => { const out = []; for (const m of String(text || '').matchAll(LINKS_IN)) out.push((m[1] ?? m[2]).trim()); return out.filter(Boolean); };
 export const safeHref = (u) => (/^(https?:|mailto:|tel:|leanoutliner:)/i.test(u.trim()) ? u.trim() : null);
 
 const link = (name, label, cls = 'pl') =>
@@ -194,8 +233,8 @@ export function inline(s, nolink = false) {
         const end = closeBrackets(s, i + 1);
         if (end > 0) { const n = s.slice(i + 3, end - 2).trim(); out += tagLink(n); i = end; prev = ']'; continue; }
       }
-      if ((m = rest.match(/^#([^\s,;!?"'()[\]{}<>`#]+)/))) {
-        const t = m[1].replace(/[.:]+$/, '');
+      if ((m = rest.match(TAG_AT))) {
+        const t = tagEnd(m[1]); // (a "." or ":" at its end is the sentence's)
         if (t) { out += tagLink(t); i += 1 + t.length; prev = 'x'; continue; }
       }
     }
@@ -522,7 +561,7 @@ export function propsHtml(props) {
       continue;
     }
     const vals = (k === 'tags' || k === 'tag' || k === 'alias' || k === 'aliases')
-      ? v.split(',').map((x) => x.trim().replace(/^#/, '').replace(/^\[\[(.*)\]\]$/, '$1')).filter(Boolean).map((n) => link(n)).join(', ')
+      ? splitList(v).map((n) => link(n)).join(', ') // (a comma inside [[ ]] is part of the name: audit finding 9, Nov 23)
       : inline(v);
     rows.push(`<span class="prop${r?.show === 'quiet' ? ' prop-quiet' : ''}"><span class="pk" data-prop="${esc(k)}">${esc(k)}</span><span class="pv">${vals}</span></span>`);
   }

@@ -421,17 +421,29 @@ pub fn send_with_curl(curl: &Path, req: &Request, key: Option<&str>, tmp: &Path)
     Ok((code.trim().parse().unwrap_or(0), body.to_string()))
 }
 
-/// The shells' one way to send with a saved key (Windows' ai_key, the dev server): the header comes
-/// from the service (`key_header`), never from the page, and the key goes only where `key_may_go`
-/// allows; elsewhere it isn't sent and the request is refused (`KEY_ELSEWHERE`). A request without a
-/// key (no key saved, or a service that takes none) goes as `send_with_curl` sends it.
-pub fn send_keyed(curl: &Path, service: &str, req: &Request, key: Option<&str>, other_base: Option<&str>, tmp: &Path) -> Result<(u16, String), String> {
-    let mut req = req.clone();
-    req.auth = key_header(service).map(str::to_string);
-    let key = if req.auth.is_some() { key } else { None };
+/// The request as it goes out with the key saved for `service` (or without one), checked: the header
+/// comes from the service (`key_header`), never from the page; so does whether a key is needed (its
+/// preset's, never the page's `key_required`); a service that takes no key never gets one; and the key
+/// goes only where `key_may_go` allows (else refused, `KEY_ELSEWHERE`, and nothing is sent).
+/// `send_keyed` is this, then curl (kept apart so the checks are tested without sending anything).
+pub fn keyed<'k>(service: &str, req: &Request, key: Option<&'k str>, other_base: Option<&str>) -> Result<(Request, Option<&'k str>), String> {
+    let mut req = req.clone(); // the page's request, changed only here
+    req.auth = key_header(service).map(str::to_string); // the header the service's key goes in, if any
+    // whether a key is needed: the service's preset says (the page could say "not needed" and send none)
+    req.key_required = provider(service).is_some_and(|p| p.key == "required");
+    let key = if req.auth.is_some() { key } else { None }; // a service that takes no key gets none
     if key.is_some() && !key_may_go(service, &req.url, other_base) {
-        return Err(KEY_ELSEWHERE.into());
+        return Err(KEY_ELSEWHERE.into()); // the address isn't the key's own service's: nothing is sent
     }
+    Ok((req, key))
+}
+
+/// The shells' one way to send with a saved key (Windows' ai_key.rs `send` and the dev server's
+/// `ai_send`; audit finding 15: each had its own copy of these checks): `keyed`'s checks, then
+/// `send_with_curl`. A request without a key (no key saved, or a service that takes none) goes as
+/// `send_with_curl` sends it.
+pub fn send_keyed(curl: &Path, service: &str, req: &Request, key: Option<&str>, other_base: Option<&str>, tmp: &Path) -> Result<(u16, String), String> {
+    let (req, key) = keyed(service, req, key, other_base)?; // checked first: refused means nothing sent
     send_with_curl(curl, &req, key, tmp)
 }
 
@@ -592,6 +604,7 @@ pub fn polish_answer(v: &Vault, original: &str, answer: &str, mark: bool) -> Res
         let kept: Vec<String> = lines.into_iter().enumerate().filter(|(n, l)| *n == 0 || crate::parse::property(l).is_none()).map(|(_, l)| l).collect();
         let (text, gone) = crate::text::unlink_unknown(&kept.join("\n"), &is_known);
         unlinked.extend(gone);
+        let text = crate::text::unpicture_new(&text, &words); // a web picture the note didn't have is only a link
         let mut text = text.trim().to_string();
         if text.is_empty() {
             continue;
@@ -791,6 +804,7 @@ pub fn picture_answer(v: &Vault, note: &str, answer: &str, mark: bool) -> Result
         let t = t.trim_start_matches('#').trim();
         let (text, gone) = crate::text::unlink_unknown(t, &is_known);
         unlinked.extend(gone);
+        let text = crate::text::unpicture_new(&text, note); // a web picture the note didn't have is only a link
         let text = text.trim().to_string();
         if !text.is_empty() {
             notes.push((indent / 2, text));
@@ -1004,6 +1018,7 @@ pub fn names_answer(v: &Vault, page: &str, answer: &str) -> Result<Value, String
             "description" if description.is_empty() && !raw.is_empty() => {
                 // plain words: a link the AI wrote becomes its words
                 let (val, _) = crate::text::unlink_unknown(raw, &|_| false);
+                let val = crate::text::unpicture_new(&val, ""); // a picture in it would load wherever it's shown
                 description = val.replace("[[", "").replace("]]", "").trim().chars().take(200).collect();
             }
             "alias" | "aliases" => {
