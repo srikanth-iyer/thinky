@@ -283,7 +283,7 @@ pub fn device(data: &Path) -> Result<String, String> {
     use std::hash::{BuildHasher, Hasher};
     let mut h = std::collections::hash_map::RandomState::new().build_hasher();
     h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()));
-    h.write_u32(std::process::id());
+    h.write_u32(crate::process_id());
     let name = format!("{}-{:08x}", kind(), h.finish() as u32);
     super::write_atomic(&p, &name).map_err(|e| format!("couldn’t name this device’s safety copies: {e}"))?;
     Ok(name)

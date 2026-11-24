@@ -361,7 +361,7 @@ pub fn write_atomic_checked(path: &Path, text: &str, expect: Expect) -> Result<b
     }
     let fname = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     // hidden (a leading dot), so other apps and the app's own scan ignore it
-    let tmp = path.with_file_name(format!(".{fname}.{}-{}.tmp", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
+    let tmp = path.with_file_name(format!(".{fname}.{}-{}.tmp", crate::process_id(), N.fetch_add(1, Ordering::Relaxed)));
     write_flushed(&tmp, text).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         format!("Couldn't write the page: {e}")
@@ -507,7 +507,8 @@ fn each_file<I: Sync, T: Send>(root: &Path, items: &[I], rel: impl Fn(&I) -> &st
 /// it), so the app's size grows by this little and not by a copy for each action. A job that breaks off
 /// breaks this off too when the threads are done, as it would have one by one.
 fn at_once(n: usize, job: &(dyn Fn(usize) + Sync)) {
-    if n < AT_ONCE {
+    // (in a web browser, as on the website's demo, a program can't start threads: one after another)
+    if n < AT_ONCE || cfg!(target_family = "wasm") {
         (0..n).for_each(job);
         return;
     }
@@ -629,23 +630,30 @@ fn read_parallel<T: Clone + AsRef<Path> + Sync + Send>(root: &Path, rels: &[T]) 
     let n = rels.len();
     let next = AtomicUsize::new(0);
     let out = Mutex::new(Vec::with_capacity(n));
-    std::thread::scope(|s| {
-        for _ in 0..n.clamp(1, 8) {
-            s.spawn(|| loop {
-                let i = next.fetch_add(1, Ordering::Relaxed);
-                if i >= n {
-                    break;
-                }
-                if let Ok(bytes) = std::fs::read(root.join(&rels[i])) {
-                    let item = match String::from_utf8(bytes) {
-                        Ok(t) => (rels[i].clone(), t, true),
-                        Err(e) => (rels[i].clone(), String::from_utf8_lossy(e.as_bytes()).into_owned(), false),
-                    };
-                    out.lock().unwrap_or_else(|p| p.into_inner()).push(item);
-                }
-            });
+    let one = |i: usize| {
+        if let Ok(bytes) = std::fs::read(root.join(&rels[i])) {
+            let item = match String::from_utf8(bytes) {
+                Ok(t) => (rels[i].clone(), t, true),
+                Err(e) => (rels[i].clone(), String::from_utf8_lossy(e.as_bytes()).into_owned(), false),
+            };
+            out.lock().unwrap_or_else(|p| p.into_inner()).push(item);
         }
-    });
+    };
+    if cfg!(target_family = "wasm") {
+        (0..n).for_each(one); // (no threads in a web browser: one after another)
+    } else {
+        std::thread::scope(|s| {
+            for _ in 0..n.clamp(1, 8) {
+                s.spawn(|| loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    if i >= n {
+                        break;
+                    }
+                    one(i);
+                });
+            }
+        });
+    }
     out.into_inner().unwrap_or_else(|p| p.into_inner())
 }
 
@@ -1994,7 +2002,7 @@ impl App {
                 if crate::key(&nrel) == crate::key(&rel) {
                     // only the capitals change: go through a temporary name, which also works
                     // where file names ignore case (Windows, Android)
-                    let tmp = path.with_file_name(format!(".rename-{}.tmp", std::process::id()));
+                    let tmp = path.with_file_name(format!(".rename-{}.tmp", crate::process_id()));
                     if let Err(e) = std::fs::rename(&path, &tmp) {
                         put_back(self);
                         return Err(format!("Couldn't rename the file: {e}"));

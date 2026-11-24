@@ -111,16 +111,23 @@ impl Source {
 fn read_all(sources: &[Source]) -> Vec<Option<String>> {
     let next = std::sync::atomic::AtomicUsize::new(0);
     let out = std::sync::Mutex::new(vec![None; sources.len()]);
-    std::thread::scope(|s| {
-        for _ in 0..sources.len().clamp(1, 8) {
-            s.spawn(|| loop {
-                let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                let Some(src) = sources.get(i) else { break };
-                let t = src.read();
-                out.lock().unwrap_or_else(|p| p.into_inner())[i] = t;
-            });
+    if cfg!(target_family = "wasm") {
+        // (no threads in a web browser, as on the website's demo: one after another)
+        for (i, src) in sources.iter().enumerate() {
+            out.lock().unwrap_or_else(|p| p.into_inner())[i] = src.read();
         }
-    });
+    } else {
+        std::thread::scope(|s| {
+            for _ in 0..sources.len().clamp(1, 8) {
+                s.spawn(|| loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some(src) = sources.get(i) else { break };
+                    let t = src.read();
+                    out.lock().unwrap_or_else(|p| p.into_inner())[i] = t;
+                });
+            }
+        });
+    }
     out.into_inner().unwrap_or_else(|p| p.into_inner())
 }
 

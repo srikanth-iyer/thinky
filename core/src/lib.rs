@@ -86,3 +86,13 @@ pub fn append_bullet(content: &str, text: &str) -> String {
     }
     format!("{bom}{out}")
 }
+
+/// This program's process number, for temp file names. A web browser (the website's demo, built for
+/// WebAssembly) has no process numbers, and asking for one there stops the program: 1 there.
+pub(crate) fn process_id() -> u32 {
+    if cfg!(target_family = "wasm") {
+        1
+    } else {
+        std::process::id()
+    }
+}
