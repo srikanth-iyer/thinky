@@ -1744,6 +1744,9 @@ window can't be sent to another page.
 
 ## Build & test
 - Here: `cargo test -p outline_core`; speed: `cargo run --release -p outline_core --example bench`.
+  Big folders, old (origin/main) against the branch you're on, on Windows: `powershell -ExecutionPolicy
+  Bypass -File scripts\bench_big_folders.ps1` (core/examples/thinkybench.rs; made-up folders of about
+  1,600 / 5,000 / 23,000 files in %TEMP%\thinky-bench, never the real notes).
   The Windows shell's own decisions (`src-tauri/src/shell_rules.rs`, `ai_key.rs`: closing, the capture box's
   footer/placing/wheel, links between copies, size limits, which address an AI key may go to) have tests
   that need no Windows or Tauri: `sh src-tauri/pure_tests.sh` (`cargo test -p shell_pure_tests`, a small package in src-tauri/pure that builds those files as tests against outline_core alone; since audit finding 13, Nov 23, 2026, also `watch.rs`, whose inotify tests are the phone's file watcher's, run on Linux, and `android_capture.rs`); on Windows
