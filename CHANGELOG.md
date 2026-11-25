@@ -16,7 +16,7 @@ went up. Build 40 and older still update to it (each release keeps a signature f
 
 ## Build 60 · version 0.6.9 (November 2026)
 
-The website gets "Try it in your browser": the real thinky, with a few sample pages, nothing to install.
+The website gets "Try it in your browser": an online demo with a few sample pages, nothing to install. It also gets a side menu like the app's, with its pages and the sections of the page you're on (on a phone, behind a menu button).
 
 From his notes and asks (Nov 25), in the app and on the website:
 

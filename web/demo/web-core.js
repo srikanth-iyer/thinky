@@ -48,7 +48,7 @@ const INTRO = `- **thinky**: an outliner notes app for Windows and Android that 
 \t- Built around linked references, so each note stays in view of its larger context, and ideas connect to the setting and function they belong to.
 \t- Works with AI tools that can read and change your notes directly (in the app; they're off in this demo).
 \t- Open source and free for anyone to use and adopt.
-- This is the real thinky, running in your browser. Try anything: your notes stay in this browser and nothing is sent anywhere.
+- This is an online demo of thinky, running in your browser. Try anything: your notes stay in this browser and nothing is sent anywhere.
 - To get thinky for Windows or Android, see the [thinky website](https://srikanth-iyer.github.io/thinky/).
 `; // the visitor's notes, kept in this browser between visits (localStorage)
 let dirty = false; // a file changed since the notes were last kept

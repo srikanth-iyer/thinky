@@ -106,20 +106,52 @@ footer p { margin:0 0 6px; }
 .lk-foot { margin:8px 6px 2px; font-size:0.78rem; color:var(--s-muted); }
 .wm-in { display:inline-block; height:1.3em; width:calc(1.3em * 207 / 91); vertical-align:-0.32em; color:inherit; overflow:visible; }
 
-/* the demo, up front (he asked, Nov 25: more prominent, so more people try it): a card under the
-   subtitle with one big button and a picture of the app that opens it too, and "Try it" at the top */
+/* the demo, after the introduction (he asked, Nov 25: after a bit about thinky, and a lighter box than
+   before): a thin accent line on the left, like a note, with one button; and a small "Try it" at the top */
 .try-top { margin-left:auto; font-size:0.88rem; text-decoration:none; color:var(--s-btn-ink); background:var(--s-btn); border-radius:var(--r-pill, 999px); padding:3px 12px; white-space:nowrap; }
 .try-top + #looks { margin-left:8px; }
-.try-card { display:grid; grid-template-columns:1fr 220px; gap:18px; align-items:center; margin:4px 0 20px; padding:18px 20px;
-  background:var(--s-note); border:1px solid var(--s-line); border-radius:var(--r-xl, 12px); }
-.try-card h2 { margin:0 0 6px; font-size:1.3rem; }
-.try-card p { margin:0 0 12px; }
-.try-btn { font-size:1.05rem; padding:12px 20px; font-weight:600; }
-.try-small { color:var(--s-muted); font-size:0.85rem; margin:10px 0 0 !important; }
-.try-shot img { width:100%; height:auto; display:block; border:1px solid var(--s-line); border-radius:8px; transition:transform .15s ease; }
-.try-shot:hover img { transform:scale(1.02); }
+.try-card { border-left:3px solid var(--s-mark); padding:4px 0 4px 16px; margin:4px 0 6px; }
+.try-card .try-h { font-family:var(--s-title); font-weight:var(--title-weight, 600); font-size:1.05rem; margin:0 0 4px; }
+.try-card p { margin:0 0 10px; }
+.try-btn { font-weight:600; }
+
+/* the side menu (nav.js), like the app's sidebar (he asked, Nov 25): at the left on a wide screen, the
+   page's column centred in the room beside it; on a phone, hidden until the ☰ button opens it over the page */
+.site-side {
+  position:fixed; top:0; bottom:0; left:0; z-index:20; width:240px; overflow-y:auto; padding:16px 12px 24px;
+  background:var(--side-bg, var(--s-note)); border-right:1px solid var(--line-soft, var(--s-line));
+  font-family:var(--s-body); font-size:0.9rem; line-height:1.35;
+}
+.ss-brand { display:flex; align-items:center; gap:9px; padding:2px 8px 14px; color:var(--s-text); text-decoration:none; font-family:var(--s-title); font-weight:var(--title-weight, 600); font-size:1.15rem; }
+.ss-brand img { width:26px; height:26px; border-radius:6px; }
+.ss-h { margin:16px 8px 4px; font-size:0.8rem; color:var(--ink-faint, var(--s-muted)); font-weight:500; }
+.ss-list { list-style:none; margin:0; padding:0; }
+.ss-list li { margin:0; }
+.ss-list a { display:flex; align-items:center; gap:9px; padding:5px 8px; border-radius:var(--r-l, 8px); color:var(--s-muted); text-decoration:none; }
+.ss-list a:hover { background:var(--surface-2, var(--s-note)); color:var(--s-text); }
+.ss-list a[aria-current="page"] { background:var(--surface-2, var(--s-note)); color:var(--s-text); box-shadow:inset 3px 0 0 var(--s-mark); }
+.ss-list svg, .ss-open svg { flex:none; width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+.ss-secs a { font-size:0.86rem; padding-top:3px; padding-bottom:3px; }
+.ss-secs svg { width:10px; opacity:.6; }
+.ss-open { display:none; flex:none; align-items:center; justify-content:center; width:36px; height:36px; margin-left:-8px; border:0; border-radius:var(--r-l, 8px); background:none; color:var(--s-text); cursor:pointer; }
+.ss-open svg { width:20px; height:20px; }
+.ss-shade { display:none; }
+html { scroll-padding-top:16px; }
+@media (min-width:1000px) {
+  /* the page's column in the middle of the room right of the menu */
+  body.has-side main, body.has-side footer { margin-left:calc(240px + max(24px, (100% - 240px - 680px) / 2)); margin-right:auto; }
+}
+@media (max-width:999.98px) {
+  .site-side { transform:translateX(-100%); transition:transform .18s ease; box-shadow:none; }
+  body.ss-shown .site-side { transform:none; box-shadow:0 0 40px -10px rgba(0,0,0,.45); }
+  body.has-side .ss-open { display:inline-flex; }
+  body.ss-shown .ss-shade { display:block; position:fixed; inset:0; z-index:19; background:rgba(0,0,0,.28); }
+}
+@media print { .site-side, .ss-open, .ss-shade { display:none !important; } }
+.looks > summary { white-space:nowrap; }
+/* a phone's top line: ☰, the logo, the title, Try it and Look all fit on one line */
 @media (max-width:560px) {
-  .try-card { grid-template-columns:1fr; padding:16px; }
-  .try-shot { display:none; }
-  .try-btn { display:block; text-align:center; }
+  header.top { gap:8px; }
+  header.top img { width:36px; height:36px; border-radius:8px; }
+  header.top h1 { font-size:1.7rem; min-width:0; overflow-wrap:anywhere; }
 }

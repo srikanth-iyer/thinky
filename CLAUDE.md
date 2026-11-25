@@ -1932,7 +1932,10 @@ window can't be sent to another page.
   `site/look.js` (in each page's head) sets `data-skin` before paint and builds the "Look" menu into `#looks`
   (just Light/Dark/System when there is one look of each kind); it saves `lookMode`/`skinDay`/`skinNight` as the
   app does, so site and demo (same origin) share a look.
-  With nothing saved the site follows the system with thinky / thinky night.
+  With nothing saved the site follows the system with Plain / Plain night.
+  `site/nav.js` (deferred, each page) adds the side menu like the app's sidebar (he asked Nov 25): Home, Try it,
+  the page's own h2 sections (ids made from their words) and the other pages; fixed at the left from 1000px,
+  a ☰ drawer below. The home page's Try it box sits after the intro, a light left-line box (he asked Nov 25).
 - The browser extension's stores (Build 59, he asked Nov 23, 2026: "automate them as much as possible"):
   `.github/workflows/stores.yml` runs when `build` passes on main (a release; `workflow_run`, only a push's) and by
   hand (Actions → stores → Run workflow, main only). `scripts/extension_store.py zip` makes the store package
