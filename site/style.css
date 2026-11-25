@@ -101,5 +101,25 @@ footer p { margin:0 0 6px; }
 .swatch i, .swatch b { display:block; width:9px; height:9px; border-radius:50%; }
 .swatch i { background:var(--ink); }
 .swatch b { background:var(--accent); }
+.looks-menu.lk-short { width:min(250px, calc(100vw - 32px)); }
+.lk-short .lk-modes { margin-bottom:2px; }
 .lk-foot { margin:8px 6px 2px; font-size:0.78rem; color:var(--s-muted); }
 .wm-in { display:inline-block; height:1.3em; width:calc(1.3em * 207 / 91); vertical-align:-0.32em; color:inherit; overflow:visible; }
+
+/* the demo, up front (he asked, Nov 25: more prominent, so more people try it): a card under the
+   subtitle with one big button and a picture of the app that opens it too, and "Try it" at the top */
+.try-top { margin-left:auto; font-size:0.88rem; text-decoration:none; color:var(--s-btn-ink); background:var(--s-btn); border-radius:var(--r-pill, 999px); padding:3px 12px; white-space:nowrap; }
+.try-top + #looks { margin-left:8px; }
+.try-card { display:grid; grid-template-columns:1fr 220px; gap:18px; align-items:center; margin:4px 0 20px; padding:18px 20px;
+  background:var(--s-note); border:1px solid var(--s-line); border-radius:var(--r-xl, 12px); }
+.try-card h2 { margin:0 0 6px; font-size:1.3rem; }
+.try-card p { margin:0 0 12px; }
+.try-btn { font-size:1.05rem; padding:12px 20px; font-weight:600; }
+.try-small { color:var(--s-muted); font-size:0.85rem; margin:10px 0 0 !important; }
+.try-shot img { width:100%; height:auto; display:block; border:1px solid var(--s-line); border-radius:8px; transition:transform .15s ease; }
+.try-shot:hover img { transform:scale(1.02); }
+@media (max-width:560px) {
+  .try-card { grid-template-columns:1fr; padding:16px; }
+  .try-shot { display:none; }
+  .try-btn { display:block; text-align:center; }
+}

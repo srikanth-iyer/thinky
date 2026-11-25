@@ -82,8 +82,8 @@
   --sheet-band: none; --sheet-band-h: 0px; --today-bg: var(--sheet-bg);
   --sheet-divider: var(--sheet-border); --sheet-gap: 26px;
   --sheet-pad-top: 22px; --sheet-pad-bottom: 18px; /* inside a sheet, above and below what it holds */
-  --day-gap: 64px; /* between days in the Journals list (app.css .sheet.day) */
-  --day-gap-phone: 40px; /* (on phones and narrow windows: at most this) */
+  --day-gap: 72px; /* between days in the Journals list (app.css .sheet.day; Nov 25 a little more, he asked: days felt cluttered) */
+  --day-gap-phone: 48px; /* (on phones and narrow windows: at most this) */
   /* boxes and section headings (today's "Scheduled & deadline", references) */
   --sec-font: "IBM Plex Sans", system-ui, sans-serif;
   --box-bg: var(--surface-2); --box-border: 1px solid var(--line-soft); --box-radius: 12px;
@@ -153,7 +153,7 @@
 [data-skin="calmplain"] {
   --bg: #FFFFFF; --sheet-bg: var(--bg);
   --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
-  --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 32px;
   /* references: Calm's well, a little softer on the white page */
   --refgrp-shadow: inset 0 3px 6px -2px rgba(26,33,48,.14), inset 0 1px 1px rgba(26,33,48,.06);
   /* One colour family (Build 51, he asked: Calm's sage beside the purple links and tags was too many colours, and
@@ -331,7 +331,7 @@
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
   /* no cards: a hairline between days, the same space above and below it (he chose that over Logseq's
      48px above and 24px below) */
-  --sheet-page-end: 0; --sheet-divider: 1px solid #DBDBDB; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --sheet-page-end: 0; --sheet-divider: 1px solid #DBDBDB; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 32px;
   --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-title: var(--font-body); --title-weight: 500; --title-tracking: -0.01em; --title-size: clamp(28px, 4.6vw, 36px);
   --weekday-font: var(--font-body); --weekday-style: normal;
@@ -365,7 +365,7 @@
   --mark-bg: #4A4120; --danger: #F2B8B5; --danger-tint: #3A2523;
   --edit-bg: #1E1E1E; --guide-ink: #2A2A2A; --bullet-ink: #6A6A6A; --bullet-ring: #333333;
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
-  --sheet-page-end: 0; --sheet-divider: 1px solid #262626; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --sheet-page-end: 0; --sheet-divider: 1px solid #262626; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 32px;
   --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-title: var(--font-body); --title-weight: 500; --title-tracking: -0.01em; --title-size: clamp(28px, 4.6vw, 36px);
   --weekday-font: var(--font-body); --weekday-style: normal;
@@ -398,7 +398,7 @@
   --mark-bg: #4A441E; --danger: #F2B8B5; --danger-tint: #4A2A2E; /* (#4A441E: highlighted words ≥ 4.5:1, Build 44; was #5A5223) */
   --edit-bg: #023643; --guide-ink: #0B4A5A; --bullet-ink: rgba(96,142,145,.8); --bullet-ring: #0F4958;
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
-  --sheet-page-end: 0; --sheet-divider: 1px solid #0E5263; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --sheet-page-end: 0; --sheet-divider: 1px solid #0E5263; --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 32px;
   --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-title: var(--font-body); --title-weight: 500; --title-tracking: -0.01em; --title-size: clamp(28px, 4.6vw, 36px);
   --weekday-font: var(--font-body); --weekday-style: normal;
@@ -430,7 +430,7 @@
   --side-art: url(skins/thinky-corner.svg); --side-art-show: block;
   /* no cards, as in Calm plain (he asked, Oct 29): the notes sit on the white page, a hairline between days */
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
-  --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 32px;
   --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-title: var(--font-body); --title-weight: 600; --title-tracking: -0.02em;
   --weekday-font: var(--font-body); --weekday-style: normal;
@@ -461,13 +461,13 @@
   --line: #2E2B33; --line-soft: #242128;
   --accent: #FF6E52; --accent-ink: #161419; --accent-tint: color-mix(in srgb, #FF6E52 16%, #161419);
   --link: #A3B2F2; --link-line: rgba(255,110,82,.55);
-  --tag-bg: color-mix(in srgb, #FF6E52 16%, #161419); --tag-ink: color-mix(in srgb, #FF6E52 70%, #EAE4D9);
+  --tag-bg: color-mix(in srgb, #FF6E52 10%, #161419); --tag-ink: color-mix(in srgb, #FF6E52 40%, #EAE4D9); /* (Nov 25, he asked: the orange-red #tag pills were too strong at night: a softer tint and words) */
   --mark-bg: #5A4A1C; --danger: #F2B8B5; --danger-tint: #3A2523;
   --edit-bg: #1E1C22; --guide-ink: #2A272F; --bullet-ink: #6F6A76; --bullet-ring: #34313A;
   --quote-bar: color-mix(in srgb, var(--accent) 45%, transparent);
   --side-art: url(skins/thinky-night-corner.svg); --side-art-show: block;
   --sheet-bg: var(--bg); --sheet-border: 0; --sheet-radius: 0; --sheet-shadow: none; --sheet-pad-x: 2px;
-  --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 20px;
+  --sheet-page-end: 0; --sheet-divider: 1px solid var(--line); --sheet-gap: 20px; --sheet-pad-top: 0px; --sheet-pad-bottom: 16px; --day-gap: 32px;
   --font-body: "Inter", "Inter Variable", "Inter var", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-title: var(--font-body); --title-weight: 600; --title-tracking: -0.02em;
   --weekday-font: var(--font-body); --weekday-style: normal;

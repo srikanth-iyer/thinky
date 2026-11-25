@@ -2156,7 +2156,17 @@ export class Outline {
   setMarker(i, marker) {
     if (this.readonly) return;
     this.snap();
+    // the caret at the start of the words (or in the old marker): after the new marker and its space,
+    // so typing goes after "TODO " (Nov 25, he asked: on an empty note it was left before TODO)
+    const typing = this.cur === i && this.ta;
+    const c = typing ? this.ta.selectionStart : 0;
+    const lead = (t) => { const m = t.match(MARKERS); return m ? m[0].length + (t[m[0].length] === ' ' ? 1 : 0) : 0; };
+    const was = lead(this.textOf(i));
     this.setText(i, (t) => this.withMarker(t, marker));
+    if (typing && this.ta && c <= was && this.ta.selectionStart === this.ta.selectionEnd) {
+      const at = Math.min(lead(this.ta.value), this.ta.value.length);
+      this.ta.setSelectionRange(at, at);
+    }
   }
 
   /** Change a block's text with fn(text) → text, keeping the caret where it was if editing. */

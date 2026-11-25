@@ -308,6 +308,12 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
 .sheet.day.folded .day-fold::before { transform: rotate(-90deg); }
 .day-head:hover > .day-fold, .day-fold:focus-visible, .sheet.day.folded .day-fold { opacity: .75; }
 .day-fold:hover { opacity: 1 !important; color: var(--ink); }
+/* a day's ⋯ in the Journals list (its page menu: Delete page… and the rest): at the date's right, quiet
+   until the pointer is on the day's head; on a phone always there, left of the fold arrow */
+.day-more { position: absolute; right: -6px; top: -4px; width: 34px; height: 30px; display: grid; place-items: center; border: 0; border-radius: var(--r-m); background: none; padding: 0; cursor: pointer; color: var(--ink-faint); opacity: 0; }
+.day-more svg { width: 18px; height: 18px; }
+.day-head:hover > .day-more, .day-more:focus-visible, .day-more[aria-expanded="true"] { opacity: .75; }
+.day-more:hover { opacity: 1 !important; color: var(--ink); background: var(--accent-tint); }
 .sheet.day.folded > :not(.day-head) { display: none; }
 .sheet.day.folded, .sheet.day.today.folded { min-height: 0; }
 /* a page's sheet holds its title too (and properties), the same room around them as a day's */
@@ -396,6 +402,7 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
 @media (pointer: coarse) { .fold { opacity: .4; } }
 @media (max-width: 860px), (pointer: coarse) { /* (a finger-sized target, clear of the date) */
   .day-fold { left: auto; right: -12px; bottom: auto; top: -10px; width: 44px; height: 40px; opacity: .45; }
+  .day-more { right: 34px; top: -10px; width: 44px; height: 40px; opacity: .45; }
 }
 /* the parents of the note at the top of the screen, pinned there while scrolling (editor.js
    pinParents): one line each, at their own level, across the sheet; a tap goes to the note */
@@ -416,9 +423,11 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
 .crumbs a { color: var(--ink-soft); text-decoration: none; }
 .crumbs a:hover { color: var(--link); }
 .bc, .ed {
-  display: block; width: 100%; min-height: var(--line-box); padding: var(--bc-pad-y) 6px; margin: 0 0 0 -6px;
+  display: block; width: 100%; min-height: calc(var(--line-box) + 2 * var(--bc-pad-y)); padding: var(--bc-pad-y) 6px; margin: 0 0 0 -6px;
   font: inherit; line-height: var(--lh); color: inherit; overflow-wrap: anywhere; border-radius: var(--r-m);
 }
+/* (min-height counts the padding too, so an empty note is as tall as a line of words, and as tall
+   shown as while typing in it: Nov 25, he found an empty note grew when touched) */
 .bc { cursor: text; }
 .bc, .page-title, .refgrp { text-shadow: var(--ink-shadow); } /* (printed in ink: Paper's hair of spread; none elsewhere) */
 .bc:empty::before { content: attr(data-ph); color: var(--ink-faint); }
@@ -686,8 +695,10 @@ a.tag .hash { display: var(--hash); }
 .tagged-sec .ref-tools { margin-bottom: 8px; }
 .tagged-sec .ref-tools[hidden] { display: none; }
 /* under a day in the Journals list: references to it (smaller headings), and today's due to-dos */
-.day-refs .sec { margin-top: 36px; }
-.day-sched .sched { margin-top: 40px; } /* (room for the faint "+" under the day's last note) */
+/* (room for the faint "+" under the day's last note, which takes none of its own, and a clear gap after
+   it: Nov 25, he asked, a tap meant for "Linked references" hit the "+" on a phone) */
+.day-refs .sec { margin-top: 48px; }
+.day-sched .sched { margin-top: 48px; }
 .day-refs .sec-h { font-size: var(--fs-ui); margin-bottom: 8px; }
 .day-refs .refgrp h3 { font-size: var(--fs-read); }
 .sched { border: var(--box-border); background: var(--box-bg); border-radius: var(--box-radius); padding: 10px 14px 6px; font-family: var(--sec-font); }
@@ -1410,13 +1421,13 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
      still fitting beside the star and menu buttons; days a little less roomy than on a laptop */
   .day-head .page-title { font-size: clamp(26px, 8vw, 34px); } /* (the longest dates still fit on one line in most looks) */
   .sheet.day, .sheet.page { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 12px); padding-bottom: calc(var(--sheet-pad-bottom) + 12px); }
-  .sheet.day { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 18px); padding-bottom: calc(var(--sheet-pad-bottom) + 20px); }
+  .sheet.day { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 18px); padding-bottom: calc(var(--sheet-pad-bottom) + 30px); }
   .sheet.page { padding-bottom: calc(var(--sheet-pad-bottom) + 30px); }
   .sheet.day { margin-bottom: min(var(--day-gap), var(--day-gap-phone)); min-height: 200px; }
   .sheet.day.today { min-height: 300px; }
   .day-body { margin-top: 20px; }
   .day-body.blank { min-height: 116px; }
-  .day-refs .sec { margin-top: 28px; }
+  .day-refs .sec, .day-sched .sched { margin-top: 56px; } /* (the phone's "+" line is 36px tall: 20px clear under it) */
   .sheet.page > .page-head { margin-bottom: 18px; }
   /* find: a strip under the top bar that stays with it; notes scrolled to stay clear of both */
   #findbar { position: sticky; top: var(--topbar-h); z-index: 29; background: var(--bg); padding: 6px 8px; border-bottom: 1px solid var(--line-soft); align-items: stretch; }
@@ -1430,7 +1441,7 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 
 /* ---------- printing / save as PDF: just the page ---------- */
 @media print {
-  #side, #topbar, #histbar, #findbar, .pins, #toolbar, .side-grip, .split-grip, .side-more, #toast, .title-row .icon-btn, .sec, .banner, .more, .fold, .day-fold { display: none !important; }
+  #side, #topbar, #histbar, #findbar, .pins, #toolbar, .side-grip, .split-grip, .side-more, #toast, .title-row .icon-btn, .sec, .banner, .more, .fold, .day-fold, .day-more { display: none !important; }
   .blk.has-kids > .bc { padding-right: 6px !important; } /* no room kept for the phone's fold arrow */
   #app, #col { display: block; height: auto; }
   #main { padding: 0; zoom: 1; overflow: visible; }
@@ -1723,8 +1734,11 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
    still a finger tall; long ones scroll. The date menu: one column, rows close together (he asked for
    it, Build 32: 32px). */
 @media (pointer: coarse) {
-  .pop.menu:not(.note-menu) { min-width: 168px; max-width: min(280px, calc(100vw - 16px)); max-height: min(62vh, 440px); overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
-  .pop.menu:not(.note-menu) button { display: flex; align-items: center; min-height: 44px; padding: 0 12px; font-size: var(--fs-read); line-height: 1.25; }
+  .pop.menu:not(.note-menu) { min-width: 160px; max-width: min(268px, calc(100vw - 16px)); max-height: min(62vh, 440px); overflow-y: auto; overscroll-behavior: contain; padding: 3px; }
+  /* (rows 38px, were 44px: he found the page's ⋯ menu too tall, with too much room between rows and at the
+     edges, Nov 25: still an easy finger target) */
+  .pop.menu:not(.note-menu) button { display: flex; align-items: center; min-height: 38px; padding: 0 10px; font-size: var(--fs-read); line-height: 1.2; }
+  .pop.menu:not(.note-menu) button.m-icon { gap: 9px; }
   .pop.menu.grouped:not(.tb-menu) button { min-height: 36px; }
   .pop.menu:not(.note-menu) .mhint { order: 2; float: none; margin-left: auto; padding-left: 16px; font-size: var(--fs-small); }
   .pop.menu.tb-menu { width: min(216px, calc(100vw - 16px)); }
@@ -2046,7 +2060,7 @@ html:not(.ai-on) .ai-chip { display: none; }
 /* Polish note: the AI's words edited by hand before Keep (Build 54, he asked): a click on them makes them text boxes */
 .pz-note { cursor: text; }
 .pz-still { animation: none; }
-.pz-ed { display: block; width: 100%; min-height: var(--line-box); padding: var(--bc-pad-y) 6px; margin: 0 0 0 -6px; font: inherit; line-height: var(--lh); color: inherit;
+.pz-ed { display: block; width: 100%; min-height: calc(var(--line-box) + 2 * var(--bc-pad-y)); padding: var(--bc-pad-y) 6px; margin: 0 0 0 -6px; font: inherit; line-height: var(--lh); color: inherit;
   border: 0; outline: 0; resize: none; background: var(--edit-bg); border-radius: var(--r-m); overflow: hidden; field-sizing: content; box-shadow: inset 0 0 0 1px var(--accent-tint); }
 .pz-ed.pz-more { width: calc(100% - 16px); margin-left: 10px; }
 /* the ✦ beside an edited linked reference (Build 54, he saw it cut off): the reference box clips what passes its edge,

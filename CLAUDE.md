@@ -1925,9 +1925,13 @@ window can't be sent to another page.
   only the app's look tokens (`--bg`, `--ink`, `--accent`, `--font-body`…, through its own `--s-*` names, with the
   old warm colours as fallback). pages.yml runs `web/site-looks.mjs` (from main) on the same release as the demo: it
   copies ui/skins.css, fonts, skins/ pictures (also to the site's root: browsers resolve a look's `url(skins/…)`
-  next to style.css) and the wordmark into `look/`, and reads `SKINS` out of ui/app.js into `look/looks.js`.
-  `site/look.js` (in each page's head) sets `data-skin` before paint and builds the "Look" menu into `#looks`;
-  it saves `lookMode`/`skinDay`/`skinNight` as the app does, so site and demo (same origin) share a look.
+  next to style.css) and the wordmark into `look/`, and reads `ALL_SKINS` out of ui/app.js, kept to `WEB_LOOKS`,
+  into `look/looks.js`. Online only Plain and Plain night (he asked, Nov 25: "just keep the plain and the plain
+  night. That is light, dark, or system"): `WEB_LOOKS` in ui/app.js; in the demo (`isWebDemo`, api.js) `SKINS` is
+  only those, the sidebar's Look offers Light/Dark/System, and boot.js paints them first. The app keeps all looks.
+  `site/look.js` (in each page's head) sets `data-skin` before paint and builds the "Look" menu into `#looks`
+  (just Light/Dark/System when there is one look of each kind); it saves `lookMode`/`skinDay`/`skinNight` as the
+  app does, so site and demo (same origin) share a look.
   With nothing saved the site follows the system with thinky / thinky night.
 - The browser extension's stores (Build 59, he asked Nov 23, 2026: "automate them as much as possible"):
   `.github/workflows/stores.yml` runs when `build` passes on main (a release; `workflow_run`, only a push's) and by

@@ -18,6 +18,22 @@ went up. Build 40 and older still update to it (each release keeps a signature f
 
 The website gets "Try it in your browser": the real thinky, with a few sample pages, nothing to install.
 
+From his notes and asks (Nov 25), in the app and on the website:
+
+- Phone menus (a page's ⋯, a day's ⋯…) are more compact: rows 38px tall (were 44px), less room at the edges.
+- The faint "+" under a day's last note no longer sits on "Linked references" or "Scheduled & deadline": those
+  start clear of it (48px under the notes, 56px on a phone, whose "+" line is 36px tall), so a tap meant for one
+  doesn't hit the other. Days in the Journals list have more room between them (72px, 48px on a phone; 32px in
+  the looks with a line between days, were 20px), and more under a day's last part on a phone.
+- An empty note is as tall shown as while typing in it (its least height counts its padding: `.bc`, `.ed`).
+- thinky night's #tag pills are softer: a fainter orange tint and words closer to cream.
+- Each day in the Journals list has a ⋯ with the day's page menu, Delete page… among it (the ⋯ on a day's own
+  page already had it); Delete page… also shows once a new page's first note is saved.
+- The to-do button (and Ctrl+Enter) on an empty note, or with the caret at the start of the words, leaves the caret
+  after "TODO ", ready to type.
+- The website's "Try it" stands out: a card at the top of the home page with one big button and a picture of the
+  app that opens it too, and a "Try it" button beside "Look" on every page.
+
 - The demo at srikanth-iyer.github.io/thinky/try/ is the app's own page and the app's own core (core/), built for
   WebAssembly (web/core-wasm, web/build-demo.sh). The visitor's notes stay in their browser (localStorage); the AI
   features and backups need the app, and pictures added in the demo aren't kept between visits.
@@ -27,10 +43,11 @@ The website gets "Try it in your browser": the real thinky, with a few sample pa
 - The home page says why thinky was made, and mentions the optional AI features, the backups and the extension's
   store pages; the privacy page says where the demo keeps its notes.
 - The home page is laid out as a thinky page (a properties box, then an outline with bullets and the pale lines
-  between a note and the notes under it), and every page of the website can wear any of the app's looks: a "Look"
-  menu (site/look.js) with Light, Dark or System and the day and night looks. The looks are the newest release's own
-  (web/site-looks.mjs copies ui/skins.css, its pictures and fonts, and the list of looks from ui/app.js), saved like
-  the app saves them, so the demo opens in the look picked on the site and the other way round.
+  between a note and the notes under it), in the app's Plain look. Online (the website and the demo) there are only
+  Plain and Plain night (he asked): a "Look" menu (site/look.js; in the demo the sidebar's Look) offers Light, Dark or
+  System, and System is what shows at first. The looks are the newest release's own (web/site-looks.mjs copies
+  ui/skins.css, its pictures and fonts, and the looks in ui/app.js WEB_LOOKS), saved like the app saves them, so the
+  demo opens in the choice made on the site and the other way round. The app keeps all its looks.
 - Under the hood: the core runs its work one job at a time when built for WebAssembly (no threads there) and uses a
   fixed process number there; the app's own builds are unchanged. The demo's own code (web/demo/) stays out of ui/,
   so the app doesn't carry it.

@@ -7,8 +7,12 @@ try {
   var get1 = function (k) { return JSON.parse(localStorage.getItem(k) || 'null'); };
   var skin = get1('skin') || 'thinky'; // (the default look since Build 33, he asked)
   var mode = get1('lookMode'), day = get1('skinDay'), night = get1('skinNight');
-  if (mode && day && night) skin = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches) ? night : day;
-  document.documentElement.dataset.skin = { grimoire: 'calm', screenplay: 'plain', azulejo: 'thinky' }[skin] || skin;
+  var nightNow = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  if (mode && day && night) skin = nightNow ? night : day;
+  skin = { grimoire: 'calm', screenplay: 'plain', azulejo: 'thinky' }[skin] || skin;
+  // the website's demo has only Plain and Plain night (app.js WEB_LOOKS)
+  if (document.documentElement.hasAttribute('data-web-demo') && skin !== 'plain' && skin !== 'plainnight') skin = (mode ? nightNow : matchMedia('(prefers-color-scheme: dark)').matches) ? 'plainnight' : 'plain';
+  document.documentElement.dataset.skin = skin;
 } catch (e) {}
 // link colour and fonts picked in Settings (see App.applyTextStyle)
 try {

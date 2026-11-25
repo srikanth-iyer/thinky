@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-skin="thinky">
+<html lang="en" data-skin="plain">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,8 +14,18 @@
 </head>
 <body>
 <main>
-<header class="top"><img src="icon.svg" alt=""><h1>thinky</h1><span id="looks"></span></header>
+<header class="top"><img src="icon.svg" alt=""><h1>thinky</h1><a class="try-top" href="try/">Try it</a><span id="looks"></span></header>
 <p class="sub">A small, fast outliner for your notes, on Windows and Android.</p>
+<!-- the demo, up front (he asked, Nov 25: make it more prominent so more people try it) -->
+<section class="try-card" aria-labelledby="try-h">
+<div class="try-text">
+<h2 id="try-h">Try it right now, in your browser</h2>
+<p>The real thinky with a few sample pages. Write, link pages and tick off to-dos to see how it feels.</p>
+<a class="btn try-btn" href="try/">Open thinky in your browser <span aria-hidden="true">→</span></a>
+<p class="try-small">Nothing to install, no account. What you write stays in your browser.</p>
+</div>
+<a class="try-shot" href="try/" tabindex="-1" aria-hidden="true"><img src="shots/journals.png" alt="" width="1280" height="800"></a>
+</section>
 <div class="props" aria-label="About thinky">
 <div><span class="k">made-for</span> <span class="v">Logseq-style Markdown notes</span></div>
 <div><span class="k">runs-on</span> <span class="v">Windows, Android, and <a href="try/">your browser</a> to try it</span></div>
@@ -33,7 +43,7 @@
 <div class="buttons">
 <a class="btn" href="https://github.com/srikanth-iyer/thinky/releases/latest/download/thinky-setup.exe">Download for Windows</a>
 <a class="btn" href="https://github.com/srikanth-iyer/thinky/releases/latest/download/thinky.apk">Download for Android</a>
-<a class="btn ghost" href="try/">Try it in your browser</a>
+<a class="btn ghost" href="try/">Or try it in your browser first</a>
 </div>
 <ul class="outline">
 <li><p class="small">Also: a <a href="https://github.com/srikanth-iyer/thinky/releases/latest/download/thinky-portable.exe">portable Windows program</a> that needs no installing, and <a href="https://github.com/srikanth-iyer/thinky/releases">every release</a>.</p></li>
@@ -73,7 +83,7 @@
 <li><p><strong>Quick capture.</strong> A shortcut key on Windows opens a small "Add to journal" box at once. On Android: home-screen widgets, a Quick Settings tile and the share sheet. A browser extension for Edge or Chrome, from their stores, sends highlights, and shows them again when you come back (<a href="highlights.html">how</a>).</p></li>
 <li><p><strong>Optional AI.</strong> Choose Claude, OpenAI, Gemini, OpenRouter, or an offline program such as Ollama in Settings › AI, to tidy a note (Polish note), read a picture's words, ask about a page, or suggest links. Off until you set it up (<a href="privacy.html">what is sent</a>).</p></li>
 <li><p><strong>Backups.</strong> On the laptop, optional backups only when something changed: dated zips of the notes folder, or a git repository such as GitHub.</p></li>
-<li><p><strong>Feels like Logseq.</strong> The same files, folders and settings, block references, templates, to-do states, tabs and two pages side by side, and many looks, light and dark. This website wears them too: pick one with <em>Look</em> at the top of the page.</p></li>
+<li><p><strong>Feels like Logseq.</strong> The same files, folders and settings, block references, templates, to-do states, tabs and two pages side by side, and many looks, light and dark. This website and the demo use the Plain look: choose Light, Dark or System with <em>Look</em> at the top of the page.</p></li>
 <li><p><strong>Lean.</strong> About 3 MB to install on Windows, with no framework. Nothing runs in the background, except a tiny helper if you choose a shortcut key.</p></li>
 <li><div class="pair">
 <figure>

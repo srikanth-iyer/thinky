@@ -5,6 +5,8 @@
 const T = window.__TAURI__;
 // (`?.`: also loaded in plain Node by dev/ui-tests/unit.mjs, with no page or a stand-in one)
 const WEB = !T && typeof document !== 'undefined' && !!(document.documentElement?.hasAttribute?.('data-web-demo') || document.querySelector?.('meta[name="thinky-web-demo"]'));
+/** the website's demo (not the app): app.js offers only the online looks there (WEB_LOOKS) */
+export const isWebDemo = WEB;
 /** the demo's core, once started (assetUrl needs it at once) */
 let web = null;
 

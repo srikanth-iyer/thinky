@@ -2,7 +2,7 @@
 // toolbar, background refresh. Lists live in views.js, Settings in settings.js, blocks in
 // editor.js / render.js, floating bits in popups.js.
 
-import { call, today, nowTime, store, isApp, isAndroid, listen, pageLinkUrl } from './api.js';
+import { call, today, nowTime, store, isApp, isAndroid, isWebDemo, listen, pageLinkUrl } from './api.js';
 import { Outline, EDGE, PIN_H, findAgain, caretAgain, foldedIn, lineLook } from './editor.js';
 import { renderBlock, propsHtml, visibleProps, esc, pagesIn, setPropRules } from './render.js';
 import { Suggest, Preview, menu, confirmBox, promptBox, pickDate, place } from './popups.js';
@@ -23,7 +23,7 @@ import { releaseVersion, higherVersion } from './version.js';
 // Looks: name and one-line note for the picker; the look itself lives in skins.css.
 // The looks, family by family (Build 39, he asked: a day look and a night look, and Light / Dark / Match
 // system). dark: a night look; pair: the other half of its family, the first guess for the other slot.
-export const SKINS = [
+const ALL_SKINS = [
   { id: 'thinky', name: 'thinky', word: true, note: 'The logo’s cream, ink and red spark', pair: 'thinkynight' },
   { id: 'thinkynight', name: 'thinky night', word: true, after: 'night', dark: true, note: 'Warm charcoal, cream words, the spark', pair: 'thinky' },
   { id: 'plain', name: 'Plain', note: 'Logseq’s own look: off-white, flat and quiet', pair: 'plainnight' },
@@ -37,6 +37,12 @@ export const SKINS = [
   { id: 'paper', name: 'Paper', note: 'Dot-grid paper, serif writing, highlighter' },
   { id: 'automaton', name: 'Automaton', note: 'Lab notes on a rule 30 pattern' },
 ];
+/** Online (the website and its demo) only Plain and Plain night, picked as Light, Dark or System (he
+ *  asked, Nov 25); the app has them all. web/site-looks.mjs reads this list for the website too. */
+export const WEB_LOOKS = ['plain', 'plainnight'];
+export const SKINS = isWebDemo ? ALL_SKINS.filter((s) => WEB_LOOKS.includes(s.id)) : ALL_SKINS;
+/** the looks shown when none is saved (or the saved one isn't offered here) */
+const FIRST_DAY = isWebDemo ? 'plain' : 'thinky', FIRST_NIGHT = isWebDemo ? 'plainnight' : 'thinkynight';
 const SKIN_IDS = new Set(SKINS.map((s) => s.id));
 /** A look's name as HTML: the look named after the app shows the wordmark (his rule: the name is never plain letters). */
 export const lookName = (s) => (s.word ? BRAND.word + (s.after ? ' ' + esc(s.after) : '') : esc(s.name));
@@ -52,12 +58,12 @@ export function lookState() {
   const mode = store.get('lookMode', '');
   const [d, n] = [kept(store.get('skinDay', '')), kept(store.get('skinNight', ''))];
   if (mode && SKIN_IDS.has(d) && SKIN_IDS.has(n)) return { mode, day: d, night: n };
-  const old = kept(store.get('skin', 'thinky'));
-  const o = skinOf(old) || skinOf('thinky');
+  const old = kept(store.get('skin', FIRST_DAY));
+  const o = skinOf(old) || skinOf(FIRST_DAY);
   const other = skinOf(o.pair) || null;
-  const day = o.dark ? (other && !other.dark ? other.id : 'thinky') : o.id;
-  const night = o.dark ? o.id : (other?.dark ? other.id : 'thinkynight');
-  return { mode: mode || (o.dark ? 'dark' : 'light'), day, night };
+  const day = o.dark ? (other && !other.dark ? other.id : FIRST_DAY) : o.id;
+  const night = o.dark ? o.id : (other?.dark ? other.id : FIRST_NIGHT);
+  return { mode: mode || (isWebDemo ? 'system' : o.dark ? 'dark' : 'light'), day, night }; // (online: as the device is, like the website)
 }
 const darkSystem = () => matchMedia('(prefers-color-scheme: dark)').matches;
 /** The look to show now. */
@@ -1102,7 +1108,7 @@ class App {
     // weekday on phones), as in Logseq: only its date stays. Remembered while the app is open.
     const folded = dayFolds().has(day.name.toLowerCase());
     sec.classList.toggle('folded', folded);
-    sec.innerHTML = `<div class="day-head"><button type="button" class="day-fold" aria-expanded="${!folded}" aria-label="${folded ? 'Unfold' : 'Fold'} ${esc(day.name)}" title="${folded ? 'Unfold' : 'Fold'} this day"></button><p class="weekday">${WEEKDAYS[dt.getDay()]}</p><h2 class="page-title">${pageLink(day.name)}</h2></div>`;
+    sec.innerHTML = `<div class="day-head"><button type="button" class="day-fold" aria-expanded="${!folded}" aria-label="${folded ? 'Unfold' : 'Fold'} ${esc(day.name)}" title="${folded ? 'Unfold' : 'Fold'} this day"></button><p class="weekday">${WEEKDAYS[dt.getDay()]}</p><h2 class="page-title">${pageLink(day.name)}</h2><button type="button" class="day-more" aria-label="Actions for ${esc(day.name)}" title="More">${ICON.more}</button></div>`;
     sec.querySelector('a').onclick = (e) => { e.preventDefault(); this.go('page', day.name); };
     sec.dataset.day = day.name; // (unfoldFor)
     sec.querySelector('.day-fold').onclick = () => this.foldDay(sec, day.name);
@@ -1118,6 +1124,9 @@ class App {
     if (!pane) return null; // another page opened meanwhile (see journalsView)
     const o = new Outline(body, pv, this);
     pane.outlines.push(o);
+    // the day's ⋯: its page menu, as on the day's own page (Delete page… among it; Nov 25, he asked for
+    // a way to delete a day from the Journals list)
+    sec.querySelector('.day-more').onclick = (e) => this.pageMenu(/** @type {HTMLElement} */ (e.currentTarget), pv, null, o);
     // a day with no notes yet (often one only other pages link to): its empty first note ("Click to
     // write…") with a roomy empty area under it that a click or tap also opens, so it's plain at a
     // glance that nothing is written there, and easy to start (he asked, Oct 27; app.css .day-body.blank)
@@ -1987,7 +1996,7 @@ class App {
     // (wide windows on the laptop: a phone's notes use its whole width anyway)
     if (!isAndroid && !matchMedia('(max-width: 860px)').matches) items.push({ label: this.wide ? 'Back to reading width' : 'Wide mode: use the whole width', icon: this.wide ? ICON.narrow : ICON.wide, hint: 't w', run: () => this.setWide() });
     items.push({ label: 'Print or save as PDF', icon: ICON.print, run: () => this.printPage() });
-    if (pv.info.exists) items.push({ label: 'Delete page…', icon: ICON.trash, danger: true, run: async () => { if (await this.deletePages([pv.info.name])) this.go('journals'); } });
+    if (pv.info.exists || outline?.exists) items.push({ label: 'Delete page…', icon: ICON.trash, danger: true, run: async () => { if (await this.deletePages([pv.info.name])) this.go('journals'); } });
     menu(btn, items);
   }
 
@@ -2236,7 +2245,7 @@ class App {
    *  With Light or Dark it shows at once (a night look picked in Light turns Dark on: he chose it); with
    *  Match system it shows when the system is that way, and a message says so otherwise. */
   setSkin(id) {
-    if (!SKIN_IDS.has(id)) id = 'calm'; // (Grimoire, taken out in Build 32, too; boot.js does the same before the first paint)
+    if (!SKIN_IDS.has(id)) id = isWebDemo ? FIRST_DAY : 'calm'; // (Grimoire, taken out in Build 32, too; boot.js does the same before the first paint)
     const st = lookState(), dark = !!skinOf(id).dark;
     st[dark ? 'night' : 'day'] = id;
     if (st.mode !== 'system') st.mode = dark ? 'dark' : 'light';
@@ -2255,7 +2264,7 @@ class App {
   }
   /** Shows a look (the one lookState says): the page, the widgets, the bars, the capture box. */
   showSkin(id, force = false) {
-    if (!SKIN_IDS.has(id)) id = 'calm';
+    if (!SKIN_IDS.has(id)) id = isWebDemo ? FIRST_DAY : 'calm';
     const was = document.documentElement.dataset.skin;
     document.documentElement.dataset.skin = id;
     store.set('skin', id); // (the look shown: an older build reads it)
@@ -2305,11 +2314,17 @@ class App {
         <span class="look-sw" data-skin="${s.id}" aria-hidden="true"><span><i></i><b>Aa</b></span></span>
         <span class="look-txt"><b>${lookName(s)}</b><small>${esc(s.note)}</small></span></button></li>`;
     const mode = { light: 'Light', dark: 'Dark', system: 'Match system' }[st.mode];
-    box.innerHTML = `<p class="looks-h">Day look</p><ul>${SKINS.filter((s) => !s.dark).map(row).join('')}</ul>
+    // online (the website's demo: one day look, one night look) the choice is only Light, Dark or System
+    const modeRow = ([m, label, id, note]) => `<li><button type="button" data-mode="${m}" aria-pressed="${st.mode === m}">
+        <span class="look-sw" data-skin="${id}" aria-hidden="true"><span><i></i><b>Aa</b></span></span>
+        <span class="look-txt"><b>${label}</b><small>${note}</small></span></button></li>`;
+    if (isWebDemo) box.innerHTML = `<p class="looks-h">Look</p><ul>${[['light', 'Light', FIRST_DAY, 'Plain: off-white, flat and quiet'],
+      ['dark', 'Dark', FIRST_NIGHT, 'Plain night: near-black, quiet'], ['system', 'System', shownLook({ ...st, mode: 'system' }), 'Light or dark as your device is']].map(modeRow).join('')}</ul>`;
+    else box.innerHTML = `<p class="looks-h">Day look</p><ul>${SKINS.filter((s) => !s.dark).map(row).join('')}</ul>
       <p class="looks-h">Night look</p><ul>${SKINS.filter((s) => s.dark).map(row).join('')}</ul>
       <a class="look-more" href="#/settings/look">Light, dark or match system (now: ${mode}), bigger previews: Settings</a>`;
     document.body.append(box);
-    const rows = () => [...box.querySelectorAll('[data-look]')];
+    const rows = () => [...box.querySelectorAll('[data-look], [data-mode]')];
     const onDown = (e) => { if (!box.contains(e.target) && !anchor.contains(e.target)) close(); };
     const onKey = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); anchor.focus(); }
@@ -2330,6 +2345,8 @@ class App {
     };
     this.closeLooks = close;
     box.addEventListener('click', (e) => {
+      const m = e.target.closest('[data-mode]');
+      if (m) { this.setLookMode(m.dataset.mode); box.querySelectorAll('[data-mode]').forEach((x) => x.setAttribute('aria-pressed', String(x === m))); return; }
       const b = e.target.closest('[data-look]');
       if (b) {
         this.setSkin(b.dataset.look);
@@ -2341,7 +2358,7 @@ class App {
     setTimeout(() => { document.addEventListener('pointerdown', onDown, true); document.addEventListener('keydown', onKey, true); }, 0);
     anchor.setAttribute('aria-expanded', 'true');
     place(box, anchor.getBoundingClientRect());
-    (box.querySelector('[aria-pressed="true"]') || box.querySelector('[data-look]')).focus();
+    (box.querySelector('[aria-pressed="true"]') || rows()[0]).focus();
   }
   textSize(s) {
     if (s === undefined) return store.get('textSize', 1);

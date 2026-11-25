@@ -24,14 +24,20 @@ for (const d of ['skins', 'fonts']) fs.cpSync(path.join(UI, d), path.join(LOOK, 
 fs.cpSync(path.join(UI, 'skins'), path.join(OUT, 'skins'), { recursive: true });
 fs.copyFileSync(path.join(UI, 'brand', 'wordmark.svg'), path.join(LOOK, 'brand', 'wordmark.svg'));
 
-// 2. the list of looks (name, light or dark, a few words about it) from the app's SKINS list.
-//    app.js can't be loaded outside the app, so the list is read out of its text: everything from
-//    "export const SKINS = [" to the "];" that closes it, which holds only plain values.
+// 2. the list of looks (name, light or dark, a few words about it) from the app's ALL_SKINS list, kept
+//    to the online ones (WEB_LOOKS). app.js can't be loaded outside the app, so the lists are read out of
+//    its text: from "const ALL_SKINS = [" to the "];" that closes it, which holds only plain values.
 const app = fs.readFileSync(path.join(UI, 'app.js'), 'utf8');
-const m = app.match(/export const SKINS = (\[[\s\S]*?\n\]);/);
-if (!m) { console.error('site-looks: no SKINS list found in ui/app.js'); process.exit(1); }
+const m = app.match(/const ALL_SKINS = (\[[\s\S]*?\n\]);/);
+if (!m) { console.error('site-looks: no ALL_SKINS list found in ui/app.js'); process.exit(1); }
+// online only the looks in WEB_LOOKS (he asked, Nov 25: Plain and Plain night, as Light, Dark or System)
+const w = app.match(/export const WEB_LOOKS = (\[[^\]\n]*\]);/);
+if (!w) { console.error('site-looks: no WEB_LOOKS list found in ui/app.js'); process.exit(1); }
 // (read in an empty sandbox, so the text can only make values, never reach files or the network)
-const looks = vm.runInNewContext('(' + m[1] + ')', Object.create(null), { timeout: 1000 });
+const read = (t) => vm.runInNewContext('(' + t + ')', Object.create(null), { timeout: 1000 });
+const online = read(w[1]);
+const looks = read(m[1]).filter((l) => online.includes(l.id));
+if (!looks.some((l) => !l.dark) || !looks.some((l) => l.dark)) { console.error('site-looks: WEB_LOOKS needs a day look and a night look'); process.exit(1); }
 // keep only what the website shows, and check each look has its colours in skins.css
 const css = fs.readFileSync(path.join(UI, 'skins.css'), 'utf8');
 const list = looks.map(({ id, name, dark, note, pair, word, after }) => ({ id, name, dark: !!dark, note, pair, word: !!word, after: after || '' }));

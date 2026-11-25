@@ -12,12 +12,19 @@
   var get = function (k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } };
   var set = function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
+  // the first day look and the first night look on the list: what shows when nothing (or a look the site
+  // doesn't offer) is saved
+  var first = function (dk) { for (var i = 0; i < LOOKS.length; i++) if (LOOKS[i].dark === dk) return LOOKS[i].id; return null; };
+  // only one look of each kind (online: Plain and Plain night, he asked Nov 25): the menu is just
+  // Light, Dark or System
+  var onlyModes = function () { return LOOKS.filter(function (l) { return !l.dark; }).length < 2 && LOOKS.filter(function (l) { return l.dark; }).length < 2; };
   // what is saved: Light, Dark or Match system, and a day look and a night look. With nothing saved the
-  // site follows the system with the two thinky looks.
+  // site follows the system.
   function state() {
     var mode = get('lookMode'), day = get('skinDay'), night = get('skinNight');
-    if (!(mode && byId(day) && byId(night))) { mode = mode || 'system'; day = 'thinky'; night = 'thinkynight'; }
-    return { mode: mode, day: day, night: night };
+    if (!byId(day) || byId(day).dark) day = first(false);
+    if (!byId(night) || !byId(night).dark) night = first(true);
+    return { mode: mode || 'system', day: day, night: night };
   }
   var nightNow = function (st) { return st.mode === 'dark' || (st.mode === 'system' && !!(dark && dark.matches)); };
   // put the look on the page (every colour and font on the site comes from it: style.css)
@@ -49,11 +56,14 @@
         '<span class="lk-name">' + nameHTML(l) + '<small>' + esc(l.note) + '</small></span></button></li>';
     };
     var modes = [['light', 'Light'], ['dark', 'Dark'], ['system', 'System']];
-    spot.innerHTML = '<details class="looks"><summary>Look</summary><div class="looks-menu">' +
-      '<div class="lk-modes" role="group" aria-label="Light or dark">' + modes.map(function (m) { return '<button type="button" data-mode="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div>' +
-      '<p class="lk-h">Day looks</p><ul>' + LOOKS.filter(function (l) { return !l.dark; }).map(row).join('') + '</ul>' +
-      '<p class="lk-h">Night looks</p><ul>' + LOOKS.filter(function (l) { return l.dark; }).map(row).join('') + '</ul>' +
-      '<p class="lk-foot">The same looks as the app. System uses your day look in the day and your night look at night. Your choice is kept in this browser, and the demo uses it too.</p></div></details>';
+    var modeBar = '<div class="lk-modes" role="group" aria-label="Light or dark">' + modes.map(function (m) { return '<button type="button" data-mode="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div>';
+    spot.innerHTML = onlyModes()
+      ? '<details class="looks"><summary>Look</summary><div class="looks-menu lk-short">' + modeBar +
+        '<p class="lk-foot">System follows your device. The demo uses the same choice.</p></div></details>'
+      : '<details class="looks"><summary>Look</summary><div class="looks-menu">' + modeBar +
+        '<p class="lk-h">Day looks</p><ul>' + LOOKS.filter(function (l) { return !l.dark; }).map(row).join('') + '</ul>' +
+        '<p class="lk-h">Night looks</p><ul>' + LOOKS.filter(function (l) { return l.dark; }).map(row).join('') + '</ul>' +
+        '<p class="lk-foot">The same looks as the app. System uses your day look in the day and your night look at night. Your choice is kept in this browser, and the demo uses it too.</p></div></details>';
     box = spot.querySelector('details');
     box.addEventListener('click', function (e) {
       var b = e.target.closest('button');
