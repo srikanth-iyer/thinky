@@ -38,7 +38,16 @@ OpenFile.prototype.fd_filestat_set_times = function (atim, mtim, flags) {
 };
 
 const NOTES = '/notes'; // where the pretend notes folder sits
-const SAVED = 'webDemoNotes'; // the visitor's notes, kept in this browser between visits (localStorage)
+const SAVED = 'webDemoNotes2';
+// The first notes a visitor sees on today's journal page (website demo only; the app's own new
+// notes folders don't get them). Plain outline text, as in any journal file.
+const INTRO = `- **thinky**: put a thought in the right place, and it finds you again at the right time.
+\t- Made for minds that jump from idea to idea: you write first and sort later, and links bring old notes back when they matter.
+\t- Inspired by Logseq and Obsidian: a simple outline of notes, linked to each other.
+\t- Your notes are plain text files in a folder you own, so you're never locked in, and other apps (and AI helpers) can read them too.
+\t- Free and open source.
+- This is the real thinky, running in your browser. Try anything: your notes stay in this browser and nothing is sent anywhere.
+`; // the visitor's notes, kept in this browser between visits (localStorage)
 let dirty = false; // a file changed since the notes were last kept
 
 let started;
@@ -157,6 +166,13 @@ async function start() {
     // the core's own sample notes (the welcome screen's "Start with a few sample pages"), dated today
     const d = new Date();
     call('start_notes', { path: NOTES, today: [d.getFullYear(), d.getMonth() + 1, d.getDate()], demo: true });
+    // the website's own first notes, above the app's welcome: what thinky is for and why it exists
+    const day = `${d.getFullYear()}_${String(d.getMonth() + 1).padStart(2, '0')}_${String(d.getDate()).padStart(2, '0')}.md`;
+    const journal = root.dir.contents.get('notes')?.contents?.get('journals')?.contents?.get(day);
+    if (journal instanceof File) {
+      journal.data = enc.encode(INTRO + new TextDecoder().decode(journal.data));
+      dirty = true;
+    }
   }
 
   /** A file in the pretend folder ("assets/x.png"), as bytes, or null: for pictures. */
