@@ -16,7 +16,7 @@ capture box's owner) stay. The release files are named thinky since Build 35 (`t
 `thinky-portable.exe`, `thinky.apk`: core/src/update.rs, MainActivity, site links); each release also
 carries copies under the old names `LeanOutliner-setup.exe(.sig)`/`-portable.exe`/`LeanOutliner.apk`
 (the old .sig signed for the old name), because Build 34 and older look for those to update; drop them
-only when the maintainer says so. Updates must install over older builds. The name the page shows comes from dom.js `BRAND` (`BRAND.word`); `api.js` `APP_NAME` is defined but nothing uses it.
+only when the maintainer says so. Updates must install over older builds. The name the page shows comes from dom.js `BRAND` (`BRAND.word`), the one place to change it.
 Brand (the maintainer's picks on the "thnki + thinky · scribble to spark" board): `ui/brand/` — `icon.svg` (the
 "scribble to spark" icon: cream tile #F4EEE3, ink #1D1A2E, red spark #FF4B2B; the designer's three
 drawings by size: `icon.svg` fine lines for 128px and up, `icon-mid.svg` ~40–96px, `icon-small.svg`
@@ -1821,8 +1821,8 @@ window can't be sent to another page.
   check compares, Build 41 on) on this repo, where the app looks for updates from Build 34 on (at start, every 2 hours and when
   the window comes back: `core/src/update.rs`
   `DOWNLOADS`, app.js `checkUpdate`, MainActivity's APK address). Build 33 and older look on the old downloads repo
-  `srikanth-iyer/lean-outliner-releases`, so Build 34 was published there too, the last one (its tags stop at build-34; `release`'s step for it runs
-  only while the `RELEASES_TOKEN` secret exists, so it does nothing now; that repo stays readable, and the Rename check needs its Build 31). `wip/**` branches build without publishing — use them to check Windows/Android compile. GitHub's
+  `srikanth-iyer/lean-outliner-releases`, so Build 34 was published there too, the last one (its tags stop at build-34; nothing
+  publishes there now, and the step that did went in Build 61; that repo stays readable, and the Rename check needs its Build 31). `wip/**` branches build without publishing — use them to check Windows/Android compile. GitHub's
   builds take time (~27 minutes for a full build + phone test): batch features into one
   build, run the phone test once per release candidate; a newer push to a wip branch stops its older
   run (`concurrency`, never on main; the phone test's is on its job, so a push that skips it never
@@ -1850,7 +1850,7 @@ window can't be sent to another page.
   Signing (public repo, Build 34 on). No secret is a file in the repo or a repository-level secret.
   Two environments, each allowed only for `main`: `release` (no reviewer since Nov 5, 2026 and no wait since Nov 15, 2026; secrets
   `ANDROID_KEY_PASSWORD`, `ANDROID_KEYSTORE_B64` = the locked Android keystore in base64, `UPDATE_KEY_PEM`
-  = the locked P-256 update key as PEM text) and `publish` (it held `RELEASES_TOKEN` for Build 34 only). The keys were made once (Oct 26, 2026) and must
+  = the locked P-256 update key as PEM text) and `publish` (no secrets: it held `RELEASES_TOKEN` for Build 34 only). The keys were made once (Oct 26, 2026) and must
   never be replaced: phones refuse an APK signed with another certificate, and installed Windows apps
   refuse an installer signed with another update key. Jobs: `update-key` (no secrets) gives the build
   the update key's public half: on main `ci/update-key.pub` (checked against the newest signed release's

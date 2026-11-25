@@ -36,9 +36,6 @@ export async function call(cmd, args = {}, opts = {}) {
 }
 
 export const isApp = !!T;
-/** The app's name as people see it (the welcome screen…): the one place to change when it's renamed. */
-export const APP_NAME = 'thinky';
-
 /** Links that open the app right at a page or a note (outline_core::link reads them back). */
 export const pageLinkUrl = (name) => 'leanoutliner://page/' + encodeURIComponent(name.trim());
 export const noteLinkUrl = (id) => 'leanoutliner://note/' + encodeURIComponent(id.trim().toLowerCase());

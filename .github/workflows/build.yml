@@ -1,14 +1,13 @@
 # Builds the Windows app and the Android app on GitHub's machines and publishes them as a release
-# ("Build N") here, where installed apps look for updates from Build 34 on. Build 34 is also published
-# once more on the old downloads repo, srikanth-iyer/lean-outliner-releases, where Build 33 and older
-# look (only while the RELEASES_TOKEN secret exists; nothing went there after Build 34). Runs on every push to main (a release, as soon as every test
+# ("Build N") here, where installed apps look for updates from Build 34 on. Build 34 was also published
+# on the old downloads repo, srikanth-iyer/lean-outliner-releases, where Build 33 and older look; its
+# tags stop at build-34 and nothing publishes there now (it is still read). Runs on every push to main (a release, as soon as every test
 # passes) and to wip/** branches (a test build: never published, signed with throw-away keys).
 #
 # Secrets: none at repository level. Two environments, both allowed only for `main`:
 #   release  (no reviewer since Nov 5, 2026, no wait since Nov 15, 2026: it signs at once)  ANDROID_KEY_PASSWORD, ANDROID_KEYSTORE_B64 (the locked
 #            Android keystore, base64), UPDATE_KEY_PEM (the locked P-256 update key, PEM text)
-#   publish  RELEASES_TOKEN (Build 34 only, then deleted: a fine-grained token, Contents read/write on
-#            lean-outliner-releases only)
+#   publish  no secrets (it held RELEASES_TOKEN for Build 34 only; the step that used it went in Build 61)
 # Only the `sign` job (no build tools, nothing from npm/cargo/Gradle) sees the keys, writes them to the
 # runner's temp folder and deletes them; only `release` sees the token and may write releases here. The jobs that build get a
 # read-only token and no secrets. The keys were made once and must never be replaced: installed apps
@@ -811,9 +810,8 @@ jobs:
         with: { name: windows, path: dist }
       - run: python3 scripts/ci_report.py sizes dist | tee -a "$GITHUB_STEP_SUMMARY"
 
-  # main only: publish the release here (installed apps from Build 34 on look here), and, while the
-  # RELEASES_TOKEN secret exists (Build 34 only), once more on the old downloads repo, where Build 33
-  # and older look. Environment `publish`, allowed only for main.
+  # main only: publish the release here (installed apps from Build 34 on look here). Environment
+  # `publish`, allowed only for main.
   release:
     needs: [number, windows, sign, verify, rename-check]
     # (always(): `sign-wip`, skipped on main, sits upstream of `verify`, and a skipped job upstream would
@@ -876,20 +874,6 @@ jobs:
           tag_name: build-${{ needs.number.outputs.n }}
           name: ${{ steps.title.outputs.title }}
           target_commitish: ${{ github.sha }}
-          body_path: notes.md
-          files: dist/*
-          make_latest: true
-      - id: old
-        name: Also on the old downloads repo? (only while RELEASES_TOKEN exists)
-        env: { HAS: "${{ secrets.RELEASES_TOKEN != '' }}" }
-        run: echo "too=$HAS" >> "$GITHUB_OUTPUT"
-      - if: steps.old.outputs.too == 'true'
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          repository: srikanth-iyer/lean-outliner-releases
-          token: ${{ secrets.RELEASES_TOKEN }}
-          tag_name: build-${{ needs.number.outputs.n }}
-          name: ${{ steps.title.outputs.title }}
           body_path: notes.md
           files: dist/*
           make_latest: true
