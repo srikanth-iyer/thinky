@@ -96,6 +96,11 @@ Prefer hand-written, small code over dependencies. Current size (Build 31, agree
 - A shortcut with a known limit gets a comment: `shortcut: <the limit>, <when to upgrade>`.
 - Comments still explain what each line does, for a beginner reader (the maintainer's rule; it wins over any "fewer comments" advice).
 
+## Branches (he asked, Nov 25, 2026)
+- Once a branch is merged into main, delete it (on GitHub too), in the same session that merged it. "Merged" means all its changes are in main, also when they came in as a squash or a cherry-pick under other commit hashes: check by content (`git cherry`, or each changed file's version in main's history), not by "commits ahead".
+- Never delete these, they are not work branches: `android-test-results` and `capture-box-shots` (the workflows force-push test results there), `play-assets` (the Play store listing pictures and texts, kept only there), and Dependabot's `dependabot/...` branches (deleting one closes its update pull request).
+- A branch with changes that never reached main is kept until he says what to do with it.
+
 ## Release history
 Earlier builds are summed up in CHANGELOG.md. Below, from Build 33: what each build changed in the code.
 A later build's entry wins over an earlier one. Build 50 and Builds 55 on have no entry of their own: their
