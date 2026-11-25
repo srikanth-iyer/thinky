@@ -113,4 +113,18 @@ check(await page.locator('.page-head').first().isVisible(), 'its page name goes 
 
 check(errors.length === 0, 'no script errors', errors.join('\n'));
 await browser.close();
+
+console.log('4. a thin scroll bar: in More commands, the menu and the Move to page list ("its more for indication", Nov 25)');
+{
+  const { browser: b2, page: p2 } = await open({ scrollbars: true, viewport: { width: 1100, height: 600 } });
+  await go(p2, '#/page/Move me');
+  await p2.waitForSelector('.outline .blk');
+  await p2.locator('.outline .blk').first().locator(':scope > .bul').click({ button: 'right' });
+  await p2.waitForSelector('.note-menu');
+  await p2.locator('.note-menu button', { hasText: 'More commands' }).click();
+  await p2.waitForSelector('.nm-alt .nm-cmd');
+  const bar = await p2.evaluate(() => { const a = document.querySelector('.note-menu .nm-alt'); return { w: a.offsetWidth - a.clientWidth, scrolls: a.scrollHeight > a.clientHeight }; });
+  check(bar.scrolls && bar.w > 0 && bar.w <= 5, 'More commands scrolls with a thin bar (4px; it was 15)', JSON.stringify(bar));
+  await b2.close();
+}
 process.exit(failures() ? 1 : 0);

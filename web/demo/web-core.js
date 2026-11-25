@@ -41,10 +41,10 @@ const NOTES = '/notes'; // where the pretend notes folder sits
 const SAVED = 'webDemoNotes4';
 // The first notes a visitor sees on today's journal page (website demo only; the app's own new
 // notes folders don't get them). Plain outline text, as in any journal file.
-const INTRO = `- **thinky**: an outliner notes app for Windows and Android that helps you place thoughts and ideas in the right place, so they are remembered at the right time.
+const INTRO = `- **thinky**: a Markdown-based outliner for Windows and Android that helps you place thoughts and ideas in the right place, so they are remembered at the right time.
 \t- **Why I made it**: I was an avid Logseq user. When Logseq decided to move away from Markdown files, I built my own, so I could keep working the way I loved and add the features I wanted along the way.
 \t- Inspired by Logseq and Obsidian: every note is a plain Markdown file in a folder you own.
-\t- Designed with ADHD-like minds in mind.
+\t- Made for everyone.
 \t- Built around linked references, so each note stays in view of its larger context, and ideas connect to the setting and function they belong to.
 \t- Works with AI tools that can read and change your notes directly (in the app; they're off in this demo).
 \t- Open source and free for anyone to use and adopt.

@@ -26,7 +26,8 @@ export function check(cond, msg, extra = '') {
 }
 export const failures = () => fails;
 export async function open(opts = {}) {
-  const browser = await chromium.launch();
+  // (scrollbars: draw the scroll bars as a desktop does; the test browser hides them unless asked)
+  const browser = await chromium.launch(opts.scrollbars ? { ignoreDefaultArgs: ['--hide-scrollbars'] } : {});
   const ctx = await browser.newContext({ viewport: opts.viewport || { width: 1280, height: 900 }, hasTouch: !!opts.touch, isMobile: !!opts.touch });
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE });
   const page = await ctx.newPage();

@@ -167,6 +167,17 @@ console.log('ai.js on the phone: an answer that never comes back');
   }
 }
 
+console.log('the website demo\'s first notes: his wording (Nov 25)');
+{
+  // he asked (Nov 25): thinky is "a mardown based outliner"; "don't say adhd like minds. its for everyone";
+  // "inspired by logse and obsidian" (Logseq and Obsidian)
+  const fs = await import('node:fs');
+  const intro = fs.readFileSync(new URL('../../web/demo/web-core.js', import.meta.url), 'utf8').match(/const INTRO = `([^`]*)`/)?.[1] ?? '';
+  check(/Markdown-based outliner/.test(intro), 'it calls thinky a Markdown-based outliner', intro.slice(0, 120));
+  check(!/ADHD/i.test(intro) && /for everyone/.test(intro), 'it says it is for everyone, with no ADHD wording');
+  check(/Inspired by Logseq and Obsidian/.test(intro), 'inspired by Logseq and Obsidian');
+}
+
 if (fails) { console.log(`FAILED: ${fails}`); process.exit(1); }
 console.log('all passed');
 

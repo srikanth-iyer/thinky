@@ -14,7 +14,7 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
-## Next build (not released yet)
+## Build 61 · version 0.6.10 (November 2026)
 
 - The note menu finds any command (he asked, Nov 25: "More commands" was not prominent enough): a filter box at
   the top of the menu; typing searches the short list, the "/" list's commands, the colours ("Background: Red")
@@ -42,6 +42,8 @@ went up. Build 40 and older still update to it (each release keeps a signature f
   and the older days slide down, instead of appearing in a quick cut. A second tap folds them back into the +
   (0.15 s). Nothing moves with "reduce motion" or Settings → Look → Animations off (`quietRun`, `quietSpot`,
   `.quiet.moving`; t38_build61).
+- The website demo's first notes call thinky a Markdown-based outliner, made for everyone, with no ADHD wording
+  (his words, Nov 25; web/demo/web-core.js; dev/ui-tests/unit.mjs).
 - Big notes folders open faster (he asked, Nov 25; review L5 and L8): the app reads its files' notes on several
   threads at once, so starting the app, quick capture, the Edge extension's helper and the phone's "already kept"
   lookup all open a big folder about a third faster (23,000 files: start 0.6 s → about 0.4 s on a 4-core
