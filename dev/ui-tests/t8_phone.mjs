@@ -325,17 +325,19 @@ check(!day.icon && Math.abs(day.aligned) <= 1 && day.title >= 28 && day.weekday 
 console.log('phone: roomy days, at least a set height (Plain: a hairline between them)');
 const gaps = await page.evaluate((longDay) => {
   const textBox = (el, last) => { const r = document.createRange(); r.selectNodeContents(el); const rs = [...r.getClientRects()].filter((x) => x.height > 0); return last ? rs[rs.length - 1] : rs[0]; };
+  const nextDay = (s) => { let n = s.nextElementSibling; while (n && !n.classList.contains('sheet')) n = n.nextElementSibling; return n; }; // (past a run of quiet days: Build 60)
   return [...document.querySelectorAll('.sheet.day')].slice(0, -1).map((s) => {
     const r = s.getBoundingClientRect(), line = r.bottom; // the hairline between days
     const last = [...s.querySelectorAll('.day-body .bc')].pop();
     return { long: s.querySelector('.page-title').textContent === longDay, today: s.classList.contains('today'), h: Math.round(r.height),
-      above: Math.round(line - textBox(last, true).bottom), below: Math.round(textBox(s.nextElementSibling.querySelector('.weekday'), false).top - line) };
+      above: Math.round(line - textBox(last, true).bottom), below: Math.round(textBox(nextDay(s).querySelector('.weekday'), false).top - line) };
   });
 }, dayTitle(daysAgo(3)));
 check(gaps.length >= 3 && gaps.every((g) => g.h >= (g.today ? 300 : 200) - 1), 'each day is at least as tall as set, even with one note (today taller)', JSON.stringify(gaps));
 // (more room between days since Nov 25, his notes: about 50px on a phone, was about 40)
 check(gaps.every((g) => g.below >= 40 && g.below <= 62), 'roomy space under the line between days', JSON.stringify(gaps));
-check(gaps.some((g) => g.long) && gaps.filter((g) => g.long).every((g) => Math.abs(g.above - g.below) <= 6), 'a day with many notes: the same space above the line as below it', JSON.stringify(gaps));
+// (Build 60, he asked, Nov 25: more room under a day's faint + than above the next day, so it can breathe)
+check(gaps.some((g) => g.long) && gaps.filter((g) => g.long).every((g) => g.above >= g.below && g.above <= g.below + 70), 'a day with many notes: more space above the line than below it, not much more', JSON.stringify(gaps));
 check(gaps.filter((g) => !g.today).every((g) => g.above >= g.below - 6), 'a short day: at least as much (its empty space) above it', JSON.stringify(gaps));
 await page.screenshot({ path: SHOTS + '/phone-journals-plain.png' });
 await browser.close();

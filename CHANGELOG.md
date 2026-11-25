@@ -20,6 +20,12 @@ The website gets clear headed sections (Why I made it, Try it or get it, Get sta
 
 From his notes and asks (Nov 25), in the app and on the website:
 
+- Quiet days in the Journals list (he picked version 2e of the mock-ups, Nov 25): between two days with days in
+  between that have no notes, a faint + on the line that ends the newer day, under the notes' dots. A tap shows
+  their dates there, 20px apart (24px on a phone), up to three in view; a longer run scrolls, the next ones fading
+  out, and says where it is ("1 of 30"); a run longer than a year shows its newest year. A tap on a date puts that
+  day in its place, its first note open; its file is made once something is written (`quietRun`, `.quiet`;
+  t37_build60).
 - Menus are slimmer on both the laptop and the phone (his second note, Nov 25): less room around the words, one
   soft edge instead of several, rows 34px tall on a phone (were 44px, then 38px).
 - The faint "+" under a day's last note no longer sits on "Linked references" or "Scheduled & deadline": those

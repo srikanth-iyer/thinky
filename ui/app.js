@@ -1044,6 +1044,7 @@ class App {
     let end = today();
     let first = true;
     let loading = false;
+    let prev = null; // the last day shown (a Date): days between it and the next one shown have no notes (quietRun)
     // Each step waits for the notes; if another page was opened meanwhile (this list is no longer on
     // screen), stop: the days must not join the new page's outlines (its undo, "t o", saving…).
     const loadBatch = async () => {
@@ -1056,6 +1057,10 @@ class App {
         const shown = [];
         for (const d of days) {
           if (!list.isConnected) return;
+          const dt = dateOf(d.date);
+          const q = prev && this.quietRun(list, prev, dt);
+          if (q) list.append(q);
+          prev = dt;
           const sec = await this.daySheet(list, d);
           if (sec) shown.push([d.name, sec.querySelector('.day-refs')]);
         }
@@ -1095,11 +1100,69 @@ class App {
     watch();
   }
 
+  /** Build 60 (he asked, Nov 25; version 2e of the quiet-days mock-ups): the days between two days in the
+   *  Journals list (newer and older, Dates) that have no notes, "quiet days". A faint + sits on the line
+   *  that ends the newer day, where the notes' dots are; a tap opens their dates right there, close
+   *  together, up to three in view, a longer run scrolling with the next ones fading out (tap again to
+   *  close). A tap on a date puts that day in its place in the list, its first note open to write in
+   *  (its file is made only once something is written, like today's). A run longer than a year shows its
+   *  newest year. Null when there are no days between. app.css .quiet */
+  quietRun(list, newer, older) {
+    const dates = [];
+    for (const d = new Date(newer); d.setDate(d.getDate() - 1), d > older && dates.length < 366;) dates.push(new Date(d));
+    if (!dates.length) return null;
+    const n = dates.length;
+    const q = h('div', 'quiet');
+    q.innerHTML = `<button type="button" class="q-mark" aria-expanded="false" title="${n === 1 ? 'A day' : `${n} days`} with no notes" aria-label="${n === 1 ? 'A day' : `${n} days`} with no notes: show ${n === 1 ? 'it' : 'them'}"><i></i></button>`;
+    const mark = /** @type {HTMLElement} */ (q.firstElementChild);
+    const label = (d) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    let wheel = null;
+    let count = null;
+    const mid = () => {
+      // the top row in view is marked (the + beside it); a longer run says where it is
+      const rows = wheel.children, r = /** @type {HTMLElement} */ (rows[0])?.offsetHeight || 20, k = Math.round(wheel.scrollTop / r);
+      for (let i = 0; i < rows.length; i++) rows[i].classList.toggle('mid', i === k);
+      wheel.classList.toggle('scrolled', wheel.scrollTop > 2);
+      if (count) count.textContent = `${Math.min(k + 1, n)} of ${n}`;
+    };
+    mark.onclick = () => {
+      const on = mark.getAttribute('aria-expanded') !== 'true';
+      mark.setAttribute('aria-expanded', String(on));
+      q.classList.toggle('open', on);
+      if (on && !wheel) {
+        wheel = h('div', 'q-wheel' + (n > 3 ? ' long' : ''));
+        wheel.style.setProperty('--rows', String(Math.min(n, 3)));
+        wheel.innerHTML = dates.map((d, i) => `<button type="button" class="q-day" data-i="${i}"><i></i>${esc(label(d))}</button>`).join('');
+        if (n > 3) { count = h('p', 'q-count'); q.append(wheel, count); } else q.append(wheel);
+        wheel.addEventListener('scroll', mid, { passive: true });
+        wheel.onclick = async (e) => {
+          const b = /** @type {HTMLElement | null} */ ((/** @type {HTMLElement} */ (e.target)).closest('.q-day'));
+          if (!b || q.dataset.busy) return;
+          const dt = dates[+b.dataset.i];
+          q.dataset.busy = '1';
+          let name;
+          try { name = await call('journal_name', { date: ymd(dt) }); } catch (err) { delete q.dataset.busy; this.toast(`That day can’t be opened: ${err}`, 5000); return; }
+          if (!q.isConnected) return;
+          // what's left of the run: the days above the one put in, and the days below it
+          const above = this.quietRun(list, newer, dt), below = this.quietRun(list, dt, older);
+          if (above) list.insertBefore(above, q);
+          const sec = await this.daySheet(list, { name, date: ymd(dt), exists: false }, q);
+          if (!sec || !q.isConnected) return;
+          if (below) list.insertBefore(below, q);
+          q.remove();
+          sec.querySelector('.day-body.blank')?.dispatchEvent(new MouseEvent('click', { bubbles: true })); // (its first note opens)
+        };
+      }
+      if (wheel) { wheel.hidden = !on; if (count) count.hidden = !on; if (on) mid(); }
+    };
+    return q;
+  }
+
   /** One day in the Journals list: its notes, then (today) the to-dos that are due, then the
    *  references to it from other pages: linked ones, and unlinked ones folded (addUnlinked adds
    *  those, for the days that have some). Returns the day's sheet. Its spacing (roomy, at least
    *  a set height even when empty): app.css `.sheet.day`. */
-  async daySheet(list, day) {
+  async daySheet(list, day, before = null) {
     const sec = h('section', 'sheet day');
     const isToday = day.date.join() === today().join();
     if (isToday) sec.classList.add('today');
@@ -1117,7 +1180,7 @@ class App {
     const refs = h('div', 'day-refs');
     refs.addEventListener('click', (e) => this.linkClick(e));
     sec.append(body, sched, refs);
-    list.append(sec);
+    list.insertBefore(sec, before); // (at the end, or a quiet day put in where it belongs: quietRun)
     list.farObs?.observe(sec);
     const pv = await call('page', { name: day.name, today: today(), time: nowTime() });
     const pane = list.isConnected && this.paneOf(list);

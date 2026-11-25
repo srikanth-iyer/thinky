@@ -298,6 +298,30 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
 .sheet.day:not(:has(.day-sched .sched, .day-refs .sec)) { padding-bottom: calc(var(--sheet-pad-bottom) + 92px); }
 .sheet.page:not(:has(~ .sec)) { padding-bottom: calc(var(--sheet-pad-bottom) + 76px); }
 .sheet.day { margin-bottom: var(--day-gap); min-height: 250px; }
+/* Build 60, quiet days (app.js quietRun; he picked version 2e of the mock-ups, Nov 25): between two days
+   with days in between that have no notes, a faint + on the line that ends the newer day, where the
+   notes' dots are (--q-x from the sheet's left edge). It takes no room: the space between days stays as
+   it was (--qg, the day gap). A tap opens the quiet days' dates under it, 20px apart, up to three in view;
+   a longer run scrolls, the next ones fading out below. Room is kept under them before the next day */
+.quiet { --qg: var(--day-gap); --q-x: calc(var(--sheet-pad-x) + 6px); position: relative; height: 14px; margin: calc(-1 * var(--qg) - 7px) 0 calc(var(--qg) - 7px); }
+.quiet.open { height: auto; padding: 14px 0 14px; }
+.q-mark { position: absolute; top: 0; left: calc(var(--q-x) - 10px); width: 20px; height: 14px; padding: 0; border: 0; background: none; cursor: pointer; color: var(--ink-faint); opacity: .55; }
+.q-mark::before { content: ""; position: absolute; left: 3px; right: 3px; top: 6.5px; border-top: 1px solid currentColor; } /* (the cross's arm, along the line) */
+.q-mark i { position: absolute; left: 9.5px; top: 2px; width: 1px; height: 10px; background: currentColor; }
+.q-mark:hover, .q-mark:focus-visible, .q-mark[aria-expanded="true"] { color: var(--accent); opacity: 1; outline: none; }
+.q-wheel { --r: 20px; height: calc(var(--r) * var(--rows, 1)); overflow-y: auto; scroll-snap-type: y mandatory; scrollbar-width: none; padding-left: calc(var(--q-x) - 6px); animation: q-open .16s ease; }
+.q-wheel::-webkit-scrollbar { display: none; }
+.q-wheel[hidden], .q-count[hidden] { display: none; }
+.q-wheel.long { height: calc(var(--r) * 3 + 8px); -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+.q-wheel.long.scrolled { -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 70%, transparent); mask-image: linear-gradient(transparent, #000 22%, #000 70%, transparent); }
+.q-day { display: flex; align-items: center; gap: 10px; height: var(--r); padding: 0; border: 0; background: none; cursor: pointer; color: var(--ink-faint); font-size: .86em; line-height: var(--r); scroll-snap-align: start; white-space: nowrap; }
+.q-day i { flex: none; width: 12px; border-top: 1px solid currentColor; opacity: .7; }
+.q-day::after { content: "+"; color: var(--accent); opacity: 0; }
+.q-day.mid, .q-day:hover, .q-day:focus-visible { color: var(--ink); outline: none; }
+.q-day.mid i { border-top-color: var(--accent); opacity: 1; }
+.q-day.mid::after, .q-day:hover::after, .q-day:focus-visible::after { opacity: 1; }
+.q-count { position: absolute; right: var(--sheet-pad-x); top: 14px; margin: 0; font-size: .75em; line-height: 20px; color: var(--ink-faint); pointer-events: none; }
+@keyframes q-open { from { opacity: 0; } }
 .sheet.day.today { min-height: 400px; }
 .day-body { margin-top: 28px; }
 /* a day with no notes yet (App.daySheet): its empty first note says "Click to write…" ("Tap…" on a
@@ -1430,6 +1454,9 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   .sheet.day:not(:has(.day-sched .sched, .day-refs .sec)) { padding-bottom: calc(var(--sheet-pad-bottom) + 84px); } /* (nothing under the +: see above) */
   .sheet.page:not(:has(~ .sec)) { padding-bottom: calc(var(--sheet-pad-bottom) + 72px); }
   .sheet.day { margin-bottom: min(var(--day-gap), var(--day-gap-phone)); min-height: 200px; }
+  .quiet { --qg: min(var(--day-gap), var(--day-gap-phone)); --q-x: calc(min(var(--sheet-pad-x), 18px) + 6px); }
+  .q-wheel { --r: 24px; } /* (a finger's row, still close) */
+  .q-count { right: min(var(--sheet-pad-x), 18px); top: 16px; line-height: 24px; }
   .sheet.day.today { min-height: 300px; }
   .day-body { margin-top: 20px; }
   .day-body.blank { min-height: 116px; }
@@ -1754,8 +1781,8 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
    text ... too many bezels"): one thin soft edge, a lighter shadow, small corners, rows close to their words
    (28px on a laptop, 34px on a phone), smaller icons; and no empty first row when the menu opens leftward
    out of a ⋯ at the right: the copy of the ⋯ sits in the first row's free right end instead. */
-.pop.menu:not(.note-menu) { padding: 3px; border-radius: 10px; border-color: var(--line-soft); box-shadow: 0 6px 22px -10px rgba(0,0,0,.32), 0 0 0 .5px rgba(0,0,0,.04); min-width: 176px; }
-.pop.menu:not(.note-menu) button { padding: 5px 8px; border-radius: 6px; line-height: 1.3; font-size: var(--fs-ui); }
+.pop.menu:not(.note-menu) { padding: 3px; border-radius: var(--r-l); border-color: var(--line-soft); box-shadow: 0 6px 22px -10px rgba(0,0,0,.32), 0 0 0 .5px rgba(0,0,0,.04); min-width: 176px; }
+.pop.menu:not(.note-menu) button { padding: 5px 8px; border-radius: var(--r-m); line-height: 1.3; font-size: var(--fs-ui); }
 .pop.menu:not(.note-menu) button.m-icon { gap: 8px; }
 .pop.menu:not(.note-menu) .m-ic { opacity: .65; }
 .pop.menu:not(.note-menu) .m-ic svg { width: 15px; height: 15px; }
