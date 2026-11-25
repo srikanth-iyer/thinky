@@ -78,23 +78,30 @@ write('pages/Books.md', '- Dune\n  kind:: book\n- A podcast\n  kind:: ebook, aud
   check(/- first\n\t {2}logseq\.order-list-type:: number\n\t- second\n\t {2}logseq\.order-list-type:: number/.test(read('pages/States.md')), 'its sub-notes numbered', read('pages/States.md'));
   await steps.locator(':scope > .bul').click({ button: 'right' });
   await page.waitForSelector('.note-menu');
-  // Build 53 (he asked, Nov 20): on a laptop its list opens beside the menu when the mouse rests on it
+  // Build 61 (he asked, Nov 25): More commands… opens on a click, in the menu's own place, with a way back
+  // (Build 53's list beside the menu, opened by resting the mouse on the row, was too easy to miss)
   await page.locator('.note-menu button', { hasText: 'More commands' }).hover();
-  await page.waitForSelector('.nm-sub', { timeout: 3000 }).catch(() => {});
-  check(await page.locator('.nm-sub').isVisible() && (await page.locator('.nm-sub .nm-cmd').count()) > 10, 'resting on More commands… opens the "/" list beside the menu', await page.locator('.nm-sub .nm-cmd').count());
-  const mb = await page.locator('.note-menu:not(.nm-sub)').boundingBox(), sb = await page.locator('.nm-sub').boundingBox();
-  check(sb.x >= mb.x + mb.width - 4 || sb.x + sb.width <= mb.x + 4, 'beside the menu, not over it', JSON.stringify([mb, sb]));
-  await page.locator('.nm-sub .nm-find').fill('todo');
-  check((await page.locator('.nm-sub .nm-cmd').allTextContents()).every((t) => /todo|to-do/i.test(t)), 'the filter narrows it', JSON.stringify(await page.locator('.nm-sub .nm-cmd').allTextContents()));
-  await page.locator('.note-menu button', { hasText: 'Select' }).first().hover();
-  await sleep(400);
-  check(await page.locator('.nm-sub').count() === 0, 'resting on another row closes it');
-  await page.locator('.note-menu button', { hasText: 'More commands' }).hover();
-  await page.waitForSelector('.nm-sub');
-  await page.locator('.nm-sub .nm-cmd', { hasText: /^TODO/ }).first().click();
+  await sleep(700); // (resting on it does nothing now)
+  check(await page.locator('.nm-alt').isHidden() && await page.locator('.nm-sub').count() === 0, 'resting on More commands… opens nothing');
+  const before = await page.locator('.note-menu').boundingBox();
+  await page.locator('.note-menu button', { hasText: 'More commands' }).click();
+  await page.waitForSelector('.nm-alt .nm-cmd', { timeout: 3000 }).catch(() => {});
+  check(await page.locator('.nm-alt').isVisible() && (await page.locator('.nm-alt .nm-cmd').count()) > 10, 'a click opens the "/" list in the menu itself', await page.locator('.nm-alt .nm-cmd').count());
+  const after = await page.locator('.note-menu').boundingBox();
+  check(Math.abs(after.x - before.x) < 2 && Math.abs(after.y - before.y) < 2, 'in the same place (not beside it)', JSON.stringify([before, after]));
+  check(await page.locator('.nm-alt .nm-back').isVisible() && await page.evaluate(() => document.activeElement?.matches('.note-menu .nm-find')), 'with a way back at the top, and the filter ready to type in');
+  await page.locator('.note-menu .nm-find').fill('todo');
+  check((await page.locator('.nm-alt .nm-cmd').allTextContents()).every((t) => /todo|to-do/i.test(t)), 'the filter narrows it', JSON.stringify(await page.locator('.nm-alt .nm-cmd').allTextContents()));
+  await page.locator('.note-menu .nm-find').fill('');
+  await page.locator('.nm-alt .nm-back').click();
+  await sleep(200);
+  check(await page.locator('.nm-alt').isHidden() && await page.locator('.nm-main').isVisible(), 'the way back shows the short list again');
+  await page.locator('.note-menu button', { hasText: 'More commands' }).click();
+  await page.waitForSelector('.nm-alt .nm-cmd');
+  await page.locator('.nm-alt .nm-cmd', { hasText: /^TODO/ }).first().click();
   for (let k = 0; k < 30 && !read('pages/States.md').includes('TODO Steps'); k++) await sleep(100);
   check(read('pages/States.md').includes('- TODO Steps'), 'a row runs on that note', read('pages/States.md'));
-  check(await page.locator('.note-menu').count() === 0, 'and both close');
+  check(await page.locator('.note-menu').count() === 0, 'and the menu closes');
   await page.keyboard.press('Escape');
 
   console.log('laptop: a property\'s values as buttons');

@@ -1321,7 +1321,7 @@ const KEY_ROWS = [
   ['Go', [['Search', 'go/search'], ['Command list', 'command-palette/toggle'], ['Journals', 'go/journals'], ['Today’s journal', 'sidebar/open-today-page'], ['All pages', 'go/all-pages'], ['To-dos', 'go/todos'],
     ['Go to a date', 'go/date'], ['Next journal day', 'go/next-journal'], ['Previous journal day', 'go/prev-journal'], ['Back', 'go/backward'], ['Forward', 'go/forward']]],
   ['Notes', [['Find on the page', 'go/search-in-page'], ['Find and replace', 'go/replace-in-page'], ['Fold or unfold all', 'editor/toggle-open-blocks'], ['Fold a note', 'editor/collapse-block-children'], ['Unfold a note', 'editor/expand-block-children'],
-    ['Move a note up', 'editor/move-block-up'], ['Move a note down', 'editor/move-block-down'], ['Highlight', 'editor/highlight'],
+    ['Move a note up', 'editor/move-block-up'], ['Move a note down', 'editor/move-block-down'], ['Move a note to another page', 'editor/move-to-page'], ['Highlight', 'editor/highlight'],
     ['Select the words, then the note, then its parent', 'editor/select-parent'], ['Select every note on the page', 'editor/select-all-blocks']]],
   ['Window', [['Hide or show the sidebar', 'ui/toggle-left-sidebar'], ['Wide mode (notes use the whole width)', 'ui/toggle-wide-mode'], ['Bigger text', 'ui/text-bigger'], ['Smaller text', 'ui/text-smaller'],
     ['Text back to 100%', 'ui/text-reset'], ['Refresh (the notes as their files are now)', 'ui/refresh']]],

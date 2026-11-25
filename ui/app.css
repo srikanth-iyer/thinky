@@ -453,6 +453,10 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
 .crumbs { font-size: var(--fs-sub); color: var(--ink-faint); margin: 0 0 8px; line-height: 1.5; overflow-wrap: anywhere; }
 .crumbs a { color: var(--ink-soft); text-decoration: none; }
 .crumbs a:hover { color: var(--link); }
+/* zoomed in on a note (Build 61, he asked): no page head; the line of links is the view's top line */
+.sheet.zoomed-in > .page-head { display: none; }
+.sheet.zoomed-in .crumbs { margin: 2px 0 12px; }
+.sheet.zoomed-in .crumbs a[data-z="page"] { color: var(--link); font-weight: 600; }
 .bc, .ed {
   display: block; width: 100%; min-height: calc(var(--line-box) + 2 * var(--bc-pad-y)); padding: var(--bc-pad-y) 6px; margin: 0 0 0 -6px;
   font: inherit; line-height: var(--lh); color: inherit; overflow-wrap: anywhere; border-radius: var(--r-m);
@@ -1103,6 +1107,14 @@ button.link { border: 0; background: none; padding: 0; font: inherit; color: var
   .cl-cols { grid-template-columns: 1fr; }
 }
 .modal .filter { margin: 12px 0 0; }
+/* Move to page (Build 61): the pages to pick from, under the filter; the lit one is what Enter picks */
+.modal .pp-list { margin: 8px -6px 0; max-height: min(46vh, 340px); overflow-y: auto; overscroll-behavior: contain; }
+.modal .pp-row { display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 6px 8px; border: 0; border-radius: var(--r-m); background: none; color: var(--ink); font: inherit; font-size: var(--fs-ui); text-align: left; cursor: pointer; }
+.modal .pp-row:hover { background: var(--surface-2); }
+.modal .pp-row[aria-selected="true"] { background: var(--accent-tint); }
+.pp-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pp-tag { flex: none; font-size: var(--fs-small); color: var(--ink-faint); }
+@media (pointer: coarse) { .modal .pp-row { min-height: 40px; align-items: center; font-size: var(--fs-read); } }
 .lightbox { align-items: center; padding: 16px; cursor: zoom-out; }
 .lightbox img { max-width: 100%; max-height: 100%; border-radius: var(--r-l); box-shadow: 0 20px 60px -20px rgba(0,0,0,.6); }
 /* the hover preview (popups.js Preview): the page's title, then all its notes in a box that scrolls
@@ -1690,18 +1702,26 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 .nm-l { flex: 1; }
 .nm-item[aria-checked="true"] .nm-l::after { content: "  ✓"; white-space: pre; color: var(--accent); font-weight: 600; }
 .nm-hint { font-size: var(--fs-small); color: var(--ink-faint); text-align: right; }
-/* "More commands" (Build 53): a › at its end; its list opens beside the menu (laptop) */
+/* "More commands" (Build 53): a › at its end. Build 61 (he asked, Nov 25): a click or tap opens its
+   list in place of the menu, with a ‹ back row; no more list beside the menu on hover */
 .nm-chev { color: var(--ink-faint); font-size: var(--fs-read); line-height: 1; }
-.nm-has-sub[aria-expanded="true"] { background: var(--surface-2); }
-.nm-sub { position: fixed; z-index: 61; width: 240px; display: flex; flex-direction: column; overflow: hidden; }
-.nm-sub .nm-find { flex: none; margin: 2px 2px 4px; height: 28px; padding: 0 8px; font: inherit; font-size: var(--fs-ui); border: 1px solid var(--line); border-radius: var(--r-m); background: var(--bg); color: var(--ink); }
-.nm-sub .nm-find:focus { outline: 2px solid var(--accent-tint); border-color: var(--accent); }
-.nm-sub .nm-list { overflow-y: auto; min-height: 0; }
-.nm-sub .nm-cmd { display: flex; align-items: center; width: 100%; text-align: left; }
-.nm-sub .nm-cmd .hint { margin-left: auto; padding-left: 10px; font-size: var(--fs-small); color: var(--ink-faint); }
-.nm-sub .ac-ic { display: inline-block; flex: none; width: 18px; height: 18px; margin: 0 9px 0 -1px; color: var(--ink-soft); text-align: center; overflow: hidden; }
-.nm-sub .ac-ic svg { width: 17px; height: 17px; display: block; margin: .5px auto 0; }
-.nm-sub .ac-ic.ac-t { font: 700 var(--fs-tiny)/18px var(--font-body); letter-spacing: -.02em; }
+/* the Filter box at the top of the menu (under the colours): typing searches every command */
+.note-menu .nm-find { display: block; box-sizing: border-box; width: calc(100% - 8px); flex: none; margin: 4px 4px 4px; height: 28px; padding: 0 8px; font: inherit; font-size: var(--fs-ui); border: 1px solid var(--line); border-radius: var(--r-m); background: var(--bg); color: var(--ink); }
+/* (the filter stays at the top while the menu scrolls; the shadow in the menu's colour hides the rows going under it) */
+.note-menu > .nm-find { position: sticky; top: 0; z-index: 1; box-shadow: 0 -4px 0 4px var(--surface); }
+.note-menu .nm-find::placeholder { color: var(--ink-faint); }
+.note-menu .nm-find:focus { outline: 2px solid var(--accent-tint); border-color: var(--accent); }
+/* while a list shows in the menu's place: the menu keeps its height and the list scrolls inside it */
+.note-menu.nm-alt-on { display: flex; flex-direction: column; overflow: hidden; }
+.note-menu .nm-alt { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.note-menu .nm-back { width: 100%; text-align: left; align-items: center; gap: 8px; font-weight: 600; }
+.note-menu .nm-back .nm-chev { font-size: 1.25em; }
+.note-menu .nm-cmd { display: flex; align-items: center; width: 100%; text-align: left; }
+.note-menu .nm-cmd .hint { margin-left: auto; padding-left: 10px; font-size: var(--fs-small); color: var(--ink-faint); }
+.note-menu .nm-alt .nm-item:not(.nm-cmd):not(.nm-back) { width: 100%; text-align: left; }
+.note-menu .ac-ic { display: inline-block; flex: none; width: 18px; height: 18px; margin: 0 9px 0 -1px; color: var(--ink-soft); text-align: center; overflow: hidden; }
+.note-menu .ac-ic svg { width: 17px; height: 17px; display: block; margin: .5px auto 0; }
+.note-menu .ac-ic.ac-t { font: 700 var(--fs-tiny)/18px var(--font-body); letter-spacing: -.02em; }
 .nm-none-found { margin: 6px 8px; font-size: var(--fs-sub); color: var(--ink-faint); }
 /* a phone: one column, rows close together (he asked for it, Build 32: 32px, was 44) and small
    colour dots; each dot's button reaches a little past it (::before), so it's still easy to hit */
@@ -1715,6 +1735,10 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   .note-menu .nm-h { width: 29px; height: 30px; font-size: var(--fs-sub); border-radius: var(--r-m); }
   .note-menu .nm-item { min-height: 32px; align-items: center; padding: 4px 10px; font-size: var(--fs-read); line-height: 1.3; border-radius: var(--r-m); }
   .nm-hint { font-size: var(--fs-small); }
+  .note-menu .nm-find { height: 36px; font-size: var(--fs-big); }
+  /* (Build 61: the filter and "Move to page…" made the menu two rows taller, so on a phone it stops at half the
+     screen, as he asked it to be small (Build 32); the rest scrolls under the filter, which stays at the top) */
+  .note-menu { max-height: calc(50vh - 12px); }
 }
 @media print { .drop-line, .drag-ghost { display: none; } }
 

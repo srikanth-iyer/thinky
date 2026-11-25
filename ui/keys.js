@@ -16,6 +16,8 @@ const chord = (c) => {
 };
 /** One key (Logseq's notation) as keycaps: a key combination is one, a sequence ("g j") one per key. */
 export const keyHtml = (k) => (k ? k.trim().split(/\s+/).map((c) => `<kbd>${esc(chord(c))}</kbd>`).join(' ') : '');
+/** One key (Logseq's notation) as plain words, "mod+shift+m" → "Ctrl+Shift+M" (a menu row's hint). */
+export const keyText = (k) => (k ? k.trim().split(/\s+/).map(chord).join(' ') : '');
 /** The first key of an action in the app's shortcut table ('' if it has none, or it was turned off). */
 export const keyOf = (app, action) => (app.keyMap[action] || [])[0] || '';
 

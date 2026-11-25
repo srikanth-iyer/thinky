@@ -267,6 +267,9 @@ export const DEFAULT_KEYS = {
   'editor/move-block-up': ['alt+shift+up', 'mod+shift+up'],
   'editor/move-block-down': ['alt+shift+down', 'mod+shift+down'],
   'editor/highlight': [],
+  // Build 61 (he asked, Nov 25): move the note being typed in (with its sub-notes), or the selected
+  // notes, to the end of another page, picked from a list (editor.js moveToPage)
+  'editor/move-to-page': ['mod+shift+m'],
   'editor/toggle-open-blocks': ['t o'],
   // Build 48 (he asked, as in Logseq): fold / unfold the note being typed in or the selected notes
   // (nothing selected: every note on the page)
@@ -387,19 +390,22 @@ class App {
   }
 
   // ----- small services used by editors and views -----
-  /** A short message at the bottom; action {label, run}: a button in it (e.g. Undo). */
+  /** A short message at the bottom; action {label, run}: a button in it (e.g. Undo), or a list of
+   *  them (Build 61: Undo and Open after Move to page). */
   toast(msg, ms = 3200, action = null) {
     let t = $('#toast');
     if (!t) { t = h('div'); t.id = 'toast'; t.setAttribute('role', 'status'); document.body.append(t); }
     t.textContent = msg;
-    if (action) {
+    // one button, several, or none: always a list here (.flat() turns one into a list of one)
+    const acts = action ? [action].flat() : [];
+    for (const a of acts) {
       const b = h('button', 'toast-act');
       b.type = 'button';
-      b.textContent = action.label;
-      b.onclick = () => { t.hidden = true; action.run(); };
+      b.textContent = a.label;
+      b.onclick = () => { t.hidden = true; a.run(); }; // (a press hides the message, then does its job)
       t.append(b);
     }
-    t.classList.toggle('has-act', !!action);
+    t.classList.toggle('has-act', acts.length > 0);
     t.hidden = false;
     clearTimeout(this.toastT);
     this.toastT = setTimeout(() => (t.hidden = true), ms);
@@ -1409,6 +1415,11 @@ class App {
     head.append(titleRow, propsBox);
     // the title is on the page's sheet, with its notes (as a day's date is in the Journals list)
     const sheet = h('div', 'sheet page');
+    // Build 61 (he asked, Nov 25: with the page's big name on top he thought he was still on the page):
+    // zoomed in on a note, the page's head (its name, ✦ and ⋯ buttons, properties) hides; the small line
+    // of links above the note (page › each parent note, editor.js renderCrumbs) is the top of the view.
+    // The note itself keeps its usual size: he edits and extends it there (app.css .zoomed-in)
+    if (zoomLine !== null) sheet.classList.add('zoomed-in');
     const body = h('div');
     sheet.append(head, body);
     view.append(sheet);

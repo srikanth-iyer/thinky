@@ -5,7 +5,8 @@
 
 import { call, today, nowTime, noteLinkUrl, store } from './api.js';
 import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, hiddenKey, parseStamp, stampText, withPictureSize, playVideo, drawStamp } from './render.js';
-import { pickDate, caretRect, noteMenu, menu, formBox, confirmBox, slashChoices } from './popups.js';
+import { pickDate, caretRect, noteMenu, menu, formBox, confirmBox, slashChoices, pickPage } from './popups.js';
+import { keyOf, keyText } from './keys.js';
 import { hoverSpark, startPolish, startPicture, PICTURE_IN } from './polish.js';
 // the clash screen loads when a clash first shows (Build 39: a faster start)
 const openClash = (...a) => import('./clash.js').then((m) => m.openClash(...a));
@@ -1215,7 +1216,13 @@ export class Outline {
     const now = t0.match(MARKERS)?.[1] ?? null;
     const items = [];
     if (rw && !inSel) items.push({ id: 'select', label: 'Select', hint: opts.touch ? 'hold more dots to add' : '' });
-    if (rw && !(this.root !== null && lo <= this.root)) items.push({ id: 'cut', label: 'Cut' }, { id: 'delete', label: 'Delete', danger: true });
+    if (rw && !(this.root !== null && lo <= this.root)) {
+      items.push({ id: 'cut', label: 'Cut' }, { id: 'delete', label: 'Delete', danger: true });
+      // Build 61 (he asked, Nov 25: like moving a Google task to another list): the note with its
+      // sub-notes (or the selected notes) to the end of another page, picked from a list
+      // (its keys shown beside it, except when the menu was opened by a finger: a phone has no such keys)
+      items.push({ id: 'movepage', label: 'Move to page…', hint: opts.touch ? '' : keyText(keyOf(this.app, 'editor/move-to-page')) });
+    }
     items.push({ id: 'copy', label: 'Copy' }, { id: 'copytext', label: 'Copy as text', hint: 'plain Markdown' });
     // a leanoutliner://note/<id> link that opens the app right at this note (it gets an id:: if needed)
     if (!inSel && (rw || idIn(t0))) items.push({ id: 'link', label: 'Copy link to this note' });
@@ -1237,8 +1244,10 @@ export class Outline {
         items.push({ id: 'numkids', label: 'Number its sub-notes', checked: ks.some((j) => NUMBERED.test(this.textOf(j))) });
       }
       items.push({ id: 'todo', label: 'Next to-do state', hint: `${now || 'none'} → ${this.nextMarker(now) || 'none'}` });
-      // (a laptop: its list opens beside the menu when the mouse rests on it, Build 53, he asked; a phone: a tap edits the note and opens the "/" list)
-      if (!inSel) items.push({ id: 'slash', label: 'More commands…', hint: '/', sub: matchMedia('(hover: hover) and (pointer: fine)').matches ? slashChoices : null });
+      // the whole "/" list for this note: a click or a tap opens it in place of the menu, with a back
+      // arrow (Build 61, he asked, Nov 25; until then a laptop opened it beside the menu when the mouse
+      // rested on it, and a phone's tap opened the "/" list in the note)
+      if (!inSel) items.push({ id: 'slash', label: 'More commands…', hint: '/', sub: slashChoices });
       // Build 51: the optional AI's Polish note (ui/polish.js), once an AI is set up (Settings → AI)
       if (!inSel && document.documentElement.classList.contains('ai-on')) {
         items.push({ id: 'polish', label: 'Polish note', hint: 'AI' });
@@ -1298,6 +1307,7 @@ export class Outline {
         this.app.go('zoom', this.name, { line: this.lineOf(i) });
         return;
       case 'hidden': this.showHidden(i); return;
+      case 'movepage': this.moveToPage(lo, hi); return;
       case 'cut': this.cutNotes(lo, hi).then((cut) => { if (cut) this.undoToast(`Cut ${what}.`); }); return;
       case 'delete': if (this.removeNotes(lo, hi)) this.undoToast(`Deleted ${what}.`); return;
       case 'number': {
@@ -1323,6 +1333,39 @@ export class Outline {
       }
       default:
     }
+  }
+
+  /** "Move to page…" (Build 61, he asked, Nov 25): notes [lo, hi) (a note with its sub-notes, or the
+   *  selected notes) go to the end of a page picked from a list (popups.js pickPage: today's journal and
+   *  the recent pages first, a filter for the rest, or a new page by its name). The moving itself is
+   *  the same as dragging notes to a page in the sidebar (move.js: the safe order, one Undo for both
+   *  pages); its message has Undo and Open. The notes keep their words, id:: included, so links and
+   *  references to them keep working. */
+  async moveToPage(lo, hi) {
+    // (nothing to move, a page that can't be changed, or the zoomed-in note itself: it stays)
+    if (this.readonly || this.locked || lo >= hi || (this.root !== null && lo <= this.root)) return;
+    if (this.app.moving) { this.app.toast('The last move is still being saved. Try again in a moment.', 4000); return; }
+    this.stopEdit(); // (what's typed goes into the note first, so the notes move as they show)
+    this.clearSel();
+    // the notes as they are now: if the page changes while the list is open, nothing moves (move.js checks)
+    const top = Math.min(...this.blocks.slice(lo, hi).map((b) => b.depth));
+    const D = { a: lo, z: hi, depth: top, blocks: this.blocks, changes: this.changes, alt: false, open: true };
+    // what the list starts with: today's journal, then the pages opened lately
+    let todayName = null;
+    try { todayName = await call('journal_name', { date: today() }); } catch { /* no journal name: the list starts with the recent pages */ }
+    // how many notes move: the top ones (each with its sub-notes)
+    const tops = this.blocks.slice(lo, hi).filter((b) => b.depth === top).length;
+    const name = await pickPage({
+      title: tops === 1 ? 'Move to page' : `Move ${tops} notes to page`,
+      note: tops > 1 ? `They go${hi - lo > tops ? ', with their sub-notes,' : ''} to the end of the page you pick.` : hi - lo > 1 ? 'It goes, with its sub-notes, to the end of the page you pick.' : 'It goes to the end of the page you pick.',
+      today: todayName,
+      recent: this.app.recent(),
+      names: (this.app.names || []).filter((x) => x.exists || x.refs).map((x) => x.name),
+      skip: this.name, // (not the page they're on)
+    });
+    if (!name) return; // (closed without picking: nothing happens)
+    const m = await import('./move.js');
+    await m.dropElsewhere(this, D, { page: name }).catch((e) => this.app.toast(`Nothing was moved: ${e?.message ?? e}`, 6000));
   }
 
   /** "Copy link to this note": leanoutliner://note/<its id::>; a note without one gets one the Logseq
@@ -1593,6 +1636,8 @@ export class Outline {
     if (mod && e.shiftKey && !e.altKey && k === 'v') this.plainAt = Date.now();
     if (this.app.keyIs(e, 'editor/move-block-up')) { e.preventDefault(); this.move(i, -1); return; }
     if (this.app.keyIs(e, 'editor/move-block-down')) { e.preventDefault(); this.move(i, 1); return; }
+    // Ctrl+Shift+M (Build 61): this note and its sub-notes to another page
+    if (this.app.keyIs(e, 'editor/move-to-page')) { e.preventDefault(); this.moveToPage(i, this.subtreeEnd(i)); return; }
     if (this.app.keyIs(e, 'editor/highlight')) { e.preventDefault(); this.wrap('^^', '^^'); return; }
     if (this.app.keyIs(e, 'editor/toggle-open-blocks')) { e.preventDefault(); this.toggleAll(); return; }
     // Ctrl+↑ / Ctrl+↓ (Logseq's): fold or unfold the note being typed in (Build 48)
@@ -1836,6 +1881,8 @@ export class Outline {
     if (mod && k === 'y') { this.app.redo(this); return true; }
     if (this.app.keyIs(e, 'editor/move-block-up')) { this.move(lo, -1); return true; }
     if (this.app.keyIs(e, 'editor/move-block-down')) { this.move(lo, 1); return true; }
+    // Ctrl+Shift+M (Build 61): the selected notes to another page
+    if (this.app.keyIs(e, 'editor/move-to-page')) { const [a, z] = this.selRange(); this.moveToPage(a, z); return true; }
     // Build 48 (he asked): the shortcuts set in config.edn work with notes selected too: fold all (the
     // whole page, as Logseq's toggle-open), Ctrl+↑ / Ctrl+↓ fold / unfold the selected notes; the app's
     // other one-press keys run (app.js onKey). Build 49 (his pick, Nov 14): ← / → start typing in the

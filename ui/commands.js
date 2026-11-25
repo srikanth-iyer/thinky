@@ -102,6 +102,8 @@ export function commandList(app, ed) {
     E('down', 'Move note down', (x, i) => x.move(i, 1), { key: 'editor/move-block-down' });
     E('todo', 'Next to-do state', (x) => x.cycleTodo(), { keys: ['mod+enter'], also: 'todo doing done task' });
     E('menu', 'Note menu…', (x, i) => x.openMenu(i, { kb: true }), { keys: ['shift+f10'], also: 'colour color heading cut copy block' });
+    // Build 61: this note and its sub-notes to the end of another page (picked from a list)
+    E('move-page', 'Move note to page…', (x, i) => x.moveToPage(i, x.subtreeEnd(i)), { key: 'editor/move-to-page', also: 'send another other page transfer' });
     E('undo', 'Undo', (x) => app.undo(x), { keys: ['mod+z'] });
     E('redo', 'Redo', (x) => app.redo(x), { keys: ['mod+y'] });
     // the / menu's commands, run as from it (to-do words, dates, links, formatting, headings…)
@@ -116,6 +118,7 @@ export function commandList(app, ed) {
     S('down', 'Move the selected notes down', (x, i) => x.move(i, 1), { key: 'editor/move-block-down' });
     S('todo', 'Next to-do state', (x) => x.cycleTodoSel(), { keys: ['mod+enter'] });
     S('menu', 'Note menu…', (x) => x.openMenu(x.sel.b, { kb: true }), { keys: ['shift+f10'], also: 'colour color heading cut copy' });
+    S('move-page', 'Move the selected notes to page…', (x) => { const [a, z] = x.selRange(); x.moveToPage(a, z); }, { key: 'editor/move-to-page', also: 'send another other page transfer' });
   }
 
   // ----- window, tabs, look -----

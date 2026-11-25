@@ -510,6 +510,79 @@ export function formBox({ title, body = '', fields, ok = 'OK' }) {
   });
 }
 
+/** Build 61 (Move to page, he asked, Nov 25): a box to pick a page, with a filter. Before anything is
+ *  typed it lists today's journal (o.today) and the pages opened lately (o.recent); typing lists the
+ *  pages whose names have those words (o.names: every page's name), and "New page …" for a name no
+ *  page has yet. o.skip: a page left out (the one the notes are on). ↑ / ↓ move, Enter picks, Esc
+ *  closes. Resolves the page's name, or null. */
+export function pickPage(o) {
+  return modal(`<h2>${esc(o.title)}</h2>${o.note ? `<div class="note">${esc(o.note)}</div>` : ''}
+    <input class="filter pp-find" placeholder="Filter pages…" aria-label="Filter the pages" autocomplete="off" spellcheck="false">
+    <div class="pp-list" role="listbox" aria-label="Pages"></div>
+    <div class="btn-row end"><button class="btn ghost" data-v="0">Cancel</button></div>`,
+  (box, done) => {
+    const input = /** @type {HTMLInputElement} */ (box.querySelector('.pp-find'));
+    const list = /** @type {HTMLElement} */ (box.querySelector('.pp-list'));
+    const low = (s) => String(s).toLowerCase();
+    const skip = low(o.skip || '');
+    let rows = []; // what the list shows: [{name, kind}], kind 'today', 'recent', 'page' or 'new'
+    let at = 0; // the row that Enter picks (lit)
+    const draw = () => {
+      list.innerHTML = rows.length ? rows.map((r, k) => {
+        // a small word on the right says why it's there (today's journal, recent, or a page to make)
+        const tag = r.kind === 'today' ? 'today' : r.kind === 'recent' ? 'recent' : r.kind === 'new' ? 'new page' : '';
+        const label = r.kind === 'new' ? `New page “${esc(r.name)}”` : esc(r.name);
+        return `<button type="button" role="option" class="pp-row" data-k="${k}" aria-selected="${k === at}"><span class="pp-name">${label}</span>${tag ? `<span class="pp-tag">${tag}</span>` : ''}</button>`;
+      }).join('') : `<p class="nm-none-found">${input.value.trim() ? 'No such page' : 'No other pages yet: type a name to make one'}</p>`;
+      list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+    };
+    const fill = () => {
+      const q = input.value.trim(), ql = low(q);
+      const seen = new Set([skip]); // (a page listed once; never the page they're on)
+      const add = (name, kind) => { if (!name || seen.has(low(name))) return; seen.add(low(name)); rows.push({ name, kind }); };
+      rows = [];
+      if (!q) {
+        add(o.today, 'today');
+        for (const n of (o.recent || []).slice(0, 8)) add(n, 'recent');
+        // (few recent pages, as in a new notes folder: other pages fill the list up to 12, so it's never empty)
+        for (const n of o.names || []) { if (rows.length >= 12) break; add(n, 'page'); }
+      } else {
+        // names that start with what's typed first, then ones with it as a word's start, then anywhere
+        const rank = (n) => { const l = low(n); return l.startsWith(ql) ? 0 : l.split(/[\s/_-]+/).some((w) => w.startsWith(ql)) ? 1 : 2; };
+        const all = [o.today, ...(o.recent || []), ...(o.names || [])].filter((n) => n && low(n).includes(ql));
+        const sorted = [...new Set(all)].map((n, k) => [n, k]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([n]) => n);
+        for (const n of sorted.slice(0, 60)) add(n, low(n) === low(o.today || '') ? 'today' : (o.recent || []).some((r) => low(r) === low(n)) ? 'recent' : 'page');
+        // a name no page has: it can be made (the notes then start the new page, as "New page…" makes one)
+        if (![o.today, ...(o.recent || []), ...(o.names || [])].some((n) => n && low(n) === ql) && low(q) !== skip) add(q, 'new');
+      }
+      at = 0;
+      draw();
+    };
+    input.addEventListener('input', fill);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!rows.length) return;
+        at = (at + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length; // (round at the ends)
+        draw();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (rows[at]) done(rows[at].name);
+      }
+    });
+    // the mouse or a finger: a row picks its page; Cancel closes
+    box.addEventListener('pointerdown', (e) => { if (e.target.closest('.pp-row')) e.preventDefault(); }); // (the filter keeps the keyboard)
+    box.addEventListener('click', (e) => {
+      const r = e.target.closest('.pp-row');
+      if (r) { done(rows[+r.dataset.k].name); return; }
+      if (e.target.closest('[data-v="0"]')) done(null);
+    });
+    fill();
+    // (a phone: the filter box doesn't take the keyboard at once, so the list isn't covered by it)
+    if (!matchMedia('(pointer: coarse)').matches) input.focus();
+  });
+}
+
 /** A short list of actions under a button (anchor: anything with getBoundingClientRect, such as a
  *  point where he right-clicked). items: [{label, run, danger, hint, on}], '-' between groups, {head} a
  *  small heading over a group; hint:
@@ -599,83 +672,99 @@ export function noteMenu(r, o) {
   const box = h('div', 'pop menu note-menu');
   box.setAttribute('role', 'menu');
   box.setAttribute('aria-label', 'Note');
+  // the row whose list opens in place of the menu ("More commands…"), if this menu has one
+  const moreAt = o.items.findIndex((it) => it !== '-' && it.sub);
+  const more = moreAt >= 0 ? o.items[moreAt] : null;
   let html = '';
   if (o.colors) {
     html += `<div class="nm-row nm-colors" role="group" aria-label="Background colour">${o.colors.map((c) => `<button type="button" role="menuitemradio" class="nm-sw" data-c="${c}" style="--sw: var(--hl-${c})" aria-checked="${o.color === c}" aria-label="${COLOR_NAMES[c] || c}" title="${COLOR_NAMES[c] || c}"></button>`).join('')}`
       + `<button type="button" role="menuitemradio" class="nm-sw nm-none" data-c="" aria-checked="${!o.colors.includes(o.color)}" aria-label="No colour" title="No colour"></button></div>`;
   }
+  // Build 61 (he asked, Nov 25: "More commands" was easy to miss): a Filter box at the top of the menu.
+  // Typing in it searches every command: this menu's rows, its colours and headings, and the whole
+  // "More commands" list, in one short list that takes the menu's place.
+  html += '<input type="text" class="nm-find" placeholder="Filter commands…" aria-label="Filter the commands" autocomplete="off" spellcheck="false">';
+  // the menu as it usually looks: headings, then the rows (hidden while a list shows instead)
+  html += '<div class="nm-main">';
   if (o.heading !== null && o.heading !== undefined) {
     const hb = (v, label, text) => `<button type="button" role="menuitemradio" class="nm-h" data-h="${v}" aria-checked="${o.heading === v}" aria-label="${label}" title="${label}"><span>${text}</span></button>`;
     html += `<div class="nm-row nm-heads" role="group" aria-label="Heading">${[1, 2, 3, 4, 5, 6].map((n) => hb(n, `Heading ${n}`, `H${n}`)).join('')}`
       + hb('auto', 'Auto heading (its size follows its level)', 'H<small>a</small>') + hb(0, 'No heading', '<s>H</s>') + '</div>';
   }
-  if (html) html += '<div class="nm-sep" role="separator"></div>';
+  if (o.heading !== null && o.heading !== undefined) html += '<div class="nm-sep" role="separator"></div>';
   html += o.items.map((it, k) => it === '-' ? '<div class="nm-sep" role="separator"></div>'
-    : `<button type="button" role="${it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" class="nm-item${it.danger ? ' danger' : ''}${it.sub ? ' nm-has-sub' : ''}" data-k="${k}"${it.checked === undefined ? '' : ` aria-checked="${!!it.checked}"`}${it.sub ? ' aria-haspopup="menu" aria-expanded="false"' : ''}><span class="nm-l">${esc(it.label)}</span>${it.sub ? '<span class="nm-chev" aria-hidden="true">›</span>' : it.hint ? `<span class="nm-hint">${esc(it.hint)}</span>` : ''}</button>`).join('');
+    : `<button type="button" role="${it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" class="nm-item${it.danger ? ' danger' : ''}${it.sub ? ' nm-has-sub' : ''}" data-k="${k}"${it.checked === undefined ? '' : ` aria-checked="${!!it.checked}"`}${it.sub ? ' aria-haspopup="menu"' : ''}><span class="nm-l">${esc(it.label)}</span>${it.sub ? '<span class="nm-chev" aria-hidden="true">›</span>' : it.hint ? `<span class="nm-hint">${esc(it.hint)}</span>` : ''}</button>`).join('');
+  html += '</div>';
+  // the list that takes the menu's place: "More commands" (with a back arrow) or what the filter found
+  html += '<div class="nm-alt" hidden><div class="nm-list"></div></div>';
   box.innerHTML = html;
   document.body.append(box);
   const before = /** @type {HTMLElement} */ (document.activeElement);
+  const find = /** @type {HTMLInputElement} */ (box.querySelector('.nm-find'));
+  const main = /** @type {HTMLElement} */ (box.querySelector('.nm-main'));
+  const alt = /** @type {HTMLElement} */ (box.querySelector('.nm-alt'));
+  const list = /** @type {HTMLElement & {rows?: any[]}} */ (box.querySelector('.nm-list'));
   let open = true;
-  // Build 53 (he asked, Nov 20): on a laptop "More commands" opens the "/" list beside the menu when
-  // the mouse rests on it (or → / Enter on it), with a filter box; a row runs on the note (pick 'slash')
-  let sub = null, subFor = null, subTimer = 0;
-  const closeSub = (refocus = false) => {
-    clearTimeout(subTimer);
-    if (!sub) return;
-    sub.remove();
-    sub = null;
-    subFor?.setAttribute('aria-expanded', 'false');
-    if (refocus) subFor?.focus({ preventScroll: true });
-    subFor = null;
+  let view = 'main'; // 'main': the menu as it is; 'more': the "More commands" list in its place
+  // the colours and headings as rows the filter can find ("red", "heading 2", "no colour")
+  const extras = [];
+  for (const c of o.colors || []) extras.push({ label: `Background: ${COLOR_NAMES[c] || c}`, attr: `data-c="${c}"` });
+  if (o.colors) extras.push({ label: 'No background colour', attr: 'data-c=""' });
+  if (o.heading !== null && o.heading !== undefined) {
+    for (let n = 1; n <= 6; n++) extras.push({ label: `Heading ${n}`, attr: `data-h="${n}"` });
+    extras.push({ label: 'Auto heading', attr: 'data-h="auto"' }, { label: 'No heading', attr: 'data-h="0"' });
+  }
+  /** Show what fits the view and what's typed in the filter. */
+  const show = () => {
+    const q = find.value.trim();
+    const ql = q.toLowerCase();
+    // (nothing typed and no list asked for: the usual menu)
+    if (view === 'main' && !q) { main.hidden = false; alt.hidden = true; box.classList.remove('nm-alt-on'); return; }
+    // the first time a list shows, the menu keeps its height (at least 320px where there's room), so it
+    // doesn't jump about; the list scrolls inside it
+    if (!box.style.height) {
+      const room = window.innerHeight - 8 - box.getBoundingClientRect().top;
+      box.style.height = `${Math.max(120, Math.min(room, Math.max(box.offsetHeight, 320)))}px`;
+    }
+    main.hidden = true;
+    alt.hidden = false;
+    box.classList.add('nm-alt-on');
+    let out = '';
+    // in "More commands": a back arrow to the menu first
+    if (view === 'more') out += `<button type="button" role="menuitem" class="nm-item nm-back"><span class="nm-chev" aria-hidden="true">‹</span><span class="nm-l">${esc(more?.label.replace(/…$/, '') ?? 'Back')}</span></button><div class="nm-sep" role="separator"></div>`;
+    // the menu's own rows (and its colours and headings) that match what's typed, while not in "More commands"
+    let found = 0;
+    if (view === 'main') {
+      const hit = (s) => s.toLowerCase().includes(ql);
+      o.items.forEach((it, k) => {
+        if (it === '-' || it.sub || !(hit(it.label) || hit(it.hint || ''))) return;
+        found++;
+        out += `<button type="button" role="menuitem" class="nm-item${it.danger ? ' danger' : ''}" data-k="${k}"><span class="nm-l">${esc(it.label)}</span>${it.hint ? `<span class="nm-hint">${esc(it.hint)}</span>` : ''}</button>`;
+      });
+      for (const x of extras) if (hit(x.label)) { found++; out += `<button type="button" role="menuitem" class="nm-item" ${x.attr}><span class="nm-l">${esc(x.label)}</span></button>`; }
+    }
+    // the "More commands" rows ("/" list) that match (all of them when nothing is typed)
+    const rows = more ? more.sub(q) : [];
+    if (rows.length && found) out += '<div class="nm-sep" role="separator"></div>';
+    out += rows.map((x, n) => `<button type="button" role="menuitem" class="nm-item nm-cmd" data-n="${n}">${x.html}</button>`).join('');
+    if (!found && !rows.length) out += '<p class="nm-none-found">No such command</p>';
+    list.innerHTML = out;
+    list.rows = rows;
+    alt.scrollTop = 0;
   };
-  const openSub = (b, kb = false) => {
-    if (sub && subFor === b) { if (kb) sub.querySelector('input')?.focus(); return; }
-    closeSub();
-    const it = o.items[+b.dataset.k];
-    subFor = b;
-    b.setAttribute('aria-expanded', 'true');
-    sub = h('div', 'pop menu note-menu nm-sub');
-    sub.setAttribute('role', 'menu');
-    sub.setAttribute('aria-label', it.label);
-    sub.innerHTML = '<input type="text" class="nm-find" placeholder="Filter…" aria-label="Filter the commands" autocomplete="off" spellcheck="false"><div class="nm-list"></div>';
-    const list = sub.querySelector('.nm-list');
-    const fill = (q = '') => {
-      const rows = it.sub(q);
-      list.innerHTML = rows.length ? rows.map((x, n) => `<button type="button" role="menuitem" class="nm-item nm-cmd" data-n="${n}">${x.html}</button>`).join('') : '<p class="nm-none-found">No such command</p>';
-      list.rows = rows;
-    };
-    fill();
-    document.body.append(sub);
-    const mb = box.getBoundingClientRect(), bb = b.getBoundingClientRect();
-    const w = sub.offsetWidth;
-    const left = mb.right - 2 + w <= innerWidth - 8 ? mb.right - 2 : Math.max(8, mb.left - w + 2);
-    const top = Math.max(8, Math.min(bb.top - 42, innerHeight - 8 - Math.min(sub.offsetHeight, 420)));
-    Object.assign(sub.style, { left: left + 'px', top: top + 'px', maxHeight: Math.min(420, innerHeight - 8 - top) + 'px' });
-    const find = sub.querySelector('input');
-    find.addEventListener('input', () => fill(find.value.trim()));
-    sub.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
-    sub.addEventListener('click', (e) => {
-      const c = e.target.closest('.nm-cmd');
-      if (!c) return;
-      const v = list.rows[+c.dataset.n].value;
-      close(true);
-      o.pick('slash', v);
-    });
-    sub.addEventListener('keydown', (e) => {
-      const rows = [...list.querySelectorAll('.nm-cmd')];
-      const k = rows.indexOf(document.activeElement);
-      const go = (x) => { e.preventDefault(); e.stopPropagation(); x?.focus({ preventScroll: false }); };
-      if (e.key === 'ArrowDown') return go(rows[k < 0 ? 0 : (k + 1) % rows.length]);
-      if (e.key === 'ArrowUp') return go(k <= 0 ? (k === 0 ? find : rows.at(-1)) : rows[k - 1]);
-      if (e.key === 'Enter' && document.activeElement === find && rows[0]) { e.preventDefault(); e.stopPropagation(); rows[0].click(); return; }
-      if (e.key === 'ArrowLeft' && document.activeElement !== find || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSub(true); }
-    });
-    if (kb) find.focus({ preventScroll: true });
+  /** Switch between the menu and the "More commands" list (focus: where the keyboard goes next). */
+  const setView = (v, focus = null) => {
+    view = v;
+    find.value = '';
+    find.placeholder = v === 'more' ? 'Filter more commands…' : 'Filter commands…';
+    show();
+    if (focus === 'find') find.focus({ preventScroll: true });
+    else if (focus === 'more') /** @type {HTMLElement} */ (box.querySelector('.nm-has-sub'))?.focus({ preventScroll: true });
   };
+  find.addEventListener('input', show);
   const close = (picked = false) => {
     if (!open) return;
     open = false;
-    closeSub();
     const had = box.contains(document.activeElement);
     closeFrom(box);
     document.removeEventListener('pointerdown', onDown, true);
@@ -689,26 +778,44 @@ export function noteMenu(r, o) {
   box.addEventListener('pop-close', away); // (its dot, under it, pressed again)
   window.addEventListener('hashchange', away);
   // typing goes on elsewhere (the editing box keeps the keyboard when a finger opens it): it closes
-  const typed = (e) => { if (!box.contains(e.target) && !sub?.contains(e.target)) close(); };
+  const typed = (e) => { if (!box.contains(e.target)) close(); };
   document.addEventListener('beforeinput', typed, true);
   // a press outside closes it; after a finger's, the tap doesn't also act on what's under it
   const onDown = (e) => {
-    if (box.contains(e.target) || sub?.contains(e.target)) return;
+    if (box.contains(e.target)) return;
     if (e.button === 0) eatNextClick();
     close();
   };
-  const buttons = () => [...box.querySelectorAll('button')];
+  // the buttons that show now (the hidden part's don't count for the arrow keys)
+  const buttons = () => [...box.querySelectorAll('button')].filter((b) => !b.closest('[hidden]'));
   const lineOf = (b) => (b.closest('.nm-row') ?? b); // (a row of swatches or headings is one line)
   const onKey = (e) => {
-    if (sub?.contains(document.activeElement)) return; // (its own keys: sub's keydown)
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+    if (e.key === 'Escape') {
+      e.preventDefault(); e.stopPropagation();
+      // Esc (and Android's Back) steps back: the filter's words first, then "More commands", then the menu
+      if (find.value) { find.value = ''; show(); find.focus({ preventScroll: true }); return; }
+      if (view === 'more') { setView('main', 'more'); return; }
+      close();
+      return;
+    }
     // a key while the menu doesn't have the keyboard: it's for what does (the menu goes)
     if (!box.contains(document.activeElement)) { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) close(); return; }
     if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); close(); return; }
     const all = buttons();
-    const cur = all.indexOf(document.activeElement);
-    if ((e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') && all[cur]?.classList.contains('nm-has-sub')) { e.preventDefault(); e.stopPropagation(); openSub(all[cur], true); return; }
     const go = (b) => { if (b) { e.preventDefault(); e.stopPropagation(); b.focus(); } };
+    // in the filter box: ↓ goes into the list, Enter runs the first thing found, other keys type
+    if (document.activeElement === find) {
+      if (e.key === 'ArrowDown') return go(all.find((b) => !b.closest('.nm-colors')));
+      if (e.key === 'ArrowUp') return go(all.at(-1));
+      if (e.key === 'Enter' && !alt.hidden) { e.preventDefault(); e.stopPropagation(); /** @type {HTMLElement} */ (list.querySelector('button:not(.nm-back)'))?.click(); }
+      return;
+    }
+    const cur = all.indexOf(/** @type {HTMLButtonElement} */ (document.activeElement));
+    // a letter typed on a row goes into the filter (as in a list you type to search)
+    if (e.key.length === 1 && e.key !== ' ' && !e.ctrlKey && !e.metaKey && !e.altKey) { find.focus({ preventScroll: true }); return; }
+    if ((e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') && all[cur]?.classList.contains('nm-has-sub')) { e.preventDefault(); e.stopPropagation(); setView('more', 'find'); return; }
+    // ← in "More commands" goes back to the menu
+    if (e.key === 'ArrowLeft' && view === 'more' && !all[cur]?.closest('.nm-row')) { e.preventDefault(); e.stopPropagation(); setView('main', 'more'); return; }
     if (e.key === 'Home') return go(all[0]);
     if (e.key === 'End') return go(all.at(-1));
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -722,6 +829,9 @@ export function noteMenu(r, o) {
       if (cur < 0) return go(e.key === 'ArrowDown' ? all[0] : all.at(-1));
       const lines = [...new Set(all.map(lineOf))];
       const l = lines.indexOf(lineOf(all[cur]));
+      // ↑ from the first row after the filter box goes up into it
+      const first = lines.findIndex((x) => !x.matches('.nm-colors'));
+      if (e.key === 'ArrowUp' && l === first) { e.preventDefault(); e.stopPropagation(); find.focus({ preventScroll: true }); return; }
       const next = lines[(l + (e.key === 'ArrowDown' ? 1 : lines.length - 1)) % lines.length];
       if (!next.matches('.nm-row')) return go(next);
       // into a row: the same place along it (swatches and headings line up)
@@ -734,22 +844,19 @@ export function noteMenu(r, o) {
   // phone its keyboard); the keyboard still reaches them when the menu has the focus
   box.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
   const opened = Date.now();
-  // the mouse resting on "More commands" opens its list; on another row, closes it
-  box.addEventListener('pointerover', (e) => {
-    if (e.pointerType !== 'mouse') return;
-    const b = e.target.closest('.nm-item');
-    if (!b) return;
-    clearTimeout(subTimer);
-    if (b.classList.contains('nm-has-sub')) subTimer = setTimeout(() => open && openSub(b), 120);
-    else if (sub) subTimer = setTimeout(() => closeSub(), 200);
-  });
   box.addEventListener('click', (e) => {
     const b = e.target.closest('button');
-    if (b?.classList.contains('nm-has-sub')) { openSub(b); return; }
+    if (!b) return;
     // (opened by a finger let go: a click that comes with that finger, where the menu now is, isn't a choice)
-    if (!b || (o.touch && Date.now() - opened < 350)) return;
+    if (o.touch && Date.now() - opened < 350) return;
+    // "More commands…" opens its list in place of the menu (a click or a tap, no waiting: he asked,
+    // Nov 25); the back arrow brings the menu back
+    if (b.classList.contains('nm-has-sub')) { setView('more', o.touch ? null : 'find'); return; }
+    if (b.classList.contains('nm-back')) { setView('main', o.touch ? null : 'more'); return; }
     close(true);
-    if (b.dataset.c !== undefined) o.pick('color', b.dataset.c);
+    // a "More commands" row: run on the note, as if picked from the "/" list
+    if (b.dataset.n !== undefined) o.pick('slash', list.rows[+b.dataset.n].value);
+    else if (b.dataset.c !== undefined) o.pick('color', b.dataset.c);
     else if (b.dataset.h !== undefined) o.pick('heading', b.dataset.h === 'auto' ? 'auto' : +b.dataset.h);
     else o.pick('item', o.items[+b.dataset.k].id);
   });
@@ -757,7 +864,9 @@ export function noteMenu(r, o) {
   document.addEventListener('pointerdown', onDown, true);
   document.addEventListener('keydown', onKey, true);
   openFrom(box, o.from?.isConnected ? o.from : r);
-  if (o.focus) (box.querySelector('.nm-item') ?? box.querySelector('button'))?.focus({ preventScroll: true });
+  // from the keyboard or a mouse: the filter box has the keyboard, so typing searches at once (↓ goes
+  // to the rows); from a finger: nothing does (no phone keyboard pops up until the box is tapped)
+  if (o.focus) find.focus({ preventScroll: true });
   return close;
 }
 

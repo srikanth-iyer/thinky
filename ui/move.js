@@ -1,4 +1,5 @@
-// Notes dragged by their dot to another page (editor.js dragEnd, loaded the first time): another day in
+// Notes dragged by their dot to another page (editor.js dragEnd, loaded the first time), or sent to the end of one with the note menu's
+// "Move to page…" or Ctrl+Shift+M (Build 61, editor.js moveToPage). Dragged: another day in
 // the Journals list, the page on the other side, or a page in the sidebar's Favourites / Recent (its
 // end). With Alt held, a block reference to them goes there instead (Logseq's way) and they stay.
 //
@@ -337,7 +338,11 @@ async function transfer(S, D, T, t, pv) {
     if (!L.intact(true)) L.drop(); // (a change made elsewhere was merged into one meanwhile: no Undo)
     if (app.active?.cur == null) app.active = S;
     const msg = D.alt ? `${tops.length > 1 ? 'References' : 'Reference'} added in “${name}”.` : `Moved to “${name}”.`;
-    app.toast(msg, 6000, L.state === 'done' ? { label: 'Undo', run: () => L.go(true) } : null);
+    const acts = [];
+    if (L.state === 'done') acts.push({ label: 'Undo', run: () => L.go(true) }); // (both pages back as they were)
+    // Build 61 (Move to page, D.open): an Open button too, to go and see them there
+    if (D.open) acts.push({ label: 'Open', run: () => app.go('page', name) });
+    app.toast(msg, D.open ? 8000 : 6000, acts.length ? acts : null);
   } finally {
     for (const o of outs) o.locked = false;
     app.moving = false;
