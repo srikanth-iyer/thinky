@@ -27,6 +27,8 @@ went up. Build 40 and older still update to it (each release keeps a signature f
   Move to page… and Select; Cut, Copy, Copy as text, Copy link; Open in a new tab, Open to the side; Numbered
   list, Next to-do state, More commands…; Expand all, Collapse all; and Delete last, on its own (popups.js
   `noteMenu`, editor.js; t14_blockmenu, t24_build41, t8_phone).
+- A thin scroll bar in the note menu, its More commands list and the Move to page list (he asked, Nov 25: "its
+  more for indication"): a 4px line with no track or arrows (app.css).
 - Move to page (he asked, Nov 25: "like how i can move a google task to another task list"): "Move to page…" in
   the note menu and Ctrl+Shift+M (Settings → Shortcuts can change it) open a box to pick a page: today's journal
   and recent pages first, a filter for any other page or a new one. The note goes to the end of that page with all

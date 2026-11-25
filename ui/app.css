@@ -1725,6 +1725,14 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 /* while a list shows in the menu's place: the menu keeps its height and the list scrolls inside it */
 .note-menu.nm-alt-on { display: flex; flex-direction: column; overflow: hidden; }
 .note-menu .nm-alt { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* (he asked, Nov 25: the scroll bar in More commands "can be thinner ... its more for indication"): a thin line,
+   no arrows or track, in the note menu, its More commands list and the Move to page list. Chromium (Windows,
+   Android) draws it from the ::-webkit-scrollbar rules; other browsers get their own thin bar */
+.note-menu::-webkit-scrollbar, .note-menu .nm-alt::-webkit-scrollbar, .pp-list::-webkit-scrollbar { width: 4px; height: 4px; }
+.note-menu::-webkit-scrollbar-track, .note-menu .nm-alt::-webkit-scrollbar-track, .pp-list::-webkit-scrollbar-track { background: transparent; }
+.note-menu::-webkit-scrollbar-thumb, .note-menu .nm-alt::-webkit-scrollbar-thumb, .pp-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 2px; }
+.note-menu::-webkit-scrollbar-button, .note-menu .nm-alt::-webkit-scrollbar-button, .pp-list::-webkit-scrollbar-button { display: none; }
+@supports not selector(::-webkit-scrollbar) { .note-menu, .note-menu .nm-alt, .pp-list { scrollbar-width: thin; scrollbar-color: var(--line) transparent; } }
 .note-menu .nm-back { width: 100%; text-align: left; align-items: center; gap: 8px; font-weight: 600; }
 .note-menu .nm-back .nm-chev { font-size: 1.25em; }
 .note-menu .nm-cmd { display: flex; align-items: center; width: 100%; text-align: left; }
