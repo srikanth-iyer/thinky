@@ -38,14 +38,15 @@ OpenFile.prototype.fd_filestat_set_times = function (atim, mtim, flags) {
 };
 
 const NOTES = '/notes'; // where the pretend notes folder sits
-const SAVED = 'webDemoNotes2';
+const SAVED = 'webDemoNotes3';
 // The first notes a visitor sees on today's journal page (website demo only; the app's own new
 // notes folders don't get them). Plain outline text, as in any journal file.
-const INTRO = `- **thinky**: put a thought in the right place, and it finds you again at the right time.
-\t- Made for minds that jump from idea to idea: you write first and sort later, and links bring old notes back when they matter.
-\t- Inspired by Logseq and Obsidian: a simple outline of notes, linked to each other.
-\t- Your notes are plain text files in a folder you own, so you're never locked in, and other apps (and AI helpers) can read them too.
-\t- Free and open source.
+const INTRO = `- **thinky**: an outliner notes app for Windows and Android that helps you place thoughts and ideas in the right place, so they are remembered at the right time.
+\t- Designed with ADHD-like minds in mind.
+\t- Inspired by Logseq: every note is a plain Markdown file in a folder you own.
+\t- Built around linked references, so each note stays in view of its larger context, and ideas connect to the setting and function they belong to.
+\t- Works with AI tools that can read and change your notes directly (in the app; they're off in this demo).
+\t- Open source and free for anyone to use and adopt.
 - This is the real thinky, running in your browser. Try anything: your notes stay in this browser and nothing is sent anywhere.
 `; // the visitor's notes, kept in this browser between visits (localStorage)
 let dirty = false; // a file changed since the notes were last kept
