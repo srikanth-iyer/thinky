@@ -28,6 +28,9 @@ From his notes and asks (Nov 25), in the app and on the website:
   the looks with a line between days, were 20px), and more under a day's last part on a phone.
 - More room between a day's faint + and the line that ends it (he asked, Nov 25): about 40px on a laptop (was about
   20px), about 30px on a phone (was about 10px).
+- When nothing follows a day's or a page's faint + (no "Scheduled & deadline", no references), more room still under it
+  so the notes have space to breathe (he asked, Nov 25): a day about 90px on a laptop and 75px on a phone, a page about
+  75px and 70px (`:has()` in app.css).
 - An empty note is as tall shown as while typing in it (its least height counts its padding: `.bc`, `.ed`).
 - thinky night's #tag pills are softer: a fainter orange tint and words closer to cream.
 - Each day in the Journals list has a ⋯ with the day's page menu, Delete page… among it (the ⋯ on a day's own

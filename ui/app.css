@@ -293,6 +293,10 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
    line under it (he asked: the "+" and the space are end enough; the line stays between days in the
    Journals list). A card keeps its whole edge. --sheet-page-end: 0 in those looks (skins.css). */
 .sheet.page { padding-bottom: calc(var(--sheet-pad-bottom) + 30px); border-bottom: var(--sheet-page-end, var(--sheet-divider)); }
+/* nothing under the faint +: no "Scheduled & deadline", no references (he asked, Nov 25: "so that the note
+   has space to breathe"). A day in the Journals list with no boxes, and a page with no section after it */
+.sheet.day:not(:has(.day-sched .sched, .day-refs .sec)) { padding-bottom: calc(var(--sheet-pad-bottom) + 92px); }
+.sheet.page:not(:has(~ .sec)) { padding-bottom: calc(var(--sheet-pad-bottom) + 76px); }
 .sheet.day { margin-bottom: var(--day-gap); min-height: 250px; }
 .sheet.day.today { min-height: 400px; }
 .day-body { margin-top: 28px; }
@@ -1423,6 +1427,8 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   .sheet.day, .sheet.page { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 12px); padding-bottom: calc(var(--sheet-pad-bottom) + 12px); }
   .sheet.day { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 18px); padding-bottom: calc(var(--sheet-pad-bottom) + 50px); } /* (the + is 36px tall here: about 30px clear under it; was + 30px) */
   .sheet.page { padding-bottom: calc(var(--sheet-pad-bottom) + 30px); }
+  .sheet.day:not(:has(.day-sched .sched, .day-refs .sec)) { padding-bottom: calc(var(--sheet-pad-bottom) + 84px); } /* (nothing under the +: see above) */
+  .sheet.page:not(:has(~ .sec)) { padding-bottom: calc(var(--sheet-pad-bottom) + 72px); }
   .sheet.day { margin-bottom: min(var(--day-gap), var(--day-gap-phone)); min-height: 200px; }
   .sheet.day.today { min-height: 300px; }
   .day-body { margin-top: 20px; }
