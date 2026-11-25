@@ -453,9 +453,15 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
 .crumbs { font-size: var(--fs-sub); color: var(--ink-faint); margin: 0 0 8px; line-height: 1.5; overflow-wrap: anywhere; }
 .crumbs a { color: var(--ink-soft); text-decoration: none; }
 .crumbs a:hover { color: var(--link); }
-/* zoomed in on a note (Build 61, he asked): no page head; the line of links is the view's top line */
-.sheet.zoomed-in > .page-head { display: none; }
-.sheet.zoomed-in .crumbs { margin: 2px 0 12px; }
+/* zoomed in on a note (Build 61, he asked): no big page name; the line of links is the view's top line.
+   The page's ✦ and ⋯ buttons stay, at the right end of that line, so the page actions (History…,
+   Move, Delete…) are still one click away; the name, its namespace line and properties hide */
+.sheet.zoomed-in { position: relative; }
+.sheet.page.zoomed-in > .page-head { margin: 0; }
+.sheet.zoomed-in > .page-head > :not(.title-row), .sheet.zoomed-in .title-row > .page-title { display: none; }
+.sheet.zoomed-in .title-row { position: absolute; z-index: 1; right: calc(var(--sheet-pad-x) - 8px);
+  top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 22px - 6px); } /* (the sheet's top padding, then up to centre on the links) */
+.sheet.zoomed-in .crumbs { margin: 2px 0 12px; padding-right: 72px; } /* (room for the two buttons) */
 .sheet.zoomed-in .crumbs a[data-z="page"] { color: var(--link); font-weight: 600; }
 .bc, .ed {
   display: block; width: 100%; min-height: calc(var(--line-box) + 2 * var(--bc-pad-y)); padding: var(--bc-pad-y) 6px; margin: 0 0 0 -6px;
@@ -1466,6 +1472,7 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   .sheet.day, .sheet.page { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 12px); padding-bottom: calc(var(--sheet-pad-bottom) + 12px); }
   .sheet.day { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 18px); padding-bottom: calc(var(--sheet-pad-bottom) + 50px); } /* (the + is 36px tall here: about 30px clear under it; was + 30px) */
   .sheet.page { padding-bottom: calc(var(--sheet-pad-bottom) + 30px); }
+  .sheet.zoomed-in .title-row { top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 12px - 7px); } /* (the phone's smaller top padding, above; its buttons are a little bigger) */
   .sheet.day:not(:has(.day-sched .sched, .day-refs .sec)) { padding-bottom: calc(var(--sheet-pad-bottom) + 84px); } /* (nothing under the +: see above) */
   .sheet.page:not(:has(~ .sec)) { padding-bottom: calc(var(--sheet-pad-bottom) + 72px); }
   .sheet.day { margin-bottom: min(var(--day-gap), var(--day-gap-phone)); min-height: 200px; }
@@ -1730,7 +1737,7 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
    Android) draws it from the ::-webkit-scrollbar rules; other browsers get their own thin bar */
 .note-menu::-webkit-scrollbar, .note-menu .nm-alt::-webkit-scrollbar, .pp-list::-webkit-scrollbar { width: 4px; height: 4px; }
 .note-menu::-webkit-scrollbar-track, .note-menu .nm-alt::-webkit-scrollbar-track, .pp-list::-webkit-scrollbar-track { background: transparent; }
-.note-menu::-webkit-scrollbar-thumb, .note-menu .nm-alt::-webkit-scrollbar-thumb, .pp-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 2px; }
+.note-menu::-webkit-scrollbar-thumb, .note-menu .nm-alt::-webkit-scrollbar-thumb, .pp-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: var(--r-line); }
 .note-menu::-webkit-scrollbar-button, .note-menu .nm-alt::-webkit-scrollbar-button, .pp-list::-webkit-scrollbar-button { display: none; }
 @supports not selector(::-webkit-scrollbar) { .note-menu, .note-menu .nm-alt, .pp-list { scrollbar-width: thin; scrollbar-color: var(--line) transparent; } }
 .note-menu .nm-back { width: 100%; text-align: left; align-items: center; gap: 8px; font-weight: 600; }

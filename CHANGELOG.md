@@ -36,7 +36,8 @@ went up. Build 40 and older still update to it (each release keeps a signature f
   popups.js `pickPage`, move.js `dropElsewhere`; t39_menu_move).
 - A note opened on its own no longer sits under the big page title (he asked, Nov 25: the page name on top made
   it look like the whole page): only the small line of where it is (page › parent notes) shows over it, and the
-  note stays at its normal size, ready to edit (`.sheet.zoomed-in`; t39_menu_move).
+  note stays at its normal size, ready to edit. The page's ✦ and ⋯ buttons stay, at the right end of that line, so
+  History… and the other page actions are still one click away (`.sheet.zoomed-in`; t39_menu_move, t14_history).
 - The quiet days' dates slide open (he asked, Nov 25): a tap on the faint + between two days now opens the dates
   the way the menus open, growing out of the + over 0.2 s with the menus' curve, while the room under it opens
   and the older days slide down, instead of appearing in a quick cut. A second tap folds them back into the +

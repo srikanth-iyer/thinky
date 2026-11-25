@@ -96,7 +96,7 @@ write('pages/Books.md', '- Dune\n  kind:: book\n- A podcast\n  kind:: ebook, aud
   await page.locator('.nm-alt .nm-back').click();
   await sleep(200);
   check(await page.locator('.nm-alt').isHidden() && await page.locator('.nm-main').isVisible(), 'the way back shows the short list again');
-  await page.locator('.note-menu button', { hasText: 'More commands' }).click();
+  await page.locator('.note-menu .nm-has-sub').click(); // (the item itself, not the hidden way back that has its name)
   await page.waitForSelector('.nm-alt .nm-cmd');
   await page.locator('.nm-alt .nm-cmd', { hasText: /^TODO/ }).first().click();
   for (let k = 0; k < 30 && !read('pages/States.md').includes('TODO Steps'); k++) await sleep(100);

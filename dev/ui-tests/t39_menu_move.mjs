@@ -107,12 +107,40 @@ const z = await page.evaluate(() => {
 check(!z.headShown, 'the big page title, its properties box and buttons are hidden', JSON.stringify(z));
 check(/Sourdough Bread/.test(z.crumbs), 'the small line of where it is names the page', z.crumbs);
 check(/Mix, fold/.test(z.root) && Math.abs(z.rootSize - normal) < 0.5, 'the note itself at its normal size, ready to edit', JSON.stringify({ normal, ...z }));
+// the page's ✦ and ⋯ buttons stay, at the right end of the line of links, so the page actions are still there
+const b = await page.evaluate(() => {
+  const s = document.querySelector('.sheet.zoomed-in'), more = s.querySelector('.title-row [data-a="more"]'), crumbs = s.querySelector('.crumbs');
+  const m = more.getBoundingClientRect(), c = crumbs.getBoundingClientRect(), t = s.querySelector('.page-title').getBoundingClientRect();
+  const r = document.createRange(); r.selectNodeContents(crumbs); const words = r.getBoundingClientRect(); // (where the links' words end)
+  return { titleH: t.height, mh: m.height, mid: (m.top + m.bottom) / 2, ctop: c.top, cbot: c.bottom, mleft: m.left, wordsRight: words.right };
+});
+check(b.titleH === 0 && b.mh > 0, 'the page name is hidden but its ⋯ button shows', JSON.stringify(b));
+check(b.mid >= b.ctop && b.mid <= b.cbot && b.wordsRight < b.mleft, 'on the line of links, at its end, clear of the words', JSON.stringify(b));
+await page.locator('.sheet.zoomed-in .title-row [data-a="more"]').click();
+await page.waitForSelector('.pop.menu button');
+check(await page.locator('.pop.menu button', { hasText: 'History' }).count() === 1, 'and opens the page’s menu (History… and the rest)');
+await page.keyboard.press('Escape');
+await sleep(150);
 await page.locator('.sheet.zoomed-in .crumbs a', { hasText: 'Sourdough Bread' }).first().click();
 await page.waitForFunction(() => !document.querySelector('.sheet.zoomed-in'));
 check(await page.locator('.page-head').first().isVisible(), 'its page name goes back to the whole page, title and all');
 
 check(errors.length === 0, 'no script errors', errors.join('\n'));
 await browser.close();
+
+console.log('3b. on a phone too: the ✦ and ⋯ buttons sit on the line of links when zoomed in');
+{
+  const { browser: b3, page: p3 } = await open({ touch: true, viewport: { width: 390, height: 800 } });
+  await go(p3, '#/zoom/Sourdough%20Bread/2');
+  await p3.waitForSelector('.sheet.zoomed-in');
+  await sleep(300);
+  const pb = await p3.evaluate(() => {
+    const s = document.querySelector('.sheet.zoomed-in'), m = s.querySelector('.title-row [data-a="more"]').getBoundingClientRect(), c = s.querySelector('.crumbs').getBoundingClientRect();
+    return { mid: (m.top + m.bottom) / 2, ctop: c.top, cbot: c.bottom, right: m.right, w: innerWidth };
+  });
+  check(pb.mid >= pb.ctop && pb.mid <= pb.cbot && pb.right <= pb.w, 'centred on the line, inside the screen', JSON.stringify(pb));
+  await b3.close();
+}
 
 console.log('4. a thin scroll bar: in More commands, the menu and the Move to page list ("its more for indication", Nov 25)');
 {
