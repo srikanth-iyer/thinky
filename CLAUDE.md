@@ -332,6 +332,9 @@ copy of its icon (`.pop-hic`; a dot = `.pop-dot`) and its title or colours besid
 one low down scrolls, `maxHeight`); else placed as before, growing from its corner nearest. A right-click on a dot opens the
 note menu from the dot. Motion: dom.js `OPEN_MS` 200 / `CLOSE_MS` 150 / `EASE` cubic-bezier(.2,.8,.2,1), also app.css's
 opening/closing keyframes and `SLIDE_EASE`; tabs widen in / slide over (`paint`, WAAPI, by tab object `el.tab`).
+The quiet days' dates in the Journals list (app.js `quietRun`, Build 61, he asked Nov 25: "slide open ... instead of a quick
+cut") open the same way: `grow` out of the + (`quietSpot`) while the `.quiet` room's height and padding animate with
+it (WAAPI, `OPEN_MS`/`CLOSE_MS`/`EASE`; `.quiet.moving` clips); a tap partway turns it round from where it is; tested by t38_build61.
 Build 42 (0.5.3; he said go, Nov 10): the Google Play version (its rules: "Android extras").
 Build 43 (0.5.4; the maintainer's notes of Nov 10; tested by t25_build43): a hidden sidebar peeks out on the mouse (as in
 Notion; `App.peekSidebar`: pointerover on the strip's sidebar button, 120 ms, adds `body.side-peek` (+ `.peeking` for the

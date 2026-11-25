@@ -14,6 +14,14 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Next build (not released yet)
+
+- The quiet days' dates slide open (he asked, Nov 25): a tap on the faint + between two days now opens the dates
+  the way the menus open, growing out of the + over 0.2 s with the menus' curve, while the room under it opens
+  and the older days slide down, instead of appearing in a quick cut. A second tap folds them back into the +
+  (0.15 s). Nothing moves with "reduce motion" or Settings → Look → Animations off (`quietRun`, `quietSpot`,
+  `.quiet.moving`; t38_build61).
+
 ## Build 60 · version 0.6.9 (November 2026)
 
 The website gets clear headed sections (Why I made it, Try it or get it, Get started, What it does), small pictures for quick capture, the AI services' and apps' logos, a short "What is a Markdown note?" page, a small sun or moon icon for the look, and "Try it in your browser": an online demo with a few sample pages, nothing to install. It also gets a side menu like the app's, with its pages and the sections of the page you're on (on a phone, behind a menu button).

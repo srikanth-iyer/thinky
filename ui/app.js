@@ -7,7 +7,7 @@ import { Outline, EDGE, PIN_H, findAgain, caretAgain, foldedIn, lineLook } from 
 import { renderBlock, propsHtml, visibleProps, esc, pagesIn, setPropRules } from './render.js';
 import { Suggest, Preview, menu, confirmBox, promptBox, pickDate, place } from './popups.js';
 import { pagesView, tagsView, propsView, todosView, taskRow, taskClicks, taskDay, byDay, num, drawInParts } from './views.js';
-import { h, pageLink, ICON, BRAND, fadeAway, motionOn } from './dom.js';
+import { h, pageLink, ICON, BRAND, fadeAway, motionOn, grow, spotIn, OPEN_MS, CLOSE_MS, EASE } from './dom.js';
 import { keyOf } from './calendar.js';
 import { Find } from './find.js';
 import { Tabs, placeOf, parsePlace, sideNav } from './tabs.js';
@@ -1106,7 +1106,11 @@ class App {
    *  together, up to three in view, a longer run scrolling with the next ones fading out (tap again to
    *  close). A tap on a date puts that day in its place in the list, its first note open to write in
    *  (its file is made only once something is written, like today's). A run longer than a year shows its
-   *  newest year. Null when there are no days between. app.css .quiet */
+   *  newest year. Null when there are no days between. app.css .quiet
+   *  Build 61 (he asked, Nov 25: "it should slide open ... instead of a quick cut"): the dates open the way
+   *  the menus do (dom.js grow: out of the +, 0.2 s, the menus' curve) while the room under the + opens
+   *  with them, pushing the older days down smoothly; a second tap folds them back into the + (0.15 s)
+   *  as the room closes. Nothing moves when animations are off (motionOn). */
   quietRun(list, newer, older) {
     const dates = [];
     for (const d = new Date(newer); d.setDate(d.getDate() - 1), d > older && dates.length < 366;) dates.push(new Date(d));
@@ -1125,11 +1129,34 @@ class App {
       wheel.classList.toggle('scrolled', wheel.scrollTop > 2);
       if (count) count.textContent = `${Math.min(k + 1, n)} of ${n}`;
     };
+    let moving = []; // the opening or closing movement under way (a tap meanwhile turns it round)
     mark.onclick = () => {
       const on = mark.getAttribute('aria-expanded') !== 'true';
       mark.setAttribute('aria-expanded', String(on));
-      q.classList.toggle('open', on);
-      if (on && !wheel) {
+      // the room it takes now, partway through a movement too (its height and the space above and below the dates)
+      const now = () => { const c = getComputedStyle(q); return { height: `${q.getBoundingClientRect().height}px`, paddingTop: c.paddingTop, paddingBottom: c.paddingBottom }; };
+      const from = now();
+      for (const a of moving) a.cancel();
+      moving = [];
+      q.classList.remove('moving');
+      if (!on) { // closing: the dates fold back into the + as the room under it closes, then go
+        if (!wheel || !motionOn()) { q.classList.remove('open'); if (wheel) { wheel.hidden = true; if (count) count.hidden = true; } return; }
+        q.classList.remove('open');
+        const to = now(); // (the room once closed)
+        q.classList.add('open', 'moving');
+        const room = q.animate([from, to], { duration: CLOSE_MS, easing: EASE });
+        const fold = grow(wheel, this.quietSpot(wheel, mark), true);
+        moving = fold ? [room, fold] : [room];
+        room.finished.then(() => {
+          q.classList.remove('open', 'moving');
+          wheel.hidden = true;
+          if (count) count.hidden = true;
+          moving = [];
+        }, () => {}); // (cancelled: a tap opened them again)
+        return;
+      }
+      q.classList.add('open');
+      if (!wheel) {
         wheel = h('div', 'q-wheel' + (n > 3 ? ' long' : ''));
         wheel.style.setProperty('--rows', String(Math.min(n, 3)));
         wheel.innerHTML = dates.map((d, i) => `<button type="button" class="q-day" data-i="${i}"><i></i>${esc(label(d))}</button>`).join('');
@@ -1153,9 +1180,26 @@ class App {
           sec.querySelector('.day-body.blank')?.dispatchEvent(new MouseEvent('click', { bubbles: true })); // (its first note opens)
         };
       }
-      if (wheel) { wheel.hidden = !on; if (count) count.hidden = !on; if (on) mid(); }
+      wheel.hidden = false;
+      if (count) count.hidden = false;
+      mid();
+      // opening: the room under the + opens from what it was to its whole height as the dates grow out of it
+      if (!motionOn()) return;
+      const to = now();
+      q.classList.add('moving');
+      const room = q.animate([from, to], { duration: OPEN_MS, easing: EASE });
+      const out = grow(wheel, this.quietSpot(wheel, mark));
+      moving = out ? [room, out] : [room];
+      room.finished.then(() => { q.classList.remove('moving'); moving = []; }, () => {});
     };
     return q;
+  }
+
+  /** Where a quiet run's + is in its dates' box (dom.js grow's spot): the dates open out of it and fold
+   *  back into it, as a menu does out of its button. */
+  quietSpot(wheel, mark) {
+    const s = spotIn(wheel, mark.getBoundingClientRect());
+    return { x: Math.max(0, s.x), y: 0, w: s.w, h: Math.min(s.h, wheel.offsetHeight || s.h) };
   }
 
   /** One day in the Journals list: its notes, then (today) the to-dos that are due, then the
