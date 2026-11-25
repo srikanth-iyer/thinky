@@ -282,7 +282,7 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
    each, Logseq has 48 above and 24 below), and a minimum height, so empty days don't crowd together;
    today's is taller (Logseq: 250px, today 500). Oct 28: a little roomier still (he asked) */
 .sheet.day, .sheet.page { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 22px); padding-bottom: calc(var(--sheet-pad-bottom) + 22px); }
-.sheet.day { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 30px); padding-bottom: calc(var(--sheet-pad-bottom) + 32px); }
+.sheet.day { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 30px); padding-bottom: calc(var(--sheet-pad-bottom) + 52px); } /* (more room between a day's faint + and the line that ends the day: he asked, Nov 25; was + 32px) */
 /* Build 44: a Journals day away from the screen (app.js journalsView marks it) is left undrawn by
    the browser, at the height it had, until it comes near again: typing stays quick after a long scroll back.
    The height is noted while the day is drawn (contain-intrinsic-size: auto, which does nothing else to a
@@ -1421,7 +1421,7 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
      still fitting beside the star and menu buttons; days a little less roomy than on a laptop */
   .day-head .page-title { font-size: clamp(26px, 8vw, 34px); } /* (the longest dates still fit on one line in most looks) */
   .sheet.day, .sheet.page { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 12px); padding-bottom: calc(var(--sheet-pad-bottom) + 12px); }
-  .sheet.day { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 18px); padding-bottom: calc(var(--sheet-pad-bottom) + 30px); }
+  .sheet.day { padding-top: calc(var(--sheet-band-h) + var(--sheet-pad-top) + 18px); padding-bottom: calc(var(--sheet-pad-bottom) + 50px); } /* (the + is 36px tall here: about 30px clear under it; was + 30px) */
   .sheet.page { padding-bottom: calc(var(--sheet-pad-bottom) + 30px); }
   .sheet.day { margin-bottom: min(var(--day-gap), var(--day-gap-phone)); min-height: 200px; }
   .sheet.day.today { min-height: 300px; }

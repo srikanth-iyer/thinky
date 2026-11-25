@@ -18,7 +18,7 @@
   // small line icons, drawn like the app's (currentColor, 1.6 stroke)
   var ICON = {
     home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
-    try: '<path d="M8 5v14l11-7z"/>',
+    try: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/>', // a browser window (a triangle read as a fold toggle, he said Nov 25)
     page: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
     out: '<path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M18 14v6H4V6h6"/>',
     sec: '<path d="M5 12h14"/>',

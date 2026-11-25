@@ -26,6 +26,8 @@ From his notes and asks (Nov 25), in the app and on the website:
   start clear of it (48px under the notes, 56px on a phone, whose "+" line is 36px tall), so a tap meant for one
   doesn't hit the other. Days in the Journals list have more room between them (72px, 48px on a phone; 32px in
   the looks with a line between days, were 20px), and more under a day's last part on a phone.
+- More room between a day's faint + and the line that ends it (he asked, Nov 25): about 40px on a laptop (was about
+  20px), about 30px on a phone (was about 10px).
 - An empty note is as tall shown as while typing in it (its least height counts its padding: `.bc`, `.ed`).
 - thinky night's #tag pills are softer: a fainter orange tint and words closer to cream.
 - Each day in the Journals list has a ⋯ with the day's page menu, Delete page… among it (the ⋯ on a day's own
