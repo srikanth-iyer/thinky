@@ -1919,6 +1919,16 @@ window can't be sent to another page.
   out of ui/ so the app doesn't pack them; ui/api.js imports web-core.js by a name the type check doesn't look up.
   Core changes for wasm: jobs run one at a time (app.rs, app/history.rs), `crate::process_id()` (lib.rs) is 1.
   A change to the demo's first notes needs a new `SAVED` key, or returning visitors keep the old ones.
+- The website's looks (Build 60, he asked Nov 25, 2026: the home page in thinky's outline form, "and also maybe allow it
+  to have different looks"; whole site in the app itself: advised against, for load time, search and direct links):
+  `site/index.html` is an outline (`ul.outline`, `li.h` for a heading note, a `.props` box); `site/style.css` reads
+  only the app's look tokens (`--bg`, `--ink`, `--accent`, `--font-body`…, through its own `--s-*` names, with the
+  old warm colours as fallback). pages.yml runs `web/site-looks.mjs` (from main) on the same release as the demo: it
+  copies ui/skins.css, fonts, skins/ pictures (also to the site's root: browsers resolve a look's `url(skins/…)`
+  next to style.css) and the wordmark into `look/`, and reads `SKINS` out of ui/app.js into `look/looks.js`.
+  `site/look.js` (in each page's head) sets `data-skin` before paint and builds the "Look" menu into `#looks`;
+  it saves `lookMode`/`skinDay`/`skinNight` as the app does, so site and demo (same origin) share a look.
+  With nothing saved the site follows the system with thinky / thinky night.
 - The browser extension's stores (Build 59, he asked Nov 23, 2026: "automate them as much as possible"):
   `.github/workflows/stores.yml` runs when `build` passes on main (a release; `workflow_run`, only a push's) and by
   hand (Actions → stores → Run workflow, main only). `scripts/extension_store.py zip` makes the store package

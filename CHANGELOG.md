@@ -26,6 +26,11 @@ The website gets "Try it in your browser": the real thinky, with a few sample pa
   written; laptop and phone sizes) and publishes only if it passes.
 - The home page says why thinky was made, and mentions the optional AI features, the backups and the extension's
   store pages; the privacy page says where the demo keeps its notes.
+- The home page is laid out as a thinky page (a properties box, then an outline with bullets and the pale lines
+  between a note and the notes under it), and every page of the website can wear any of the app's looks: a "Look"
+  menu (site/look.js) with Light, Dark or System and the day and night looks. The looks are the newest release's own
+  (web/site-looks.mjs copies ui/skins.css, its pictures and fonts, and the list of looks from ui/app.js), saved like
+  the app saves them, so the demo opens in the look picked on the site and the other way round.
 - Under the hood: the core runs its work one job at a time when built for WebAssembly (no threads there) and uses a
   fixed process number there; the app's own builds are unchanged. The demo's own code (web/demo/) stays out of ui/,
   so the app doesn't carry it.

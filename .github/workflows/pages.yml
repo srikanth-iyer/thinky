@@ -1,6 +1,7 @@
 # The website on GitHub Pages: srikanth-iyer.github.io/thinky. The site/ folder as it is, plus the
 # "Try thinky" demo at /try/: the real app (ui/ and the core, built for WebAssembly by web/build-demo.sh)
-# running in the visitor's browser.
+# running in the visitor's browser, and the app's looks in /look/ (web/site-looks.mjs), which the site
+# wears and lets a visitor pick from (site/look.js).
 #
 # When it runs:
 #   - after each release (the `build` workflow finishing well on main), so the demo is always the newest
@@ -75,12 +76,15 @@ jobs:
           /opt/npm-tools/node_modules/.bin/playwright install chromium
       - name: The demo starts and keeps notes (stops here otherwise)
         run: node "${{ steps.release.outputs.dir }}/web/demo-test.mjs" "$RUNNER_TEMP/demo"
-      - name: The site with the demo at /try/
+      - name: The site with the demo at /try/ and the app's looks
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/site"
           cp -r site/. "$RUNNER_TEMP/site/"
           cp -r "$RUNNER_TEMP/demo" "$RUNNER_TEMP/site/try"
+          # the looks the site can wear (site/look.js): the same release's looks as the demo; the script
+          # comes from main, so it also works for a release made before the script existed
+          node web/site-looks.mjs "${{ steps.release.outputs.dir }}" "$RUNNER_TEMP/site"
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with: { path: '${{ runner.temp }}/site' }

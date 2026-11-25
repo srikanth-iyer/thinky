@@ -1,71 +1,81 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-skin="thinky">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>thinky</title>
 <meta name="description" content="thinky: a small, fast outliner for Logseq-style Markdown notes, on Windows and Android. Free and open source.">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="look/fonts.css">
+<link rel="stylesheet" href="look/skins.css">
 <link rel="stylesheet" href="style.css">
+<script src="look/looks.js"></script>
+<script src="look.js"></script>
 </head>
 <body>
 <main>
-<header class="top"><img src="icon.svg" alt=""><h1>thinky</h1></header>
+<header class="top"><img src="icon.svg" alt=""><h1>thinky</h1><span id="looks"></span></header>
 <p class="sub">A small, fast outliner for your notes, on Windows and Android.</p>
-
-<p><strong>Why I made it.</strong> I was an avid Logseq user. When Logseq decided to move away from Markdown files, I built my own, so I could keep working the way I loved and add the features I wanted along the way. thinky is inspired by Logseq and Obsidian: every note is a plain Markdown file in a folder you own.</p>
-
-<p>thinky opens a folder of Logseq-style Markdown notes and lets you write in it: daily journals, pages, <code>[[links]]</code>, <code>#tags</code>, properties, to-dos and the notes that link back to each page. It starts in a moment, stays small, and works on the same plain files Logseq uses, so you can switch back and forth.</p>
-
-<div class="note">
-<p><strong>Your notes stay plain Markdown files on your own devices.</strong> thinky has no accounts, no servers and no tracking. To use the same notes on your laptop and phone, keep the folder in a sync app you already use, such as Google Drive or Syncthing.</p>
+<div class="props" aria-label="About thinky">
+<div><span class="k">made-for</span> <span class="v">Logseq-style Markdown notes</span></div>
+<div><span class="k">runs-on</span> <span class="v">Windows, Android, and <a href="try/">your browser</a> to try it</span></div>
+<div><span class="k">license</span> <span class="v">free and open source (<a href="https://github.com/srikanth-iyer/thinky">AGPL-3.0</a>)</span></div>
+<div><span class="k">tags</span> <span class="v"><span class="tag">#outliner</span> <span class="tag">#markdown</span> <span class="tag">#local-first</span></span></div>
 </div>
 
+<ul class="outline">
+<li><p><strong>Why I made it.</strong> I was an avid Logseq user. When Logseq decided to move away from Markdown files, I built my own, so I could keep working the way I loved and add the features I wanted along the way. thinky is inspired by Logseq and Obsidian: every note is a plain Markdown file in a folder you own.</p></li>
+<li><p>thinky opens a folder of Logseq-style Markdown notes and lets you write in it: daily journals, pages, <code>[[links]]</code>, <code>#tags</code>, properties, to-dos and the notes that link back to each page. It starts in a moment, stays small, and works on the same plain files Logseq uses, so you can switch back and forth.</p>
+<ul class="outline">
+<li><div class="note"><p><strong>Your notes stay plain Markdown files on your own devices.</strong> thinky has no accounts, no servers and no tracking. To use the same notes on your laptop and phone, keep the folder in a sync app you already use, such as Google Drive or Syncthing.</p></div></li>
+</ul></li>
+<li><p><strong>Get it.</strong> Always the newest release.</p>
 <div class="buttons">
 <a class="btn" href="https://github.com/srikanth-iyer/thinky/releases/latest/download/thinky-setup.exe">Download for Windows</a>
 <a class="btn" href="https://github.com/srikanth-iyer/thinky/releases/latest/download/thinky.apk">Download for Android</a>
 <a class="btn ghost" href="try/">Try it in your browser</a>
 </div>
-<p class="small">Always the newest release. Also: a <a href="https://github.com/srikanth-iyer/thinky/releases/latest/download/thinky-portable.exe">portable Windows program</a> that needs no installing, and <a href="https://github.com/srikanth-iyer/thinky/releases">every release</a>.</p>
-<p class="small"><a href="try/">Try it in your browser</a> first: the real thinky with a few sample pages, nothing to install. What you write stays in that browser; the AI features and backups need the app.</p>
-
-<figure>
+<ul class="outline">
+<li><p class="small">Also: a <a href="https://github.com/srikanth-iyer/thinky/releases/latest/download/thinky-portable.exe">portable Windows program</a> that needs no installing, and <a href="https://github.com/srikanth-iyer/thinky/releases">every release</a>.</p></li>
+<li><p class="small"><a href="try/">Try it in your browser</a> first: the real thinky with a few sample pages, nothing to install. What you write stays in that browser; the AI features and backups need the app.</p></li>
+</ul></li>
+<li><figure>
 <img src="shots/journals.png" alt="thinky on a laptop: today's journal with notes, a to-do, links to pages and the notes that link back to this day." width="1280" height="800">
 <figcaption>Today's journal on a laptop, in the thinky look. The notes are made up.</figcaption>
-</figure>
+</figure></li>
 
-<h2>Start a new notes folder</h2>
-<p>On first start, choose <em>Create a new notes folder</em>. thinky suggests a folder called "Notes" in your Documents (rename it or pick another place) and sets it up:</p>
-<ul>
+<li class="h"><h2>Start a new notes folder</h2>
+<ul class="outline">
+<li><p>On first start, choose <em>Create a new notes folder</em>. thinky suggests a folder called "Notes" in your Documents (rename it or pick another place) and sets it up:</p>
+<ul class="outline">
 <li><code>pages</code>: one Markdown file for each page you make.</li>
 <li><code>journals</code>: one file a day, such as <code>2026_11_02.md</code>. The Journals view starts on today's page, so you can just start writing.</li>
 <li><code>logseq</code>: the folder's settings (<code>config.edn</code>: date format, to-do words, favourites), plus thinky's backups and deleted pages.</li>
 <li><code>assets</code>: appears when you first add a picture or file.</li>
-</ul>
-<p>With <em>Add the short tour (4 pages)</em> ticked, it also adds four short pages, starting with <em>Start here</em>, that explain writing, links, the journal, to-dos and search on a computer and a phone. Delete them whenever you like.</p>
-<p>Your notes are plain text files you can open with any editor, and Logseq can open the same folder too.</p>
+</ul></li>
+<li><p>With <em>Add the short tour (4 pages)</em> ticked, it also adds four short pages, starting with <em>Start here</em>, that explain writing, links, the journal, to-dos and search on a computer and a phone. Delete them whenever you like.</p></li>
+<li><p>Your notes are plain text files you can open with any editor, and Logseq can open the same folder too.</p></li>
+</ul></li>
 
-<h2>Use it with your Logseq notes</h2>
-<p>thinky opens an existing Logseq folder as it is: choose the folder that holds <code>pages</code>, <code>journals</code> and <code>logseq/config.edn</code>. Nothing is imported or converted.</p>
-<ul>
-<li><strong>Your settings carry over.</strong> It reads that folder's <code>config.edn</code>: where journals and pages live, the date and file name formats, favourites, the to-do workflow, quick-capture templates and shortcuts.</li>
-<li><strong>Logseq's own Markdown.</strong> Bullets, <code>key:: value</code> properties, <code>[[links]]</code>, <code>#tags</code>, block references, TODO/DONE, scheduled and deadline dates. Lines you didn't touch are written back exactly as they were, so Logseq opens every file thinky saves.</li>
-<li><strong>Use both.</strong> Logseq on the desktop or the phone can keep using the same folder, even while thinky has it open. When both change a page, thinky merges the two and never silently overwrites.</li>
-</ul>
-<p class="small">For Logseq's Markdown folders (Logseq 0.10 and its file-based graphs). Org-mode files, whiteboards and Logseq's newer database version aren't supported.</p>
+<li class="h"><h2>Use it with your Logseq notes</h2>
+<ul class="outline">
+<li><p>thinky opens an existing Logseq folder as it is: choose the folder that holds <code>pages</code>, <code>journals</code> and <code>logseq/config.edn</code>. Nothing is imported or converted.</p></li>
+<li><p><strong>Your settings carry over.</strong> It reads that folder's <code>config.edn</code>: where journals and pages live, the date and file name formats, favourites, the to-do workflow, quick-capture templates and shortcuts.</p></li>
+<li><p><strong>Logseq's own Markdown.</strong> Bullets, <code>key:: value</code> properties, <code>[[links]]</code>, <code>#tags</code>, block references, TODO/DONE, scheduled and deadline dates. Lines you didn't touch are written back exactly as they were, so Logseq opens every file thinky saves.</p></li>
+<li><p><strong>Use both.</strong> Logseq on the desktop or the phone can keep using the same folder, even while thinky has it open. When both change a page, thinky merges the two and never silently overwrites.</p></li>
+<li><p class="small">For Logseq's Markdown folders (Logseq 0.10 and its file-based graphs). Org-mode files, whiteboards and Logseq's newer database version aren't supported.</p></li>
+</ul></li>
 
-<h2>What it does</h2>
-<ul>
-<li><strong>Journals and pages</strong>, with links, tags, properties, linked and unlinked references, and fast search that forgives typos in page names.</li>
-<li><strong>Safe with sync.</strong> If a page changed on another device while you were writing, thinky merges the two. When it can't, it shows both versions side by side, and nothing is ever silently overwritten. Safety copies and each page's history let you go back.</li>
-<li><strong>Quick capture.</strong> A shortcut key on Windows opens a small "Add to journal" box at once. On Android: home-screen widgets, a Quick Settings tile and the share sheet. A browser extension for Edge or Chrome, from their stores, sends highlights, and shows them again when you come back (<a href="highlights.html">how</a>).</li>
-<li><strong>Optional AI.</strong> Choose Claude, OpenAI, Gemini, OpenRouter, or an offline program such as Ollama in Settings › AI, to tidy a note (Polish note), read a picture's words, ask about a page, or suggest links. Off until you set it up (<a href="privacy.html">what is sent</a>).</li>
-<li><strong>Backups.</strong> On the laptop, optional backups only when something changed: dated zips of the notes folder, or a git repository such as GitHub.</li>
-<li><strong>Feels like Logseq.</strong> The same files, folders and settings, block references, templates, to-do states, tabs and two pages side by side, and many looks, light and dark.</li>
-<li><strong>Lean.</strong> About 3 MB to install on Windows, with no framework. Nothing runs in the background, except a tiny helper if you choose a shortcut key.</li>
-</ul>
-
-<div class="pair">
+<li class="h"><h2>What it does</h2>
+<ul class="outline">
+<li><p><strong>Journals and pages</strong>, with links, tags, properties, linked and unlinked references, and fast search that forgives typos in page names.</p></li>
+<li><p><strong>Safe with sync.</strong> If a page changed on another device while you were writing, thinky merges the two. When it can't, it shows both versions side by side, and nothing is ever silently overwritten. Safety copies and each page's history let you go back.</p></li>
+<li><p><strong>Quick capture.</strong> A shortcut key on Windows opens a small "Add to journal" box at once. On Android: home-screen widgets, a Quick Settings tile and the share sheet. A browser extension for Edge or Chrome, from their stores, sends highlights, and shows them again when you come back (<a href="highlights.html">how</a>).</p></li>
+<li><p><strong>Optional AI.</strong> Choose Claude, OpenAI, Gemini, OpenRouter, or an offline program such as Ollama in Settings › AI, to tidy a note (Polish note), read a picture's words, ask about a page, or suggest links. Off until you set it up (<a href="privacy.html">what is sent</a>).</p></li>
+<li><p><strong>Backups.</strong> On the laptop, optional backups only when something changed: dated zips of the notes folder, or a git repository such as GitHub.</p></li>
+<li><p><strong>Feels like Logseq.</strong> The same files, folders and settings, block references, templates, to-do states, tabs and two pages side by side, and many looks, light and dark. This website wears them too: pick one with <em>Look</em> at the top of the page.</p></li>
+<li><p><strong>Lean.</strong> About 3 MB to install on Windows, with no framework. Nothing runs in the background, except a tiny helper if you choose a shortcut key.</p></li>
+<li><div class="pair">
 <figure>
 <img src="shots/night.png" alt="A page called Garden plan in the dark Plain night look, with headings, to-dos and its linked references." width="1280" height="800" loading="lazy">
 <figcaption>A page in the Plain night look.</figcaption>
@@ -74,16 +84,22 @@
 <img src="shots/phone.png" alt="thinky on a phone: today's journal in the Calm look, with a round plus button for a new note." width="390" height="780" loading="lazy">
 <figcaption>On a phone.</figcaption>
 </figure>
-</div>
+</div></li>
+</ul></li>
 
-<h2>Installing</h2>
-<p><strong>Windows:</strong> run the installer. Windows may show "Windows protected your PC", because the program isn't signed with a paid certificate; choose <em>More info</em>, then <em>Run anyway</em>. The Windows files aren't signed with a code-signing certificate yet (see the <a href="code-signing.html">code signing policy</a>). After that, thinky updates itself from Settings › About, and checks each update's signature before installing it.</p>
-<p><strong>Android:</strong> open the downloaded file and allow your browser to install apps when Android asks. thinky needs "access to all files" to read your notes folder. Later versions update from Settings › About; Android only accepts an update signed like the app you have.</p>
+<li class="h"><h2>Installing</h2>
+<ul class="outline">
+<li><p><strong>Windows:</strong> run the installer. Windows may show "Windows protected your PC", because the program isn't signed with a paid certificate; choose <em>More info</em>, then <em>Run anyway</em>. The Windows files aren't signed with a code-signing certificate yet (see the <a href="code-signing.html">code signing policy</a>). After that, thinky updates itself from Settings › About, and checks each update's signature before installing it.</p></li>
+<li><p><strong>Android:</strong> open the downloaded file and allow your browser to install apps when Android asks. thinky needs "access to all files" to read your notes folder. Later versions update from Settings › About; Android only accepts an update signed like the app you have.</p></li>
+<li><p><strong>Uninstalling:</strong> on Windows, Settings › Apps › Installed apps › thinky › Uninstall; on Android, like any app. Your notes folder is never touched.</p></li>
+</ul></li>
 
-<p><strong>Uninstalling:</strong> on Windows, Settings › Apps › Installed apps › thinky › Uninstall; on Android, like any app. Your notes folder is never touched.</p>
-
-<h2>Open source</h2>
-<p>thinky is free software under the GNU Affero General Public License, version 3. The code, the history of how it was built and the issue tracker are on GitHub: <a href="https://github.com/srikanth-iyer/thinky">github.com/srikanth-iyer/thinky</a>. Found a problem or have an idea? <a href="https://github.com/srikanth-iyer/thinky/issues">Open an issue</a>, or use Settings › Help › Send feedback in the app.</p>
+<li class="h"><h2>Open source</h2>
+<ul class="outline">
+<li><p>thinky is free software under the GNU Affero General Public License, version 3. The code, the history of how it was built and the issue tracker are on GitHub: <a href="https://github.com/srikanth-iyer/thinky">github.com/srikanth-iyer/thinky</a>.</p></li>
+<li><p>Found a problem or have an idea? <a href="https://github.com/srikanth-iyer/thinky/issues">Open an issue</a>, or use Settings › Help › Send feedback in the app.</p></li>
+</ul></li>
+</ul>
 </main>
 <footer>
 <p>thinky is made by Srikanth Iyer, written and maintained with Claude, Anthropic's AI assistant. It is not affiliated with Logseq.</p>
