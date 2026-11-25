@@ -68,6 +68,11 @@ fn copies(st: &mut Option<App>, at_least: usize) -> Vec<Value> {
 /// The index cache as the app last wrote it for this notes folder: each note's text.
 fn cached(v: &Path) -> HashMap<String, String> {
     for e in std::fs::read_dir(base().join("cache")).unwrap().flatten() {
+        // only the index cache files (`vault-<hash>.json`); the page list for quick capture
+        // (`pages-<hash>.json`) sits in the same folder and has no notes' text
+        if !e.file_name().to_string_lossy().starts_with("vault-") {
+            continue;
+        }
         let Ok(c) = serde_json::from_slice::<Value>(&std::fs::read(e.path()).unwrap_or_default()) else { continue };
         if c["root"] == json!(v.display().to_string()) {
             return c["files"].as_array().unwrap().iter().map(|f| (f[0].as_str().unwrap().to_string(), f[2].as_str().unwrap().to_string())).collect();

@@ -316,9 +316,17 @@ impl Vault {
     /// A file that already owns its page name keeps it (another file with the same name
     /// never takes over just because this one was re-read).
     pub fn upsert(&mut self, rel_path: &str, content: &str) {
+        // read the file's notes, links and properties, then put them in the index
+        let parsed = parse_page(content, &self.config.comma_props);
+        self.upsert_parsed(rel_path, content, parsed);
+    }
+
+    /// `upsert` for a file already read by `parse_page` (with this vault's `comma_props`): opening a
+    /// folder reads its files' notes on several threads at once (`App::load`, review L5/L8), then
+    /// puts them in the index here one by one, in the same order as before.
+    pub(crate) fn upsert_parsed(&mut self, rel_path: &str, content: &str, parsed: ParsedPage) {
         let rel = rel_path.replace('\\', "/");
         let old_key = self.take(&rel);
-        let parsed = parse_page(content, &self.config.comma_props);
         let (mut name, journal) = self.title_from_path(&rel);
         if journal.is_none() {
             if let Some(t) = &parsed.title {

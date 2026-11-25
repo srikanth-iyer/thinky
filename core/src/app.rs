@@ -624,6 +624,28 @@ fn scan(root: &Path, cfg: &Config) -> (HashMap<String, Stamp>, HashMap<String, u
     (m, made)
 }
 
+/// `parse_page` for each file in `rels` (texts from `contents`), on several threads at once; the
+/// results come back in the order of `rels` (`App::load`, review L5/L8). One after another in a web
+/// browser (no threads there) and for a small folder (starting threads would cost more than it saves).
+fn parse_parallel(rels: &[&String], contents: &HashMap<String, String>, comma_props: &[String]) -> Vec<crate::parse::ParsedPage> {
+    // read one file's notes, links and properties (the same call `Vault::upsert` makes)
+    let one = |rel: &&String| crate::parse_page(&contents[*rel], comma_props);
+    // how many threads: one per processor core the system offers, at most 8 (as `read_parallel`)
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(8);
+    if cfg!(target_family = "wasm") || threads < 2 || rels.len() < 200 {
+        return rels.iter().map(one).collect(); // one after another
+    }
+    // split the list into one stretch per thread; each thread reads its stretch in order
+    let stretch = rels.len().div_ceil(threads);
+    std::thread::scope(|s| {
+        // start the threads (each gets its own stretch of the list)
+        let running: Vec<_> = rels.chunks(stretch).map(|part| s.spawn(move || part.iter().map(one).collect::<Vec<_>>())).collect();
+        // join the stretches back together in their order; a thread that failed fails the open
+        // the same way reading on one thread would have (its panic is passed on)
+        running.into_iter().flat_map(|h| h.join().unwrap_or_else(|e| std::panic::resume_unwind(e))).collect()
+    })
+}
+
 /// Read many files at once (Drive's virtual drive answers in parallel much faster).
 /// Returns (rel, text, is_utf8); unreadable files are left out.
 fn read_parallel<T: Clone + AsRef<Path> + Sync + Send>(root: &Path, rels: &[T]) -> Vec<(T, String, bool)> {
@@ -665,6 +687,35 @@ struct CacheFile {
     /// When each file was made, as the app knows it (`App::born`). (Older caches have none.)
     #[serde(default)]
     born: HashMap<String, u64>,
+}
+
+/// The page list kept for quick capture (`App::write_page_names`, review L5).
+#[derive(Serialize, Deserialize)]
+struct NamesFile {
+    /// this file's shape (a list of another shape is never read)
+    v: u32,
+    /// the notes folder it's of
+    root: String,
+    /// `App::page_list`: each page's name and its file's change time in seconds (0: no file yet)
+    pages: Vec<(String, u64)>,
+}
+const NAMES_VERSION: u32 = 1;
+
+/// Where the page list for the notes folder `root` is kept (beside its index cache).
+fn names_path(root: &Path) -> Option<PathBuf> {
+    Some(CACHE_DIR.get()?.join(format!("pages-{}.json", content_hash(&root.display().to_string()))))
+}
+
+/// The page list the app last kept for the notes folder `root` (`App::write_page_names`), for
+/// quick capture to show at once while it opens the folder (review L5); None when there's none, it
+/// can't be read, or it's of another folder. It may be a little behind the folder (files changed
+/// since the app last kept it): only a first list, replaced by `App::page_list` once the folder is
+/// open, and never used to decide where a note goes.
+pub fn saved_page_list(root: &Path) -> Option<Vec<(String, u64)>> {
+    let bytes = std::fs::read(names_path(root)?).ok()?;
+    let n: NamesFile = serde_json::from_slice(&bytes).ok()?;
+    // only a list of this shape, of this folder
+    (n.v == NAMES_VERSION && n.root == root.display().to_string()).then_some(n.pages)
 }
 
 fn cache_path(root: &Path) -> Option<PathBuf> {
@@ -1199,8 +1250,12 @@ impl App {
         let mut rels: Vec<&String> = contents.keys().collect();
         rels.sort();
         let mut vault = Vault::with_config(cfg);
-        for rel in rels {
-            vault.upsert(rel, &contents[rel]);
+        // Reading each file's notes and links is most of an open's time (review L5/L8: about half a
+        // second for 23,000 files on one thread), and each file is read on its own, so it's done on
+        // several threads at once; the index is then filled one file at a time in the same order.
+        let parsed = parse_parallel(&rels, &contents, &vault.config.comma_props);
+        for (rel, page) in rels.into_iter().zip(parsed) {
+            vault.upsert_parsed(rel, &contents[rel], page);
             files.insert(rel.clone(), stamps[rel]);
         }
         give_names_back(&mut vault, &contents); // a copy read before the real page gives its name back
@@ -1219,6 +1274,11 @@ impl App {
         let mut app = App { root: root.to_path_buf(), vault, files, contents, non_utf8, cache_dirty, replaced, keep_cache, born, last_merge: None, config_stamp, opened };
         if keep_cache && app.replaced.is_empty() {
             app.write_cache();
+        }
+        // quick capture's page list (review L5): written with the cache, and now if there's none yet
+        // (a folder opened before this file existed, or whose cache didn't need writing)
+        if keep_cache && names_path(root).is_some_and(|p| !p.exists()) {
+            app.write_page_names();
         }
         Ok(app)
     }
@@ -1250,6 +1310,30 @@ impl App {
             let tmp = p.with_extension("tmp");
             if std::fs::write(&tmp, bytes).is_ok() && std::fs::rename(&tmp, &p).is_ok() {
                 self.cache_dirty = false;
+                self.write_page_names(); // the page names too, for quick capture (review L5)
+            }
+        }
+    }
+
+    /// Keep the page list (`page_list`) in a small file next to the index cache, so quick capture
+    /// can show the pages at once instead of after reading the whole folder (review L5). Only the
+    /// app itself writes it (never an open only to read); written with the index cache, and at
+    /// start when it's missing. A file that can't be written is left out: quick capture then waits
+    /// for the folder, as before.
+    fn write_page_names(&self) {
+        if !self.keep_cache {
+            return; // opened only to read: nothing is written
+        }
+        let Some(p) = names_path(&self.root) else { return };
+        // the list, and which folder it's of (another folder's list is never shown)
+        let n = NamesFile { v: NAMES_VERSION, root: self.root.display().to_string(), pages: self.page_list() };
+        if let Ok(bytes) = serde_json::to_vec(&n) {
+            let _ = std::fs::create_dir_all(p.parent().unwrap_or(Path::new(".")));
+            // written to a temporary file first, then renamed over the old one: a reader never
+            // sees half a list
+            let tmp = p.with_extension("tmp");
+            if std::fs::write(&tmp, bytes).is_err() || std::fs::rename(&tmp, &p).is_err() {
+                let _ = std::fs::remove_file(&tmp); // never leave half a file behind
             }
         }
     }

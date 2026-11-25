@@ -21,6 +21,12 @@ went up. Build 40 and older still update to it (each release keeps a signature f
   and the older days slide down, instead of appearing in a quick cut. A second tap folds them back into the +
   (0.15 s). Nothing moves with "reduce motion" or Settings → Look → Animations off (`quietRun`, `quietSpot`,
   `.quiet.moving`; t38_build61).
+- Big notes folders open faster (he asked, Nov 25; review L5 and L8): the app reads its files' notes on several
+  threads at once, so starting the app, quick capture, the Edge extension's helper and the phone's "already kept"
+  lookup all open a big folder about a third faster (23,000 files: start 0.6 s → about 0.4 s on a 4-core
+  computer). Quick capture's "Add to another page" list now shows at once, from a small list of page names the
+  app keeps beside its index cache, and is replaced by the folder's own list once it's open; a page picked before
+  then waits for the folder instead of saying "try again" (`saved_page_list`, `parse_parallel`; tests/big_folder.rs).
 
 ## Build 60 · version 0.6.9 (November 2026)
 

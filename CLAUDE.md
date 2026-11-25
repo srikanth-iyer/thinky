@@ -882,7 +882,11 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   written; a config.edn that's there but can't be read stops it, never guessed; `--check` uses it
   too, and the app itself, below), so the list (`App::page_list`,
   recently changed first, "Loading pages…" until then, a plain problem if it fails, and then no other
-  page can be picked) and what's typed (`App::page_target`: title:: names, aliases, the first of two
+  page can be picked; review L5, Build 61: before the folder is open the list the app kept is shown,
+  `app::saved_page_list`, `<cache>/pages-<hash>.json`, written only by the app itself with the index
+  cache and at start when missing, never by an open only to read; only a first list, replaced by the
+  folder's own, never used to decide where a note goes; adding to a page picked before the folder is
+  open waits for it, up to 30 s, `with_vault`) and what's typed (`App::page_target`: title:: names, aliases, the first of two
   files with one name, a journal date → "Journal: …", a new page's file as the editor gives it
   (`Vault::free_rel`, below), names no file can have refused) are exactly the app's;
   `App::capture_to_page` re-reads changes and resolves the page again right before adding, writes a
@@ -1818,7 +1822,12 @@ window can't be sent to another page.
   releases can't update them. Test with the portable exe.
   Artifact/release downloads are blocked from the cloud workspace.
 - Index cache: `<app cache dir>/vault-<hash>.json` (file stamps + text); startup only re-reads changed
-  files; the cache is written when the app hides/quits (or after ≥20 outside changes).
+  files; the cache is written when the app hides/quits (or after ≥20 outside changes). Beside it,
+  `pages-<hash>.json`: the page list for quick capture (review L5, Build 61), written with it.
+  Opening (`App::load`, also `open_read_only`) reads every file's notes on several threads at once
+  (`parse_parallel`, one per core up to 8; one after another under 200 files and in a web browser),
+  then fills the index file by file in sorted order (`Vault::upsert_parsed`), so the result is the
+  same as before (tests/big_folder.rs).
 - GitHub Actions (`.github/workflows/build.yml`): tests + speed check, Windows (NSIS + portable exe),
   Android (APK), size check (each size also a notice, readable from the release job's annotations:
   `gh api repos/srikanth-iyer/thinky/check-runs/<job id>/annotations`); on main a Release "Build N" (N = one more than the newest release, from

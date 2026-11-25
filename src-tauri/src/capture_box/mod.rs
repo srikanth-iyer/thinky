@@ -649,6 +649,14 @@ unsafe fn open(prefill: Option<(String, String)>, test: Option<selftest::Probe>)
     // another page; in the background (Google Drive can be slow; the box is already up)
     *VAULT.lock().unwrap_or_else(|p| p.into_inner()) = (gen, None);
     std::thread::spawn(move || {
+        // first the page list the app kept (review L5: a big folder takes a second or more to
+        // open): the list shows at once, then the folder's own list replaces it once it's open.
+        // Only the list: where a note goes is still worked out from the open folder.
+        let saved = std::panic::catch_unwind(|| outline_core::app::last_vault_or_why().ok().and_then(|root| outline_core::app::saved_page_list(&root)))
+            .unwrap_or(None);
+        if let Some(names) = saved {
+            post(hwnd, gen, News::Pages(Ok(names)));
+        }
         let r = std::panic::catch_unwind(|| outline_core::app::last_vault_or_why().and_then(|root| App::open_read_only(&root)))
             .unwrap_or_else(|_| Err("Couldn't open the notes folder.".into()));
         let pages = match &r {
@@ -1240,17 +1248,29 @@ fn on_enter() {
 
 /// Use the notes folder this box opened (`VAULT`), waiting for it if another thread has it. Only
 /// helper threads wait for it; the box's own thread only ever tries (`try_lock`).
+/// The folder may still be opening when a page is picked (the list can show before it's open, from
+/// the list the app kept: review L5); then this waits for it, up to `VAULT_WAIT`.
 fn with_vault<R>(gen: u32, f: impl FnOnce(&mut App) -> Result<R, String>) -> Result<R, String> {
-    let mut v = VAULT.lock().unwrap_or_else(|p| p.into_inner());
-    if v.0 != gen {
-        return Err("Something went wrong while adding the note; it wasn't added.".into());
-    }
-    match &mut v.1 {
-        Some(Ok(app)) => f(app),
-        Some(Err(e)) => Err(format!("{e} So nothing was added to that page.")),
-        None => Err("Your pages are still being read; try again in a moment.".into()),
+    let started = Instant::now();
+    loop {
+        let mut v = VAULT.lock().unwrap_or_else(|p| p.into_inner());
+        if v.0 != gen {
+            return Err("Something went wrong while adding the note; it wasn't added.".into());
+        }
+        match &mut v.1 {
+            Some(Ok(app)) => return f(app),
+            Some(Err(e)) => return Err(format!("{e} So nothing was added to that page.")),
+            // still opening after a long wait (Google Drive can be very slow): say so, keep the text
+            None if started.elapsed() > VAULT_WAIT => return Err("Your pages are still being read; try again in a moment.".into()),
+            None => {}
+        }
+        drop(v); // let the opening thread put the folder in
+        std::thread::sleep(std::time::Duration::from_millis(50)); // then look again
     }
 }
+
+/// How long adding to a page waits for the folder to open (`with_vault`).
+const VAULT_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Add the note (on a helper thread): first where it goes is worked out again (a page as the app
 /// finds it, or the usual place), then the pictures and files it links are copied into assets/
