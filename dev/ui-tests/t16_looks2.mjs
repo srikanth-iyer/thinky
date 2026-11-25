@@ -56,7 +56,7 @@ await look('night', '#/journals');
 const nightGap = await dayGap();
 await look('plain', '#/journals');
 const plainGap = await dayGap();
-check(calmGap === 32 && calmPad >= 50 && nightGap === 64 && plainGap === 20, 'Calm: 32px between day cards (was 64), the room inside each kept; Night 64, Plain 20 as before', JSON.stringify({ calmGap, calmPad, nightGap, plainGap }));
+check(calmGap === 32 && calmPad >= 50 && nightGap === 72 && plainGap === 32, 'Calm: 32px between day cards (was 64), the room inside each kept; Night 72, Plain 32 (more room between days, Nov 25)', JSON.stringify({ calmGap, calmPad, nightGap, plainGap }));
 
 // ---------- thread lines: a fixed gap under the dot, also for wrapped notes and headings ----------
 /** For note `text`: how far its own line starts below its dot, and how many lines its words take. */

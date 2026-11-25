@@ -333,7 +333,8 @@ const gaps = await page.evaluate((longDay) => {
   });
 }, dayTitle(daysAgo(3)));
 check(gaps.length >= 3 && gaps.every((g) => g.h >= (g.today ? 300 : 200) - 1), 'each day is at least as tall as set, even with one note (today taller)', JSON.stringify(gaps));
-check(gaps.every((g) => g.below >= 30 && g.below <= 50), 'roomy space under the line between days', JSON.stringify(gaps));
+// (more room between days since Nov 25, his notes: about 50px on a phone, was about 40)
+check(gaps.every((g) => g.below >= 40 && g.below <= 62), 'roomy space under the line between days', JSON.stringify(gaps));
 check(gaps.some((g) => g.long) && gaps.filter((g) => g.long).every((g) => Math.abs(g.above - g.below) <= 6), 'a day with many notes: the same space above the line as below it', JSON.stringify(gaps));
 check(gaps.filter((g) => !g.today).every((g) => g.above >= g.below - 6), 'a short day: at least as much (its empty space) above it', JSON.stringify(gaps));
 await page.screenshot({ path: SHOTS + '/phone-journals-plain.png' });

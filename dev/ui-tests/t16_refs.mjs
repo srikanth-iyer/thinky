@@ -189,7 +189,8 @@ const hair = await page.evaluate(() => {
   const line = s.getBoundingClientRect().bottom, last = [...s.querySelectorAll('.day-body .bc')].pop();
   return { min: Math.round(s.getBoundingClientRect().height), below: Math.round(textBox(s.nextElementSibling.querySelector('.weekday'), false).top - line), above: Math.round(line - textBox(last, true).bottom) };
 });
-check(hair.below >= 44 && hair.below <= 60, 'Plain: roomy space under the line between days', JSON.stringify(hair));
+// (more room between days since Nov 25, his notes)
+check(hair.below >= 50 && hair.below <= 72, 'Plain: roomy space under the line between days', JSON.stringify(hair));
 check(!errors.length, 'no script errors', errors.join(' | '));
 await browser.close();
 
