@@ -1,15 +1,20 @@
 // Backend bridge: Tauri when running as the app, HTTP when running under the dev server, and the
-// core itself inside the page on the website's demo (web-core.js; <html data-web-demo>, or a
+// core itself inside the page on the website's demo (web/demo/web-core.js, which web/build-demo.sh
+// copies next to this file; <html data-web-demo>, or a
 // <meta name="thinky-web-demo"> where the page's <html> isn't its own).
 const T = window.__TAURI__;
-const WEB = !T && (document.documentElement.hasAttribute('data-web-demo') || !!document.querySelector('meta[name="thinky-web-demo"]'));
+// (`?.`: also loaded in plain Node by dev/ui-tests/unit.mjs, with no page or a stand-in one)
+const WEB = !T && typeof document !== 'undefined' && !!(document.documentElement?.hasAttribute?.('data-web-demo') || document.querySelector?.('meta[name="thinky-web-demo"]'));
 /** the demo's core, once started (assetUrl needs it at once) */
 let web = null;
 
 /** A command on the website's demo: the core in the page answers, except what only the app's own
  *  shell answers (Windows/Android), which the demo doesn't have. */
 async function webCall(cmd, args) {
-  web ??= await (await import('./web-core.js')).webCore();
+  // (kept out of ui/, so the app never carries it: only the demo's folder has it, hence a name the
+  // type check doesn't look up)
+  const demoCore = './web-core.js';
+  web ??= await (await import(demoCore)).webCore();
   if (cmd === 'start_link') return null; // (the Windows app's: a link it was started with)
   if (cmd === 'ai_key_has') return false;
   if (cmd.startsWith('ai_key') || cmd === 'ai_send') throw new Error('The AI features need the thinky app: this demo runs only in your browser.');

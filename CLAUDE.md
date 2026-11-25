@@ -1908,6 +1908,17 @@ window can't be sent to another page.
   public page at srikanth-iyer.github.io/thinky/changelog.html), in the same commit as CHANGELOG.md: heading
   "Build N · version X (Month Year)" and a short <ul> of 2–6 plain one-line points (shorter than CHANGELOG.md, no
   "Under the hood" detail; escape & as &amp;). Builds 38–42 were added late (Nov 10). New site pages go in `site/sitemap.xml`.
+- The website's "Try it" demo (Build 60, he asked Nov 25, 2026: add it to the site and keep the site's pages about the
+  app): `site/` is published with the demo at `/try/` by `.github/workflows/pages.yml`, which runs after each release
+  (`workflow_run` of `build`, a push's on main), on a push touching site/ or web/, and by hand. It builds the demo from the
+  newest `build-N` tag (from main only before a release has web/), with `web/build-demo.sh` (ui/ + `web/demo/` +
+  the core for wasm32-wasip1 from `web/core-wasm`), and publishes only if `web/demo-test.mjs` passes (Chromium via
+  Playwright from /opt/npm-tools: it starts on the journal with the intro notes, links "Start here", keeps a typed note
+  over a reload, no page errors; laptop and phone). `web/demo/web-core.js` (the core in the page, its notes in
+  localStorage under `SAVED`; `INTRO` = the first notes, in his words) and `web/demo/wasi/` (the WASI file layer) stay
+  out of ui/ so the app doesn't pack them; ui/api.js imports web-core.js by a name the type check doesn't look up.
+  Core changes for wasm: jobs run one at a time (app.rs, app/history.rs), `crate::process_id()` (lib.rs) is 1.
+  A change to the demo's first notes needs a new `SAVED` key, or returning visitors keep the old ones.
 - The browser extension's stores (Build 59, he asked Nov 23, 2026: "automate them as much as possible"):
   `.github/workflows/stores.yml` runs when `build` passes on main (a release; `workflow_run`, only a push's) and by
   hand (Actions → stores → Run workflow, main only). `scripts/extension_store.py zip` makes the store package

@@ -1,7 +1,7 @@
 // thinky's own core (core/, the Rust code that reads, writes and searches notes) running inside
 // this web page, for the website's "try it" demo. The core is built as WebAssembly (a program
 // format browsers run; web/core-wasm), and is handed a pretend notes folder kept in the page's
-// memory (the WASI file layer in ./wasi: MIT/Apache licensed, from @bjorn3/browser_wasi_shim 0.4.2).
+// memory (the WASI file layer in ./wasi, copied next to it by web/build-demo.sh: MIT/Apache licensed, from @bjorn3/browser_wasi_shim 0.4.2).
 // Nothing leaves the visitor's browser: no server, no account.
 import { WASI, File, OpenFile, ConsoleStdout, PreopenDirectory, Directory, wasi as W } from './wasi/index.js';
 
@@ -38,16 +38,18 @@ OpenFile.prototype.fd_filestat_set_times = function (atim, mtim, flags) {
 };
 
 const NOTES = '/notes'; // where the pretend notes folder sits
-const SAVED = 'webDemoNotes3';
+const SAVED = 'webDemoNotes4';
 // The first notes a visitor sees on today's journal page (website demo only; the app's own new
 // notes folders don't get them). Plain outline text, as in any journal file.
 const INTRO = `- **thinky**: an outliner notes app for Windows and Android that helps you place thoughts and ideas in the right place, so they are remembered at the right time.
+\t- **Why I made it**: I was an avid Logseq user. When Logseq decided to move away from Markdown files, I built my own, so I could keep working the way I loved and add the features I wanted along the way.
+\t- Inspired by Logseq and Obsidian: every note is a plain Markdown file in a folder you own.
 \t- Designed with ADHD-like minds in mind.
-\t- Inspired by Logseq: every note is a plain Markdown file in a folder you own.
 \t- Built around linked references, so each note stays in view of its larger context, and ideas connect to the setting and function they belong to.
 \t- Works with AI tools that can read and change your notes directly (in the app; they're off in this demo).
 \t- Open source and free for anyone to use and adopt.
 - This is the real thinky, running in your browser. Try anything: your notes stay in this browser and nothing is sent anywhere.
+- To get thinky for Windows or Android, see the [thinky website](https://srikanth-iyer.github.io/thinky/).
 `; // the visitor's notes, kept in this browser between visits (localStorage)
 let dirty = false; // a file changed since the notes were last kept
 

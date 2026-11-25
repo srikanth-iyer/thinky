@@ -9,6 +9,8 @@ OUT=${1:-$ROOT/web/demo-out}
 WASM=$ROOT/web/core-wasm/target/wasm32-wasip1/release/thinky_web.wasm
 rm -rf "$OUT" && mkdir -p "$OUT"
 cp -r "$ROOT/ui/." "$OUT/"
+# the demo's own part (the core in the page, its file layer): kept out of ui/, which the app packs
+cp -r "$ROOT/web/demo/." "$OUT/"
 rm -f "$OUT/thinky_core.wasm"
 if command -v wasm-opt >/dev/null; then
   wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals "$WASM" -o "$OUT/thinky_core.wasm"

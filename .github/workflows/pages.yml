@@ -1,11 +1,27 @@
-# The website (site/) on GitHub Pages: srikanth-iyer.github.io/thinky. Only on main, only when site/
-# changes; nothing is built, the folder is published as it is.
+# The website on GitHub Pages: srikanth-iyer.github.io/thinky. The site/ folder as it is, plus the
+# "Try thinky" demo at /try/: the real app (ui/ and the core, built for WebAssembly by web/build-demo.sh)
+# running in the visitor's browser.
+#
+# When it runs:
+#   - after each release (the `build` workflow finishing well on main), so the demo is always the newest
+#     release's app, with no step by hand;
+#   - when site/, web/ or this file change on main (a push that changes only those makes no release);
+#   - by hand (Actions → pages → Run workflow).
+# The demo is built from the newest release's code (its build-N tag), never from unreleased work on
+# main; only before the first release that has web/ in it is it built from main itself.
+# web/demo-test.mjs opens the built demo in Chromium (laptop and phone sizes) and checks that it starts,
+# shows its first notes and keeps a note written; if it doesn't, nothing is published and the live site
+# stays as it was.
 name: pages
 
 on:
   push:
     branches: [main]
-    paths: ['site/**', '.github/workflows/pages.yml']
+    paths: ['site/**', 'web/**', '.github/workflows/pages.yml']
+  workflow_run:
+    workflows: [build]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -17,6 +33,9 @@ concurrency:
 
 jobs:
   deploy:
+    # after `build`: only a push's on main that finished well (a failed build made no release); by hand,
+    # main only (the Pages environment takes only main)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,10 +45,44 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # the whole history with its tags, to find the newest release (build-N)
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { persist-credentials: false }
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with: { targets: wasm32-wasip1 }
+      - name: The newest release's code
+        id: release
+        run: |
+          set -euo pipefail
+          tag=$(git tag -l 'build-*' --sort=-v:refname | head -n 1)
+          if [ -n "$tag" ] && git cat-file -e "$tag:web/build-demo.sh" 2>/dev/null; then
+            git worktree add --detach "$RUNNER_TEMP/release" "$tag"
+            echo "dir=$RUNNER_TEMP/release" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Demo::built from $tag"
+          else
+            # (no release has the demo's code yet: the first time only)
+            echo "dir=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Demo::built from main ($tag has no web/ yet)"
+          fi
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with: { workspaces: '${{ steps.release.outputs.dir }}/web/core-wasm' }
+      - name: Build the demo
+        run: bash "${{ steps.release.outputs.dir }}/web/build-demo.sh" "$RUNNER_TEMP/demo"
+      - name: Chromium and Playwright (the check imports it from /opt/npm-tools, as the UI tests do)
+        run: |
+          sudo mkdir -p /opt/npm-tools && sudo chown "$USER" /opt/npm-tools
+          npm install --prefix /opt/npm-tools --no-audit --no-fund playwright@1.63.0
+          /opt/npm-tools/node_modules/.bin/playwright install chromium
+      - name: The demo starts and keeps notes (stops here otherwise)
+        run: node "${{ steps.release.outputs.dir }}/web/demo-test.mjs" "$RUNNER_TEMP/demo"
+      - name: The site with the demo at /try/
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/site"
+          cp -r site/. "$RUNNER_TEMP/site/"
+          cp -r "$RUNNER_TEMP/demo" "$RUNNER_TEMP/site/try"
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
-        with: { path: site }
+        with: { path: '${{ runner.temp }}/site' }
       - id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

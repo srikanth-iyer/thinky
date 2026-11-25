@@ -14,6 +14,22 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 60 · version 0.6.9 (November 2026)
+
+The website gets "Try it in your browser": the real thinky, with a few sample pages, nothing to install.
+
+- The demo at srikanth-iyer.github.io/thinky/try/ is the app's own page and the app's own core (core/), built for
+  WebAssembly (web/core-wasm, web/build-demo.sh). The visitor's notes stay in their browser (localStorage); the AI
+  features and backups need the app, and pictures added in the demo aren't kept between visits.
+- The website is now built rather than copied (.github/workflows/pages.yml): after each release it rebuilds the demo
+  from that release's code, checks it in Chromium (web/demo-test.mjs: it starts, shows its first notes, keeps a note
+  written; laptop and phone sizes) and publishes only if it passes.
+- The home page says why thinky was made, and mentions the optional AI features, the backups and the extension's
+  store pages; the privacy page says where the demo keeps its notes.
+- Under the hood: the core runs its work one job at a time when built for WebAssembly (no threads there) and uses a
+  fixed process number there; the app's own builds are unchanged. The demo's own code (web/demo/) stays out of ui/,
+  so the app doesn't carry it.
+
 ## Build 59 · version 0.6.8 (November 2026)
 
 The browser extension now reaches the Edge and Chrome stores by itself.
