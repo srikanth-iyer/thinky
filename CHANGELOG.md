@@ -16,11 +16,12 @@ went up. Build 40 and older still update to it (each release keeps a signature f
 
 ## Build 60 · version 0.6.9 (November 2026)
 
-The website gets "Try it in your browser": an online demo with a few sample pages, nothing to install. It also gets a side menu like the app's, with its pages and the sections of the page you're on (on a phone, behind a menu button).
+The website gets clear headed sections (Why I made it, Try it or get it, Get started, What it does), small pictures for quick capture, the AI services' and apps' logos, a short "What is a Markdown note?" page, a small sun or moon icon for the look, and "Try it in your browser": an online demo with a few sample pages, nothing to install. It also gets a side menu like the app's, with its pages and the sections of the page you're on (on a phone, behind a menu button).
 
 From his notes and asks (Nov 25), in the app and on the website:
 
-- Phone menus (a page's ⋯, a day's ⋯…) are more compact: rows 38px tall (were 44px), less room at the edges.
+- Menus are slimmer on both the laptop and the phone (his second note, Nov 25): less room around the words, one
+  soft edge instead of several, rows 34px tall on a phone (were 44px, then 38px).
 - The faint "+" under a day's last note no longer sits on "Linked references" or "Scheduled & deadline": those
   start clear of it (48px under the notes, 56px on a phone, whose "+" line is 36px tall), so a tap meant for one
   doesn't hit the other. Days in the Journals list have more room between them (72px, 48px on a phone; 32px in

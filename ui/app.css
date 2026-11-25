@@ -1744,6 +1744,24 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   .pop.menu.tb-menu { width: min(216px, calc(100vw - 16px)); }
   .pop.menu.tb-menu button { min-height: 32px; font-size: var(--fs-read); }
 }
+/* Sleeker menus (he asked, Nov 25, of a page's ⋯: "still too big ... too much of empty space around the
+   text ... too many bezels"): one thin soft edge, a lighter shadow, small corners, rows close to their words
+   (28px on a laptop, 34px on a phone), smaller icons; and no empty first row when the menu opens leftward
+   out of a ⋯ at the right: the copy of the ⋯ sits in the first row's free right end instead. */
+.pop.menu:not(.note-menu) { padding: 3px; border-radius: 10px; border-color: var(--line-soft); box-shadow: 0 6px 22px -10px rgba(0,0,0,.32), 0 0 0 .5px rgba(0,0,0,.04); min-width: 176px; }
+.pop.menu:not(.note-menu) button { padding: 5px 8px; border-radius: 6px; line-height: 1.3; font-size: var(--fs-ui); }
+.pop.menu:not(.note-menu) button.m-icon { gap: 8px; }
+.pop.menu:not(.note-menu) .m-ic { opacity: .65; }
+.pop.menu:not(.note-menu) .m-ic svg { width: 15px; height: 15px; }
+.pop.menu:not(.note-menu) .mhint { font-size: var(--fs-small); }
+.pop.menu.from-right:not(.note-menu) > .pop-head:not(:has(.pop-title, .nm-colors)) { min-height: 0; }
+.pop.menu.from-right:not(.note-menu) > .pop-head:not(:has(.pop-title, .nm-colors)) + li button { padding-right: calc(var(--ib-w) + 2px); min-height: calc(var(--ib-h) - 4px); }
+@media (pointer: coarse) {
+  .pop.menu:not(.note-menu) { padding: 3px; }
+  .pop.menu:not(.note-menu):not(.tb-menu) button { min-height: 34px; padding: 0 8px; font-size: var(--fs-ui); }
+  .pop.menu.grouped:not(.tb-menu) button { min-height: 32px; }
+  .pop.menu.from-right:not(.note-menu) > .pop-head:not(:has(.pop-title, .nm-colors)) + li button { min-height: max(34px, calc(var(--ib-h) - 4px)); }
+}
 /* a small heading in a menu (menu(): {head}) */
 .menu .m-head { padding: 6px 10px 2px; font-size: var(--fs-small); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); }
 /* Menus with headings (Build 39, he asked: which line is a heading and which a choice wasn't clear): a line

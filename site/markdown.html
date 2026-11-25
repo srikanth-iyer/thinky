@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en" data-skin="plain">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What is a Markdown note? · thinky</title>
+<meta name="description" content="A Markdown note in brief: plain text with a few marks for headings, lists and links, which any app can open.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="look/fonts.css">
+<link rel="stylesheet" href="look/skins.css">
+<link rel="stylesheet" href="style.css">
+<script src="look/looks.js"></script>
+<script src="look.js"></script>
+<script src="nav.js" defer></script>
+</head>
+<body>
+<main>
+<header class="top"><img src="icon.svg" alt=""><h1>What is a Markdown note?</h1><a class="try-top" href="try/">Try it</a><span id="looks"></span></header>
+<p class="sub">In brief: plain text with a few marks, kept in a file you own.</p>
+
+<ul class="outline">
+<li class="h"><h2><span class="h-ic" aria-hidden="true"><i class="logo" style="--logo:url(logos/markdown.svg)"></i></span>Plain text with a few marks</h2>
+<ul class="outline">
+<li><p>A Markdown note is an ordinary text file (its name ends in <code>.md</code>). A few simple marks in the text say how it should look: a <code>#</code> before a heading, a <code>-</code> before each point of a list, <code>**stars**</code> around bold words. An app such as thinky shows the marks as headings, bullets and bold; any text editor shows the same words as they are.</p></li>
+<li><div class="md-pair">
+<div><p class="md-l">The file</p><pre><code># Garden plan
+- tomatoes by the fence
+  - water **every morning**
+- TODO buy seeds
+- see [[Seed suppliers]] #garden</code></pre></div>
+<div><p class="md-l">In thinky</p><div class="md-out"><p class="md-h">Garden plan</p><ul><li>tomatoes by the fence<ul><li>water <strong>every morning</strong></li></ul></li><li><span class="md-box"></span> buy seeds</li><li>see <a href="markdown.html" tabindex="-1">Seed suppliers</a> <span class="tag">#garden</span></li></ul></div></div>
+</div></li>
+</ul></li>
+
+<li class="h"><h2><span class="h-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6z"/></svg></span>Why it's a good way to keep notes</h2>
+<ul class="outline">
+<li><p><strong>Yours, for good.</strong> The notes are files in a folder on your own device. No account, and nothing is lost if an app goes away.</p></li>
+<li><p><strong>Any app can open them.</strong> Logseq, Obsidian, thinky, or a plain text editor: the same files work in all of them, so you can switch whenever you like.</p></li>
+<li><p><strong>Easy to sync and back up.</strong> They're small text files, so Google Drive, Syncthing or git keep them in step across your devices.</p></li>
+<li><p><strong>Readable even without an app.</strong> The marks are few and simple, so the text reads well on its own.</p></li>
+</ul></li>
+
+<li class="h"><h2><span class="h-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/></svg></span>What Logseq-style adds</h2>
+<ul class="outline">
+<li><p>Logseq, and thinky, write every note as a point of an outline (a line starting with <code>-</code>), so notes can sit under other notes. They add a few marks of their own: <code>[[Page name]]</code> to link to a page, <code>#tag</code>, <code>key:: value</code> properties, <code>TODO</code> and <code>DONE</code>, and one file a day for the journal. It is still plain Markdown underneath.</p></li>
+<li><p class="small">Want to see it? <a href="try/">Open the demo</a> and write a few notes, or go back to the <a href="./">home page</a>.</p></li>
+</ul></li>
+</ul>
+</main>
+<footer>
+<p>thinky is made by Srikanth Iyer, written and maintained with Claude, Anthropic's AI assistant. It is not affiliated with Logseq.</p>
+<p><a href="./">Home</a> · <a href="try/">Try it</a> · <a href="markdown.html">Markdown notes</a> · <a href="changelog.html">Changelog</a> · <a href="privacy.html">Privacy</a> · <a href="code-signing.html">Code signing policy</a> · <a href="https://github.com/srikanth-iyer/thinky">Source</a></p>
+</footer>
+</body>
+</html>

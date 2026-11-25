@@ -8,6 +8,7 @@
   var PAGES = [
     ['index.html', 'Home', 'home'],
     ['try/index.html', 'Try it in your browser', 'try'],
+    ['markdown.html', 'What is a Markdown note?', 'page'],
     ['highlights.html', 'Highlights from the web', 'page'],
     ['changelog.html', 'Changelog', 'page'],
     ['privacy.html', 'Privacy', 'page'],
@@ -54,8 +55,20 @@
       '<a class="ss-brand" href="index.html"><img src="icon.svg" alt=""><span>thinky</span></a>' +
       '<ul class="ss-list">' + PAGES.slice(0, 2).map(link).join('') + '</ul>' +
       (secs.length ? '<p class="ss-h">On this page</p><ul class="ss-list ss-secs">' + secs.join('') + '</ul>' : '') +
-      '<p class="ss-h">Pages</p><ul class="ss-list">' + PAGES.slice(2).map(link).join('') + '</ul>';
+      '<p class="ss-h">Pages</p><ul class="ss-list">' + PAGES.slice(2).map(link).join('') + '</ul>' +
+      // the look (look.js): Light, Dark or System, one press moves on to the next (he asked, Nov 25)
+      (window.thinkyLook && window.thinkyLook.simple() ? '<div class="ss-look"><button type="button" class="ss-lk"></button></div>' : '');
     document.body.insertBefore(side, document.body.firstChild);
+    var lk = side.querySelector('.ss-lk');
+    if (lk) {
+      var showLook = function () {
+        var m = window.thinkyLook.mode();
+        lk.innerHTML = window.thinkyLook.icon(m) + '<span>Look: ' + esc(window.thinkyLook.name(m)) + '</span>';
+      };
+      lk.addEventListener('click', function () { window.thinkyLook.cycle(); });
+      document.addEventListener('thinky-look', showLook);
+      showLook();
+    }
     document.body.classList.add('has-side');
 
     // the phone's ☰ button, at the start of the page's top line; it opens the menu over the page

@@ -190,7 +190,7 @@ console.log('a page’s ⋯ menu and the search box');
 await page.locator('.title-row [data-a="more"]').tap();
 await sleep(400);
 const pm = await rect(page, '.pop.menu');
-check(pm.w <= 280 && onScreen(pm) && Math.min(...await heights(page, '.pop.menu button')) >= 38 && pm.h <= Math.min(H * 0.62, 440) + 1, 'a page’s ⋯: compact (rows 38px since Nov 25, his notes; were 44), scrolling if long', JSON.stringify(pm));
+check(pm.w <= 280 && onScreen(pm) && Math.min(...await heights(page, '.pop.menu button')) >= 32 && pm.h <= Math.min(H * 0.62, 440) + 1, 'a page’s ⋯: compact (rows 34px since his second Nov 25 note; were 38, then 44), scrolling if long', JSON.stringify(pm));
 await page.keyboard.press('Escape');
 await sleep(200);
 await page.locator('#topbar [data-a="search"]').tap();

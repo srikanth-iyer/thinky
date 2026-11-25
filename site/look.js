@@ -46,6 +46,23 @@
   }
 
   var box = null; // the menu, once built
+  // Online (one day look, one night look) the choice is a small icon instead of a menu (he asked, Nov 25:
+  // "a simple sunlight type miniature icon"): a sun (Light), a moon (Dark) or a half-filled circle (System,
+  // follows the device); each press moves on to the next. The side menu (nav.js) has the same as a row.
+  var MODE_ICON = {
+    light: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/>',
+    dark: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+    system: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>',
+  };
+  var MODE_NAME = { light: 'Light', dark: 'Dark', system: 'System' };
+  var NEXT = { system: 'light', light: 'dark', dark: 'system' };
+  function cycle() {
+    var st = state();
+    set('lookMode', NEXT[st.mode] || 'light'); set('skinDay', st.day); set('skinNight', st.night);
+    apply();
+  }
+  window.thinkyLook = { cycle: cycle, mode: function () { return state().mode; }, icon: function (m) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + MODE_ICON[m] + '</svg>'; }, name: function (m) { return MODE_NAME[m]; }, simple: function () { return onlyModes(); } };
+  var toggle = null;
   // the menu: Light / Dark / Match system, then the day looks and the night looks, each with a small
   // sample of its colours (the sample wears the look itself: data-skin on it)
   function build() {
@@ -57,10 +74,14 @@
     };
     var modes = [['light', 'Light'], ['dark', 'Dark'], ['system', 'System']];
     var modeBar = '<div class="lk-modes" role="group" aria-label="Light or dark">' + modes.map(function (m) { return '<button type="button" data-mode="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div>';
-    spot.innerHTML = onlyModes()
-      ? '<details class="looks"><summary>Look</summary><div class="looks-menu lk-short">' + modeBar +
-        '<p class="lk-foot">System follows your device. The demo uses the same choice.</p></div></details>'
-      : '<details class="looks"><summary>Look</summary><div class="looks-menu">' + modeBar +
+    if (onlyModes()) {
+      spot.innerHTML = '<button type="button" class="lk-toggle"></button>';
+      toggle = spot.firstChild;
+      toggle.addEventListener('click', cycle);
+      paint();
+      return;
+    }
+    spot.innerHTML = '<details class="looks"><summary>Look</summary><div class="looks-menu">' + modeBar +
         '<p class="lk-h">Day looks</p><ul>' + LOOKS.filter(function (l) { return !l.dark; }).map(row).join('') + '</ul>' +
         '<p class="lk-h">Night looks</p><ul>' + LOOKS.filter(function (l) { return l.dark; }).map(row).join('') + '</ul>' +
         '<p class="lk-foot">The same looks as the app. System uses your day look in the day and your night look at night. Your choice is kept in this browser, and the demo uses it too.</p></div></details>';
@@ -87,6 +108,13 @@
   }
   // mark what is chosen in the menu
   function paint() {
+    var m = state().mode;
+    if (toggle) {
+      toggle.innerHTML = window.thinkyLook.icon(m);
+      var label = 'Look: ' + MODE_NAME[m] + (m === 'system' ? ' (follows your device)' : '') + '. Press for ' + MODE_NAME[NEXT[m]] + '.';
+      toggle.setAttribute('aria-label', label); toggle.title = label;
+    }
+    try { document.dispatchEvent(new CustomEvent('thinky-look', { detail: m })); } catch (e) {}
     if (!box) return;
     var st = state(), shown = nightNow(st) ? st.night : st.day;
     box.querySelectorAll('[data-mode]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.mode === st.mode)); });

@@ -18,71 +18,99 @@
 <header class="top"><img src="icon.svg" alt=""><h1>thinky</h1><a class="try-top" href="try/">Try it</a><span id="looks"></span></header>
 <p class="sub">A small, fast outliner for your notes, on Windows and Android.</p>
 <div class="props" aria-label="About thinky">
-<div><span class="k">made-for</span> <span class="v">Logseq-style Markdown notes</span></div>
+<div><span class="k">made-for</span> <span class="v">Logseq-style <a href="markdown.html">Markdown</a> notes</span></div>
 <div><span class="k">runs-on</span> <span class="v">Windows, Android, and <a href="try/">your browser</a> to try it</span></div>
 <div><span class="k">license</span> <span class="v">free and open source (<a href="https://github.com/srikanth-iyer/thinky">AGPL-3.0</a>)</span></div>
 <div><span class="k">tags</span> <span class="v"><span class="tag">#outliner</span> <span class="tag">#markdown</span> <span class="tag">#local-first</span></span></div>
 </div>
 
 <ul class="outline">
-<li><p><strong>Why I made it.</strong> I was an avid Logseq user. When Logseq decided to move away from Markdown files, I built my own, so I could keep working the way I loved and add the features I wanted along the way. thinky is inspired by Logseq and Obsidian: every note is a plain Markdown file in a folder you own.</p></li>
+
+<!-- Nov 25, his notes on the preview: proper headings between the parts (Why I made it is one), the demo
+     and the downloads in a part of their own with the demo's button first, Start a new notes folder and Use
+     it with your Logseq notes under one "Get started" heading, each with a small picture, pictures for quick
+     capture and the AI services' marks; easy to read, not cluttered -->
+<li class="h"><h2><span class="h-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.5-7 10-7 10z"/></svg></span>Why I made it</h2>
+<ul class="outline">
+<li><p>I was an avid Logseq user. When Logseq decided to move away from Markdown files, I built my own, so I could keep working the way I loved and add the features I wanted along the way. thinky is inspired by Logseq and Obsidian: every note is a plain <a href="markdown.html">Markdown file</a> in a folder you own.</p></li>
 <li><p>thinky opens a folder of Logseq-style Markdown notes and lets you write in it: daily journals, pages, <code>[[links]]</code>, <code>#tags</code>, properties, to-dos and the notes that link back to each page. It starts in a moment, stays small, and works on the same plain files Logseq uses, so you can switch back and forth.</p>
 <ul class="outline">
-<li><div class="note"><p><strong>Your notes stay plain Markdown files on your own devices.</strong> thinky has no accounts, no servers and no tracking. To use the same notes on your laptop and phone, keep the folder in a sync app you already use, such as Google Drive or Syncthing.</p></div></li>
+<li><div class="note"><p><strong>Your notes stay plain Markdown files on your own devices.</strong> thinky has no accounts, no servers and no tracking. To use the same notes on your laptop and phone, keep the folder in a sync app you already use, such as <span class="brand"><i class="logo" style="--logo:url(logos/googledrive.svg)"></i>Google Drive</span> or <span class="brand"><i class="logo" style="--logo:url(logos/syncthing.svg)"></i>Syncthing</span>.</p></div></li>
 </ul></li>
-<!-- the demo, after the introduction (he asked, Nov 25: after a bit about thinky, a lighter box) -->
-<li><div class="try-card">
-<p class="try-h">Try it in your browser</p>
-<p>An online demo with a few sample pages, nothing to install. Write, link pages and tick off to-dos to see how it feels. What you write stays in your browser.</p>
-<a class="btn try-btn" href="try/">Open the demo <span aria-hidden="true">→</span></a>
-</div></li>
-<li><p><strong>Get it.</strong> Always the newest release.</p>
-<div class="buttons">
-<a class="btn" href="https://github.com/srikanth-iyer/thinky/releases/latest/download/thinky-setup.exe">Download for Windows</a>
-<a class="btn" href="https://github.com/srikanth-iyer/thinky/releases/latest/download/thinky.apk">Download for Android</a>
-<a class="btn ghost" href="try/">Or try it in your browser first</a>
-</div>
+</ul></li>
+
+<li class="h"><h2><span class="h-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/></svg></span>Try it or get it</h2>
 <ul class="outline">
-<li><p class="small">Also: a <a href="https://github.com/srikanth-iyer/thinky/releases/latest/download/thinky-portable.exe">portable Windows program</a> that needs no installing, and <a href="https://github.com/srikanth-iyer/thinky/releases">every release</a>.</p></li>
-<li><p class="small">The online demo leaves out the AI features and backups; they need the app.</p></li>
+<li><div class="try-card">
+<a class="btn try-btn" href="try/"><svg class="b-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>Open the demo in your browser</a>
+<p>An online demo with a few sample pages, nothing to install. Write, link pages and tick off to-dos to see how it feels. What you write stays in your browser.</p>
+</div></li>
+<li><div class="buttons">
+<a class="btn dl" href="https://github.com/srikanth-iyer/thinky/releases/latest/download/thinky-setup.exe"><i class="logo" style="--logo:url(logos/windows.svg)"></i>Download for Windows</a>
+<a class="btn dl" href="https://github.com/srikanth-iyer/thinky/releases/latest/download/thinky.apk"><i class="logo" style="--logo:url(logos/android.svg)"></i>Download for Android</a>
+</div>
+<p class="small">Always the newest release. Also: a <a href="https://github.com/srikanth-iyer/thinky/releases/latest/download/thinky-portable.exe">portable Windows program</a> that needs no installing, and <a href="https://github.com/srikanth-iyer/thinky/releases">every release</a>. The online demo leaves out the AI features and backups; they need the app.</p></li>
 </ul></li>
+
 <li><figure>
 <img src="shots/journals.png" alt="thinky on a laptop: today's journal with notes, a to-do, links to pages and the notes that link back to this day." width="1280" height="800">
 <figcaption>Today's journal on a laptop, in the thinky look. The notes are made up.</figcaption>
 </figure></li>
 
-<li class="h"><h2>Start a new notes folder</h2>
+<li class="h"><h2><span class="h-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></span>Get started</h2>
 <ul class="outline">
-<li><p>On first start, choose <em>Create a new notes folder</em>. thinky suggests a folder called "Notes" in your Documents (rename it or pick another place) and sets it up:</p>
+<li class="h3"><h3>Start a new notes folder</h3>
+<div class="pic-row">
+<div class="tree" aria-label="A new notes folder: pages, journals, logseq and assets">
+<p><b class="f-dir">Notes</b></p>
+<p class="t1"><b class="f-dir">pages</b> <span>a file per page</span></p>
+<p class="t1"><b class="f-dir">journals</b> <span>a file per day</span></p>
+<p class="t2"><b class="f-file">2026_11_02.md</b></p>
+<p class="t1"><b class="f-dir">logseq</b> <span>settings, backups</span></p>
+<p class="t1"><b class="f-dir">assets</b> <span>pictures, files</span></p>
+</div>
+<div>
+<p>On first start, choose <em>Create a new notes folder</em>. thinky suggests a folder called "Notes" in your Documents (rename it or pick another place) and sets it up as shown. The Journals view starts on today's page, so you can just start writing.</p>
+<p>With <em>Add the short tour (4 pages)</em> ticked, it also adds four short pages, starting with <em>Start here</em>, that explain writing, links, the journal, to-dos and search on a computer and a phone. Delete them whenever you like.</p>
+</div>
+</div></li>
+<li class="h3"><h3>Use it with your Logseq notes</h3>
+<div class="pic-row">
+<div class="same-folder" aria-label="Logseq and thinky both open the same notes folder">
+<p class="sf-app"><i class="logo" style="--logo:url(logos/logseq.svg)"></i><span>Logseq</span></p>
+<p class="sf-ar" aria-hidden="true">→</p>
+<p class="sf-dir"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h6l2 2h10v11H3z"/></svg><span>your notes folder</span></p>
+<p class="sf-ar" aria-hidden="true">←</p>
+<p class="sf-app"><img src="icon.svg" alt=""><span>thinky</span></p>
+</div>
+<div>
+<p>Choose the folder that holds <code>pages</code>, <code>journals</code> and <code>logseq/config.edn</code>. Nothing is imported or converted: <strong>Logseq and thinky can use the same folder</strong>, even at the same time. When both change a page, thinky merges the two and never silently overwrites.</p>
+</div>
+</div>
 <ul class="outline">
-<li><code>pages</code>: one Markdown file for each page you make.</li>
-<li><code>journals</code>: one file a day, such as <code>2026_11_02.md</code>. The Journals view starts on today's page, so you can just start writing.</li>
-<li><code>logseq</code>: the folder's settings (<code>config.edn</code>: date format, to-do words, favourites), plus thinky's backups and deleted pages.</li>
-<li><code>assets</code>: appears when you first add a picture or file.</li>
-</ul></li>
-<li><p>With <em>Add the short tour (4 pages)</em> ticked, it also adds four short pages, starting with <em>Start here</em>, that explain writing, links, the journal, to-dos and search on a computer and a phone. Delete them whenever you like.</p></li>
-<li><p>Your notes are plain text files you can open with any editor, and Logseq can open the same folder too.</p></li>
-</ul></li>
-
-<li class="h"><h2>Use it with your Logseq notes</h2>
-<ul class="outline">
-<li><p>thinky opens an existing Logseq folder as it is: choose the folder that holds <code>pages</code>, <code>journals</code> and <code>logseq/config.edn</code>. Nothing is imported or converted.</p></li>
 <li><p><strong>Your settings carry over.</strong> It reads that folder's <code>config.edn</code>: where journals and pages live, the date and file name formats, favourites, the to-do workflow, quick-capture templates and shortcuts.</p></li>
 <li><p><strong>Logseq's own Markdown.</strong> Bullets, <code>key:: value</code> properties, <code>[[links]]</code>, <code>#tags</code>, block references, TODO/DONE, scheduled and deadline dates. Lines you didn't touch are written back exactly as they were, so Logseq opens every file thinky saves.</p></li>
-<li><p><strong>Use both.</strong> Logseq on the desktop or the phone can keep using the same folder, even while thinky has it open. When both change a page, thinky merges the two and never silently overwrites.</p></li>
 <li><p class="small">For Logseq's Markdown folders (Logseq 0.10 and its file-based graphs). Org-mode files, whiteboards and Logseq's newer database version aren't supported.</p></li>
 </ul></li>
+</ul></li>
 
-<li class="h"><h2>What it does</h2>
-<ul class="outline">
-<li><p><strong>Journals and pages</strong>, with links, tags, properties, linked and unlinked references, and fast search that forgives typos in page names.</p></li>
-<li><p><strong>Safe with sync.</strong> If a page changed on another device while you were writing, thinky merges the two. When it can't, it shows both versions side by side, and nothing is ever silently overwritten. Safety copies and each page's history let you go back.</p></li>
-<li><p><strong>Quick capture.</strong> A shortcut key on Windows opens a small "Add to journal" box at once. On Android: home-screen widgets, a Quick Settings tile and the share sheet. A browser extension for Edge or Chrome, from their stores, sends highlights, and shows them again when you come back (<a href="highlights.html">how</a>).</p></li>
-<li><p><strong>Optional AI.</strong> Choose Claude, OpenAI, Gemini, OpenRouter, or an offline program such as Ollama in Settings › AI, to tidy a note (Polish note), read a picture's words, ask about a page, or suggest links. Off until you set it up (<a href="privacy.html">what is sent</a>).</p></li>
-<li><p><strong>Backups.</strong> On the laptop, optional backups only when something changed: dated zips of the notes folder, or a git repository such as GitHub.</p></li>
-<li><p><strong>Feels like Logseq.</strong> The same files, folders and settings, block references, templates, to-do states, tabs and two pages side by side, and many looks, light and dark. This website and the demo use the Plain look: choose Light, Dark or System with <em>Look</em> at the top of the page.</p></li>
-<li><p><strong>Lean.</strong> About 3 MB to install on Windows, with no framework. Nothing runs in the background, except a tiny helper if you choose a shortcut key.</p></li>
-<li><div class="pair">
+<li class="h"><h2><span class="h-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg></span>What it does</h2>
+<div class="feats">
+<div class="feat"><p class="f-h"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Journals and pages</p><p>Links, tags, properties, linked and unlinked references, and fast search that forgives typos in page names.</p></div>
+<div class="feat"><p class="f-h"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>Safe with sync</p><p>If a page changed on another device while you were writing, thinky merges the two, or shows both side by side. Nothing is silently overwritten, and each page's history lets you go back.</p></div>
+<div class="feat wide"><p class="f-h"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3 5 14h6l-1 7 8-11h-6z"/></svg>Quick capture</p><p>Get a thought down without opening the app.</p>
+<div class="caps">
+<figure class="cap"><div class="mock win-box" aria-hidden="true"><p class="mb-title">Add to journal</p><p class="mb-field">call the plumber about Friday<i></i></p><p class="mb-keys"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>N</kbd></p></div><figcaption>Windows: a shortcut key you choose opens a small box at once.</figcaption></figure>
+<figure class="cap"><div class="mock phone-w" aria-hidden="true"><p class="pw-h"><b>Today</b><span>+</span></p><p>• farmers market</p><p>• read chapter 3</p></div><figcaption>Android: home-screen widgets, a Quick Settings tile and the share sheet.</figcaption></figure>
+<figure class="cap"><img src="shots/highlights-box.png" alt="The thinky browser extension's box, sending a highlighted passage to the journal." loading="lazy"><figcaption>Edge or Chrome: the extension sends highlights (<a href="highlights.html">how</a>).</figcaption></figure>
+</div></div>
+<div class="feat wide"><p class="f-h"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c.5 4.2 2.8 6.5 7 7-4.2.5-6.5 2.8-7 7-.5-4.2-2.8-6.5-7-7 4.2-.5 6.5-2.8 7-7z"/></svg>Optional AI</p><p>Tidy a note (Polish note), read a picture's words, ask about a page, or suggest links. Off until you choose a service in Settings › AI (<a href="privacy.html">what is sent</a>):</p>
+<p class="ai-chips"><span class="chip"><i class="logo" style="--logo:url(logos/claude.svg)"></i>Claude</span><span class="chip"><i class="logo" style="--logo:url(logos/spark.svg)"></i>OpenAI</span><span class="chip"><i class="logo" style="--logo:url(logos/googlegemini.svg)"></i>Gemini</span><span class="chip"><i class="logo" style="--logo:url(logos/openrouter.svg)"></i>OpenRouter</span><span class="chip"><i class="logo" style="--logo:url(logos/ollama.svg)"></i>Ollama, offline</span></p></div>
+<div class="feat"><p class="f-h"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v12H4z"/><path d="M9 7V4h6v3M9 12h6"/></svg>Backups</p><p>On the laptop, only when something changed: dated zips of the notes folder, or a <span class="brand"><i class="logo" style="--logo:url(logos/git.svg)"></i>git</span> repository such as <span class="brand"><i class="logo" style="--logo:url(logos/github.svg)"></i>GitHub</span>.</p></div>
+<div class="feat"><p class="f-h"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="16" r="3"/></svg>Feels like Logseq</p><p>The same files, folders and settings, block references, templates, to-do states, tabs, two pages side by side, and many looks, light and dark.</p></div>
+<div class="feat wide"><p class="f-h"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19 19 5M8 5h11v11"/></svg>Lean</p><p>About 3 MB to install on Windows, with no framework. Nothing runs in the background, except a tiny helper if you choose a shortcut key.</p></div>
+</div>
+<div class="pair">
 <figure>
 <img src="shots/night.png" alt="A page called Garden plan in the dark Plain night look, with headings, to-dos and its linked references." width="1280" height="800" loading="lazy">
 <figcaption>A page in the Plain night look.</figcaption>
@@ -92,25 +120,24 @@
 <figcaption>On a phone.</figcaption>
 </figure>
 </div></li>
-</ul></li>
 
-<li class="h"><h2>Installing</h2>
+<li class="h"><h2><span class="h-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 17h6"/></svg></span>Installing</h2>
 <ul class="outline">
-<li><p><strong>Windows:</strong> run the installer. Windows may show "Windows protected your PC", because the program isn't signed with a paid certificate; choose <em>More info</em>, then <em>Run anyway</em>. The Windows files aren't signed with a code-signing certificate yet (see the <a href="code-signing.html">code signing policy</a>). After that, thinky updates itself from Settings › About, and checks each update's signature before installing it.</p></li>
-<li><p><strong>Android:</strong> open the downloaded file and allow your browser to install apps when Android asks. thinky needs "access to all files" to read your notes folder. Later versions update from Settings › About; Android only accepts an update signed like the app you have.</p></li>
+<li><p><strong><i class="logo" style="--logo:url(logos/windows.svg)"></i> Windows:</strong> run the installer. Windows may show "Windows protected your PC", because the program isn't signed with a paid certificate; choose <em>More info</em>, then <em>Run anyway</em> (see the <a href="code-signing.html">code signing policy</a>). After that, thinky updates itself from Settings › About, and checks each update's signature before installing it.</p></li>
+<li><p><strong><i class="logo" style="--logo:url(logos/android.svg)"></i> Android:</strong> open the downloaded file and allow your browser to install apps when Android asks. thinky needs "access to all files" to read your notes folder. Later versions update from Settings › About.</p></li>
 <li><p><strong>Uninstalling:</strong> on Windows, Settings › Apps › Installed apps › thinky › Uninstall; on Android, like any app. Your notes folder is never touched.</p></li>
 </ul></li>
 
-<li class="h"><h2>Open source</h2>
+<li class="h"><h2><span class="h-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M13 6l-2 12"/></svg></span>Open source</h2>
 <ul class="outline">
-<li><p>thinky is free software under the GNU Affero General Public License, version 3. The code, the history of how it was built and the issue tracker are on GitHub: <a href="https://github.com/srikanth-iyer/thinky">github.com/srikanth-iyer/thinky</a>.</p></li>
+<li><p>thinky is free software under the GNU Affero General Public License, version 3. The code, the history of how it was built and the issue tracker are on <span class="brand"><i class="logo" style="--logo:url(logos/github.svg)"></i>GitHub</span>: <a href="https://github.com/srikanth-iyer/thinky">github.com/srikanth-iyer/thinky</a>.</p></li>
 <li><p>Found a problem or have an idea? <a href="https://github.com/srikanth-iyer/thinky/issues">Open an issue</a>, or use Settings › Help › Send feedback in the app.</p></li>
 </ul></li>
 </ul>
 </main>
 <footer>
 <p>thinky is made by Srikanth Iyer, written and maintained with Claude, Anthropic's AI assistant. It is not affiliated with Logseq.</p>
-<p><a href="./">Home</a> · <a href="try/">Try it</a> · <a href="changelog.html">Changelog</a> · <a href="privacy.html">Privacy</a> · <a href="code-signing.html">Code signing policy</a> · <a href="https://github.com/srikanth-iyer/thinky">Source</a></p>
+<p><a href="./">Home</a> · <a href="try/">Try it</a> · <a href="markdown.html">Markdown notes</a> · <a href="changelog.html">Changelog</a> · <a href="privacy.html">Privacy</a> · <a href="code-signing.html">Code signing policy</a> · <a href="https://github.com/srikanth-iyer/thinky">Source</a></p>
 </footer>
 </body>
 </html>

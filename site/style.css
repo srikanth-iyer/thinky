@@ -155,3 +155,89 @@ html { scroll-padding-top:16px; }
   header.top img { width:36px; height:36px; border-radius:8px; }
   header.top h1 { font-size:1.7rem; min-width:0; overflow-wrap:anywhere; }
 }
+
+/* Nov 25, his notes on the preview: clear headings between the parts, each with a small icon in a soft
+   square; a heading's bullet hidden (the icon stands for it); small headings (h3) inside "Get started" */
+.outline > li.h { margin-top:44px; padding-top:18px; border-top:1px solid var(--line-soft, var(--s-line)); }
+.outline > li.h::before { display:none; }
+.outline > li.h { padding-left:0; }
+.outline > li.h > h2 { display:flex; align-items:center; gap:10px; font-size:1.45rem; line-height:1.25; }
+.outline > li.h > .outline, .outline > li.h > .feats, .outline > li.h > .pair { margin-left:0; }
+.h-ic { flex:none; display:inline-grid; place-items:center; width:32px; height:32px; border-radius:9px; background:color-mix(in srgb, var(--s-mark) 13%, transparent); color:var(--s-mark); }
+.h-ic svg, .f-h svg, .b-ic, .sf-dir svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.outline > li.h3 { margin-top:14px; }
+.outline > li.h3 > h3 { font-family:var(--s-title); font-weight:var(--title-weight, 600); font-size:1.08rem; margin:0 0 8px; }
+/* a brand's or system's mark, in the colour of the words around it (logos/, Simple Icons) */
+.logo { display:inline-block; flex:none; width:1em; height:1em; vertical-align:-0.12em; background:currentColor; -webkit-mask:var(--logo) center / contain no-repeat; mask:var(--logo) center / contain no-repeat; }
+.brand { white-space:nowrap; }
+.brand .logo { margin-right:4px; opacity:.85; }
+/* the demo and the downloads: the demo's button first and largest */
+.try-card { border-left:0; padding:0; }
+.try-card .try-btn { display:inline-flex; align-items:center; gap:9px; font-size:1.05rem; padding:12px 20px; }
+.b-ic { fill:currentColor; stroke:none; }
+.btn.dl { display:inline-flex; align-items:center; gap:9px; background:none; color:var(--s-text); border:1px solid var(--s-line); }
+.btn.dl:hover { border-color:var(--s-muted); }
+.btn.dl .logo { width:18px; height:18px; }
+/* Get started: a small picture beside the words */
+.pic-row { display:grid; grid-template-columns:200px 1fr; gap:18px; align-items:start; }
+.pic-row p:last-child { margin-bottom:0; }
+@media (max-width:560px) { .pic-row { grid-template-columns:1fr; } }
+.tree { font-family:var(--s-mono); font-size:0.8rem; line-height:1.5; background:var(--s-note); border-radius:var(--r-l, 8px); padding:10px 12px; }
+.tree p { margin:0; white-space:nowrap; }
+.tree .t1 { padding-left:14px; } .tree .t2 { padding-left:28px; }
+.tree b { font-weight:500; }
+.tree span { color:var(--s-muted); font-family:var(--s-body); font-size:0.78rem; margin-left:4px; }
+.f-dir::before { content:"▸ "; color:var(--s-mark); } .f-file::before { content:"· "; color:var(--s-muted); }
+.same-folder { display:flex; align-items:center; justify-content:space-between; gap:4px; background:var(--s-note); border-radius:var(--r-l, 8px); padding:12px 10px; font-size:0.78rem; text-align:center; line-height:1.2; }
+.same-folder p { margin:0; display:grid; justify-items:center; gap:5px; }
+.sf-app .logo, .sf-app img { width:26px; height:26px; border-radius:6px; }
+.sf-dir svg { width:26px; height:26px; color:var(--s-mark); }
+.sf-ar { color:var(--s-muted); font-size:1rem; }
+/* What it does: a grid of small cards, each with an icon */
+.feats { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:12px 0 16px; font-family:var(--s-body); font-size:1rem; font-weight:400; }
+.feat { background:var(--s-note); border-radius:var(--r-l, 10px); padding:14px 16px; }
+.feat.wide { grid-column:1 / -1; }
+.feat p { margin:0 0 8px; } .feat > p:last-child { margin-bottom:0; }
+.f-h { display:flex; align-items:center; gap:8px; font-family:var(--s-title); font-weight:var(--title-weight, 600); }
+.f-h svg { color:var(--s-mark); }
+@media (max-width:560px) { .feats { grid-template-columns:1fr; } }
+/* Quick capture: three small pictures */
+.caps { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-top:10px; }
+@media (max-width:560px) { .caps { grid-template-columns:1fr; } }
+.cap { margin:0; }
+.cap figcaption { font-size:0.82rem; line-height:1.4; }
+.cap img, .mock { width:100%; height:118px; object-fit:cover; object-position:top; border:1px solid var(--s-line); border-radius:8px; display:block; background:var(--s-surface); }
+.mock { padding:10px; font-size:0.78rem; line-height:1.35; overflow:hidden; font-family:"IBM Plex Sans", system-ui, sans-serif; }
+.mock p { margin:0; }
+.win-box .mb-title { font-weight:600; margin-bottom:8px; }
+.win-box .mb-field { border:1px solid var(--s-line); border-radius:6px; padding:6px 8px; background:var(--s-bg); }
+.win-box .mb-field i { display:inline-block; width:1px; height:1em; background:var(--s-mark); vertical-align:-0.15em; margin-left:1px; }
+.win-box .mb-keys { margin-top:10px; display:flex; gap:4px; }
+kbd { font:inherit; font-size:0.72rem; border:1px solid var(--s-line); border-bottom-width:2px; border-radius:4px; padding:0 5px; background:var(--s-surface); }
+.phone-w { border-radius:14px; }
+.phone-w .pw-h { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.phone-w .pw-h span { display:grid; place-items:center; width:20px; height:20px; border-radius:50%; background:var(--s-mark); color:var(--s-btn-ink); font-weight:700; }
+.phone-w p + p { margin-top:4px; color:var(--s-muted); }
+/* the AI services, each with its mark */
+.ai-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.chip { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--s-line); border-radius:999px; padding:2px 10px 2px 8px; font-size:0.88rem; background:var(--s-surface); }
+.outline li strong .logo { vertical-align:-0.12em; }
+/* the Markdown page: a file beside how thinky shows it */
+.md-pair { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media (max-width:560px) { .md-pair { grid-template-columns:1fr; } }
+.md-l { margin:0 0 4px; font-size:0.8rem; color:var(--s-muted); }
+.md-pair pre { margin:0; background:var(--s-note); border-radius:var(--r-l, 8px); padding:10px 12px; font-size:0.85rem; line-height:1.55; overflow-x:auto; }
+.md-out { border:1px solid var(--s-line); border-radius:var(--r-l, 8px); padding:10px 12px; font-size:0.92rem; line-height:1.5; }
+.md-out .md-h { font-family:var(--s-title); font-weight:var(--title-weight, 600); font-size:1.15rem; margin:0 0 4px; }
+.md-out ul { margin:0; padding-left:1.1em; } .md-out li { margin:0 0 2px; }
+.md-box { display:inline-block; width:12px; height:12px; border:1.5px solid var(--s-muted); border-radius:3px; vertical-align:-1px; }
+.h-ic .logo { width:20px; height:20px; }
+/* the look as a small icon (look.js, online: Light, Dark, System), and the same as a row in the side menu */
+.lk-toggle { display:inline-grid; place-items:center; width:32px; height:32px; border:0; border-radius:50%; background:none; color:var(--s-muted); cursor:pointer; }
+.lk-toggle:hover { background:var(--s-note); color:var(--s-text); }
+.lk-toggle svg, .ss-lk svg { width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+.try-top + #looks { margin-left:4px; }
+.ss-look { margin-top:18px; padding-top:10px; border-top:1px solid var(--line-soft, var(--s-line)); }
+.ss-lk { display:flex; align-items:center; gap:9px; width:100%; padding:5px 8px; border:0; border-radius:var(--r-l, 8px); background:none; color:var(--s-muted); font:inherit; cursor:pointer; text-align:left; }
+.ss-lk:hover { background:var(--surface-2, var(--s-note)); color:var(--s-text); }
+.ss-lk svg { width:16px; height:16px; }
