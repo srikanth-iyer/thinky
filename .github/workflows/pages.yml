@@ -85,7 +85,7 @@ jobs:
           # the looks the site can wear (site/look.js): the same release's looks as the demo; the script
           # comes from main, so it also works for a release made before the script existed
           node web/site-looks.mjs "${{ steps.release.outputs.dir }}" "$RUNNER_TEMP/site"
-      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with: { path: '${{ runner.temp }}/site' }
       - id: deployment
