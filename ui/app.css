@@ -1685,6 +1685,9 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 .nm-row { display: flex; justify-content: space-between; align-items: center; gap: 3px; padding: 3px 4px 4px; }
 .note-menu .nm-row button { display: grid; place-items: center; flex: none; padding: 0; border: 0; cursor: pointer; }
 .note-menu .nm-row button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* (the colours' row, under the filter box since Build 61: room above it for the ring round the picked colour,
+   and for a finger a little past a dot's top edge) */
+.note-menu .nm-main > .nm-colors { padding-top: 7px; }
 .note-menu .nm-sw, .note-menu .nm-sw:hover, .note-menu .nm-sw:focus-visible { width: 20px; height: 20px; border-radius: 50%; background: var(--sw); box-shadow: inset 0 0 0 1px rgba(0,0,0,.14); }
 .note-menu .nm-sw[aria-checked="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink-soft); }
 .note-menu .nm-sw:hover { transform: scale(1.12); }
@@ -1708,7 +1711,15 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 /* the Filter box at the top of the menu (under the colours): typing searches every command */
 .note-menu .nm-find { display: block; box-sizing: border-box; width: calc(100% - 8px); flex: none; margin: 4px 4px 4px; height: 28px; padding: 0 8px; font: inherit; font-size: var(--fs-ui); border: 1px solid var(--line); border-radius: var(--r-m); background: var(--bg); color: var(--ink); }
 /* (the filter stays at the top while the menu scrolls; the shadow in the menu's colour hides the rows going under it) */
-.note-menu > .nm-find { position: sticky; top: 0; z-index: 1; box-shadow: 0 -4px 0 4px var(--surface); }
+.note-menu > .nm-find { position: sticky; top: 0; z-index: 1; box-shadow: 0 -8px 0 var(--surface), -4px -4px 0 var(--surface), 4px -4px 0 var(--surface); }
+/* (its first line, when it opens out of the dot: the dot's copy, then the filter box beside it; that line
+   stays put while the rest scrolls. The cover above it only reaches up, over the menu's edge, never down
+   over the colours, which were partly hidden under it before: he saw that, Nov 25) */
+.note-menu > .pop-head { position: sticky; top: 0; z-index: 1; background: var(--surface); box-shadow: 0 -4px 0 var(--surface); }
+.note-menu > .pop-head .pop-hic { top: -4px; left: -4px; } /* (the head is inside the menu's 4px edge: its dot lands on the note's) */
+.note-menu.from-right > .pop-head .pop-hic { left: auto; right: -4px; }
+.note-menu .pop-head .nm-find { flex: 1; width: auto; margin: 2px 0 2px calc(var(--ib-w) - 2px); }
+.note-menu.from-right .pop-head .nm-find { margin: 2px calc(var(--ib-w) - 2px) 2px 0; }
 .note-menu .nm-find::placeholder { color: var(--ink-faint); }
 .note-menu .nm-find:focus { outline: 2px solid var(--accent-tint); border-color: var(--accent); }
 /* while a list shows in the menu's place: the menu keeps its height and the list scrolls inside it */
@@ -1877,7 +1888,6 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 .pop-dot { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--bullet); }
 .pop-head .pop-title { padding: 0 12px 0 calc(var(--ib-w) + 4px); }
 .from-right .pop-head .pop-title { padding: 0 calc(var(--ib-w) + 4px) 0 12px; }
-.note-menu .pop-head .nm-colors { flex: 1; padding-left: calc(var(--ib-w) - 6px); } /* (the dot is in the middle of its spot) */
 /* (a closing copy is never seen without the motion that removes it) */
 @media (prefers-reduced-motion: reduce) { .fading { display: none !important; } }
 /* Settings → Look → Animations off (Build 38; html[data-motion="off"], set by boot.js before the first

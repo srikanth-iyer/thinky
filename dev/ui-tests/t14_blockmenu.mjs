@@ -49,7 +49,8 @@ const m1 = await page.evaluate(() => {
   };
 });
 check(m1.role === 'menu' && m1.sw.join() === 'yellow,red,pink,green,blue,purple,gray,' && m1.heads.join() === '1,2,3,4,5,6,auto,0', 'a row of colours (Logseq’s, and none) and a row of headings (H1–H6, auto, none)', JSON.stringify(m1));
-check(m1.items.join('|') === 'Select|Cut|Delete|Move to page…|Copy|Copy as text|Copy link to this note|Open in a new tab|Open to the side|Numbered list|Next to-do state|More commands…', 'then Select, Cut, Delete, Move to page… (Build 61), Copy, Copy as text, Copy link to this note, Open in a new tab, Open to the side (Build 37), Numbered list, Next to-do state, More commands… (Build 46)', m1.items.join('|'));
+// (Build 61, he asked how they should be ordered, Nov 25: in groups, the most used first, Delete last on its own)
+check(m1.items.join('|') === 'Move to page…|Select|Cut|Copy|Copy as text|Copy link to this note|Open in a new tab|Open to the side|Numbered list|Next to-do state|More commands…|Delete', 'then Move to page… and Select; Cut, Copy, Copy as text, Copy link to this note; Open in a new tab, Open to the side; Numbered list, Next to-do state, More commands…; and Delete last (Build 61)', m1.items.join('|'));
 check(m1.focus && m1.named && m1.marked.join() === 'gamma', 'real buttons with names; the keyboard is in the menu; the note it’s for is marked', JSON.stringify(m1));
 await page.keyboard.press('Escape');
 await sleep(200);
@@ -135,7 +136,7 @@ await page.keyboard.press('ArrowRight');
 const f4 = await at();
 await page.keyboard.press('ArrowUp');
 const f5 = await at();
-check(f1 === 'H1' && f2 === 'Delete' && f3 === 'H1' && f4 === 'H2' && f5 === 'filter', 'arrow keys move down from the filter through the headings and items, along a row, and back up to the filter', JSON.stringify([f1, f2, f3, f4, f5]));
+check(f1 === 'yellow' && f2 === 'Select' && f3 === 'yellow' && f4 === 'red' && f5 === 'filter', 'arrow keys move down from the filter through the colours, headings and items, along a row, and back up to the filter', JSON.stringify([f1, f2, f3, f4, f5]));
 await page.keyboard.press('Escape');
 await sleep(200);
 check(await menu.count() === 0 && await page.evaluate(() => document.activeElement?.matches('textarea.ed')), 'Esc closes it and the note is still being edited, with the keyboard');

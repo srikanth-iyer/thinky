@@ -21,6 +21,12 @@ went up. Build 40 and older still update to it (each release keeps a signature f
   and the headings at once. "More commands…" now opens on a click or a tap, in the menu's own place with a way
   back at the top, instead of beside it when the mouse rests on it. Esc clears the filter, then goes back, then
   closes (popups.js `noteMenu`; t39_menu_move, t28_build46).
+- The note menu's layout (he asked, Nov 25, after trying the preview: the colours were partly under the filter box,
+  and "should move come after copy, or should delete be elsewhere?"): the filter box sits beside the dot on the
+  first line; the colours and the headings come next, together; then the rows in groups with a line between:
+  Move to page… and Select; Cut, Copy, Copy as text, Copy link; Open in a new tab, Open to the side; Numbered
+  list, Next to-do state, More commands…; Expand all, Collapse all; and Delete last, on its own (popups.js
+  `noteMenu`, editor.js; t14_blockmenu, t24_build41, t8_phone).
 - Move to page (he asked, Nov 25: "like how i can move a google task to another task list"): "Move to page…" in
   the note menu and Ctrl+Shift+M (Settings → Shortcuts can change it) open a box to pick a page: today's journal
   and recent pages first, a filter for any other page or a new one. The note goes to the end of that page with all

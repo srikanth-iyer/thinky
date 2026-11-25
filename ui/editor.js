@@ -1214,51 +1214,67 @@ export class Outline {
     const t0 = this.textOf(tops[0]);
     const rw = !this.readonly;
     const now = t0.match(MARKERS)?.[1] ?? null;
-    const items = [];
-    if (rw && !inSel) items.push({ id: 'select', label: 'Select', hint: opts.touch ? 'hold more dots to add' : '' });
-    if (rw && !(this.root !== null && lo <= this.root)) {
-      items.push({ id: 'cut', label: 'Cut' }, { id: 'delete', label: 'Delete', danger: true });
-      // Build 61 (he asked, Nov 25: like moving a Google task to another list): the note with its
-      // sub-notes (or the selected notes) to the end of another page, picked from a list
-      // (its keys shown beside it, except when the menu was opened by a finger: a phone has no such keys)
-      items.push({ id: 'movepage', label: 'Move to page…', hint: opts.touch ? '' : keyText(keyOf(this.app, 'editor/move-to-page')) });
-    }
-    items.push({ id: 'copy', label: 'Copy' }, { id: 'copytext', label: 'Copy as text', hint: 'plain Markdown' });
+    // Build 61 (he asked, Nov 25, "should move come after copy, or should delete be elsewhere?"): the rows in
+    // groups, as menus usually are, with a line between groups. The ones used most come first, nearest
+    // the dot the menu opens from; Delete comes last, on its own, so a slip of the finger can't pick it.
+    const groups = [[], [], [], [], [], []]; // (a group with nothing in it is left out, with its line)
+    const [doing, clip, open, kind, fold, gone] = groups;
+    // the note itself (not the one opened on its own, at the top) can be moved, cut or deleted
+    const whole = rw && !(this.root !== null && lo <= this.root);
+    // 1. what's done to the note most: move it to another page, or start picking several notes
+    // (Move to page, Build 61, he asked, Nov 25: like moving a Google task to another list: the note
+    // with its sub-notes, or the selected notes, to the end of another page, picked from a list; its
+    // keys shown beside it, except when the menu was opened by a finger: a phone has no such keys)
+    if (whole) doing.push({ id: 'movepage', label: 'Move to page…', hint: opts.touch ? '' : keyText(keyOf(this.app, 'editor/move-to-page')) });
+    if (rw && !inSel) doing.push({ id: 'select', label: 'Select', hint: opts.touch ? 'hold more dots to add' : '' });
+    // 2. the clipboard: Cut and Copy side by side, as in every app
+    if (whole) clip.push({ id: 'cut', label: 'Cut' });
+    clip.push({ id: 'copy', label: 'Copy' }, { id: 'copytext', label: 'Copy as text', hint: 'plain Markdown' });
     // a leanoutliner://note/<id> link that opens the app right at this note (it gets an id:: if needed)
-    if (!inSel && (rw || idIn(t0))) items.push({ id: 'link', label: 'Copy link to this note' });
-    // Build 37 (he asked, Nov 5): what Ctrl+click / Shift+click on a dot already do, in the menu too
+    if (!inSel && (rw || idIn(t0))) clip.push({ id: 'link', label: 'Copy link to this note' });
+    // 3. Build 37 (he asked, Nov 5): what Ctrl+click / Shift+click on a dot already do, in the menu too
     // (laptop: phones and narrow windows have no tabs)
     if (!inSel && this.app.tabs?.on && i !== this.root) {
-      items.push({ id: 'opentab', label: 'Open in a new tab', hint: 'Ctrl+click' }, { id: 'openside', label: 'Open to the side', hint: 'Shift+click' });
+      open.push({ id: 'opentab', label: 'Open in a new tab', hint: 'Ctrl+click' }, { id: 'openside', label: 'Open to the side', hint: 'Shift+click' });
     }
-    // Build 36 (he asked): the properties Logseq keeps for itself (id::, collapsed::…), never shown on the page
-    const hid = inSel ? [] : hiddenProps(this.blocks[i].text);
-    if (hid.length) items.push({ id: 'hidden', label: 'Show hidden properties', hint: String(hid.length) });
+    // 4. what kind of note it is: a list, a to-do, its hidden properties, and the rest of the commands
     if (rw) {
-      items.push('-', { id: 'number', label: 'Numbered list', checked: tops.some((j) => NUMBERED.test(this.textOf(j))) });
+      kind.push({ id: 'number', label: 'Numbered list', checked: tops.some((j) => NUMBERED.test(this.textOf(j))) });
       // Build 46 (he asked, Nov 12: the "/" menu's choices in the dot's menu too): its sub-notes numbered,
       // and the whole "/" list for this note
       if (!inSel && this.hasKids(i)) {
         const ks = [];
         for (let j = i + 1; j < this.subtreeEnd(i); j = this.subtreeEnd(j)) ks.push(j);
-        items.push({ id: 'numkids', label: 'Number its sub-notes', checked: ks.some((j) => NUMBERED.test(this.textOf(j))) });
+        kind.push({ id: 'numkids', label: 'Number its sub-notes', checked: ks.some((j) => NUMBERED.test(this.textOf(j))) });
       }
-      items.push({ id: 'todo', label: 'Next to-do state', hint: `${now || 'none'} → ${this.nextMarker(now) || 'none'}` });
-      // the whole "/" list for this note: a click or a tap opens it in place of the menu, with a back
-      // arrow (Build 61, he asked, Nov 25; until then a laptop opened it beside the menu when the mouse
-      // rested on it, and a phone's tap opened the "/" list in the note)
-      if (!inSel) items.push({ id: 'slash', label: 'More commands…', hint: '/', sub: slashChoices });
+      kind.push({ id: 'todo', label: 'Next to-do state', hint: `${now || 'none'} → ${this.nextMarker(now) || 'none'}` });
+    }
+    // Build 36 (he asked): the properties Logseq keeps for itself (id::, collapsed::…), never shown on the page
+    const hid = inSel ? [] : hiddenProps(this.blocks[i].text);
+    if (hid.length) kind.push({ id: 'hidden', label: 'Show hidden properties', hint: String(hid.length) });
+    if (rw && !inSel) {
       // Build 51: the optional AI's Polish note (ui/polish.js), once an AI is set up (Settings → AI)
-      if (!inSel && document.documentElement.classList.contains('ai-on')) {
-        items.push({ id: 'polish', label: 'Polish note', hint: 'AI' });
+      if (document.documentElement.classList.contains('ai-on')) {
+        kind.push({ id: 'polish', label: 'Polish note', hint: 'AI' });
         // Build 52: a picture saved in the notes folder, read into sub-notes under it
-        if (PICTURE_IN.test(this.textOf(i))) items.push({ id: 'picture', label: 'Picture to text', hint: 'AI' });
+        if (PICTURE_IN.test(this.textOf(i))) kind.push({ id: 'picture', label: 'Picture to text', hint: 'AI' });
       }
+      // the whole "/" list for this note, last in its group as "More…" rows usually are: a click or a
+      // tap opens it in place of the menu, with a back arrow (Build 61, he asked, Nov 25; until then a
+      // laptop opened it beside the menu when the mouse rested on it, and a phone's tap opened the "/"
+      // list in the note)
+      kind.push({ id: 'slash', label: 'More commands…', hint: '/', sub: slashChoices });
+    }
+    // 5. open or close all its sub-notes
+    if (rw) {
       let kids = false;
       for (let j = lo; j < hi && !kids; j++) kids = this.hasKids(j);
-      if (kids) items.push('-', { id: 'expand', label: 'Expand all' }, { id: 'collapse', label: 'Collapse all' });
-
+      if (kids) fold.push({ id: 'expand', label: 'Expand all' }, { id: 'collapse', label: 'Collapse all' });
     }
+    // 6. Delete, last and on its own
+    if (whole) gone.push({ id: 'delete', label: 'Delete', danger: true });
+    const items = [];
+    for (const g of groups.filter((x) => x.length)) items.push(...(items.length ? ['-'] : []), ...g);
     const head = t0.split('\n')[0].replace(MARKERS, '').trimStart().match(/^(#{1,6})\s/);
     const blocks = this.blocks, changes = this.changes; // (if the page changes while it's open, nothing is done)
     const at = opts.at ?? this.blockDiv(i)?.querySelector(':scope > .bul')?.getBoundingClientRect() ?? this.el.getBoundingClientRect();

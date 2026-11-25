@@ -404,7 +404,7 @@ const hm = await page.evaluate(() => {
   return { items: [...m.querySelectorAll('.nm-item .nm-l')].map((x) => x.textContent), itemH: Math.min(...hs('.nm-item')), swH: Math.min(...hs('.nm-sw')), headH: Math.min(...hs('.nm-h')),
     inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, focusOut: !m.contains(document.activeElement), marked: document.querySelector('.blk.menu-on > .bc')?.textContent };
 });
-check(hm && hm.items[0] === 'Select' && hm.items.includes('Next to-do state') && hm.marked === 'hold three', 'holding a dot and lifting the finger opens the note’s menu (Select first)', JSON.stringify(hm));
+check(hm && hm.items[0] === 'Move to page…' && hm.items[1] === 'Select' && hm.items.at(-1) === 'Delete' && hm.items.includes('Next to-do state') && hm.marked === 'hold three', 'holding a dot and lifting the finger opens the note’s menu (Move to page… and Select first, Delete last: Build 61)', JSON.stringify(hm));
 check(hm && hm.itemH >= 32 && hm.swH >= 20 && hm.headH >= 30 && hm.inside, 'compact but easy to tap (rows 32px, colour dots 20px with a bigger reach, as he asked in Build 32), all on the screen', JSON.stringify(hm));
 check((await buzz()).length === 1 && await page.evaluate(() => location.hash) === hash0, 'a short buzz when it lifts; the note isn’t opened on its own', hash0);
 await page.evaluate(() => window.leanApp.onBack());

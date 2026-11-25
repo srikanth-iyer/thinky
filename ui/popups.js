@@ -43,8 +43,8 @@ export function openFrom(box, anchor) {
     // pop-up; the click that follows doesn't open it again)
     ic.addEventListener('pointerdown', (e) => { if (e.button) return; e.preventDefault(); eatThisClick(); box.dispatchEvent(new Event('pop-close')); });
     head.append(ic);
-    // (what the pop-up starts with goes beside the icon: a date picker's title, the note menu's colours)
-    const title = box.querySelector(':scope > .pop-title, :scope > .nm-colors');
+    // (what the pop-up starts with goes beside the icon: a date picker's title, the note menu's filter box)
+    const title = box.querySelector(':scope > .pop-title, :scope > .nm-find');
     if (title) head.append(title);
     box.prepend(head);
     box.style.setProperty('--ib-w', `${r.width}px`);
@@ -676,22 +676,23 @@ export function noteMenu(r, o) {
   const moreAt = o.items.findIndex((it) => it !== '-' && it.sub);
   const more = moreAt >= 0 ? o.items[moreAt] : null;
   let html = '';
+  // Build 61 (he asked, Nov 25: "More commands" was easy to miss): a Filter box at the top of the menu
+  // (beside the dot it opens from, where the keyboard already is), the colours and headings under it, together.
+  // Typing in it searches every command: this menu's rows, its colours and headings, and the whole
+  // "More commands" list, in one short list that takes the menu's place.
+  html += '<input type="text" class="nm-find" placeholder="Filter commands…" aria-label="Filter the commands" autocomplete="off" spellcheck="false">';
+  // the menu as it usually looks: colours, headings, then the rows (hidden while a list shows instead)
+  html += '<div class="nm-main">';
   if (o.colors) {
     html += `<div class="nm-row nm-colors" role="group" aria-label="Background colour">${o.colors.map((c) => `<button type="button" role="menuitemradio" class="nm-sw" data-c="${c}" style="--sw: var(--hl-${c})" aria-checked="${o.color === c}" aria-label="${COLOR_NAMES[c] || c}" title="${COLOR_NAMES[c] || c}"></button>`).join('')}`
       + `<button type="button" role="menuitemradio" class="nm-sw nm-none" data-c="" aria-checked="${!o.colors.includes(o.color)}" aria-label="No colour" title="No colour"></button></div>`;
   }
-  // Build 61 (he asked, Nov 25: "More commands" was easy to miss): a Filter box at the top of the menu.
-  // Typing in it searches every command: this menu's rows, its colours and headings, and the whole
-  // "More commands" list, in one short list that takes the menu's place.
-  html += '<input type="text" class="nm-find" placeholder="Filter commands…" aria-label="Filter the commands" autocomplete="off" spellcheck="false">';
-  // the menu as it usually looks: headings, then the rows (hidden while a list shows instead)
-  html += '<div class="nm-main">';
   if (o.heading !== null && o.heading !== undefined) {
     const hb = (v, label, text) => `<button type="button" role="menuitemradio" class="nm-h" data-h="${v}" aria-checked="${o.heading === v}" aria-label="${label}" title="${label}"><span>${text}</span></button>`;
     html += `<div class="nm-row nm-heads" role="group" aria-label="Heading">${[1, 2, 3, 4, 5, 6].map((n) => hb(n, `Heading ${n}`, `H${n}`)).join('')}`
       + hb('auto', 'Auto heading (its size follows its level)', 'H<small>a</small>') + hb(0, 'No heading', '<s>H</s>') + '</div>';
   }
-  if (o.heading !== null && o.heading !== undefined) html += '<div class="nm-sep" role="separator"></div>';
+  if (o.colors || (o.heading !== null && o.heading !== undefined)) html += '<div class="nm-sep" role="separator"></div>';
   html += o.items.map((it, k) => it === '-' ? '<div class="nm-sep" role="separator"></div>'
     : `<button type="button" role="${it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" class="nm-item${it.danger ? ' danger' : ''}${it.sub ? ' nm-has-sub' : ''}" data-k="${k}"${it.checked === undefined ? '' : ` aria-checked="${!!it.checked}"`}${it.sub ? ' aria-haspopup="menu"' : ''}><span class="nm-l">${esc(it.label)}</span>${it.sub ? '<span class="nm-chev" aria-hidden="true">›</span>' : it.hint ? `<span class="nm-hint">${esc(it.hint)}</span>` : ''}</button>`).join('');
   html += '</div>';
@@ -805,7 +806,7 @@ export function noteMenu(r, o) {
     const go = (b) => { if (b) { e.preventDefault(); e.stopPropagation(); b.focus(); } };
     // in the filter box: ↓ goes into the list, Enter runs the first thing found, other keys type
     if (document.activeElement === find) {
-      if (e.key === 'ArrowDown') return go(all.find((b) => !b.closest('.nm-colors')));
+      if (e.key === 'ArrowDown') return go(all[0]);
       if (e.key === 'ArrowUp') return go(all.at(-1));
       if (e.key === 'Enter' && !alt.hidden) { e.preventDefault(); e.stopPropagation(); /** @type {HTMLElement} */ (list.querySelector('button:not(.nm-back)'))?.click(); }
       return;
@@ -829,9 +830,8 @@ export function noteMenu(r, o) {
       if (cur < 0) return go(e.key === 'ArrowDown' ? all[0] : all.at(-1));
       const lines = [...new Set(all.map(lineOf))];
       const l = lines.indexOf(lineOf(all[cur]));
-      // ↑ from the first row after the filter box goes up into it
-      const first = lines.findIndex((x) => !x.matches('.nm-colors'));
-      if (e.key === 'ArrowUp' && l === first) { e.preventDefault(); e.stopPropagation(); find.focus({ preventScroll: true }); return; }
+      // ↑ from the first row (just under the filter box) goes up into it
+      if (e.key === 'ArrowUp' && l === 0) { e.preventDefault(); e.stopPropagation(); find.focus({ preventScroll: true }); return; }
       const next = lines[(l + (e.key === 'ArrowDown' ? 1 : lines.length - 1)) % lines.length];
       if (!next.matches('.nm-row')) return go(next);
       // into a row: the same place along it (swatches and headings line up)

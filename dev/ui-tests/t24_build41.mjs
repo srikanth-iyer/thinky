@@ -148,7 +148,8 @@ const PAGE = '#/page/' + encodeURIComponent('Pickles in brine');
   await sleep(400);
   const nm = await page.evaluate(() => { const r = document.querySelector('.note-menu .pop-hic')?.getBoundingClientRect(); return r && [r.left, r.top]; });
   check(nm && Math.abs(nm[0] - db.x) < 1 && Math.abs(nm[1] - db.y) < 1, 'the note menu opens out of the dot', JSON.stringify([nm, db]));
-  check((await page.locator('.note-menu .pop-head .nm-colors').count()) === 1, 'the colours sit beside the dot');
+  // (Build 61: the filter box sits beside the dot; the colours under it, with the headings: he asked, Nov 25)
+  check((await page.locator('.note-menu .pop-head .nm-find').count()) === 1 && (await page.locator('.note-menu .nm-main .nm-colors + .nm-heads').count()) === 1, 'the filter box sits beside the dot, the colours and headings together under it');
   await page.keyboard.press('Escape');
   await sleep(400);
   // Go to date: out of the calendar button, its title beside it
