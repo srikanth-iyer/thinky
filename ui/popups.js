@@ -4,7 +4,7 @@
 import { call, today, nowTime } from './api.js';
 import { esc, renderBlock, propsHtml, tagBody } from './render.js';
 import { createCalendar } from './calendar.js';
-import { h, fadeAway, grow, eatThisClick, SLASH_ICON } from './dom.js';
+import { h, fadeAway, grow, eatThisClick, SLASH_ICON, slide, SLIDE_OPEN_MS, SLIDE_EASE, motionOn } from './dom.js';
 
 /** A note folded in its page (collapsed:: true on a line after its first; editor.js foldedIn). */
 const COLLAPSED = /\ncollapsed:: true(?=\n|$)/;
@@ -46,6 +46,8 @@ export function openFrom(box, anchor) {
     // (what the pop-up starts with goes beside the icon: a date picker's title, the note menu's filter box)
     const title = box.querySelector(':scope > .pop-title, :scope > .nm-find');
     if (title) head.append(title);
+    const styleBtn = box.querySelector(':scope > .nm-style-btn'); // (a phone's note menu: colours and headings behind it)
+    if (styleBtn) head.append(styleBtn);
     box.prepend(head);
     box.style.setProperty('--ib-w', `${r.width}px`);
     box.style.setProperty('--ib-h', `${r.height}px`);
@@ -53,7 +55,10 @@ export function openFrom(box, anchor) {
     const w = box.offsetWidth, ht = box.offsetHeight;
     const right = r.left - 1 + w > window.innerWidth - 8;
     const room = window.innerHeight - 8 - (r.top - 1); // (a long menu low down: it scrolls, if a fair part of it fits)
-    if ((ht <= room || room >= 240) && (!right || r.right + 1 - w >= 8)) {
+    // (Build 62, he asked Nov 27: a phone's note menu is seen whole at one glance, never scrolled: with too
+    // little room below the dot it's placed where it fits, as below)
+    const scrollOk = !box.classList.contains('nm-fit');
+    if ((ht <= room || (scrollOk && room >= 240)) && (!right || r.right + 1 - w >= 8)) {
       if (ht > room) { box.style.maxHeight = `${room}px`; box.style.overflowY = 'auto'; }
       box.classList.toggle('from-right', right);
       box.style.left = `${right ? r.right + 1 - w : r.left - 1}px`; // (its 1px edge: the icons land on each other)
@@ -61,7 +66,8 @@ export function openFrom(box, anchor) {
       spot = { x: right ? w - r.width - 2 : 0, y: 0, w: r.width + 2, h: r.height + 2 };
     } else { // (no room for it that way: as before)
       head.remove();
-      if (title) box.prepend(title);
+      if (styleBtn && title) { const row = h('div', 'nm-findrow'); row.append(title, styleBtn); box.prepend(row); } // (the filter and the small button, side by side)
+      else if (title) box.prepend(title);
       box.style.removeProperty('--ib-w'); box.style.removeProperty('--ib-h');
     }
   }
@@ -682,7 +688,17 @@ export function noteMenu(r, o) {
   // "More commands" list, in one short list that takes the menu's place.
   html += '<input type="text" class="nm-find" placeholder="Filter commands…" aria-label="Filter the commands" autocomplete="off" spellcheck="false">';
   // the menu as it usually looks: colours, headings, then the rows (hidden while a list shows instead)
+  // Build 62 (he asked, Nov 27: "the color of the dot and the heading style can be something that comes up
+  // only when I press on a much smaller icon"): on a phone the colours and headings wait behind one small
+  // button beside the filter (its dot shows the note's colour), so the menu fits the screen at one glance
+  const styled = o.colors || (o.heading !== null && o.heading !== undefined);
+  const tucked = !!o.touch && styled;
+  if (tucked) {
+    const dot = o.colors?.includes(o.color) ? `style="--sw: var(--hl-${o.color})"` : '';
+    html += `<button type="button" class="nm-style-btn" aria-expanded="false" aria-label="Colour and heading" title="Colour and heading"><i class="nm-style-dot${dot ? ' on' : ''}" ${dot}></i><b>H</b></button>`;
+  }
   html += '<div class="nm-main">';
+  if (tucked) html += '<div class="nm-style" hidden>';
   if (o.colors) {
     html += `<div class="nm-row nm-colors" role="group" aria-label="Background colour">${o.colors.map((c) => `<button type="button" role="menuitemradio" class="nm-sw" data-c="${c}" style="--sw: var(--hl-${c})" aria-checked="${o.color === c}" aria-label="${COLOR_NAMES[c] || c}" title="${COLOR_NAMES[c] || c}"></button>`).join('')}`
       + `<button type="button" role="menuitemradio" class="nm-sw nm-none" data-c="" aria-checked="${!o.colors.includes(o.color)}" aria-label="No colour" title="No colour"></button></div>`;
@@ -692,13 +708,27 @@ export function noteMenu(r, o) {
     html += `<div class="nm-row nm-heads" role="group" aria-label="Heading">${[1, 2, 3, 4, 5, 6].map((n) => hb(n, `Heading ${n}`, `H${n}`)).join('')}`
       + hb('auto', 'Auto heading (its size follows its level)', 'H<small>a</small>') + hb(0, 'No heading', '<s>H</s>') + '</div>';
   }
-  if (o.colors || (o.heading !== null && o.heading !== undefined)) html += '<div class="nm-sep" role="separator"></div>';
-  html += o.items.map((it, k) => it === '-' ? '<div class="nm-sep" role="separator"></div>'
-    : `<button type="button" role="${it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" class="nm-item${it.danger ? ' danger' : ''}${it.sub ? ' nm-has-sub' : ''}" data-k="${k}"${it.checked === undefined ? '' : ` aria-checked="${!!it.checked}"`}${it.sub ? ' aria-haspopup="menu"' : ''}><span class="nm-l">${esc(it.label)}</span>${it.sub ? '<span class="nm-chev" aria-hidden="true">›</span>' : it.hint ? `<span class="nm-hint">${esc(it.hint)}</span>` : ''}</button>`).join('');
+  if (styled) html += '<div class="nm-sep" role="separator"></div>';
+  if (tucked) html += '</div>';
+  // Build 62 (a phone): rows marked more aren't in the menu itself (they're in "More commands…", and the
+  // filter finds them); rows marked strip share one line, side by side; a group left empty loses its line
+  const row = (it, k) => `<button type="button" role="${it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" class="nm-item${it.danger ? ' danger' : ''}${it.sub ? ' nm-has-sub' : ''}" data-k="${k}"${it.checked === undefined ? '' : ` aria-checked="${!!it.checked}"`}${it.sub ? ' aria-haspopup="menu"' : ''}><span class="nm-l">${esc(it.label)}</span>${it.sub ? '<span class="nm-chev" aria-hidden="true">›</span>' : it.hint && !it.strip ? `<span class="nm-hint">${esc(it.hint)}</span>` : ''}</button>`;
+  const parts = []; // each group's HTML
+  let cur = [], strip = [];
+  const endStrip = () => { if (strip.length) cur.push(`<div class="nm-row nm-strip" role="group">${strip.join('')}</div>`); strip = []; };
+  o.items.forEach((it, k) => {
+    if (it === '-') { endStrip(); if (cur.length) parts.push(cur.join('')); cur = []; return; }
+    if (it.more) return;
+    if (it.strip) strip.push(row(it, k)); else { endStrip(); cur.push(row(it, k)); }
+  });
+  endStrip();
+  if (cur.length) parts.push(cur.join(''));
+  html += parts.join('<div class="nm-sep" role="separator"></div>');
   html += '</div>';
   // the list that takes the menu's place: "More commands" (with a back arrow) or what the filter found
   html += '<div class="nm-alt" hidden><div class="nm-list"></div></div>';
   box.innerHTML = html;
+  if (tucked) box.classList.add('nm-fit');
   document.body.append(box);
   const before = /** @type {HTMLElement} */ (document.activeElement);
   const find = /** @type {HTMLInputElement} */ (box.querySelector('.nm-find'));
@@ -743,6 +773,15 @@ export function noteMenu(r, o) {
         out += `<button type="button" role="menuitem" class="nm-item${it.danger ? ' danger' : ''}" data-k="${k}"><span class="nm-l">${esc(it.label)}</span>${it.hint ? `<span class="nm-hint">${esc(it.hint)}</span>` : ''}</button>`;
       });
       for (const x of extras) if (hit(x.label)) { found++; out += `<button type="button" role="menuitem" class="nm-item" ${x.attr}><span class="nm-l">${esc(x.label)}</span></button>`; }
+    }
+    // (a phone, Build 62) the menu's rows moved into "More commands…", first in it
+    if (view === 'more') {
+      const hit = (s) => !ql || s.toLowerCase().includes(ql);
+      o.items.forEach((it, k) => {
+        if (it === '-' || !it.more || !(hit(it.label) || hit(it.hint || ''))) return;
+        found++;
+        out += `<button type="button" role="${it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" class="nm-item${it.danger ? ' danger' : ''}" data-k="${k}"${it.checked === undefined ? '' : ` aria-checked="${!!it.checked}"`}><span class="nm-l">${esc(it.label)}</span>${it.hint ? `<span class="nm-hint">${esc(it.hint)}</span>` : ''}</button>`;
+      });
     }
     // the "More commands" rows ("/" list) that match (all of them when nothing is typed)
     const rows = more ? more.sub(q) : [];
@@ -844,6 +883,25 @@ export function noteMenu(r, o) {
   // phone its keyboard); the keyboard still reaches them when the menu has the focus
   box.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
   const opened = Date.now();
+  /** (a phone) the colours and headings: open or shut under the filter, sliding; the menu moves up as
+   *  much as it must to stay whole on the screen. */
+  const toggleStyle = (b) => {
+    const panel = /** @type {HTMLElement | null} */ (box.querySelector('.nm-style'));
+    if (!panel) return;
+    const on = panel.hidden;
+    b.setAttribute('aria-expanded', String(on));
+    box.style.maxHeight = ''; box.style.overflowY = '';
+    const top0 = box.getBoundingClientRect().top;
+    let tall = 0; // (the menu's height once open)
+    if (on) { panel.hidden = false; tall = box.offsetHeight; panel.hidden = true; }
+    slide(panel, !on, (sh) => { panel.hidden = sh; });
+    if (!on) return;
+    const over = top0 + tall - (window.innerHeight - 8);
+    if (over <= 0) return;
+    const top1 = Math.max(8, top0 - over);
+    box.style.top = `${top1}px`;
+    if (motionOn() && box.animate) box.animate([{ top: `${top0}px` }, { top: `${top1}px` }], { duration: SLIDE_OPEN_MS, easing: SLIDE_EASE });
+  };
   box.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -853,6 +911,7 @@ export function noteMenu(r, o) {
     // Nov 25); the back arrow brings the menu back
     if (b.classList.contains('nm-has-sub')) { setView('more', o.touch ? null : 'find'); return; }
     if (b.classList.contains('nm-back')) { setView('main', o.touch ? null : 'more'); return; }
+    if (b.classList.contains('nm-style-btn')) { toggleStyle(b); return; }
     close(true);
     // a "More commands" row: run on the note, as if picked from the "/" list
     if (b.dataset.n !== undefined) o.pick('slash', list.rows[+b.dataset.n].value);

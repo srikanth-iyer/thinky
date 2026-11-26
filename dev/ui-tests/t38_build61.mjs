@@ -1,8 +1,8 @@
 // Build 61 in a real browser: the quiet days' dates slide open (he asked, Nov 25: "it should slide open
 // and i should be able to see it slide open instead of a quick cut"; app.js quietRun, dom.js grow):
-//  - a tap on the faint + between days: the room under it opens over 0.2 s with the menus' curve, the
+//  - a tap on the faint + between days: the room under it opens over 0.3 s (0.2 s before Nov 27) with a gentle curve, the
 //    older days pushed down smoothly, while the dates grow out of the +;
-//  - a second tap: the dates fold back into the + over 0.15 s as the room closes, then they're gone;
+//  - a second tap: the dates fold back into the + over 0.26 s as the room closes, then they're gone;
 //  - a tap partway through turns the movement round from where it is (no jump);
 //  - with animations off they open and close at once.
 // Each check reads the movement in the same step as the tap (the page's own clock, not the test's), so a
@@ -29,8 +29,8 @@ const opening = await page.evaluate(() => {
   for (const a of [...room, ...dates]) a.finish();
   return { rooms: room.length, dates: dates.length, dur: t?.duration, ease: t?.easing, mid, clip, full: q.getBoundingClientRect().height, hidden: w.hidden };
 });
-check(opening.rooms === 1 && opening.dur === 200, 'a tap: the room under the + opens over 0.2 s, as the menus do', JSON.stringify(opening));
-check(/^cubic-bezier\(0?\.2,0?\.8,0?\.2,1\)$/.test(String(opening.ease).replace(/\s/g, '')), 'with the menus\' curve', String(opening.ease));
+check(opening.rooms === 1 && opening.dur === 300, 'a tap: the room under the + opens over 0.3 s (gentler since Nov 27, his words: nothing sudden or jittery)', JSON.stringify(opening));
+check(/^cubic-bezier\(0?\.45,0,0?\.2,1\)$/.test(String(opening.ease).replace(/\s/g, '')), 'with the gentle curve: eases in and out', String(opening.ease));
 check(opening.mid > shut + 2 && opening.mid < opening.full - 2, 'partway, the room is between closed and open (the older days slide down, no jump)', JSON.stringify({ shut, ...opening }));
 check(opening.dates === 1 && opening.clip.startsWith('inset('), 'the dates grow out of the +', JSON.stringify(opening));
 check(!opening.hidden && opening.full > shut + 40, 'once open, the dates are there with room for them', JSON.stringify(opening));
@@ -48,7 +48,7 @@ const closing = await page.evaluate(() => {
   for (const a of [...room, ...dates]) a.play();
   return r;
 });
-check(closing.rooms === 1 && closing.dur === 150 && closing.dates === 1, 'a second tap: the dates fold back into the + over 0.15 s', JSON.stringify(closing));
+check(closing.rooms === 1 && closing.dur === 260 && closing.dates === 1, 'a second tap: the dates fold back into the + over 0.26 s', JSON.stringify(closing));
 check(closing.shown && closing.mid > shut + 2 && closing.mid < opening.full - 2, 'partway, the dates are still there and the room is closing', JSON.stringify(closing));
 await sleep(400);
 const after = await page.evaluate(() => { const q = document.querySelector('#main .quiet'); return { h: q.getBoundingClientRect().height, hidden: q.querySelector('.q-wheel').hidden, open: q.classList.contains('open'), moving: q.classList.contains('moving') }; });

@@ -96,6 +96,10 @@ export function makeChips({ el, counts, written, onChange, label = 'pages' }) {
   return {
     picks,
     draw,
+    /** fit the buttons to two rows now (call it right after the row is shown: drawn while hidden, every
+     *  button showed, and the row was measured three or more rows tall, then trimmed to two partway through
+     *  the filter bar's slide; he saw that as a stutter on a phone, Nov 27) */
+    fit() { if (!more) fit(); },
     /** narrow the buttons to names containing these words */
     find(words) { find = words; draw(); },
     clear() { picks.clear(); find = ''; more = false; draw(); },

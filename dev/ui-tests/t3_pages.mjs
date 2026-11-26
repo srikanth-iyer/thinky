@@ -202,11 +202,11 @@ check(await page.locator('#favs a', { hasText: 'Pickles in brine' }).count() ===
 console.log('Favourites and Recent fold away, and stay that way');
 const recentHead = page.locator('#side .side-sec[data-sec="recent"] .side-fold');
 await recentHead.click();
-await sleep(200);
+await sleep(400); // (it slides shut, 260 ms: Nov 27)
 check(!(await page.locator('#recent').isVisible()), 'Recent folds away');
 check(await page.locator('#favs .side-list').isVisible(), 'Favourites stays open');
 await page.locator('#side .side-sec[data-sec="favs"] .side-fold').click();
-await sleep(200);
+await sleep(400);
 check(!(await page.locator('#favs .side-list').isVisible()), 'Favourites folds away');
 await page.reload();
 await page.waitForSelector('#side .side-sec[data-sec="recent"]');

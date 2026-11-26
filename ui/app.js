@@ -7,7 +7,7 @@ import { Outline, EDGE, PIN_H, findAgain, caretAgain, foldedIn, lineLook } from 
 import { renderBlock, propsHtml, visibleProps, esc, pagesIn, setPropRules } from './render.js';
 import { Suggest, Preview, menu, confirmBox, promptBox, pickDate, place } from './popups.js';
 import { pagesView, tagsView, propsView, todosView, taskRow, taskClicks, taskDay, byDay, num, drawInParts } from './views.js';
-import { h, pageLink, ICON, BRAND, fadeAway, motionOn, grow, spotIn, OPEN_MS, CLOSE_MS, EASE } from './dom.js';
+import { h, pageLink, ICON, BRAND, fadeAway, motionOn, grow, spotIn, keepPlace, slide, resize, OPEN_MS, CLOSE_MS, EASE, SLIDE_OPEN_MS, SLIDE_CLOSE_MS, SLIDE_EASE as GENTLE } from './dom.js';
 import { keyOf } from './calendar.js';
 import { Find } from './find.js';
 import { Tabs, placeOf, parsePlace, sideNav } from './tabs.js';
@@ -95,7 +95,7 @@ const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 const SCROLL_KEYS = new Set(['PageDown', 'PageUp', 'Home', 'End', ' ', 'ArrowDown', 'ArrowUp']);
 const QUIET_BUTTONS = '#histbar button, #topbar button, .side-fold, .title-row .icon-btn, #toast button';
 // the sidebar's slide (App.slide; the same in app.css, html.sliding)
-const SLIDE_MS = 200, SLIDE_EASE = 'cubic-bezier(.2, .8, .2, 1)'; // (Build 41: dom.js OPEN_MS, EASE)
+const SLIDE_MS = SLIDE_OPEN_MS, SLIDE_EASE = GENTLE; // (Nov 27: the in-page slides' 300 ms and gentle curve, dom.js SLIDE_*; it was 200 ms)
 // the sidebar's width (dragging its edge; 252 px until then) and the least width of each of two sides
 const SIDE_MIN = 200, SIDE_MAX = 480, PANE_MIN = 340;
 const VIEW_NAMES = { journals: 'Journals', pages: 'All pages', tags: 'Tags', props: 'Properties', settings: 'Settings', todos: 'To-dos', welcome: 'Welcome' };
@@ -256,7 +256,13 @@ function foldableRefs(sec, host) {
   const btn = sec.querySelector('.sec-h .disclose');
   const show = (shut) => { sec.classList.toggle('shut', shut); btn.setAttribute('aria-expanded', String(!shut)); };
   show(refShut(host));
-  btn.onclick = () => { const shut = !sec.classList.contains('shut'); setRefShut(host, shut); show(shut); };
+  btn.onclick = () => {
+    const shut = !sec.classList.contains('shut');
+    setRefShut(host, shut);
+    // closing: the heading stays under his finger (dom.js keepPlace), the page isn't pulled up;
+    // either way the references slide open or shut (dom.js slide)
+    if (shut) keepPlace(btn, () => slide(sec, true, show)); else slide(sec, false, show);
+  };
 }
 const ymd = (dt) => [dt.getFullYear(), dt.getMonth() + 1, dt.getDate()];
 
@@ -394,6 +400,7 @@ class App {
    *  them (Build 61: Undo and Open after Move to page). */
   toast(msg, ms = 3200, action = null) {
     let t = $('#toast');
+    const fresh = !t; // (the first message: made now, so it fades in too)
     if (!t) { t = h('div'); t.id = 'toast'; t.setAttribute('role', 'status'); document.body.append(t); }
     t.textContent = msg;
     // one button, several, or none: always a list here (.flat() turns one into a list of one)
@@ -402,13 +409,31 @@ class App {
       const b = h('button', 'toast-act');
       b.type = 'button';
       b.textContent = a.label;
-      b.onclick = () => { t.hidden = true; a.run(); }; // (a press hides the message, then does its job)
+      b.onclick = () => { this.hideToast(); a.run(); }; // (a press hides the message, then does its job)
       t.append(b);
     }
     t.classList.toggle('has-act', acts.length > 0);
+    const was = fresh || t.hidden || !!t.toastOut; // (not showing, or on its way out: it fades in)
+    t.toastOut?.cancel(); // (one still fading out stays)
+    t.toastOut = null;
     t.hidden = false;
+    // (he asked, Nov 27: nothing appears or goes in an instant; the message fades in, rising a little)
+    if (was && motionOn() && t.animate) {
+      t.animate([{ opacity: 0, transform: 'translateX(-50%) translateY(6px)' }, { opacity: 1, transform: 'translateX(-50%)' }],
+        { duration: OPEN_MS, easing: GENTLE });
+    }
     clearTimeout(this.toastT);
-    this.toastT = setTimeout(() => (t.hidden = true), ms);
+    this.toastT = setTimeout(() => this.hideToast(), ms);
+  }
+  /** The message at the bottom goes: it fades out (a small pop-up's quick 150 ms), then hides. */
+  hideToast() {
+    const t = $('#toast');
+    clearTimeout(this.toastT);
+    if (!t || t.hidden) return;
+    if (!motionOn() || !t.animate) { t.hidden = true; return; }
+    const a = t.animate([{ opacity: 1 }, { opacity: 0 }], { duration: CLOSE_MS, easing: GENTLE, fill: 'forwards' });
+    t.toastOut = a;
+    a.finished.then(() => { if (t.toastOut === a) { t.hidden = true; t.toastOut = null; a.cancel(); } }, () => {});
   }
   async openUrl(url) {
     if (/^leanoutliner:/i.test(url) && (await this.openLink(url))) return; // (a page or note of these notes: here)
@@ -1125,15 +1150,21 @@ class App {
     const q = h('div', 'quiet');
     q.innerHTML = `<button type="button" class="q-mark" aria-expanded="false" title="${n === 1 ? 'A day' : `${n} days`} with no notes" aria-label="${n === 1 ? 'A day' : `${n} days`} with no notes: show ${n === 1 ? 'it' : 'them'}"><i></i></button>`;
     const mark = /** @type {HTMLElement} */ (q.firstElementChild);
+    // Build 62: the two lines that split open like a book's pages (app.css .q-edge)
+    q.append(h('i', 'q-edge top'), h('i', 'q-edge bot'));
     const label = (d) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
     let wheel = null;
     let count = null;
     const mid = () => {
-      // the top row in view is marked (the + beside it); a longer run says where it is
+      // the row marked (the + beside it): the top one; in a long run (a wheel of three rows, app.css
+      // .q-wheel.long) the one in the middle, which scrollTop / a row's height counts too; it says where it is
       const rows = wheel.children, r = /** @type {HTMLElement} */ (rows[0])?.offsetHeight || 20, k = Math.round(wheel.scrollTop / r);
       for (let i = 0; i < rows.length; i++) rows[i].classList.toggle('mid', i === k);
       wheel.classList.toggle('scrolled', wheel.scrollTop > 2);
       if (count) count.textContent = `${Math.min(k + 1, n)} of ${n}`;
+      // Build 62 (his note of Nov 26): a small arrow above or below where there are more days to scroll to
+      q.classList.toggle('can-up', wheel.scrollTop > 2);
+      q.classList.toggle('can-down', wheel.scrollTop + wheel.clientHeight < wheel.scrollHeight - 2);
     };
     let moving = []; // the opening or closing movement under way (a tap meanwhile turns it round)
     mark.onclick = () => {
@@ -1144,17 +1175,17 @@ class App {
       const from = now();
       for (const a of moving) a.cancel();
       moving = [];
-      q.classList.remove('moving');
+      q.classList.remove('moving', 'closing');
       if (!on) { // closing: the dates fold back into the + as the room under it closes, then go
         if (!wheel || !motionOn()) { q.classList.remove('open'); if (wheel) { wheel.hidden = true; if (count) count.hidden = true; } return; }
         q.classList.remove('open');
         const to = now(); // (the room once closed)
-        q.classList.add('open', 'moving');
-        const room = q.animate([from, to], { duration: CLOSE_MS, easing: EASE });
-        const fold = grow(wheel, this.quietSpot(wheel, mark), true);
+        q.classList.add('open', 'moving', 'closing'); // (closing: the two lines come back together)
+        const room = q.animate([from, to], { duration: SLIDE_CLOSE_MS, easing: GENTLE }); // (gently: Build 62)
+        const fold = grow(wheel, this.quietSpot(wheel, mark), true, true);
         moving = fold ? [room, fold] : [room];
         room.finished.then(() => {
-          q.classList.remove('open', 'moving');
+          q.classList.remove('open', 'moving', 'closing');
           wheel.hidden = true;
           if (count) count.hidden = true;
           moving = [];
@@ -1166,7 +1197,7 @@ class App {
         wheel = h('div', 'q-wheel' + (n > 3 ? ' long' : ''));
         wheel.style.setProperty('--rows', String(Math.min(n, 3)));
         wheel.innerHTML = dates.map((d, i) => `<button type="button" class="q-day" data-i="${i}"><i></i>${esc(label(d))}</button>`).join('');
-        if (n > 3) { count = h('p', 'q-count'); q.append(wheel, count); } else q.append(wheel);
+        if (n > 3) { count = h('p', 'q-count'); q.append(wheel, count, h('i', 'q-arrow up'), h('i', 'q-arrow down')); } else q.append(wheel);
         wheel.addEventListener('scroll', mid, { passive: true });
         wheel.onclick = async (e) => {
           const b = /** @type {HTMLElement | null} */ ((/** @type {HTMLElement} */ (e.target)).closest('.q-day'));
@@ -1193,8 +1224,8 @@ class App {
       if (!motionOn()) return;
       const to = now();
       q.classList.add('moving');
-      const room = q.animate([from, to], { duration: OPEN_MS, easing: EASE });
-      const out = grow(wheel, this.quietSpot(wheel, mark));
+      const room = q.animate([from, to], { duration: SLIDE_OPEN_MS, easing: GENTLE }); // (gently: Build 62)
+      const out = grow(wheel, this.quietSpot(wheel, mark), false, true);
       moving = out ? [room, out] : [room];
       room.finished.then(() => { q.classList.remove('moving'); moving = []; }, () => {});
     };
@@ -1205,7 +1236,8 @@ class App {
    *  back into it, as a menu does out of its button. */
   quietSpot(wheel, mark) {
     const s = spotIn(wheel, mark.getBoundingClientRect());
-    return { x: Math.max(0, s.x), y: 0, w: s.w, h: Math.min(s.h, wheel.offsetHeight || s.h) };
+    const y = wheel.classList.contains('long') ? /** @type {HTMLElement} */ (wheel.firstElementChild)?.offsetHeight || 0 : 0; // (a long run's first date is in the middle row)
+    return { x: Math.max(0, s.x), y, w: s.w, h: Math.min(s.h, wheel.offsetHeight || s.h) };
   }
 
   /** One day in the Journals list: its notes, then (today) the to-dos that are due, then the
@@ -1262,8 +1294,10 @@ class App {
       o.clearSel();
       if (this.active === o) { this.active = null; this.updateToolbar(); } // (keys never act on a day that's folded)
     }
-    sec.classList.toggle('folded', shut);
     const b = sec.querySelector('.day-fold');
+    const set = (sh) => sec.classList.toggle('folded', sh);
+    if (shut) keepPlace(b, () => slide(sec, true, set)); // (the day's head stays put; the day slides shut)
+    else slide(sec, false, set);
     b.setAttribute('aria-expanded', String(!shut));
     b.setAttribute('aria-label', `${shut ? 'Unfold' : 'Fold'} ${name}`);
     b.title = `${shut ? 'Unfold' : 'Fold'} this day`;
@@ -1367,9 +1401,11 @@ class App {
       if (!f) return;
       const open = f.getAttribute('aria-expanded') !== 'true';
       f.setAttribute('aria-expanded', String(open));
-      (f.dataset.f === 'box' ? box.querySelector('.sched-body') : f.closest('.sched-grp').querySelector('.sched-list')).hidden = !open;
+      const part = f.dataset.f === 'box' ? box.querySelector('.sched-body') : f.closest('.sched-grp').querySelector('.sched-list');
       store.set('schedFolds', { ...store.get('schedFolds', { box: false, overdue: true }), [f.dataset.f]: !open });
-      fill();
+      // (Build 62) it slides open or shut; fill() draws its lists again, so it runs first when opening
+      slide(part, !open, (sh) => { part.hidden = sh; if (!sh) fill(); });
+      if (!open) fill();
     });
     taskClicks(this, box, () => tasks, () => this.scheduledBox(host, todayName));
     host.replaceChildren(box);
@@ -1546,17 +1582,28 @@ class App {
           sortBtn.title = t; sortBtn.setAttribute('aria-label', t);
         }
         if (fbtn) {
-          const open = !bar.hidden, t = open ? 'Hide the filter' : 'Filter pages';
+          const open = bar.dataset.on === '1', t = open ? 'Hide the filter' : 'Filter pages'; // (set by a click: true while it slides too)
           fbtn.innerHTML = ICON.filter; fbtn.title = t; fbtn.setAttribute('aria-label', t); fbtn.setAttribute('aria-expanded', String(open));
         }
       };
-      if (fbtn) fbtn.onclick = () => {
-        bar.hidden = !bar.hidden;
-        if (bar.hidden) input.value = ''; else input.focus({ preventScroll: true });
+      if (fbtn) fbtn.onclick = (e) => {
+        const shut = bar.dataset.on === '1';
+        bar.dataset.on = shut ? '' : '1';
+        slide(bar, shut, (sh) => { bar.hidden = sh; }); // (Build 62: it slides open or shut)
+        // a finger's tap only opens it (no keyboard over the page); a mouse click or a key: the cursor too
+        if (shut) input.value = ''; else if (e?.pointerType !== 'touch' && e?.pointerType !== 'pen') input.focus({ preventScroll: true });
         draw();
       };
       input.oninput = draw;
-      input.onkeydown = (e) => { if (e.key === 'Escape') { e.stopPropagation(); input.value = ''; bar.hidden = true; draw(); fbtn?.focus(); } };
+      input.onkeydown = (e) => {
+        if (e.key !== 'Escape') return;
+        e.stopPropagation();
+        input.value = '';
+        bar.dataset.on = '';
+        slide(bar, true, (sh) => { bar.hidden = sh; }); // (Escape slides it shut too, like its button; Nov 27)
+        draw();
+        fbtn?.focus();
+      };
       if (sortBtn) sortBtn.onclick = () => {
         const now = refPrefs(host).sort;
         const item = (k, label) => ({ label, on: k === now, run: () => { setRefPrefs(host, { ...refPrefs(host), sort: k }); draw(); } });
@@ -1609,13 +1656,21 @@ class App {
     btn.onclick = async () => {
       const open = btn.getAttribute('aria-expanded') === 'true';
       btn.setAttribute('aria-expanded', String(!open));
-      if (open) { body.replaceChildren(); return; }
-      body.innerHTML = BRAND.wait('Looking through your notes…');
+      if (open) { // (the heading stays put; the mentions slide shut, then go)
+        keepPlace(btn, () => {
+          const anim = slide(body, true, (sh) => { body.hidden = sh; });
+          const bye = () => { body.replaceChildren(); body.hidden = false; }; // (then they go)
+          if (anim) anim.finished.then(bye, bye); else bye();
+          return anim;
+        });
+        return;
+      }
+      slide(body, false, () => { if (!body.firstChild) body.innerHTML = BRAND.wait('Looking through your notes…'); });
       let res;
       try { res = await call('unlinked', { name }); } catch (e) { body.innerHTML = `<p class="err">${esc(e)}</p>`; return; }
       const n = res.groups.reduce((s, g) => s + g.hits.length, 0);
-      body.replaceChildren(h('p', 'note', n ? `${n} mention${n === 1 ? '' : 's'} in ${res.groups.length} page${res.groups.length === 1 ? '' : 's'}${res.more ? ' (showing the first 300)' : ''}. <b>Link</b> turns a mention into a link.` : 'No unlinked mentions.'),
-        this.groupsEl(res.groups, { link: name, host: name }));
+      resize(body, () => body.replaceChildren(h('p', 'note', n ? `${n} mention${n === 1 ? '' : 's'} in ${res.groups.length} page${res.groups.length === 1 ? '' : 's'}${res.more ? ' (showing the first 300)' : ''}. <b>Link</b> turns a mention into a link.` : 'No unlinked mentions.'),
+        this.groupsEl(res.groups, { link: name, host: name })));
     };
     return sec;
   }
@@ -1768,7 +1823,7 @@ class App {
     const tip = (b, t) => { b.setAttribute('aria-label', t); b.title = t; };
     const paint = () => {
       const { open, sort } = refPrefs(host);
-      bar.hidden = !open;
+      if (!bar.sliding) bar.hidden = !open; // (while it slides, slide() shows and hides it)
       btn.setAttribute('aria-expanded', String(open));
       tip(btn, open ? 'Hide the filter' : 'Filter references');
       sortBtn.innerHTML = REF_SORTS[sort][0] === 'name' ? ICON.sortName : ICON.sortChanged;
@@ -1813,11 +1868,17 @@ class App {
       if (bar.contains(document.activeElement)) btn.focus({ preventScroll: true });
       if (had) draw(); else paint();
     };
-    btn.onclick = () => {
-      if (refPrefs(host).open) { close(); return; }
+    const setBar = (sh) => { bar.hidden = sh; };
+    btn.onclick = (e) => {
+      if (refPrefs(host).open) { slide(bar, true, setBar); close(); return; } // (it slides shut)
       set({ open: true });
-      paint();
-      input.focus({ preventScroll: true });
+      // (it slides open; the page buttons fit to their two rows before slide() measures the bar's height)
+      slide(bar, false, (sh) => { setBar(sh); if (!sh) chips.fit(); paint(); });
+      // Build 62 (his note of Nov 26): on a phone, the cursor in the box brought the keyboard up over
+      // the page buttons below it. A finger's tap now only opens the filter (a tap on the box types);
+      // a mouse click or a key (Enter or Space on the button) still puts the cursor there.
+      // (e.pointerType says what pressed the button: 'touch', 'pen', 'mouse', or '' for a key.)
+      if (e?.pointerType !== 'touch' && e?.pointerType !== 'pen') input.focus({ preventScroll: true });
     };
     // Sort: a small menu of the orders, each both ways; the one in use ticked
     sortBtn.onclick = () => {
@@ -1831,7 +1892,12 @@ class App {
       const f = refFolds(), shut = !keys().every((k) => f.has(k));
       for (const k of keys()) if (shut) f.add(k); else f.delete(k);
       session.set('refFolds', [...f]);
-      draw();
+      // (he asked, Nov 27: Fold all and Open all slide as smoothly as one group does; they used to draw
+      // the whole list again, which flashed it away and back) each group on the page that changes slides
+      // shut or open, all together, in the same time; groups not drawn yet read the folds when they are
+      const move = () => { for (const g of sec.querySelectorAll('.refgrp')) if (g.foldKey && g.classList.contains('folded') !== shut) this.slideGroup(g, shut); };
+      if (shut) keepPlace(all, move); else move(); // (folding all: the heading stays put)
+      paint();
     };
     let timer;
     input.oninput = () => { clearTimeout(timer); timer = setTimeout(() => { recount(fold(input.value).split(/\s+/).filter(Boolean)); chips.draw(); draw(); }, 150); };
@@ -1894,10 +1960,21 @@ class App {
   /** The arrow on a reference group's heading (b) folds it, or opens it (drawing what waited). */
   foldGroup(b) {
     const grp = b.closest('.refgrp'), shut = !grp.classList.contains('folded');
-    grp.classList.toggle('folded', shut);
+    if (shut) keepPlace(b, () => this.slideGroup(grp, true)); // (its heading stays put; its notes slide shut)
+    else this.slideGroup(grp, false);
+  }
+  /** A reference group (grp) slides shut (shut true) or open, and its arrow and the kept folds follow:
+   *  by its own arrow (foldGroup), or with all the others ("Fold all" / "Open all"). */
+  slideGroup(grp, shut) {
+    const b = grp.querySelector('.grp-fold');
+    const set = (sh) => {
+      grp.classList.toggle('folded', sh);
+      if (!sh && grp.later) { const draw = grp.later; grp.later = null; draw(grp); } // (drawn the first time it opens)
+    };
+    slide(grp, shut, set);
+    if (!b) return;
     b.setAttribute('aria-expanded', String(!shut));
     b.setAttribute('aria-label', `${shut ? 'Unfold' : 'Fold'} the references from ${grp.dataset.page}`);
-    if (!shut && grp.later) { const draw = grp.later; grp.later = null; draw(grp); }
     if (grp.foldKey) {
       const all = refFolds();
       if (shut) all.add(grp.foldKey); else all.delete(grp.foldKey);
@@ -1991,7 +2068,7 @@ class App {
       const shut = row.classList.toggle('collapsed');
       if (shut) box.tree.shut.add(k); else box.tree.shut.delete(k);
       foldSays(f, shut);
-      drawRefs(box);
+      resize(box, () => drawRefs(box)); // (its height moves smoothly to the new one)
       return;
     }
     const row = e.target.closest('.refhit');
@@ -2615,8 +2692,12 @@ class App {
         const shut = store.get('sideShut', {});
         shut[sec] = !shut[sec];
         store.set('sideShut', shut);
-        this.applySideFolds();
-        this.fitRecent();
+        // (he asked, Nov 27: every toggle smooth; the list slides shut or open instead of vanishing at once)
+        const secEl = fold.closest('.side-sec'), list = $('.side-list', secEl);
+        fold.setAttribute('aria-expanded', String(!shut[sec])); // (the arrow turns at once, along with the slide)
+        const a = slide(list, !!shut[sec], (sh) => { secEl.classList.toggle('folded', sh); if (!sh) this.fitRecent(); });
+        if (a) a.finished.then(() => this.fitRecent(), () => {}); // (once it has stopped: what fits in Recent now)
+        else this.fitRecent();
         return;
       }
       // Settings while already in Settings: stay on its tab (no extra step for Back)
@@ -3352,6 +3433,8 @@ class App {
     const el = $('#recent');
     if (!el) return;
     const items = [...el.querySelectorAll('a')];
+    // (while a sidebar list slides, its room changes every frame: wait for the end, or pages would blink)
+    if ([.../** @type {NodeListOf<HTMLElement & {sliding?: boolean}>} */ (document.querySelectorAll('#side .side-list'))].some((l) => l.sliding)) return;
     items.forEach((a) => (a.hidden = false));
     if (!items.length || el.closest('.folded')) return;
     const limit = el.getBoundingClientRect().bottom + 0.5;

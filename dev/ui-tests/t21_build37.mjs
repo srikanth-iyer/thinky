@@ -95,7 +95,7 @@ await page.locator('.tagged-sec .ref-f').click();
 await sleep(150);
 check((await tagged()).length === 3, 'closing the filter shows them all again');
 await page.locator('.tagged-sec .disclose').click();
-await sleep(150);
+await sleep(300); // (closing slides shut first, since Build 62)
 check(await page.locator('.tagged-sec .tagged').isHidden(), 'the heading folds it');
 await go(page, '#/journals');
 await go(page, '#/page/Reading');
@@ -279,7 +279,7 @@ await page.locator('.todo-chips .ref-chip', { hasText: 'Garden' }).first().click
 await sleep(250);
 check(!(await page.locator('.todo-item .bc').allTextContents()).some((t) => /door/.test(t)), 'right-click: the to-dos mentioning Garden hidden');
 await fbtn.click();
-await sleep(250);
+await sleep(400); // (the panel slides shut, 260 ms: Nov 27)
 check(await page.locator('.todo-panel').isHidden() && (await page.locator('.todo-item .bc').allTextContents()).some((t) => /door/.test(t)), 'closing the panel lets the picks go (all to-dos again)');
 await fbtn.click();
 await sleep(250);

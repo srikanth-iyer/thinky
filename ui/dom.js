@@ -142,10 +142,15 @@ export const SLASH_ICON = {
 /** Build 41 (he asked: one feel for everything that opens and closes): opening takes 0.2 s, fast at
  *  first and settling gently; closing 0.15 s, the same curve. app.css has the same numbers. */
 export const OPEN_MS = 200, CLOSE_MS = 150, EASE = 'cubic-bezier(.2, .8, .2, 1)';
+/** Build 62 (he asked, Nov 27: "Anything that is drastic, sudden, or jittery is unrelaxing. I want the
+ *  experience to be relaxing and pleasurable."): things that slide open or shut in the page (notes,
+ *  references, days, the filter bar, the quiet days) take a little longer, and start and end gently
+ *  (ease in and out), instead of the quick start of EASE. 0.3 s open, 0.26 s shut. */
+export const SLIDE_OPEN_MS = 300, SLIDE_CLOSE_MS = 260, SLIDE_EASE = 'cubic-bezier(.45, 0, .2, 1)';
 /** el (fixed on screen) opens out of a spot of it (from: {x, y, w, h} in el's own box, a corner) and grows
  *  to its whole size, its shadow too; back = it folds back into that spot. One movement, no fading
  *  until the very end of folding back. Returns the Animation (null when animations are off). */
-export function grow(el, from, back = false) {
+export function grow(el, from, back = false, slow = false) {
   if (!motionOn() || !el?.animate) return null;
   const W = el.offsetWidth, H = el.offsetHeight;
   const r = Math.min(9, from.w / 2, from.h / 2);
@@ -154,7 +159,8 @@ export function grow(el, from, back = false) {
   const frames = back
     ? [{ clipPath: big, opacity: 1 }, { clipPath: small, opacity: 1, offset: 0.85 }, { clipPath: small, opacity: 0 }]
     : [{ clipPath: small }, { clipPath: big }];
-  const a = el.animate(frames, { duration: back ? CLOSE_MS : OPEN_MS, easing: EASE });
+  // (slow: in the slide times, to move together with something sliding: the quiet days' dates)
+  const a = el.animate(frames, slow ? { duration: back ? SLIDE_CLOSE_MS : SLIDE_OPEN_MS, easing: SLIDE_EASE } : { duration: back ? CLOSE_MS : OPEN_MS, easing: EASE });
   if (!back) a.finished.then(() => { el.style.clipPath = ''; }, () => {});
   return a;
 }
@@ -172,6 +178,170 @@ export function eatThisClick() {
 export const spotIn = (el, r) => { const b = el.getBoundingClientRect(); return { x: r.left - b.left, y: r.top - b.top, w: r.width || 1, h: r.height || 1 }; };
 
 export const motionOn = () => document.documentElement.dataset.motion !== 'off' && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** The parts of a box around its words that a slide grows from nothing, or shrinks to nothing. */
+const BOX_EDGES = ['marginTop', 'marginBottom', 'paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth'];
+
+/** Build 62 (his notes of Nov 26: "all opening and closing should have some kind of animation or
+ *  transition"): el slides open or shut, top to bottom, gently (SLIDE_OPEN_MS, SLIDE_CLOSE_MS, SLIDE_EASE).
+ *  set(shut) puts el in its open (false) or shut (true) state at once; it must be safe to call more than
+ *  once. Opening: set(false), then el grows from its old height to its new one. Shutting: el is measured
+ *  shut, shown open again while it shrinks to that height, then set(true) at the end. While it slides,
+ *  el.sliding is true (code that hides or shows el leaves it alone then). Returns the Animation, or null
+ *  when animations are off (then set(shut) has simply been done). */
+/** An element's exact height in CSS pixels, with its fraction (offsetHeight rounds to a whole pixel, and over
+ *  several groups opening at once those half pixels added up to a small jump at the start, Nov 27); 0 when hidden. */
+export const heightOf = (el) => {
+  if (!el.getClientRects().length) return 0; // (hidden: takes no room)
+  const h = parseFloat(getComputedStyle(el).height); // (everything is border-box, so this is the whole box)
+  return Number.isFinite(h) ? h : el.offsetHeight;
+};
+export function slide(el, shut, set) {
+  if (!el?.isConnected || !motionOn() || !el.animate) { set(shut); return null; }
+  el.slideAnim?.finish(); // (one still sliding ends now)
+  el.classList.add('slide-real'); // (its parts at their real heights while it slides: app.css "slide-real")
+  const h0 = heightOf(el); // its height now
+  set(shut);
+  const h1 = heightOf(el); // its height after
+  if (shut) set(false); // (open again while it slides shut)
+  if (Math.abs(h1 - h0) < 1) { if (shut) set(true); el.classList.remove('slide-real'); return null; }
+  el.style.overflow = 'clip'; // (what doesn't fit yet is cut off, not spilled over what's below)
+  el.sliding = true;
+  // min-height 0 while it slides: a day in the Journals list has a minimum height (250 px, today's more),
+  // which held its height there part way and then jumped the rest at the end (he saw it jitter, Nov 27)
+  const from = { height: `${h0}px`, minHeight: '0px' }, to = { height: `${h1}px`, minHeight: '0px' };
+  // Sliding from nothing, or to nothing (a filter bar, a hidden part): its space outside the height
+  // (margins) and the padding and border inside it come and go with the slide too. Left out, they
+  // appeared all at once when it started opening and went all at once when it finished closing: the
+  // filter bar's 16px gap under it jumped, which he saw as a jitter (Nov 27).
+  if (h0 < 1 || h1 < 1) {
+    const cs = getComputedStyle(el); // (it is showing now: its own margins, padding and border)
+    const full = {}, none = {};
+    for (const k of BOX_EDGES) {
+      full[k] = cs[k]; // e.g. marginBottom: '16px'
+      none[k] = '0px'; // and nothing at the closed end
+    }
+    // In a column of things with a gap between them (flex or grid), the gap above it also comes and goes
+    // at once (the To-dos filter's 8px jumped, Nov 27): at the closed end a margin of minus the gap
+    // cancels it, so the gap opens with the slide too.
+    const ps = el.parentElement && getComputedStyle(el.parentElement);
+    const column = ps && (ps.display.includes('grid') || (ps.display.includes('flex') && ps.flexDirection.startsWith('column')));
+    const gap = column ? parseFloat(ps.rowGap) || 0 : 0;
+    let before = el.previousElementSibling; // (the gap is only there when something shows above it)
+    while (before && !before.getClientRects().length) before = before.previousElementSibling;
+    if (gap > 0 && before) none.marginTop = `${-gap}px`;
+    Object.assign(h0 < 1 ? from : to, none); // the closed end: no margins, padding or border
+    Object.assign(h0 < 1 ? to : from, full); // the open end: its own
+  }
+  const a = el.animate([from, to], { duration: shut ? SLIDE_CLOSE_MS : SLIDE_OPEN_MS, easing: SLIDE_EASE });
+  el.slideAnim = a;
+  el.slideShut = shut; // (which way it goes: resize() may take over an opening slide)
+  const done = () => {
+    if (el.slideAnim !== a) return; // (another slide took over)
+    el.slideAnim = null;
+    el.sliding = false;
+    el.style.overflow = '';
+    el.classList.remove('slide-real');
+    if (shut) set(true);
+  };
+  a.finished.then(done, done);
+  return a;
+}
+/** el's height moves smoothly from what it was to what it is after change() (its contents changed:
+ *  more or fewer lines). Returns the Animation, or null. */
+export function resize(el, change) {
+  if (!el?.isConnected || !motionOn() || !el.animate) { change(); return null; }
+  el.classList.add('slide-real'); // (its parts at their real heights while it moves: app.css "slide-real")
+  const h0 = heightOf(el);
+  const from = { height: `${h0}px`, minHeight: '0px' }, to = { minHeight: '0px' };
+  // Still sliding open (dom.js slide, e.g. Unlinked references opening while it looks through the
+  // notes): the slide's own movement holds its height, so the new height can't be measured, and when
+  // the slide ended the rest came all at once (a jump he saw, Nov 27). This movement takes over from
+  // where the slide is: its height, margins and padding now, to the new ones.
+  const s = el.slideAnim;
+  if (s && !el.slideShut) {
+    const cs = getComputedStyle(el);
+    for (const k of BOX_EDGES) from[k] = cs[k]; // (part way: as they are this moment)
+    el.slideAnim = null; // (the slide's own ending does nothing now)
+    el.sliding = false;
+    s.cancel(); // (its movement stops; this one goes on from the same place)
+    const cs1 = getComputedStyle(el);
+    for (const k of BOX_EDGES) to[k] = cs1[k]; // (its own, at the end)
+  }
+  change();
+  const h1 = heightOf(el);
+  if (Math.abs(h1 - h0) < 1) { el.classList.remove('slide-real'); return null; }
+  to.height = `${h1}px`;
+  el.style.overflow = 'clip';
+  const a = el.animate([from, to], { duration: h1 > h0 ? SLIDE_OPEN_MS : SLIDE_CLOSE_MS, easing: SLIDE_EASE });
+  const done = () => { el.style.overflow = ''; el.classList.remove('slide-real'); };
+  a.finished.then(done, done);
+  return a;
+}
+
+/** Build 62 (his note of Nov 26): closing something near the end of a page (the linked or unlinked
+ *  references, a day, a folded note) makes the page shorter. The browser then pulls the page down to
+ *  fill the screen, and the heading he just pressed jumps away from his finger (to the top of a short
+ *  page). keepPlace(el, change) runs change() and keeps el where it was on the screen: a spacer
+ *  (.keep-room) at the end of the view holds the room the closed part took, only as long as it's
+ *  needed. It shrinks as he scrolls back up, and goes when it's no longer needed or the view changes.
+ *  change() may return the Animation of something sliding shut: the room is trimmed when it ends. */
+export function keepPlace(el, change) {
+  const view = el?.isConnected ? el.closest('.view') : null; // the page or journals drawn in the pane
+  if (!view) { change(); return; }
+  const box = scrollBoxOf(view); // what scrolls: the pane (wide window) or the whole page (phone)
+  const y0 = el.getBoundingClientRect().top; // where the heading is on the screen now
+  let pad = view.querySelector(':scope > .keep-room');
+  if (!pad) {
+    pad = h('div', 'keep-room'); // an empty block that only takes up room
+    pad.setAttribute('aria-hidden', 'true'); // (screen readers skip it)
+    view.append(pad);
+  }
+  // first, more than enough room (a whole screen), so closing can't make the page too short
+  pad.style.height = `${pad.offsetHeight + innerHeight}px`;
+  // the closing itself; it may return its sliding Animation (the page gets shorter while it slides)
+  const a = change();
+  const settle = () => {
+    if (!pad.isConnected) return;
+    const dy = el.isConnected ? el.getBoundingClientRect().top - y0 : 0; // (should be 0; if not, move it back)
+    if (Math.abs(dy) > 0.5) scrollByOn(box, dy);
+    trimRoom(pad, box); // then only as much room as is needed to stay put
+  };
+  if (a?.finished) a.finished.then(settle, settle); else settle();
+  if (!pad.watching) { // shrink the room as he scrolls back up
+    pad.watching = true;
+    const target = box === document.scrollingElement ? window : box;
+    const onScroll = () => { if (!pad.isConnected || !trimRoom(pad, box)) { target.removeEventListener('scroll', onScroll); pad.watching = false; } };
+    target.addEventListener('scroll', onScroll, { passive: true });
+  }
+}
+/** The element that scrolls el: its nearest scrolling parent, or the whole page. */
+function scrollBoxOf(el) {
+  for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) {
+    if (/auto|scroll/.test(getComputedStyle(e).overflowY)) return e;
+  }
+  return document.scrollingElement;
+}
+/** Scroll box by dy screen pixels (a zoomed pane counts its scrolling in its own, unzoomed pixels). */
+function scrollByOn(box, dy) {
+  if (box === document.scrollingElement) { window.scrollBy(0, dy); return; }
+  const z = box.getBoundingClientRect().height / (box.offsetHeight || 1) || 1;
+  box.scrollTop += dy / z;
+}
+/** Make the spacer just tall enough that the page isn't too short for where it's scrolled to.
+ *  Returns false (and takes the spacer away) when none is needed any more. */
+function trimRoom(pad, box) {
+  const doc = box === document.scrollingElement;
+  // s: screen pixels per scrolled pixel (1 for the page; the text size for a zoomed pane)
+  const s = doc ? 1 : (box.getBoundingClientRect().height / (box.offsetHeight || 1) || 1);
+  const padScreen = pad.getBoundingClientRect().height; // the spacer's height on the screen
+  const zp = padScreen / (pad.offsetHeight || 1) || 1; // screen pixels per spacer pixel
+  // how far past the end of the real content the screen reaches now (screen pixels)
+  const past = (box.scrollTop + box.clientHeight - box.scrollHeight) * s + padScreen;
+  if (past <= 0.5) { pad.remove(); return false; } // the page is long enough without it
+  pad.style.height = `${past / zp}px`;
+  return true;
+}
 
 /** Build 38: something closing fades away the way it came (app.css "Closing"). Call it right before
  * removing or hiding el. A copy of it stays on screen for the closing animation, then goes; the real

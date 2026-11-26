@@ -207,7 +207,7 @@ import fs from 'node:fs';
   await mark();
   await page.locator('.outline .blk', { hasText: 'note 3 ' }).first().hover();
   await page.locator('.outline .blk.has-kids > .fold').nth(3).click({ force: true });
-  await sleep(200);
+  await sleep(400); // (the sub-notes slide shut, 260 ms: Nov 27)
   const fold = await page.evaluate(() => { const ds = [...document.querySelectorAll('.outline .blk')]; const i = ds.findIndex((d) => d.classList.contains('collapsed')); return { i, kidHidden: ds[i + 1]?.hidden, kept: ds.filter((d) => d.dataset.seen).length, n: ds.length }; });
   check(fold.i >= 0 && fold.kidHidden === true && fold.kept >= fold.n - 3, 'folding a note hides its sub-notes and keeps the other rows', JSON.stringify(fold));
   await sameAsFresh('after folding');

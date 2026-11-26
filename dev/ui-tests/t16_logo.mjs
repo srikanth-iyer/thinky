@@ -250,9 +250,13 @@ for (const look of ['calm', 'plainnight']) {
   check(f.stroke === f.ink && f.cap === 'round' && f.arms === 2, `${look}: a "+" of two pen strokes, round ends, in the look's ink`, JSON.stringify(f));
   check(f.spark === RED, `${look}: the red spark at its tip`, f.spark);
   const n = await page.locator('.sheet.day.today .outline .blk').count();
+  // (the first look's tap may have left an empty note at the end of today, saved or not, depending on
+  // how fast the machine is; a tap then opens that empty note instead of adding a second one: addAtEnd)
+  const lastEmpty = await page.evaluate(() => { const b = [...document.querySelectorAll('.sheet.day.today .outline .blk')].at(-1); return !!b && !b.textContent.trim(); });
   await page.click('#addnote');
   await page.waitForSelector('textarea.ed');
-  check(await page.locator('.sheet.day.today .outline .blk').count() === n + 1, `${look}: a tap still adds a note to today`);
+  const now = await page.evaluate(() => { const bs = [...document.querySelectorAll('.sheet.day.today .outline .blk')]; return { n: bs.length, onLast: !!bs.at(-1)?.querySelector('textarea.ed') }; });
+  check(now.onLast && now.n === (lastEmpty ? n : n + 1), `${look}: a tap still adds a note to today`, JSON.stringify({ n, lastEmpty, now }));
   await page.context().close();
 }
 

@@ -14,6 +14,27 @@ From Build 41 these versions are the app's own: they show in Settings → About 
 title on GitHub, and updates compare them, so a release is newer when its version is higher, whichever part
 went up. Build 40 and older still update to it (each release keeps a signature file made their way).
 
+## Build 62 · version 0.6.11 (November 2026)
+
+- Calm, visible motion everywhere (he asked, Nov 26 and 27: "Anything that is drastic, sudden, or jittery is
+  unrelaxing"; the rule is in CLAUDE.md as "smooth and visible", which never means slow): a note's arrow, its
+  thread line, Expand/Collapse all, Linked and Unlinked references, Fold all/Open all, the filter bars, a day,
+  a page's group of references, Scheduled & deadline, Recent and Favourites in the sidebar, the To-dos filter and
+  the namespaces in All pages now slide open and shut, all on one gentle curve (300 ms open, 260 ms shut), with no
+  jump at the start or the end. The arrows turn with them, the message at the bottom fades in and out, and the
+  sidebar and the phone's drawer move on the same curve. Typing, moving between notes, opening pages and menus
+  stay quick (dom.js `slide`/`resize`/`heightOf`, editor.js `slideRows`, views.js `slideLis`; t41_build62_motion
+  stops every slide at 0, ¼, ½, ¾ and the end).
+- Closing linked or unlinked references, a day, a group of references or a note near the end of a page no longer
+  pulls the page up (dom.js `keepPlace`; t40_build62).
+- A finger's tap on a filter button (references, tagged pages) opens the filter without the phone's keyboard; a
+  mouse click or a key still puts the cursor in it (t40_build62, t41_build62_motion).
+- The phone's note menu fits on the screen without scrolling: Cut, Copy and Copy link side by side, the rows used
+  less under More commands (the filter still finds them), one Expand all / Collapse all row, and the colours and
+  headings behind a small button left of the filter box. The laptop's menu is as before (popups.js `noteMenu`).
+- The quiet days (days with no notes): their dates open between two faint full-width lines, the picked date is the
+  middle one of the wheel, and small arrows show where there are more days to scroll to.
+
 ## Build 61 · version 0.6.10 (November 2026)
 
 - The note menu finds any command (he asked, Nov 25: "More commands" was not prominent enough): a filter box at

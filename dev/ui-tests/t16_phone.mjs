@@ -136,12 +136,19 @@ let nm = await rect(page, '.note-menu');
 const items = await page.$$eval('.note-menu .nm-item', (bs) => bs.map((b) => { const r = b.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.height), b.querySelector('.nm-l').textContent]; }));
 // (Build 46 added a row he asked for, "More commands…": a little over half the screen is fine)
 check(nm.w <= 300 && nm.h <= H * 0.6 && onScreen(nm), 'small: at most 300px wide and well under two-thirds of the screen tall (it was 340 × 600)', JSON.stringify(nm));
-check(new Set(items.map((it) => it[0])).size === 1 && items.every((it, k) => !k || it[1] > items[k - 1][1]), 'one column', JSON.stringify(items));
+// (Build 62, his Nov 26 note: Cut, Copy and Copy link share one row, so the menu fits a phone without scrolling)
+const strip = items.filter((it) => ['Cut', 'Copy', 'Copy link'].includes(it[3])), rest = items.filter((it) => !strip.includes(it));
+check(strip.length === 3 && new Set(strip.map((it) => it[1])).size === 1 && new Set(rest.map((it) => it[0])).size === 1 && rest.every((it, k) => !k || it[1] > rest[k - 1][1]), 'one column, with Cut, Copy and Copy link side by side on one row', JSON.stringify(items));
 check(items.every(([, , hh]) => hh >= 32 && hh <= 36), 'rows close together (32px; they were 44) and still easy to tap', JSON.stringify(items));
-check(items.some((it) => it[3] === 'Copy link to this note'), 'full names', JSON.stringify(items.map((it) => it[3])));
+check(items.some((it) => it[3] === 'Copy link'), 'short names on the shared row (“Copy link”)', JSON.stringify(items.map((it) => it[3])));
+// (Nov 27, he asked: the colours and headings wait behind one small button by the filter)
+await page.locator('.note-menu .nm-style-btn').tap();
+await sleep(450);
 const sw = await page.evaluate(() => { const b = document.querySelectorAll('.note-menu .nm-sw')[2], r = b.getBoundingClientRect(); return { w: Math.round(r.width), hitAbove: document.elementFromPoint(r.left + r.width / 2, r.top - 5) === b, hitSide: document.elementFromPoint(r.right + 5, r.top + r.height / 2) === b }; });
 check(sw.w <= 22 && sw.hitAbove && sw.hitSide, 'small colour dots (20px; they were 32), each one easy to hit a little past its edge', JSON.stringify(sw));
 // (Build 41: it opens out of the dot, its corner on it, the dot's copy over it)
+await page.locator('.note-menu .nm-style-btn').tap();
+await sleep(450);
 check(Math.abs(nm.y - (dot.y - 1)) <= 2 && Math.abs(nm.x - (dot.x - 1)) <= 2, 'out of the dot that was held', JSON.stringify({ nm, dot }));
 await page.screenshot({ path: SHOTS + '/phone16-notemenu-hold.png' });
 await page.locator('.note-menu .nm-item', { hasText: 'Next to-do state' }).tap();

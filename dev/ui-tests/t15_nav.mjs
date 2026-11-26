@@ -417,7 +417,7 @@ await grp('Ref one').locator('h3').hover();
 await sleep(150);
 check(+(await gf.evaluate((b) => getComputedStyle(b).opacity)) > 0.5 && await gf.getAttribute('aria-expanded') === 'true', 'an arrow by the page’s name (on hover)');
 await gf.click();
-await sleep(200);
+await sleep(400); // (it slides shut over 0.26 s since Nov 27)
 check(!(await grp('Ref one').locator('.refnote').first().isVisible()) && await grp('Ref two').locator('.refnote').first().isVisible(), 'a click folds that page’s references away; the others stay', '');
 check(await grp('Ref one').locator('h3 a').isVisible(), 'its name still shows');
 await page.screenshot({ path: SHOTS + '/nav-refs-folded.png' });
@@ -432,12 +432,12 @@ await page.locator('.sec.unlinked .disclose').click();
 await page.waitForSelector('.sec.unlinked .refgrp');
 const ug = page.locator('.sec.unlinked .refgrp').first();
 await ug.locator('.grp-fold').click();
-await sleep(150);
+await sleep(300); // (closing slides shut first, since Build 62)
 check(!(await ug.locator('.refhit').first().isVisible()), 'unlinked references fold the same way');
 await go(page, '#/journals');
 const dayGrp = page.locator('.sheet.day.today .day-refs .refgrp').first();
 await dayGrp.locator('.grp-fold').click();
-await sleep(150);
+await sleep(300); // (closing slides shut first, since Build 62)
 check(!(await dayGrp.locator('.refnote').first().isVisible()), 'and so do a day’s, in the Journals list');
 await dayGrp.locator('.grp-fold').click();
 

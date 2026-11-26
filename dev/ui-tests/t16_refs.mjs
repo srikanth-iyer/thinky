@@ -123,7 +123,8 @@ check(await faSays() === 'Fold all', 'the button says Fold all');
 await fa.click();
 await sleep(500);
 const allShut = () => linked(page).locator('.refgrp').evaluateAll((gs) => gs.length && gs.every((g) => g.classList.contains('folded')));
-check(await allShut() && await linked(page).locator('.refnote').count() === 0, 'every page folded to its name (nothing drawn inside)');
+// (Nov 27: they slide shut, as each page's own arrow does, so their notes stay drawn, just out of sight)
+check(await allShut() && await linked(page).locator('.refnote').evaluateAll((ns) => ns.every((n) => !n.getClientRects().length)), 'every page folded to its name (nothing showing inside)');
 check(await faSays() === 'Open all', '…and the button now says Open all');
 await page.screenshot({ path: SHOTS + '/refs16-folded.png' });
 await go(page, '#/page/Maths');

@@ -36,7 +36,7 @@ await sleep(150);
 r = await rows();
 check(r.length === 3 && /^1:ns-parent:a 2$/.test(r[2]) && await page.evaluate(() => document.activeElement?.classList.contains('ns-fold')), 'Enter on an arrow unfolds it; the keyboard stays there', JSON.stringify(r));
 await page.keyboard.press('Enter');
-await sleep(150);
+await sleep(400); // (its pages slide away first, 260 ms: Nov 27)
 check((await rows()).length === 2, 'Enter again folds it');
 // Select all shown takes only the pages that show (not the folded ones)
 await page.locator('[data-a="select"]').click();
@@ -70,7 +70,7 @@ await page.waitForSelector('.tree-rows li');
 await sleep(200);
 check((await rows()).length === 3, 'stays unfolded after a reload', JSON.stringify(await rows()));
 await page.locator('.ns-fold').first().click();
-await sleep(150);
+await sleep(400);
 check((await rows()).length === 2, 'and folds again', JSON.stringify(await rows()));
 await tree.click();
 

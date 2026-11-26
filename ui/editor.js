@@ -8,6 +8,7 @@ import { renderBlock, propsHtml, datesHtml, esc, PROP, MARKERS, hiddenKey, parse
 import { pickDate, caretRect, noteMenu, menu, formBox, confirmBox, slashChoices, pickPage } from './popups.js';
 import { keyOf, keyText } from './keys.js';
 import { hoverSpark, startPolish, startPicture, PICTURE_IN } from './polish.js';
+import { heightOf, keepPlace, motionOn, SLIDE_OPEN_MS, SLIDE_CLOSE_MS, SLIDE_EASE } from './dom.js';
 // the clash screen loads when a clash first shows (Build 39: a faster start)
 const openClash = (...a) => import('./clash.js').then((m) => m.openClash(...a));
 
@@ -1228,10 +1229,14 @@ export class Outline {
     if (whole) doing.push({ id: 'movepage', label: 'Move to page…', hint: opts.touch ? '' : keyText(keyOf(this.app, 'editor/move-to-page')) });
     if (rw && !inSel) doing.push({ id: 'select', label: 'Select', hint: opts.touch ? 'hold more dots to add' : '' });
     // 2. the clipboard: Cut and Copy side by side, as in every app
-    if (whole) clip.push({ id: 'cut', label: 'Cut' });
-    clip.push({ id: 'copy', label: 'Copy' }, { id: 'copytext', label: 'Copy as text', hint: 'plain Markdown' });
+    // Build 62 (his note of Nov 26: the menu "is now too big for a phone and I have to scroll down"): on a
+    // phone (opened by a finger) Cut, Copy and Copy link sit side by side on one line (strip), and the
+    // rows used less (more: true) move into "More commands…", still found by the filter at the top
+    const ph = !!opts.touch;
+    if (whole) clip.push({ id: 'cut', label: 'Cut', strip: ph });
+    clip.push({ id: 'copy', label: 'Copy', strip: ph }, { id: 'copytext', label: 'Copy as text', hint: 'plain Markdown', more: ph });
     // a leanoutliner://note/<id> link that opens the app right at this note (it gets an id:: if needed)
-    if (!inSel && (rw || idIn(t0))) clip.push({ id: 'link', label: 'Copy link to this note' });
+    if (!inSel && (rw || idIn(t0))) clip.push({ id: 'link', label: ph ? 'Copy link' : 'Copy link to this note', strip: ph });
     // 3. Build 37 (he asked, Nov 5): what Ctrl+click / Shift+click on a dot already do, in the menu too
     // (laptop: phones and narrow windows have no tabs)
     if (!inSel && this.app.tabs?.on && i !== this.root) {
@@ -1239,25 +1244,25 @@ export class Outline {
     }
     // 4. what kind of note it is: a list, a to-do, its hidden properties, and the rest of the commands
     if (rw) {
-      kind.push({ id: 'number', label: 'Numbered list', checked: tops.some((j) => NUMBERED.test(this.textOf(j))) });
+      kind.push({ id: 'number', label: 'Numbered list', checked: tops.some((j) => NUMBERED.test(this.textOf(j))), more: ph });
       // Build 46 (he asked, Nov 12: the "/" menu's choices in the dot's menu too): its sub-notes numbered,
       // and the whole "/" list for this note
       if (!inSel && this.hasKids(i)) {
         const ks = [];
         for (let j = i + 1; j < this.subtreeEnd(i); j = this.subtreeEnd(j)) ks.push(j);
-        kind.push({ id: 'numkids', label: 'Number its sub-notes', checked: ks.some((j) => NUMBERED.test(this.textOf(j))) });
+        kind.push({ id: 'numkids', label: 'Number its sub-notes', checked: ks.some((j) => NUMBERED.test(this.textOf(j))), more: ph });
       }
       kind.push({ id: 'todo', label: 'Next to-do state', hint: `${now || 'none'} → ${this.nextMarker(now) || 'none'}` });
     }
     // Build 36 (he asked): the properties Logseq keeps for itself (id::, collapsed::…), never shown on the page
     const hid = inSel ? [] : hiddenProps(this.blocks[i].text);
-    if (hid.length) kind.push({ id: 'hidden', label: 'Show hidden properties', hint: String(hid.length) });
+    if (hid.length) kind.push({ id: 'hidden', label: 'Show hidden properties', hint: String(hid.length), more: ph });
     if (rw && !inSel) {
       // Build 51: the optional AI's Polish note (ui/polish.js), once an AI is set up (Settings → AI)
       if (document.documentElement.classList.contains('ai-on')) {
-        kind.push({ id: 'polish', label: 'Polish note', hint: 'AI' });
+        kind.push({ id: 'polish', label: 'Polish note', hint: 'AI', more: ph });
         // Build 52: a picture saved in the notes folder, read into sub-notes under it
-        if (PICTURE_IN.test(this.textOf(i))) kind.push({ id: 'picture', label: 'Picture to text', hint: 'AI' });
+        if (PICTURE_IN.test(this.textOf(i))) kind.push({ id: 'picture', label: 'Picture to text', hint: 'AI', more: ph });
       }
       // the whole "/" list for this note, last in its group as "More…" rows usually are: a click or a
       // tap opens it in place of the menu, with a back arrow (Build 61, he asked, Nov 25; until then a
@@ -1269,7 +1274,13 @@ export class Outline {
     if (rw) {
       let kids = false;
       for (let j = lo; j < hi && !kids; j++) kids = this.hasKids(j);
-      if (kids) fold.push({ id: 'expand', label: 'Expand all' }, { id: 'collapse', label: 'Collapse all' });
+      if (kids && ph) {
+        // a phone: one row, the one that changes something (any sub-note folded: Expand all; else
+        // Collapse all); the other is in "More commands…"
+        let shut = false;
+        for (let j = lo; j < hi && !shut; j++) shut = j !== this.root && this.hasKids(j) && this.isCollapsed(j);
+        fold.push({ id: 'expand', label: 'Expand all', more: !shut }, { id: 'collapse', label: 'Collapse all', more: shut });
+      } else if (kids) fold.push({ id: 'expand', label: 'Expand all' }, { id: 'collapse', label: 'Collapse all' });
     }
     // 6. Delete, last and on its own
     if (whole) gone.push({ id: 'delete', label: 'Delete', danger: true });
@@ -1344,7 +1355,10 @@ export class Outline {
         const js = [];
         for (let j = lo; j < hi; j++) if (j !== this.root && (!fold || this.hasKids(j))) js.push(j);
         this.stopEdit();
-        this.changeTexts(js, fold ? (t) => (foldedIn(t) ? t : folded(t)) : unfolded, true);
+        // (he asked, Nov 27) the notes slide shut or open, as smoothly as by a note's arrow (slideRows);
+        // collapsing, the page stays where it is on the screen (dom.js keepPlace), as the arrow does
+        const run = () => this.slideRows(lo, hi, () => this.changeTexts(js, fold ? (t) => (foldedIn(t) ? t : folded(t)) : unfolded, true));
+        if (fold) keepPlace(this.el, run); else run();
         return;
       }
       default:
@@ -2574,9 +2588,77 @@ export class Outline {
     else b.text = folded(b.text);
     const editing = this.cur;
     this.stopEdit();
-    this.render();
+    // folding near the end of a page: the page stays where it is on the screen (dom.js keepPlace);
+    // either way the notes under it slide open or shut (slideFold)
+    if (this.isCollapsed(i)) keepPlace(this.el, () => this.slideFold(i, () => this.render()));
+    else this.slideFold(i, () => this.render());
     this.markDirty();
     if (editing !== null && !this.hiddenSet().has(editing)) this.edit(editing);
+  }
+
+  /** Build 62 (his note of Nov 26: "toggles should also animate open and closing, slide like other
+   *  animation in the app"): the notes under note i slide open or shut, as one block, top to bottom,
+   *  gently, in the slide times (dom.js SLIDE_OPEN_MS, SLIDE_CLOSE_MS). change() folds or unfolds it and
+   *  draws the page again. The rows are separate on the page (one after another, not inside their
+   *  parent), so each row gets its own share of the movement: row k grows (or shrinks) only while the
+   *  block's moving edge passes over it. Returns the last row's Animation (null: nothing moved). */
+  slideFold(i, change) {
+    return this.slideRows(i + 1, this.subtreeEnd(i), change); // the notes under i: i+1 … end-1
+  }
+
+  /** The rows of notes lo … hi-1 that change() hides or shows slide shut or open, together, as one
+   *  movement: slideFold (one note's arrow), and Expand all / Collapse all (he asked, Nov 27: as smooth as
+   *  the arrow; they used to appear and vanish at once). The rows that change needn't be next to each
+   *  other (Expand all opens several notes at once): the movement runs down them in order. */
+  slideRows(lo, hi, change) {
+    for (const a of this.sliding ?? []) a.finish(); // (one still sliding: it ends now)
+    this.sliding = [];
+    if (!motionOn() || !this.el.animate) { change(); return null; }
+    const end = hi;
+    // the rows showing now, and their heights (those that are about to go)
+    const before = new Map();
+    for (let k = lo; k < end; k++) { const d = this.divs?.[k]; if (d && !d.hidden && d.isConnected) before.set(k, heightOf(d)); } // (exact heights: whole pixels added up to a small jump)
+    change(); // (folds or unfolds; the rows' hidden marks are set)
+    const going = [], coming = []; // [row, height] in order, top to bottom
+    for (let k = lo; k < end; k++) {
+      const d = this.divs?.[k];
+      if (!d?.isConnected) continue;
+      if (before.has(k) && d.hidden) going.push([d, before.get(k)]); // going
+      else if (!before.has(k) && !d.hidden) coming.push([d, heightOf(d)]); // newly showing
+    }
+    // shortcut: past 400 rows the movement would be too much work for a phone to stay smooth, so they
+    // change at once; upgrade if he folds very long pages often
+    if (going.length + coming.length > 400) return null;
+    let last = null;
+    for (const [rows, closing] of [[going, true], [coming, false]]) { const a = this.slideSome(rows, closing); if (a) last = a; }
+    return last;
+  }
+
+  /** slideRows' movement for one direction: rows ([row, height], top to bottom) slide shut (closing) or open. */
+  slideSome(rows, closing) {
+    const H = rows.reduce((t, [, hgt]) => t + hgt, 0); // the whole block's height
+    if (!rows.length || !H) return null;
+    let o = 0, last = null; // o: how far down the block this row starts
+    for (const [d, hgt] of rows) {
+      const a0 = o / H, a1 = (o + hgt) / H; // the part of the movement that is this row's
+      o += hgt;
+      // opening: this row is closed until the edge reaches it, then grows to its height;
+      // closing: the same backwards (the bottom row goes first, the top one last)
+      const frames = closing
+        ? [{ height: `${hgt}px`, offset: 0 }, { height: `${hgt}px`, offset: 1 - a1 }, { height: '0px', offset: 1 - a0 }, { height: '0px', offset: 1 }]
+        : [{ height: '0px', offset: 0 }, { height: '0px', offset: a0 }, { height: `${hgt}px`, offset: a1 }, { height: `${hgt}px`, offset: 1 }];
+      if (closing) d.hidden = false; // (shown while it slides shut)
+      d.style.overflow = 'clip'; // (nothing spills out of a row while it's shorter than its words)
+      const a = d.animate(frames, { duration: closing ? SLIDE_CLOSE_MS : SLIDE_OPEN_MS, easing: SLIDE_EASE });
+      const done = () => {
+        d.style.overflow = '';
+        if (closing && d.isConnected) d.hidden = this.hidden?.has(+d.dataset.i) ?? true; // (hidden again, unless unfolded meanwhile)
+      };
+      a.finished.then(done, done);
+      this.sliding.push(a);
+      last = a;
+    }
+    return last;
   }
 
   /** The block whose thread line (the vertical line linking its children) is under the
@@ -2645,17 +2727,21 @@ export class Outline {
     for (let j = a + 1; j < this.subtreeEnd(a); j++) if (this.hasKids(j)) parents.push(j);
     if (!parents.length) return;
     const anyFolded = parents.some((j) => this.isCollapsed(j));
-    this.snap();
-    for (const j of parents) {
-      const b = this.blocks[j];
-      if (anyFolded) b.text = unfolded(b.text);
-      else if (!this.isCollapsed(j)) b.text = folded(b.text);
-    }
     const editing = this.cur;
     this.stopEdit();
     this.showThread(null);
-    this.render();
-    this.markDirty();
+    // (he asked, Nov 27: a click on the line folded or opened everything under it in an instant; now the
+    // notes slide shut or open together, as by a note's arrow or Collapse all: slideRows)
+    this.slideRows(a + 1, this.subtreeEnd(a), () => {
+      this.snap();
+      for (const j of parents) {
+        const b = this.blocks[j];
+        if (anyFolded) b.text = unfolded(b.text);
+        else if (!this.isCollapsed(j)) b.text = folded(b.text);
+      }
+      this.render();
+      this.markDirty();
+    });
     if (editing !== null && !this.hiddenSet().has(editing)) this.edit(editing);
   }
 
@@ -2700,7 +2786,9 @@ export class Outline {
     if (!js.length) return;
     const depths = js.map((i) => this.blocks[i].depth);
     const level = fold ? Math.max(...depths) : Math.min(...depths);
-    this.foldNotes(js.filter((i) => this.blocks[i].depth === level), fold);
+    // (Nov 27) they slide shut or open, as by a note's arrow (slideRows); collapsing keeps the page's place
+    const run = () => this.slideRows(this.start, this.end, () => this.foldNotes(js.filter((i) => this.blocks[i].depth === level), fold));
+    if (fold) keepPlace(this.el, run); else run();
   }
   /** After folding: a selected note now hidden under a folded one gives its place to the nearest shown
    *  note above it, so nothing unseen stays selected (Delete would act on it; Build 49). */

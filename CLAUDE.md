@@ -7,6 +7,18 @@ component, and update it in the same commit when you add one. This file holds th
 A lean Logseq-style outliner for Windows and Android. Most of it is written and maintained with
 Claude (an AI), and this file is the detailed guide for whoever works on it next, person or AI.
 Keep it small and plain: no frameworks, one place per concern.
+**Motion: smooth and visible** (the maintainer's rule, Nov 27, 2026: "Anything that is drastic, sudden, or jittery is
+unrelaxing. I want the experience to be relaxing and pleasurable", and the movements should not be "too quick that I barely
+notice it"). Every movement in thinky (opening, shutting, folding, sliding, fading) is smooth and visible:
+- slow enough to follow with the eye (in-page slides 300 ms open, 260 ms shut, `SLIDE_*` in dom.js; small pop-ups 200/150);
+- one even curve from start to end, with no jump, flash or redraw at its start or its end, and no stutter partway;
+- what it moves goes where the eye expects (grows from the button pressed, folds back into it), and the rest of the page
+  glides along with it instead of snapping into place;
+- nothing moves by itself or out of the blue; with reduced motion turned on, nothing moves at all.
+- smooth and visible never means slow: what he does all the time (typing, moving between notes, opening a page, the
+  menus' quick 200/150) stays instant or quick, because waiting is unrelaxing too (he agreed, Nov 27).
+A new movement reuses those constants, and gets a check like t41_build62_motion section 5 (stops the animation at its
+start, quarter, half, three quarters and end, and checks that what is below it moves evenly one way, with no jump).
 Name: **thinky** (all lowercase, always, even at the start of a sentence; the maintainer decided Oct 29, 2026; it was
 "Lean Outliner"). Only what people see changed (productName, window title, UI text, messages, the
 Android app's label); the hidden identifier `com.srikanth.leanoutliner`, the `leanoutliner://` link
@@ -337,9 +349,16 @@ copy of its icon (`.pop-hic`; a dot = `.pop-dot`) and its title or colours besid
 one low down scrolls, `maxHeight`); else placed as before, growing from its corner nearest. A right-click on a dot opens the
 note menu from the dot. Motion: dom.js `OPEN_MS` 200 / `CLOSE_MS` 150 / `EASE` cubic-bezier(.2,.8,.2,1), also app.css's
 opening/closing keyframes and `SLIDE_EASE`; tabs widen in / slide over (`paint`, WAAPI, by tab object `el.tab`).
+Things that slide open or shut in the page (note folds, references, a journal day, filter bars, the quiet days'
+room and lines, the phone menu's colours) use the gentler dom.js `SLIDE_OPEN_MS` 300 / `SLIDE_CLOSE_MS` 260 / `SLIDE_EASE`
+cubic-bezier(.45,0,.2,1) (since Nov 27, after he found the day fold jittery); their keyframes set
+`minHeight: 0`, or a min-height (a journal day's) holds the height partway and it jumps at the end.
 The quiet days' dates in the Journals list (app.js `quietRun`, Build 61, he asked Nov 25: "slide open ... instead of a quick
 cut") open the same way: `grow` out of the + (`quietSpot`) while the `.quiet` room's height and padding animate with
-it (WAAPI, `OPEN_MS`/`CLOSE_MS`/`EASE`; `.quiet.moving` clips); a tap partway turns it round from where it is; tested by t38_build61.
+it (WAAPI, since Nov 27 `SLIDE_OPEN_MS`/`SLIDE_CLOSE_MS` and the gentle curve; `.quiet.moving` clips); a tap partway turns it round from where it is; tested by t38_build61.
+A long run's wheel (`.q-wheel.long`) is 3 rows tall with one row of padding above and below and rows that snap to the
+centre, so the marked date (`.mid`, `round(scrollTop / row)`) is always the middle one, the first and last too (he asked
+Nov 27: "I want the one that is selected to be the one that is in the middle"); tested by t41_build62_motion.
 Build 42 (0.5.3; he said go, Nov 10): the Google Play version (its rules: "Android extras").
 Build 43 (0.5.4; the maintainer's notes of Nov 10; tested by t25_build43): a hidden sidebar peeks out on the mouse (as in
 Notion; `App.peekSidebar`: pointerover on the strip's sidebar button, 120 ms, adds `body.side-peek` (+ `.peeking` for the
@@ -1475,7 +1494,8 @@ ideas only, never its code). Not picked: a camera button, bigger to-do boxes, Ti
   much smaller gaps between lines, not just cut smaller"): the note menu (popups.js `noteMenu`), the
   "/" list (`#ac`) and the toolbar's date menu (`.tb-menu`) are one column with 32px rows (shorter
   than 44 because the maintainer asked; keep ≥32 and the whole row tappable); the note menu 272px wide with 20px
-  colour dots whose buttons reach 6px past them (`.nm-sw::before`); `#ac` 280px tall (8½ rows, the
+  colour dots whose buttons reach 6px past them (`.nm-sw::before`; on a phone the colours and headings wait behind the small ○H
+  button `.nm-style-btn` by the filter, Nov 27, so the whole menu shows at once with nothing to scroll); `#ac` 280px tall (8½ rows, the
   rest scrolls). The toolbar's ⋯ opens the note menu by its button (`at`); other `menu()`s (a page's ⋯)
   ≤280px wide, ≤62vh, rows 44px (`{head}` items are small headings: the date menu's); the look list ≤60vh.
   The search box (`(pointer: coarse), (max-width: 640px)`): where it always was (10vh down, over the

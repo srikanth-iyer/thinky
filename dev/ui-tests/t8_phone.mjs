@@ -396,6 +396,11 @@ async function holdDrag(t, dx, dy) {
 }
 const hash0 = await page.evaluate(() => location.hash);
 await hold('hold three');
+// (Nov 27, he asked: on a phone the colours and headings wait behind the small ○H button by the filter)
+const hmTop = await page.evaluate(() => ({ tucked: !!document.querySelector('.note-menu .nm-style-btn'), dots: [...document.querySelectorAll('.note-menu .nm-sw')].filter((b) => b.getClientRects().length).length }));
+check(hmTop.tucked && hmTop.dots === 0, 'colours and headings tucked behind the ○H button, out of sight until it is tapped', JSON.stringify(hmTop));
+await page.locator('.note-menu .nm-style-btn').tap();
+await sleep(450);
 const hm = await page.evaluate(() => {
   const m = document.querySelector('.note-menu');
   if (!m) return null;
@@ -422,18 +427,24 @@ await page.evaluate(() => history.back());
 await sleep(700);
 
 console.log('phone: colours and headings from the menu, as Logseq writes them');
+// (Nov 27: on a phone they sit behind the small ○H button; it slides them open)
+const styles = async () => { await hMenu.locator('.nm-style-btn').tap(); await sleep(450); };
 await hold('hold three');
+await styles();
 await hMenu.locator('[data-c="pink"]').tap();
 await sleep(1300);
 check(read('pages/Hold.md') === HOLD.replace('- hold three\n', '- hold three\n  background-color:: pink\n'), 'a colour: background-color:: pink', read('pages/Hold.md'));
 await hold('hold three');
+await styles();
 await hMenu.locator('[data-h="3"]').tap();
 await sleep(1300);
 check(read('pages/Hold.md') === HOLD.replace('- hold three\n', '- ### hold three\n  background-color:: pink\n'), 'a heading: "### "', read('pages/Hold.md'));
 await hold('hold three');
+await styles();
 await hMenu.locator('[data-h="0"]').tap();
 await sleep(300);
 await hold('hold three');
+await styles();
 await hMenu.locator('[data-c=""]').tap();
 await sleep(1300);
 check(read('pages/Hold.md') === HOLD, 'no heading, no colour: the file as it was', read('pages/Hold.md'));
@@ -507,6 +518,7 @@ await sleep(400);
 await page.locator('#toolbar [data-t="more"]').tap();
 await sleep(450);
 check(await hMenu.count() === 1 && await page.evaluate(() => document.activeElement?.matches('textarea.ed')), 'the toolbar’s ⋯ opens the menu for the note being typed in, the keyboard staying up');
+await styles(); // (Nov 27: the colours sit behind ○H on a phone)
 await hMenu.locator('[data-c="green"]').tap();
 await sleep(300);
 check(await page.evaluate(() => document.activeElement?.matches('textarea.ed')) && await page.locator('textarea.ed').inputValue() === 'hold two', 'a colour from there: typing goes on (the colour line stays out of the box)');

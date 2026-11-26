@@ -3,7 +3,7 @@
 
 import { call, today, store } from './api.js';
 import { renderBlock, datesHtml, esc, whenText, pagesIn, PROP_SHOWS, MARK_COLORS, builtinHidden } from './render.js';
-import { h, pageLink, ICON, BRAND, plural } from './dom.js';
+import { h, pageLink, ICON, BRAND, plural, slide, heightOf, motionOn, SLIDE_OPEN_MS, SLIDE_CLOSE_MS, SLIDE_EASE } from './dom.js';
 import { promptBox, menu } from './popups.js';
 import { makeChips } from './chips.js';
 
@@ -190,14 +190,58 @@ export async function pagesView(app, view) {
       else draw();
     }
   };
-  ul.addEventListener('click', (e) => {
+  // The rows under a namespace's row: those after it that sit deeper (each row's --d is its depth)
+  const depthOf = (li) => Number(li.style.getPropertyValue('--d')) || 0;
+  const rowsUnder = (li) => {
+    const d = depthOf(li), out = [];
+    for (let r = li.nextElementSibling; r && depthOf(r) > d; r = r.nextElementSibling) out.push(r);
+    return out;
+  };
+  /** Rows sliding open (from no height to their own) or shut (to none), all together, so the rows
+   *  below glide along; ends when they have (he asked, Nov 27: every toggle smooth, nothing instant). */
+  const slideLis = (lis, shut) => {
+    if (!lis.length || !motionOn()) return Promise.resolve();
+    const all = lis.map((li) => {
+      const hh = heightOf(li), cs = getComputedStyle(li); // (its own height, with the fraction)
+      const full = { offset: 0, height: `${hh}px`, minHeight: '0px', borderBottomWidth: cs.borderBottomWidth };
+      const none = { offset: 1, height: '0px', minHeight: '0px', paddingTop: '0px', paddingBottom: '0px', borderBottomWidth: '0px' };
+      // (the browser draws a line thinner than a pixel a whole pixel thick, so its line under it went only
+      // at the very end, three rows' lines a 3px jump; the line goes, or comes, near the closed end)
+      const line = { offset: shut ? 0.85 : 0.15, borderBottomWidth: '0px' };
+      li.style.overflow = 'clip'; // (its words are cut off while it is short, not spilled over the next row)
+      const kf = shut ? [full, line, none] : [{ ...none, offset: 0 }, line, { ...full, offset: 1 }];
+      const a = li.animate(kf, { duration: shut ? SLIDE_CLOSE_MS : SLIDE_OPEN_MS, easing: SLIDE_EASE, fill: shut ? 'forwards' : 'none' });
+      return a.finished.catch(() => {}).then(() => { if (!shut) li.style.overflow = ''; });
+    });
+    return Promise.all(all);
+  };
+  let nsBusy = false; // (one namespace sliding shut at a time: a second click waits for its end)
+  ul.addEventListener('click', async (e) => {
     const f = e.target.closest('.ns-fold');
     if (f) {
+      if (nsBusy) return;
       const k = f.dataset.ns;
-      if (nsOpen.has(k)) nsOpen.delete(k); else nsOpen.add(k);
+      const opening = !nsOpen.has(k);
+      if (opening) nsOpen.add(k); else nsOpen.delete(k);
       store.set('nsOpen', [...nsOpen]);
-      draw();
-      ul.querySelector(`.ns-fold[data-ns="${CSS.escape(k)}"]`)?.focus(); // (the keyboard stays on it)
+      const again = () => ul.querySelector(`.ns-fold[data-ns="${CSS.escape(k)}"]`);
+      if (!opening) {
+        // shutting: its pages slide away first (the arrow turns meanwhile), then the list is drawn without them
+        f.setAttribute('aria-expanded', 'false');
+        nsBusy = true;
+        await slideLis(rowsUnder(f.closest('li')), true);
+        nsBusy = false;
+        draw();
+      } else {
+        draw();
+        // opening: the new rows slide in from nothing, and the new arrow turns down from where the old one was
+        const b = again();
+        if (b && motionOn() && b.animate) {
+          try { b.animate([{ transform: 'rotate(-90deg)' }, { transform: 'none' }], { duration: SLIDE_OPEN_MS, easing: SLIDE_EASE, pseudoElement: '::before' }); } catch { /* (an older browser: it just points down) */ }
+        }
+        if (b) slideLis(rowsUnder(b.closest('li')), false);
+      }
+      again()?.focus(); // (the keyboard stays on it)
       return;
     }
     const a = e.target.closest('a[data-page]');
@@ -569,19 +613,20 @@ export async function todosView(app, view) {
     }
   };
   const chips = makeChips({ el: chipsEl, counts: () => counts, written: () => written, onChange: () => draw(), label: 'pages' });
-  const paintPanel = () => {
-    const open = !!opt.panel;
+  /** open: show it or not (slide() below asks for both, to measure how tall it is) */
+  const paintPanel = (open = !!opt.panel) => {
     panel.hidden = !open;
     fbtn.setAttribute('aria-expanded', String(open));
     const n = chips.picks.size, t = open ? 'Hide the page buttons (and let their picks go)' : 'Filter by page';
     fbtn.title = t; fbtn.setAttribute('aria-label', t);
     fbtn.dataset.on = n ? 'true' : 'false';
-    if (open) chips.draw();
+    if (open) { chips.draw(); chips.fit(); } // (fitted to two rows while showing, before it is measured)
   };
   fbtn.onclick = () => {
     opt.panel = !opt.panel; store.set('todoOpts', opt);
     if (!opt.panel) { findIn.value = ''; chips.clear(); draw(); }
-    paintPanel();
+    // (he asked, Nov 27: every toggle smooth; the page buttons slide open or shut instead of jumping)
+    slide(panel, !opt.panel, (sh) => paintPanel(!sh));
     if (opt.panel) findIn.focus({ preventScroll: true });
   };
   findIn.oninput = () => chips.find(findIn.value.trim());

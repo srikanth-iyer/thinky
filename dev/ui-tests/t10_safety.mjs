@@ -33,7 +33,7 @@ check(names.join(',') === 'Screenshot (2).png,keep.png,photo_2024.png,unused.png
 const said = await page.locator('.pics-box').textContent();
 check(/4 of the 6 pictures/.test(said) && /\d KB in total/.test(said), 'with how many pictures were checked, and the total size', said);
 check(said.includes('One picture was added in the last 3 days, so it was left out of this check'), 'and how many new ones were left out, and why', said);
-const shows = await page.waitForFunction(() => { const i = document.querySelector('.pics img'); return i && i.complete && i.naturalWidth === 40; }, null, { timeout: 3000 }).then(() => true, () => false);
+const shows = await page.waitForFunction(() => { const i = document.querySelector('.pics img'); return i && i.complete && i.naturalWidth === 40; }, null, { timeout: 5000 }).then(() => true, () => false);
 check(shows, 'a small picture of each shows');
 check(await page.locator('.pics input[type="checkbox"]:checked').count() === 4, 'each has a tick box, all ticked');
 // a click on a picture or its name shows it big, and doesn't touch its tick box; a click closes it
@@ -82,7 +82,10 @@ console.log('the bin lists the pictures, all of them, with “Put back”');
 await go(page, '#/settings/safety'); // (the bin is on Safety since Build 40)
 const binPics = page.locator('.bin-pics li');
 check(await binPics.count() === 3 && await page.locator('.bin-pages li').count() === 50, '“Pictures” has all three, even with 60 deleted pages above (the newest 50 shown)', await binPics.count());
-const binShows = await page.waitForFunction(() => { const i = document.querySelector('.bin-pics img'); return i && i.complete && i.naturalWidth === 40; }, null, { timeout: 3000 }).then(() => true, () => false);
+// (the small pictures load only near the screen, loading="lazy", and sit below 50 page rows: scrolled to,
+// as a person would; some machines' test browser doesn't load them from that far away)
+await page.locator('.bin-pics img').first().scrollIntoViewIfNeeded().catch(() => {});
+const binShows = await page.waitForFunction(() => { const i = document.querySelector('.bin-pics img'); return i && i.complete && i.naturalWidth === 40; }, null, { timeout: 5000 }).then(() => true, () => false);
 check(binShows, 'each with a small picture');
 await page.locator('.bin-pics').evaluate((el) => el.previousElementSibling.scrollIntoView());
 await page.screenshot({ path: SHOTS + '/bin-pictures.png' });

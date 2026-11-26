@@ -38,7 +38,7 @@ const mark = page.locator('#main .quiet .q-mark').first();
 await mark.scrollIntoViewIfNeeded();
 const h0 = await page.evaluate(() => document.querySelector('#main .quiet').nextElementSibling.getBoundingClientRect().top - document.querySelector('#main .quiet').previousElementSibling.getBoundingClientRect().bottom);
 await mark.click();
-await sleep(300);
+await sleep(400); // (the room opens over 0.3 s since Nov 27)
 const open1 = await page.evaluate(() => { const q = document.querySelector('#main .quiet'); const rows = [...q.querySelectorAll('.q-day')];
   const t = new Date(); const want = new Date(t.getFullYear(), t.getMonth(), t.getDate() - 2).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   return { rows: rows.length, first: rows[0]?.textContent, want, mid: rows.findIndex((b) => b.classList.contains('mid')), count: q.querySelector('.q-count')?.textContent, h: q.querySelector('.q-wheel').getBoundingClientRect().height }; });
@@ -46,7 +46,7 @@ check(open1.rows === n && open1.first === open1.want, 'a tap shows the dates, th
 check(open1.mid === 0 && open1.count === `1 of ${n}`, 'the top date is marked, and the run says where it is', JSON.stringify(open1));
 check(open1.h > 50 && open1.h < 80, 'three dates in view, close together', String(open1.h));
 await mark.click();
-await sleep(200);
+await sleep(400); // (and closes over 0.26 s)
 const h1 = await page.evaluate(() => document.querySelector('#main .quiet').nextElementSibling.getBoundingClientRect().top - document.querySelector('#main .quiet').previousElementSibling.getBoundingClientRect().bottom);
 check(Math.abs(h1 - h0) < 1, 'a second tap closes them, and the space between the days is as it was', `${h0} ${h1}`);
 

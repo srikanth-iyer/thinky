@@ -195,6 +195,7 @@ check(!(await s2.locator('.ref-tools').isVisible()), 'closed at first');
 await b2.tap();
 await sleep(400);
 check(await s2.locator('.ref-tools').isVisible(), 'a tap on Filter opens the box');
+await s2.locator('.ref-filter').tap(); // (since Build 62 the tap on Filter leaves the keyboard down; a tap on the box brings it up)
 await page.keyboard.type('weaker');
 await sleep(600);
 check((await order(page, s2)).length === 1, 'typing filters on a phone');

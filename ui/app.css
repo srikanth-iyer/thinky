@@ -180,10 +180,11 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
 /* the sidebar's and the top strips' icons in the look's tint (--icon-ink; most looks: their words' colour) */
 .nav svg, .hb-app button svg, .hb-nav svg, #topbar > button svg { color: var(--icon-ink); }
 .side-h { font-size: var(--fs-sub); color: var(--ink-faint); padding: 0 8px; margin: 0 0 4px; font-weight: 500; }
-/* Favourites / Recent headings fold their list away */
+/* Favourites / Recent headings fold their list away (it slides, App: side-fold; Nov 27). Every fold arrow in
+   thinky turns over .3s on the slide's own curve (dom.js SLIDE_*), so arrow and slide move as one. */
 .side-h.side-fold { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; border-radius: var(--r-m); }
 .side-h.side-fold:hover { color: var(--ink-soft); }
-.side-h.side-fold::after { content: ""; border-left: 4.5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; transform: rotate(90deg); transition: transform .12s; opacity: .8; }
+.side-h.side-fold::after { content: ""; border-left: 4.5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; transform: rotate(90deg); transition: transform .3s cubic-bezier(.45, 0, .2, 1); opacity: .8; }
 .side-h.side-fold[aria-expanded="false"]::after { transform: none; }
 .side-sec.folded .side-list { display: none; }
 .side-sec { display: flex; flex-direction: column; min-height: 0; }
@@ -312,8 +313,12 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
 .q-wheel { --r: 20px; height: calc(var(--r) * var(--rows, 1)); overflow-y: auto; scroll-snap-type: y mandatory; scrollbar-width: none; padding-left: calc(var(--q-x) - 6px); }
 .q-wheel::-webkit-scrollbar { display: none; }
 .q-wheel[hidden], .q-count[hidden] { display: none; }
-.q-wheel.long { height: calc(var(--r) * 3 + 8px); -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
-.q-wheel.long.scrolled { -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 70%, transparent); mask-image: linear-gradient(transparent, #000 22%, #000 70%, transparent); }
+/* Build 62 (he asked, Nov 27: the date picked should be "the one that is in the middle", not one half
+   hidden at the top edge): a long run is a picker wheel of three rows. The marked date is the middle
+   one, in full view; the rows above and below fade out evenly. A row's room above and below the dates
+   (padding) lets the first and the last date reach the middle, and each date settles there (snap: center). */
+.q-wheel.long { box-sizing: border-box; height: calc(var(--r) * 3); padding-block: var(--r); -webkit-mask-image: linear-gradient(transparent, #000 34%, #000 66%, transparent); mask-image: linear-gradient(transparent, #000 34%, #000 66%, transparent); }
+.q-wheel.long .q-day { scroll-snap-align: center; }
 .q-day { display: flex; align-items: center; gap: 10px; height: var(--r); padding: 0; border: 0; background: none; cursor: pointer; color: var(--ink-faint); font-size: .86em; line-height: var(--r); scroll-snap-align: start; white-space: nowrap; }
 .q-day i { flex: none; width: 12px; border-top: 1px solid currentColor; opacity: .7; }
 .q-day::after { content: "+"; color: var(--accent); opacity: 0; }
@@ -325,6 +330,25 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
    (app.js quietRun, dom.js grow) the room under the + grows or shrinks with them; what isn't in it yet
    is hidden, so nothing lies over the next day */
 .quiet.moving { overflow: clip; }
+/* Build 62 (his note of Nov 26): the + is a line that opens like a book. The line that ends the newer
+   day (the sheet's own divider) stays where it is, and a second line just like it, as wide and as faint
+   (--sheet-divider), comes out of it and goes down with the room's bottom edge, below the last date, like
+   two pages opening away from each other. Closing, it goes back up into the first. (He asked, Nov 27: no
+   stronger colour and no extra highlight on the lines; the bottom one the page's full width, as the
+   original.) A long run (more than 3 days) shows a small arrow above or below the dates where more days
+   are (.can-up, .can-down; app.js quietRun). */
+.q-edge { position: absolute; left: 0; right: 0; border-top: var(--sheet-divider); opacity: 0; pointer-events: none;
+  transition: opacity .3s cubic-bezier(.45, 0, .2, 1); } /* (dom.js SLIDE_OPEN_MS, SLIDE_EASE) */
+.q-edge.top { display: none; } /* (the day's own line is the top one: nothing drawn over it) */
+.q-edge.bot { bottom: 6.5px; }
+.quiet.open .q-edge { opacity: 1; }
+.quiet.open.closing .q-edge { opacity: 0; transition-duration: .26s; }
+.q-arrow { position: absolute; left: calc(var(--q-x) + 50px); width: 7px; height: 7px; border: solid var(--accent); border-width: 1.5px 1.5px 0 0;
+  opacity: 0; pointer-events: none; transition: opacity .3s; }
+.q-arrow.up { top: 13px; transform: rotate(-45deg); }
+.q-arrow.down { bottom: 11px; transform: rotate(135deg); }
+.quiet.open.can-up:not(.closing) .q-arrow.up, .quiet.open.can-down:not(.closing) .q-arrow.down { opacity: .8; }
+.quiet.open:has(.q-wheel.long) { padding: 24px 0 24px; } /* (room for the arrows) */
 .sheet.day.today { min-height: 400px; }
 .day-body { margin-top: 28px; }
 /* a day with no notes yet (App.daySheet): its empty first note says "Click to write…" ("Tap…" on a
@@ -335,7 +359,7 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
    folded), at the right end of the weekday's line on phones; folded, only the date shows */
 .sheet.day > .day-head { position: relative; }
 .day-fold { position: absolute; left: -28px; bottom: 0; width: 24px; height: 46px; display: grid; place-items: center; border: 0; border-radius: var(--r-m); background: none; padding: 0; cursor: pointer; color: var(--ink-faint); opacity: 0; }
-.day-fold::before { content: ""; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid currentColor; transition: transform .12s ease; }
+.day-fold::before { content: ""; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid currentColor; transition: transform .3s cubic-bezier(.45, 0, .2, 1); }
 .sheet.day.folded .day-fold::before { transform: rotate(-90deg); }
 .day-head:hover > .day-fold, .day-fold:focus-visible, .sheet.day.folded .day-fold { opacity: .75; }
 .day-fold:hover { opacity: 1 !important; color: var(--ink); }
@@ -408,7 +432,7 @@ html.has-update #topbar [data-a="menu"]::after { position: absolute; top: 9px; r
   position: absolute; left: calc(var(--d, 0) * var(--ind) - var(--fold-x, 11px)); top: calc(var(--bc-pad-y) + var(--lead, 0px)); width: 14px; height: var(--bul-h);
   border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink-faint); opacity: 0; display: grid; place-items: center;
 }
-.fold::before { content: ""; width: 0; height: 0; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 6px solid currentColor; transition: transform .12s ease; }
+.fold::before { content: ""; width: 0; height: 0; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 6px solid currentColor; transition: transform .3s cubic-bezier(.45, 0, .2, 1); }
 .blk.collapsed > .fold::before, .refhit.collapsed > .fold::before { transform: rotate(-90deg); }
 .blk.collapsed > .fold, .refhit.collapsed > .fold { opacity: .75; }
 @media (hover: hover) {
@@ -632,6 +656,11 @@ a.tag .hash { display: var(--hash); }
 .refgrp h3 .pg-ic { margin-right: .4em; }
 .refgrp > .refnote + .refnote, .refgrp > .refhit + .refhit { border-top: var(--refgrp-line); margin-top: 9px; padding-top: 9px; }
 .refgrp.folded { padding-top: 11px; padding-bottom: 11px; }
+/* While something slides open or shut (dom.js slide, resize), the reference groups inside it are drawn at their
+   real height. Groups out of view are otherwise skipped and counted as 80px tall (content-visibility above),
+   so a slide aimed at the guessed height, and when they came into view the rest jumped (Unlinked references
+   opening, he saw it, Nov 27). */
+.slide-real * { content-visibility: visible !important; }
 .refgrp.folded h3 { margin-bottom: 0; }
 /* a page's references' tools (App.refTools): three small quiet icon buttons at the right end of the
    "Linked references" heading (Filter, Sort, Fold all), the heading's words on the left; the filter box
@@ -700,7 +729,7 @@ a.tag .hash { display: var(--hash); }
 /* a page's references fold away from its heading, and open again, as nested notes do (App.refGroup):
    the arrow in the box's left margin, so the name stays in line with its notes */
 .grp-fold { position: absolute; left: -17px; top: 0; bottom: 0; width: 16px; display: grid; place-items: center; border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink-faint); opacity: 0; }
-.grp-fold::before { content: ""; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 6px solid currentColor; transition: transform .12s ease; }
+.grp-fold::before { content: ""; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 6px solid currentColor; transition: transform .3s cubic-bezier(.45, 0, .2, 1); }
 .refgrp.folded .grp-fold::before { transform: rotate(-90deg); }
 .refgrp h3:hover .grp-fold, .grp-fold:focus-visible, .refgrp.folded .grp-fold { opacity: .75; }
 .grp-fold:hover { opacity: 1 !important; color: var(--ink); }
@@ -767,7 +796,7 @@ a.tag .hash { display: var(--hash); }
 .ns-fold, .ns-fold-gap { flex: none; width: 24px; }
 .ns-fold { border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink-faint); display: grid; place-items: center; border-radius: var(--r-m); }
 .ns-fold:hover { background: var(--surface-2); color: var(--ink); }
-.ns-fold::before { content: ""; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 6px solid currentColor; transform: rotate(-90deg); transition: transform .12s ease; }
+.ns-fold::before { content: ""; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 6px solid currentColor; transform: rotate(-90deg); transition: transform .3s cubic-bezier(.45, 0, .2, 1); }
 .ns-fold[aria-expanded="true"]::before { transform: none; }
 .ns-parent .pg-name { font-weight: 600; }
 .ns-sub .pg-name:not(.ghost) { color: var(--ink-soft); }
@@ -854,7 +883,7 @@ a.tag .hash { display: var(--hash); }
 .ns-path { margin: 0 0 2px; font-size: var(--fs-ui); color: var(--ink-faint); }
 .ns-path a { color: var(--ink-soft); text-decoration: none; }
 .disclose { font: inherit; font-weight: 600; border: 0; background: none; color: inherit; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.disclose::before { content: ""; border-left: 5px solid currentColor; border-top: 4.5px solid transparent; border-bottom: 4.5px solid transparent; transition: transform .12s; }
+.disclose::before { content: ""; border-left: 5px solid currentColor; border-top: 4.5px solid transparent; border-bottom: 4.5px solid transparent; transition: transform .3s cubic-bezier(.45, 0, .2, 1); }
 .disclose[aria-expanded="true"]::before { transform: rotate(90deg); }
 /* "Linked references" folded from its heading (app.js foldableRefs): only the heading shows */
 .sec.shut > :not(.sec-h), .sec.shut .ref-acts { display: none !important; }
@@ -1367,13 +1396,13 @@ body.side-hidden #app { --sw: 0px; }
 @media (min-width: 861px) {
   #side { position: relative; z-index: 8; }
   body.side-hidden #side { transform: translateX(-100%); visibility: hidden; }
-  html.sliding #side { transition: transform .2s cubic-bezier(.2, .7, .3, 1); }
-  html.sliding body.side-hidden #side { transition: transform .2s cubic-bezier(.2, .7, .3, 1), visibility 0s linear .2s; }
+  html.sliding #side { transition: transform .3s cubic-bezier(.45, 0, .2, 1); } /* (App.slide SLIDE_MS: the same time and curve) */
+  html.sliding body.side-hidden #side { transition: transform .3s cubic-bezier(.45, 0, .2, 1), visibility 0s linear .3s; }
   html.sliding, html.sliding .pane { overflow-x: hidden; } /* (no scroll bar for what slides in from the side) */
   /* peeking out while the mouse rests on its button (App.peekSidebar): over the notes, nothing moves */
   body.side-hidden.side-peek #side { transform: none; visibility: visible; z-index: 30; box-shadow: 6px 0 28px rgb(0 0 0 / .16); border-radius: 0 var(--r-xl) var(--r-xl) 0; }
-  body.side-hidden.peeking #side { transition: transform .18s cubic-bezier(.2, .7, .3, 1), visibility 0s linear .18s; }
-  body.side-hidden.peeking.side-peek #side { transition: transform .18s cubic-bezier(.2, .7, .3, 1); }
+  body.side-hidden.peeking #side { transition: transform .24s cubic-bezier(.45, 0, .2, 1), visibility 0s linear .24s; }
+  body.side-hidden.peeking.side-peek #side { transition: transform .24s cubic-bezier(.45, 0, .2, 1); }
   /* the handles: the sidebar's right edge, and the line between two sides (App.grip) */
   .side-grip { display: block; grid-column: 1; grid-row: 2; justify-self: end; position: relative; z-index: 9; width: 8px; margin-right: -4px; cursor: col-resize; touch-action: none; }
   body.side-hidden .side-grip { display: none; }
@@ -1414,10 +1443,12 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
     position: fixed; z-index: 45; left: 0; top: var(--topbar-h); bottom: 0; height: auto; width: min(70vw, 280px);
     background: var(--side-image) var(--side-image-pos, 0 0) / var(--side-image-size) var(--side-image-repeat, repeat), var(--bg); box-shadow: 6px 0 24px -10px rgba(0,0,0,.3); border-right: 1px solid var(--line-soft);
     /* closed: fully off screen, shadow included, and out of reach of the Tab key */
-    transform: translateX(calc(-100% - 48px)); visibility: hidden; transition: transform .2s ease, visibility 0s linear .2s;
+    transform: translateX(calc(-100% - 48px)); visibility: hidden; transition: transform .3s cubic-bezier(.45, 0, .2, 1), visibility 0s linear .3s;
   }
-  body.drawer #side { transform: none; visibility: visible; transition: transform .2s ease; }
+  body.drawer #side { transform: none; visibility: visible; transition: transform .3s cubic-bezier(.45, 0, .2, 1); }
   body.drawer::after { content: ""; position: fixed; inset: var(--topbar-h) 0 0 0; z-index: 44; background: rgba(0,0,0,.28); }
+  /* (the dimming fades in with the drawer instead of appearing at once, Nov 27) */
+  @media (prefers-reduced-motion: no-preference) { body.drawer::after { animation: pop-in .3s cubic-bezier(.45, 0, .2, 1); } }
   body.drawer #topbar { z-index: 46; }
   body.drawer #topbar [data-a="menu"] { background: var(--accent-tint); color: var(--ink); }
   /* the top bar: thin (44px buttons, nothing around them), the same buttons and places to tap */
@@ -1727,6 +1758,22 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
 .note-menu.from-right > .pop-head .pop-hic { left: auto; right: -4px; }
 .note-menu .pop-head .nm-find { flex: 1; width: auto; margin: 2px 0 2px calc(var(--ib-w) - 2px); }
 .note-menu.from-right .pop-head .nm-find { margin: 2px calc(var(--ib-w) - 2px) 2px 0; }
+/* (Build 62, a phone) the small button beside the filter that opens the colours and headings: the note's
+   colour as a dot (a ring when it has none) and an H; pressed, the panel slides open under the filter */
+.note-menu .nm-style-btn { display: flex; align-items: center; justify-content: center; gap: 3px; flex: none; order: -1; width: 44px; height: 36px; margin: 2px 0 2px 4px; padding: 0; border: 1px solid var(--line); border-radius: var(--r-m); background: var(--bg); color: var(--ink-soft); cursor: pointer; }
+.note-menu .nm-style-btn b { font: 600 var(--fs-sub)/1 "IBM Plex Sans", system-ui, sans-serif; }
+.note-menu .nm-style-btn[aria-expanded="true"] { background: var(--accent-tint); border-color: var(--accent); color: var(--ink); }
+.nm-style-dot { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ink-faint); }
+.nm-style-dot.on { background: var(--sw); box-shadow: inset 0 0 0 1px rgba(0,0,0,.14); }
+/* (he asked, Nov 27: the colour button on the left of the filter, wherever the menu opens). Opening from
+   the left, the copy of the dot sits at the head's left end, so the button leaves it the room the filter had. */
+.note-menu .pop-head .nm-style-btn { margin: 2px 6px 2px calc(var(--ib-w) - 2px); }
+.note-menu .pop-head:has(.nm-style-btn) .nm-find { margin-left: 0; }
+.note-menu.from-right .pop-head .nm-style-btn { margin: 2px 6px 2px 4px; }
+.note-menu .nm-findrow .nm-style-btn { margin: 4px 0 4px 4px; }
+.note-menu .nm-findrow .nm-find { margin-left: 6px; }
+.note-menu > .nm-findrow { display: flex; align-items: center; } /* (no head: placed apart from its dot) */
+.note-menu > .nm-findrow .nm-find { flex: 1; width: auto; }
 .note-menu .nm-find::placeholder { color: var(--ink-faint); }
 .note-menu .nm-find:focus { outline: 2px solid var(--accent-tint); border-color: var(--accent); }
 /* while a list shows in the menu's place: the menu keeps its height and the list scrolls inside it */
@@ -1758,6 +1805,7 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   .note-menu .nm-sw, .note-menu .nm-sw:hover, .note-menu .nm-sw:focus-visible { width: 20px; height: 20px; }
   .note-menu .nm-sw { position: relative; }
   .note-menu .nm-sw::before { content: ""; position: absolute; inset: -6px; }
+  .note-menu .nm-style { padding-top: 6px; } /* (room above the colour dots, so a finger a little above one still lands on it, not on the filter row) */
   .note-menu .nm-h { width: 29px; height: 30px; font-size: var(--fs-sub); border-radius: var(--r-m); }
   .note-menu .nm-item { min-height: 32px; align-items: center; padding: 4px 10px; font-size: var(--fs-read); line-height: 1.3; border-radius: var(--r-m); }
   .nm-hint { font-size: var(--fs-small); }
@@ -1765,6 +1813,14 @@ body.fav-dragging, body.fav-dragging * { cursor: grabbing !important; }
   /* (Build 61: the filter and "Move to page…" made the menu two rows taller, so on a phone it stops at half the
      screen, as he asked it to be small (Build 32); the rest scrolls under the filter, which stays at the top) */
   .note-menu { max-height: calc(50vh - 12px); }
+  /* (Build 62, he asked Nov 27: "compact enough that everything is seen in one glance") the colours and
+     headings wait behind a small button beside the filter (.nm-style-btn), and the menu is never cut short
+     to scroll: it's placed where it fits whole (popups.js openFrom, .nm-fit) */
+  .note-menu.nm-fit { max-height: calc(100vh - 16px); }
+  /* (Build 62, his note of Nov 26: the menu fits without scrolling) Cut, Copy and Copy link side by side */
+  .note-menu .nm-strip { justify-content: flex-start; gap: 4px; padding: 2px 2px; }
+  .note-menu .nm-strip .nm-item { flex: 1 1 0; justify-content: center; padding: 4px 6px; background: var(--surface-2); text-align: center; }
+  .note-menu .nm-strip .nm-l { flex: none; }
 }
 @media print { .drop-line, .drag-ghost { display: none; } }
 
@@ -2103,7 +2159,7 @@ html:not(.ai-on) #toolbar [data-t="polish"], html:not(.ai-on) .pz-spark { displa
 .pz-b { white-space: nowrap; flex: 0 0 auto; }
 .pz-bar .pz-keep { padding-left: 13px; padding-right: 13px; }
 /* Changes: opens under the buttons and moves the notes below down (smoothly), old words struck */
-.pz-diff { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .18s ease-out; }
+.pz-diff { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .3s cubic-bezier(.45, 0, .2, 1); }
 .pz-diff.open { grid-template-rows: 1fr; }
 .pz-diff > div { overflow: hidden; }
 .pz-diff.open > div { margin-top: 6px; padding: 2px 0 2px 10px; border-left: 1px solid var(--line); font-size: var(--fs-sub); white-space: pre-wrap; }
